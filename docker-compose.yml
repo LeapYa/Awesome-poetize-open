@@ -176,30 +176,30 @@ services:
       retries: 3
       start_period: 40s
 
-  # Ollama翻译模型服务
-  translation-model:
-    build:
-      context: .
-      dockerfile: docker/translation_model/Dockerfile
-    container_name: poetize-translation-model
-    environment:
-      - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_ORIGINS=*
-      - OLLAMA_MODELS=qwen3:0.6b
-      - OLLAMA_KEEP_ALIVE=-1
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - poetize-network
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 1200s
+  # # Ollama翻译模型服务
+  # translation-model:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/translation_model/Dockerfile
+  #   container_name: poetize-translation-model
+  #   environment:
+  #     - OLLAMA_HOST=0.0.0.0:11434
+  #     - OLLAMA_ORIGINS=*
+  #     - OLLAMA_MODELS=qwen3:0.6b
+  #     - OLLAMA_KEEP_ALIVE=-1
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   networks:
+  #     - poetize-network
+  #   restart: always
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+  #     interval: 60s
+  #     timeout: 30s
+  #     retries: 3
+  #     start_period: 1200s
 
   java-backend:
     build:

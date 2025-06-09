@@ -83,8 +83,8 @@ Poetize是一个将博客系统与即时通讯巧妙融合的内容平台，为�
 ## 🚀 快速开始
 
 ```bash
-# 只需一行命令，完成全部部署
-./deploy.sh
+# 只需一行命令，完成全部部署，你只需要输入域名邮箱即可
+git clone https://github.com/LeapYa/Awesome-poetize-open.git && cd Awesome-poetize-open && ./deploy.sh
 ```
 
 ## 📋 部署文档
@@ -109,7 +109,7 @@ Poetize是一个将博客系统与即时通讯巧妙融合的内容平台，为�
 
 ```bash
 # 一键部署命令
-./deploy.sh
+git clone https://github.com/LeapYa/Awesome-poetize-open.git && cd Awesome-poetize-open && ./deploy.sh
 ```
 
 无需手动配置Docker、编译代码或设置环境变量，脚本会自动处理所有细节，包括:
@@ -118,6 +118,72 @@ Poetize是一个将博客系统与即时通讯巧妙融合的内容平台，为�
 * 数据库初始化
 * 服务编排与启动
 * 自动HTTPS配置
+
+#### Ollama翻译模型配置（可选）
+
+如果你想启用本地AI翻译功能，我们也集成了Ollama模型支持。只需要取消`docker-compose.yml`中的相关注释即可：
+
+```bash
+# 编辑docker-compose.yml文件
+vim docker-compose.yml
+
+# 找到"# Ollama翻译模型服务"部分，取消注释即可启用
+# 模型会自动下载qwen3:0.6b轻量级翻译模型
+```
+
+启用后将提供：
+* 本地化AI翻译服务
+* 无需依赖第三方翻译API
+* 支持中英文互译
+* 模型数据持久化存储
+
+##### 自定义模型配置
+
+如果你不想使用默认的`qwen3:0.6b`模型，可以修改为其他支持的模型：
+
+1. **修改docker-compose.yml**
+   ```yaml
+   # 找到OLLAMA_MODELS环境变量，修改为你想要的模型
+   - OLLAMA_MODELS=deepseek-r1:8b  # 例如改为deepseek-r1:8b
+   ```
+
+2. **修改Dockerfile配置**
+   ```bash
+   # 编辑docker/translation_model/Dockerfile
+   vim docker/translation_model/Dockerfile
+   
+   # 将其中的qwen3:0.6b替换为你想要的模型名称，如deepseek-r1:8b、qwen3:8b等
+   ```
+
+**更多模型选择：**
+
+你可以访问 [Ollama官方模型库](https://ollama.com/library) 查看所有可用的模型，包括：
+* **推理模型**: `deepseek-r1` (1.5b, 7b, 8b, 14b, 32b, 70b, 671b)
+* **通用模型**: `qwen3` (0.6b, 1.7b, 4b, 8b, 14b, 30b, 32b), `llama3.2` (1b, 3b)
+* **代码模型**: `qwen2.5-coder` (0.5b, 1.5b, 3b, 7b, 14b, 32b)
+* **视觉模型**: `llama3.2-vision` (11b, 90b), `qwen2.5vl` (3b, 7b, 32b, 72b)
+
+选择模型时请考虑服务器配置，较大的模型需要更多内存和计算资源。
+
+**量化版本说明：**
+
+Ollama默认提供的是4位量化版本的模型，体积小但精度相对较低。如果需要更高的翻译准确度，可以使用其他量化版本：
+
+```yaml
+# 默认4位量化（体积小，速度快）
+- OLLAMA_MODELS=qwen3:8b
+
+# 8位量化（准确度更高，体积适中）
+- OLLAMA_MODELS=qwen3:8b-q8_0
+
+# 16位量化（最高准确度，体积最大）
+- OLLAMA_MODELS=qwen3:8b-fp16
+```
+
+**量化版本对比：**
+* **4位量化（默认）**: 体积最小，速度最快，适合资源受限环境
+* **8位量化（q8_0）**: 平衡准确度与资源消耗，推荐用于翻译任务
+* **16位量化（fp16）**: 最高准确度，需要充足内存和存储空间
 
 #### 1. 服务器要求
 
