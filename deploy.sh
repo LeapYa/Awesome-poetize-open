@@ -86,6 +86,15 @@ print_summary() {
   echo "管理员邮箱: $EMAIL"
   echo ""
   
+  # 检查HTTPS是否真正启用
+  local https_enabled=false
+  if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    # 检查Nginx是否配置了HTTPS
+    if docker exec poetize-nginx nginx -T 2>/dev/null | grep -q "listen.*443.*ssl" && docker exec poetize-nginx test -f "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null; then
+      https_enabled=true
+    fi
+  fi
+  
   # 本地环境特殊处理
   if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "本地开发环境服务地址:"
@@ -96,11 +105,38 @@ print_summary() {
     echo "- 管理员登录: http://$PRIMARY_DOMAIN/admin"
   else
     echo "服务地址:"
-    echo "- 网站首页: http://$PRIMARY_DOMAIN 或 https://$PRIMARY_DOMAIN (SSL证书成功后)"
-    echo "- 聊天室: http://$PRIMARY_DOMAIN/im 或 https://$PRIMARY_DOMAIN/im (SSL证书成功后)"
+    if [ "$https_enabled" = true ]; then
+      echo "- 网站首页: https://$PRIMARY_DOMAIN (HTTPS已启用 ✓)"
+      echo "- 聊天室: https://$PRIMARY_DOMAIN/im"
+      echo "- HTTP备用地址: http://$PRIMARY_DOMAIN (会自动重定向到HTTPS)"
+    else
+      echo "- 网站首页: http://$PRIMARY_DOMAIN"
+      echo "- 聊天室: http://$PRIMARY_DOMAIN/im"
+      echo "- HTTPS状态: 未启用或配置失败"
+    fi
     echo ""
     echo "管理地址:"
-    echo "- 管理员登录: http://$PRIMARY_DOMAIN/admin 或 https://$PRIMARY_DOMAIN/admin (SSL证书成功后)"
+    if [ "$https_enabled" = true ]; then
+      echo "- 管理员登录: https://$PRIMARY_DOMAIN/admin"
+    else
+      echo "- 管理员登录: http://$PRIMARY_DOMAIN/admin"
+    fi
+  fi
+  
+  # 显示HTTPS配置状态
+  if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo ""
+    echo "HTTPS配置状态:"
+    if [ "$https_enabled" = true ]; then
+      success "✓ HTTPS已成功配置并启用"
+      echo "  - SSL证书状态: 有效"
+      echo "  - Nginx HTTPS配置: 已启用"
+      echo "  - 安全连接: 可用"
+    else
+      warning "✗ HTTPS未正确配置"
+      echo "  如需启用HTTPS，请运行: docker exec poetize-nginx /enable-https.sh"
+      echo "  然后检查域名DNS解析和防火墙配置"
+    fi
   fi
   
   # 显示数据库凭据信息
@@ -2396,14 +2432,47 @@ start_services() {
 setup_https() {
   info "等待SSL证书生成..."
   
-  # 给certbot容器一些时间来完成
-  sleep 15
+  # 给certbot容器更多时间来完成，并增加重试机制
+  local max_wait=120  # 最多等待2分钟
+  local wait_time=0
+  local interval=10   # 每10秒检查一次
   
-  # 检查certbot容器状态
-  CERTBOT_EXIT_CODE=$(docker inspect poetize-certbot --format='{{.State.ExitCode}}' 2>/dev/null || echo "-1")
+  while [ $wait_time -lt $max_wait ]; do
+    # 检查certbot容器状态
+    CERTBOT_EXIT_CODE=$(docker inspect poetize-certbot --format='{{.State.ExitCode}}' 2>/dev/null || echo "-1")
+    CERTBOT_RUNNING=$(docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
+    
+    # 如果certbot已完成且成功
+    if [ "$CERTBOT_EXIT_CODE" = "0" ] && [ "$CERTBOT_RUNNING" = "false" ]; then
+      break
+    fi
+    
+    # 如果certbot失败
+    if [ "$CERTBOT_EXIT_CODE" != "0" ] && [ "$CERTBOT_EXIT_CODE" != "-1" ] && [ "$CERTBOT_RUNNING" = "false" ]; then
+      break
+    fi
+    
+    info "等待证书申请完成... (${wait_time}s/${max_wait}s)"
+    sleep $interval
+    wait_time=$((wait_time + interval))
+  done
+  
+  # 再给一点时间让文件系统同步
+  sleep 5
   
   if [ "$CERTBOT_EXIT_CODE" = "0" ]; then
     info "SSL证书已成功生成，正在启用HTTPS..."
+    
+    # 验证证书文件是否存在
+    if docker exec poetize-nginx ls /etc/letsencrypt/live/*/fullchain.pem >/dev/null 2>&1; then
+      info "确认证书文件存在，继续配置HTTPS..."
+    else
+      warning "证书文件未找到，等待文件系统同步..."
+      sleep 10
+      if ! docker exec poetize-nginx ls /etc/letsencrypt/live/*/fullchain.pem >/dev/null 2>&1; then
+        warning "证书文件仍未找到，HTTPS配置可能失败"
+      fi
+    fi
     
     # 先给容器内脚本赋予执行权限
     info "给enable-https.sh赋予执行权限..."
@@ -2414,15 +2483,64 @@ setup_https() {
       fi
     fi
     
-    # 执行Nginx容器内的enable-https.sh脚本
-    if ! docker exec poetize-nginx /enable-https.sh; then
-      warning "执行enable-https.sh脚本失败，HTTPS可能未正确启用"
+    # 多次尝试执行HTTPS启用脚本
+    local retry_count=3
+    local retry_delay=5
+    local success=false
+    
+    for i in $(seq 1 $retry_count); do
+      info "第 $i 次尝试启用HTTPS..."
+      
+      if docker exec poetize-nginx /enable-https.sh; then
+        success=true
+        break
+      else
+        warning "第 $i 次尝试失败"
+        if [ $i -lt $retry_count ]; then
+          info "等待 ${retry_delay} 秒后重试..."
+          sleep $retry_delay
+        fi
+      fi
+    done
+    
+    if [ "$success" = "true" ]; then
+      success "HTTPS已成功启用！"
+      
+      # 验证HTTPS配置是否生效
+      info "验证HTTPS配置..."
+      if docker exec poetize-nginx nginx -t >/dev/null 2>&1; then
+        info "Nginx配置验证通过"
+        
+        # 重新加载Nginx配置
+        if docker exec poetize-nginx nginx -s reload >/dev/null 2>&1; then
+          success "Nginx配置已重新加载，HTTPS现在应该可以正常工作"
+        else
+          warning "Nginx重新加载失败，可能需要手动重启Nginx容器"
+        fi
+      else
+        warning "Nginx配置验证失败，请检查SSL配置"
+        info "可以运行以下命令检查详细错误:"
+        info "  docker exec poetize-nginx nginx -t"
+      fi
+      
+      return 0
+    else
+      warning "多次尝试启用HTTPS都失败了"
       warning "您可以稍后手动运行: docker exec poetize-nginx /enable-https.sh"
+      
+      # 显示详细的错误诊断信息
+      info "错误诊断信息:"
+      info "1. 检查证书文件状态:"
+      docker exec poetize-nginx sh -c "ls -la /etc/letsencrypt/live/ 2>/dev/null || echo '证书目录不存在'"
+      
+      info "2. 检查Nginx配置:"
+      docker exec poetize-nginx nginx -t 2>&1 || echo "Nginx配置检查失败"
+      
+      info "3. 检查enable-https.sh脚本内容:"
+      docker exec poetize-nginx head -10 /enable-https.sh 2>/dev/null || echo "脚本文件不存在或不可读"
+      
       return 1
     fi
-    
-    success "HTTPS已启用！"
-    return 0
   else
     warning "SSL证书申请失败 (退出代码: $CERTBOT_EXIT_CODE)"
     info "检查证书申请日志..."
@@ -3716,6 +3834,149 @@ fix_mysql_config_permissions() {
   fi
 }
 
+# 验证HTTPS状态和配置
+verify_https_status() {
+  info "验证HTTPS配置状态..."
+  
+  local https_working=false
+  local cert_valid=false
+  local nginx_https_enabled=false
+  
+  # 1. 检查Nginx配置是否启用了HTTPS
+  info "检查Nginx HTTPS配置..."
+  if docker exec poetize-nginx nginx -T 2>/dev/null | grep -q "listen.*443.*ssl"; then
+    nginx_https_enabled=true
+    success "✓ Nginx已配置HTTPS监听端口"
+  else
+    warning "✗ Nginx未配置HTTPS监听端口"
+    info "当前Nginx配置中的监听端口:"
+    docker exec poetize-nginx nginx -T 2>/dev/null | grep "listen" | head -5 || echo "无法获取监听端口信息"
+  fi
+  
+  # 2. 检查SSL证书文件是否存在
+  info "检查SSL证书文件..."
+  if docker exec poetize-nginx test -f "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null; then
+    cert_valid=true
+    success "✓ SSL证书文件存在: /etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem"
+    
+    # 检查证书有效期
+    CERT_EXPIRY=$(docker exec poetize-nginx openssl x509 -in "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
+    if [ -n "$CERT_EXPIRY" ]; then
+      info "证书有效期至: $CERT_EXPIRY"
+    fi
+  else
+    warning "✗ SSL证书文件不存在"
+    info "检查Let's Encrypt目录结构:"
+    docker exec poetize-nginx ls -la /etc/letsencrypt/live/ 2>/dev/null || echo "Let's Encrypt目录不存在"
+  fi
+  
+  # 3. 测试HTTPS连接（如果不是本地域名）
+  if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    info "测试HTTPS连接..."
+    
+    # 给服务器一点时间来重新加载配置
+    sleep 3
+    
+    # 使用curl测试HTTPS连接
+    if command -v curl &>/dev/null; then
+      HTTPS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$PRIMARY_DOMAIN" --connect-timeout 10 --max-time 15 2>/dev/null || echo "000")
+      
+      if [ "$HTTPS_STATUS" = "200" ] || [ "$HTTPS_STATUS" = "301" ] || [ "$HTTPS_STATUS" = "302" ]; then
+        https_working=true
+        success "✓ HTTPS连接测试成功 (状态码: $HTTPS_STATUS)"
+      else
+        warning "✗ HTTPS连接测试失败 (状态码: $HTTPS_STATUS)"
+        
+        # 尝试诊断问题
+        info "尝试诊断HTTPS问题..."
+        CURL_ERROR=$(curl -v "https://$PRIMARY_DOMAIN" 2>&1 | head -10 || echo "curl命令失败")
+        echo "连接详情: $CURL_ERROR"
+      fi
+    else
+      # 如果没有curl，尝试使用openssl测试SSL握手
+      if command -v openssl &>/dev/null; then
+        info "使用OpenSSL测试SSL握手..."
+        if echo | openssl s_client -connect "$PRIMARY_DOMAIN:443" -servername "$PRIMARY_DOMAIN" 2>/dev/null | grep -q "CONNECTED"; then
+          https_working=true
+          success "✓ SSL握手测试成功"
+        else
+          warning "✗ SSL握手测试失败"
+        fi
+      else
+        warning "无curl和openssl命令，无法测试HTTPS连接"
+      fi
+    fi
+  else
+    info "本地域名环境，跳过HTTPS连接测试"
+  fi
+  
+  # 4. 检查容器日志中的错误
+  info "检查容器日志中的SSL相关错误..."
+  SSL_ERRORS=$(docker logs poetize-nginx 2>&1 | grep -i "ssl\|certificate\|tls" | tail -5 || echo "未发现SSL相关日志")
+  if [ "$SSL_ERRORS" != "未发现SSL相关日志" ]; then
+    warning "发现SSL相关日志:"
+    echo "$SSL_ERRORS"
+  fi
+  
+  # 5. 生成总结报告
+  echo ""
+  echo -e "${BLUE}=== HTTPS配置状态报告 ===${NC}"
+  echo "Nginx HTTPS配置: $([ "$nginx_https_enabled" = true ] && echo "✓ 已启用" || echo "✗ 未启用")"
+  echo "SSL证书文件: $([ "$cert_valid" = true ] && echo "✓ 存在" || echo "✗ 缺失")"
+  echo "HTTPS连接测试: $([ "$https_working" = true ] && echo "✓ 正常" || echo "✗ 失败")"
+  
+  # 根据检查结果给出建议
+  if [ "$nginx_https_enabled" = true ] && [ "$cert_valid" = true ] && [ "$https_working" = true ]; then
+    success "🎉 HTTPS配置完全正常！您现在可以通过 https://$PRIMARY_DOMAIN 访问网站"
+    
+    # 检查HTTP重定向是否工作
+    if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      info "检查HTTP到HTTPS重定向..."
+      HTTP_REDIRECT=$(curl -s -o /dev/null -w "%{http_code}" "http://$PRIMARY_DOMAIN" --connect-timeout 10 2>/dev/null || echo "000")
+      if [ "$HTTP_REDIRECT" = "301" ] || [ "$HTTP_REDIRECT" = "302" ]; then
+        success "✓ HTTP到HTTPS重定向工作正常"
+      else
+        info "HTTP状态码: $HTTP_REDIRECT (可能需要手动配置重定向)"
+      fi
+    fi
+    
+    return 0
+  else
+    warning "HTTPS配置存在问题，需要进一步排查"
+    
+    echo ""
+    echo -e "${YELLOW}=== 故障排除建议 ===${NC}"
+    
+    if [ "$nginx_https_enabled" = false ]; then
+      echo "1. Nginx HTTPS配置问题:"
+      echo "   - 运行: docker exec poetize-nginx /enable-https.sh"
+      echo "   - 检查: docker exec poetize-nginx nginx -t"
+    fi
+    
+    if [ "$cert_valid" = false ]; then
+      echo "2. SSL证书问题:"
+      echo "   - 检查certbot日志: docker logs poetize-certbot"
+      echo "   - 重新申请证书: docker restart poetize-certbot"
+      echo "   - 确认域名DNS指向正确"
+    fi
+    
+    if [ "$https_working" = false ]; then
+      echo "3. HTTPS连接问题:"
+      echo "   - 检查防火墙是否开放443端口"
+      echo "   - 确认域名解析正确"
+      echo "   - 重启Nginx: docker restart poetize-nginx"
+    fi
+    
+    echo ""
+    echo "如果问题持续存在，请:"
+    echo "- 等待几分钟后重试（DNS和证书可能需要时间生效）"
+    echo "- 运行: docker exec poetize-nginx /enable-https.sh"
+    echo "- 查看完整日志获取更多信息"
+    
+    return 1
+  fi
+}
+
 # 主函数
 main() {
   # 显示横幅
@@ -3939,6 +4200,15 @@ main() {
     else
       info "本地域名环境不支持HTTPS，如需使用HTTPS请配置有效域名"
     fi
+  fi
+
+  # 等待5秒让HTTPS配置完全生效
+  if [ "$ENABLE_HTTPS" = true ] || [ $SSL_STATUS -eq 0 ]; then
+    info "等待HTTPS配置生效..."
+    sleep 5
+    
+    # 验证HTTPS是否真正工作
+    verify_https_status
   fi
 
     
