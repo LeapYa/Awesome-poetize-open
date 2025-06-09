@@ -22,10 +22,6 @@
           <el-input v-model="webInfo.webTitle"></el-input>
         </el-form-item>
 
-        <el-form-item label="页脚" prop="footer">
-          <el-input v-model="webInfo.footer"></el-input>
-        </el-form-item>
-
         <el-form-item label="状态" prop="status">
           <el-switch @change="changeWebStatus" v-model="webInfo.status"></el-switch>
         </el-form-item>
@@ -100,6 +96,10 @@
           <uploadPicture :isAdmin="true" :prefix="'webAvatar'" style="margin-top: 15px" @addPicture="addAvatar"
                          :maxSize="2"
                          :maxNumber="1"></uploadPicture>
+        </el-form-item>
+
+        <el-form-item label="页脚" prop="footer">
+          <el-input v-model="webInfo.footer" placeholder="页脚信息（可选）"></el-input>
         </el-form-item>
 
         <el-form-item label="提示" prop="waifuJson">
@@ -1552,7 +1552,7 @@ X-API-KEY: {{apiConfig.apiKey}}
             {required: true, message: '请输入网站标题', trigger: 'blur'}
           ],
           footer: [
-            {required: true, message: '请输入页脚', trigger: 'blur'}
+            // 移除长度限制，页脚内容完全自由
           ],
           backgroundImage: [
             {required: true, message: '请输入背景', trigger: 'change'}

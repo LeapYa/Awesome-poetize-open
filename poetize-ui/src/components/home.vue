@@ -639,6 +639,7 @@
         root.style.setProperty("--commentContent", "#D4D4D4");
         root.style.setProperty("--favoriteBg", "#1e1e1e");
         root.style.setProperty("--whiteMask", "#383838");
+        root.style.setProperty("--inputBackground", "#383838");
       },
       
       applyLightTheme() {
@@ -651,6 +652,7 @@
         root.style.setProperty("--articleGreyFontColor", "#616161");
         root.style.setProperty("--commentContent", "#F7F9FE");
         root.style.setProperty("--favoriteBg", "#f7f9fe");
+        root.style.setProperty("--inputBackground", "#f5f5f5");
       },
       toTop() {
         window.scrollTo({

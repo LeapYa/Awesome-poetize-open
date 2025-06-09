@@ -1062,7 +1062,7 @@
   }
 
   .form-container input {
-    background: var(--whiteMask);
+    background: var(--inputBackground);
     border-radius: 3px;
     border: none;
     padding: 12px 15px;
