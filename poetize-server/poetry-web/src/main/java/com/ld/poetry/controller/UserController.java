@@ -94,13 +94,13 @@ public class UserController {
             return PoetryResult.fail("权限不足");
         }
         
-        // 检查token是否过期
-        String token = PoetryUtil.getToken();
+        // 检查token是否过期 - 修复：使用getTokenWithoutBearer()方法
+        String token = PoetryUtil.getTokenWithoutBearer();
         if (token == null || token.isEmpty()) {
             return PoetryResult.fail("未登录或token无效");
         }
         
-        // 检查token是否在缓存中
+        // 检查token是否在缓存中 - 使用不带Bearer前缀的token进行缓存查找
         User cachedUser = (User) PoetryCache.get(token);
         if (cachedUser == null) {
             return PoetryResult.fail("登录已过期，请重新登录");

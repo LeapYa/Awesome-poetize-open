@@ -212,24 +212,15 @@ async def admin_required(
             )
         else:
             data = response.json() if response.content else {}
-            
-            # 处理登录过期的情况，允许管理员继续访问
-            if data.get('code') == 500 and "登录已过期" in data.get('message', ''):
-                logger.warning(f"登录已过期，但允许管理员继续访问: {endpoint}")
-                elapsed = time.time() - start_time
-                logger.info(f"登录过期情况下管理员API请求完成: {endpoint}, IP: {client_ip}, 耗时: {elapsed:.3f}秒")
-                return True
-            
-        # 权限验证失败
-        logger.warning(f"权限验证失败, IP: {client_ip}, API: {endpoint}, 响应码: {response.status_code}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                'code': 403,
-                'message': '权限不足，需要站长或管理员权限',
-                'data': None
-            }
-        )
+            logger.warning(f"Java后端权限验证失败: {data.get('message', '未知错误')}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    'code': 403,
+                    'message': data.get('message', '权限不足，需要站长或管理员权限'),
+                    'data': None
+                }
+            )
             
     except HTTPException:
         # 重新抛出HTTPException
