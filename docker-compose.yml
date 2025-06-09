@@ -166,8 +166,6 @@ services:
     depends_on:
       java-backend:
         condition: service_healthy
-      translation-model:
-        condition: service_healthy
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
