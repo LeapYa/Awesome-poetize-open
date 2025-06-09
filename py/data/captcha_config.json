@@ -1,0 +1,17 @@
+{
+  "checkbox": {
+    "minTrackPoints": 3,
+    "trackSensitivity": 0.99
+  },
+  "comment": true,
+  "enable": true,
+  "forceSlideForMobile": true,
+  "login": true,
+  "register": true,
+  "reset_password": true,
+  "screenSizeThreshold": 768,
+  "slide": {
+    "accuracy": 5,
+    "successThreshold": 0.95
+  }
+}

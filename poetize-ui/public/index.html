@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="icon" href="./poetize.jpg" sizes="16x16">
+    <link rel="preload" href="/static/assets/font.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/libs/css/animate.min.css">
+    <link rel="stylesheet" href="/libs/css/highlight.min.css">
+    <title></title>
+    
+    <!-- SEO相关元数据占位符 - 将由Nginx动态替换 -->
+    <!-- SEO_META_PLACEHOLDER -->
+
+    <script src="/libs/js/jquery.min.js"></script>
+    <script src="/libs/js/anime.min.js"></script>
+    <script src="/libs/js/highlight.min.js"></script>
+    <script src="/libs/js/wow.min.js"></script>
+    <script src="/libs/js/highlightjs-line-numbers.min.js"></script>
+    <script src="/libs/js/clipboard.min.js"></script>
+    <script src="/libs/js/qiniu.min.js"></script>
+    <style>
+        @font-face {
+            font-family: 'poetize-font';
+            src: url('/static/assets/font.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        body {
+            margin: 0;
+            font-family: 'poetize-font', serif !important;
+        }
+        
+        * {
+            font-family: 'poetize-font', serif !important;
+        }
+        
+        /* 优先级图标确保不受全局字体影响 */
+        i[class*="el-icon"], i.el-icon-*, [class*="el-icon"], [class^="el-icon-"], 
+        .el-icon, .el-select-icon, .el-input__icon, .el-step__icon, 
+        .el-message__icon, .el-message-box__status, .el-notification__icon,
+        .el-tree-node__expand-icon, .el-pagination button i,
+        .el-submenu__icon-arrow, .el-menu-item [class^="el-icon-"],
+        .el-form-item__icon, .el-tooltip__popper i, .el-button i,
+        .el-dialog__close, .el-dialog__headerbtn .el-dialog__close,
+        .el-collapse-item__arrow, .el-date-editor .el-range__icon,
+        .el-date-editor .el-range__close-icon, .el-tag .el-tag__close,
+        .el-cascader__icon, .el-tabs__nav-prev, .el-tabs__nav-next,
+        .el-popper .popper__arrow, .el-upload-list__item-actions,
+        .el-time-panel .el-time-spinner__arrow, .el-popover .popper__arrow,
+        .el-autocomplete-suggestion .el-icon-arrow-right,
+        .el-drawer__close-btn, .el-message-box__close,
+        .el-rate__icon, .el-select .el-input .el-select__caret {
+            font-family: "element-icons" !important;
+            font-style: normal !important;
+            font-weight: normal !important;
+            font-variant: normal !important;
+            text-transform: none !important;
+            speak: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        /* FontAwesome图标修复 */
+        i.fa, .fa, [class*="fa-"] {
+            font-family: "FontAwesome" !important;
+            font-style: normal !important;
+            font-weight: normal !important;
+        }
+        
+        /* IconFont图标修复 */
+        .iconfont, [class*="icon-"] {
+            font-family: "iconfont" !important;
+            font-style: normal !important;
+            font-weight: normal !important;
+        }
+    </style>
+</head>
+<body>
+<div id="app"></div>
+</body>
+<script>
+    new WOW().init();
+</script>
+
+<!-- 看板娘拖拽功能 -->
+<script>
+(function() {
+  // 等待DOM加载完成
+  document.addEventListener('DOMContentLoaded', function() {
+    // 等待看板娘元素加载
+    const waitForWaifu = setInterval(function() {
+      const waifu = document.getElementById('waifu');
+      if (waifu) {
+        clearInterval(waitForWaifu);
+        
+        // 样式修改
+        waifu.style.cursor = 'e-resize'; // 水平拖动的鼠标样式
+        waifu.style.touchAction = 'none';
+        waifu.style.zIndex = '1000';
+        
+        // 初始化拖拽
+        initDrag(waifu);
+      }
+    }, 1000);
+  });
+
+  // 初始化拖拽功能
+  function initDrag(element) {
+    let isDragging = false;
+    let startX, startY;
+    let offsetX = 0;
+    let hasSaid = false;
+    
+    // 显示消息的函数
+    function showMessage(text, timeout) {
+      const tips = document.getElementById('waifu-tips');
+      if (tips) {
+        tips.innerHTML = text;
+        tips.classList.add('waifu-tips-active');
+        
+        // 清除之前的计时器
+        if (window.messageTimer) {
+          clearTimeout(window.messageTimer);
+          window.messageTimer = null;
+        }
+        
+        // 设置消息显示时间
+        window.messageTimer = setTimeout(() => {
+          tips.classList.remove('waifu-tips-active');
+        }, timeout || 5000);
+      }
+    }
+    
+    // 鼠标按下事件
+    element.addEventListener('mousedown', function(e) {
+      // 防止拖动工具栏时触发拖拽
+      if (e.target.closest('#waifu-tool') || e.target.closest('#waifu-tips')) {
+        return;
+      }
+      
+      isDragging = true;
+      hasSaid = false;
+      element.classList.add('dragging');
+      element.style.transition = 'none';
+      element.style.opacity = '0.7';
+      
+      // 记录起始位置
+      startX = e.clientX;
+      
+      // 获取当前位置
+      const style = window.getComputedStyle(element);
+      offsetX = parseInt(style.left) || 0;
+      
+      e.preventDefault();
+    });
+
+    // 鼠标移动事件
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      
+      // 第一次移动时显示消息
+      if (!hasSaid) {
+        showMessage("怎么啦，是嫌我挡路了嘛", 3000);
+        hasSaid = true;
+      }
+      
+      // 计算新位置（只允许水平移动）
+      const newLeft = offsetX + (e.clientX - startX);
+      
+      // 设置新位置，确保不超出视窗
+      const maxLeft = window.innerWidth - element.offsetWidth;
+      element.style.left = Math.min(Math.max(0, newLeft), maxLeft) + 'px';
+    });
+
+    // 鼠标释放事件
+    document.addEventListener('mouseup', function() {
+      if (isDragging) {
+        isDragging = false;
+        element.classList.remove('dragging');
+        element.style.transition = '';
+        element.style.opacity = '1';
+      }
+    });
+
+    // 触摸开始事件
+    element.addEventListener('touchstart', function(e) {
+      // 防止拖动工具栏时触发拖拽
+      if (e.target.closest('#waifu-tool') || e.target.closest('#waifu-tips')) {
+        return;
+      }
+      
+      isDragging = true;
+      hasSaid = false;
+      element.style.transition = 'none';
+      element.style.opacity = '0.7';
+      
+      // 记录起始位置
+      startX = e.touches[0].clientX;
+      
+      // 获取当前位置
+      const style = window.getComputedStyle(element);
+      offsetX = parseInt(style.left) || 0;
+      
+      e.preventDefault(); // 阻止滚动
+    });
+
+    // 触摸移动事件
+    document.addEventListener('touchmove', function(e) {
+      if (!isDragging) return;
+      
+      // 第一次移动时显示消息
+      if (!hasSaid) {
+        showMessage("怎么啦，是嫌我挡路了吗", 3000);
+        hasSaid = true;
+      }
+      
+      // 计算新位置（只允许水平移动）
+      const newLeft = offsetX + (e.touches[0].clientX - startX);
+      
+      // 设置新位置，确保不超出视窗
+      const maxLeft = window.innerWidth - element.offsetWidth;
+      element.style.left = Math.min(Math.max(0, newLeft), maxLeft) + 'px';
+      
+      e.preventDefault(); // 阻止滚动
+    }, { passive: false });
+
+    // 触摸结束事件
+    document.addEventListener('touchend', function() {
+      if (isDragging) {
+        isDragging = false;
+        element.style.transition = '';
+        element.style.opacity = '1';
+      }
+    });
+  }
+})();
+</script>
+</html>

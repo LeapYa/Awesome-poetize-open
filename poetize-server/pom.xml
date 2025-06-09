@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.ld</groupId>
+    <artifactId>poetry</artifactId>
+    <version>3.0-LeapYa</version>
+    <name>POETIZE - 最美博客 (LeapYa维护版)</name>
+    <description>POETIZE - 最美博客系统 LeapYa维护版，基于Spring Boot 3.x + Java 21</description>
+    <packaging>pom</packaging>
+
+    <properties>
+        <poetry.version>3.0-LeapYa</poetry.version>
+        <spring-boot.version>3.2.12</spring-boot.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <maven-jar-plugin.version>3.9.0</maven-jar-plugin.version>
+        <java.version>21</java.version>
+        <springdoc.version>2.3.0</springdoc.version>
+        <mybatis-plus.version>3.5.8</mybatis-plus.version>
+        <hutool.version>5.8.24</hutool.version>
+        <lombok.version>1.18.30</lombok.version>
+        <!-- 离线IP地址定位库 -->
+        <ip2region.version>2.7.0</ip2region.version>
+        <!-- 禁用Maven 3.8+的HTTP仓库检查 -->
+        <maven.resolver.transport.wagon.http.checksumExtension>false</maven.resolver.transport.wagon.http.checksumExtension>
+    </properties>
+
+    <modules>
+        <module>poetry-web</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- SpringBoot的依赖配置 -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- hutool 的依赖配置 -->
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-bom</artifactId>
+                <version>${hutool.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+
+            <!-- 锁定MyBatis-Plus版本，防止自动升级 -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-boot-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-core</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-extension</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-annotation</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-generator</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- 离线IP地址定位库 ip2region -->
+            <dependency>
+                <groupId>org.lionsoul</groupId>
+                <artifactId>ip2region</artifactId>
+                <version>${ip2region.version}</version>
+            </dependency>
+
+            <!-- 统一管理slf4j版本，解决依赖冲突 -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>2.0.9</version>
+            </dependency>
+
+            <!-- 统一常见依赖版本，解决冲突 -->
+            <dependency>
+                <groupId>org.checkerframework</groupId>
+                <artifactId>checker-qual</artifactId>
+                <version>3.23.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.ld</groupId>
+                <artifactId>poetry-web</artifactId>
+                <version>${poetry.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-jar-plugin.version}</version>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                    <compilerArgs>
+                        <arg>-Xlint:none</arg>
+                    </compilerArgs>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <mainClass>none</mainClass>
+                </configuration>
+            </plugin>
+            <!-- 添加Maven依赖管理插件，检测依赖冲突 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <id>enforce-versions</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <dependencyConvergence />
+                                <!-- 禁用上界依赖检查，因为升级到Java 11后会有版本冲突 -->
+                                <!-- <requireUpperBoundDeps /> -->
+                                <bannedDependencies>
+                                    <excludes>
+                                        <!-- 旧的禁止规则注释掉，我们需要使用这个版本 -->
+                                        <!-- <exclude>com.baomidou:mybatis-plus-boot-starter:(,3.4.1]</exclude> -->
+                                    </excludes>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+        
+        <!-- 添加默认阶段绑定 -->
+        <defaultGoal>package</defaultGoal>
+        
+        <!-- 跳过查找子模块中的主类 -->
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <skip>true</skip>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <repositories>
+        <repository>
+            <id>public</id>
+            <name>huawei nexus</name>
+            <url>https://mirrors.huaweicloud.com/repository/maven/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>public</id>
+            <name>huawei nexus</name>
+            <url>https://mirrors.huaweicloud.com/repository/maven/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </pluginRepository>
+    </pluginRepositories>
+</project>

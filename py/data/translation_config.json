@@ -1,0 +1,14 @@
+{
+  "type": "llm",
+  "baidu": null,
+  "custom": null,
+  "llm": {
+    "model": "deepseek-ai/DeepSeek-R1-0528",
+    "api_url": "https://api-inference.modelscope.cn/v1",
+    "prompt": "请将以下{format}从{source_lang}翻译成{target_lang}，保持原意和格式，只返回翻译结果，不要添加任何说明或注释：",
+    "interface_type": "openai",
+    "api_key": ""
+  },
+  "default_source_lang": "en",
+  "default_target_lang": "zh"
+}

@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /private/
+
+# Sitemap
+Sitemap: http://localhost:3000/sitemap.xml
+
+# 搜索引擎爬虫特定规则
+User-agent: Baiduspider
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# 爬取延迟
+Crawl-delay: 1

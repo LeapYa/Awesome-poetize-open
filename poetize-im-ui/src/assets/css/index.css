@@ -1,0 +1,82 @@
+body {
+    color: var(--fontColor);
+    font-family: var(--globalFont), serif;
+    word-break: break-word;
+}
+
+
+/* 居中 */
+.myCenter {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.transformCenter {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* 两边 */
+.myBetween {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 滚动条 */
+.group-card ::-webkit-scrollbar {
+
+}
+
+.image-list::-webkit-scrollbar {
+    display: none;
+}
+
+/* el弹出框样式 */
+.el-message {
+    top: 80px !important;
+    border: 0;
+}
+
+.el-message * {
+    color: var(--white) !important;
+    font-weight: 600;
+}
+
+.el-message--success {
+    background: var(--themeBackground);
+}
+
+.el-message--warning {
+    background: var(--gradientBG);
+}
+
+.el-message--error {
+    background: var(--gradualRed);
+}
+
+.message img {
+    max-width: 250px !important;
+}
+
+.v-x-scroll {
+    overflow: unset;
+}
+
+.n-base-icon.n-dialog__icon {
+    display: none;
+}
+
+
+@media screen and (max-width: 400px) {
+    .emoji-body {
+        max-width: 230px !important;
+    }
+
+    .n-modal {
+        width: 70% !important;
+    }
+}

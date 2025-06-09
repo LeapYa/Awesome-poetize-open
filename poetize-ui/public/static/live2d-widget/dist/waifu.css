@@ -1,0 +1,445 @@
+#waifu-toggle {
+	background-color: #fa0;
+	border-radius: 5px;
+	bottom: 66px;
+	color: #fff;
+	cursor: pointer;
+	font-size: 12px;
+	left: 0;
+	margin-left: -100px;
+	padding: 5px 2px 5px 5px;
+	position: fixed;
+	transition: margin-left 1s;
+	width: 60px;
+	writing-mode: vertical-rl;
+}
+
+#waifu-toggle.waifu-toggle-active {
+	margin-left: -50px;
+}
+
+#waifu-toggle.waifu-toggle-active:hover {
+	margin-left: -30px;
+}
+
+#waifu {
+	bottom: -1000px;
+	left: 0;
+	line-height: 0;
+	margin-bottom: -10px;
+	position: fixed;
+	transform: translateY(3px);
+	transition: transform .3s ease-in-out, bottom 3s ease-in-out;
+	z-index: 1;
+}
+
+#waifu:hover {
+	transform: translateY(0);
+}
+
+#waifu-tips {
+	opacity: 0;
+	width: 250px;
+	height: 70px;
+	margin: -20px 20px;
+	padding: 5px 10px;
+	border: 1px solid rgba(224, 186, 140, 0.62);
+	border-radius: 12px;
+	background-color: rgba(236, 217, 188, 0.5);
+	color: #0d7377;
+	font-size: 14px;
+	line-height: 24px;
+	text-overflow: ellipsis;
+	text-align: center;
+	transition: opacity 1s;
+	word-break: break-all;
+	position: absolute;
+	left: 0px;
+	top: -30px;
+	z-index: 9999 !important;
+	
+	/* 确保文字可以选择 */
+	user-select: text !important;
+	-webkit-user-select: text !important;
+	-moz-user-select: text !important;
+	-ms-user-select: text !important;
+	-webkit-touch-callout: default !important;
+	-webkit-user-modify: read-only !important;
+	pointer-events: auto !important;
+	cursor: text !important;
+}
+
+#waifu-tips.waifu-tips-active {
+	opacity: 1;
+	transition: opacity .2s;
+}
+
+/* 确保文字选择功能的专用类 */
+#waifu-tips.text-selectable {
+	user-select: text !important;
+	-webkit-user-select: text !important;
+	-moz-user-select: text !important;
+	-ms-user-select: text !important;
+	pointer-events: auto !important;
+	cursor: text !important;
+	-webkit-touch-callout: default !important;
+	-webkit-user-modify: read-only !important;
+}
+
+#waifu-tips span {
+	color: #0099cc;
+}
+
+#live2d {
+	cursor: grab;
+	height: 300px;
+	position: relative;
+	width: 300px;
+}
+
+#live2d:active {
+	cursor: grabbing;
+}
+
+#waifu-tool {
+	color: #aaa;
+	opacity: 0;
+	position: absolute;
+	right: -10px;
+	top: 70px;
+	transition: opacity 1s;
+}
+
+#waifu:hover #waifu-tool {
+	opacity: 1;
+}
+
+#waifu-tool span {
+	display: block;
+	height: 30px;
+	text-align: center;
+}
+
+#waifu-tool svg {
+	fill: #7b8c9d;
+	cursor: pointer;
+	height: 25px;
+	transition: fill .3s;
+}
+
+#waifu-tool svg:hover {
+	fill: #0684bd; /* #34495e */
+}
+
+@keyframes shake {
+	2% {
+		transform: translate(.5px, -1.5px) rotate(-.5deg);
+	}
+
+	4% {
+		transform: translate(.5px, 1.5px) rotate(1.5deg);
+	}
+
+	6% {
+		transform: translate(1.5px, 1.5px) rotate(1.5deg);
+	}
+
+	8% {
+		transform: translate(2.5px, 1.5px) rotate(.5deg);
+	}
+
+	10% {
+		transform: translate(.5px, 2.5px) rotate(.5deg);
+	}
+
+	12% {
+		transform: translate(1.5px, 1.5px) rotate(.5deg);
+	}
+
+	14% {
+		transform: translate(.5px, .5px) rotate(.5deg);
+	}
+
+	16% {
+		transform: translate(-1.5px, -.5px) rotate(1.5deg);
+	}
+
+	18% {
+		transform: translate(.5px, .5px) rotate(1.5deg);
+	}
+
+	20% {
+		transform: translate(2.5px, 2.5px) rotate(1.5deg);
+	}
+
+	22% {
+		transform: translate(.5px, -1.5px) rotate(1.5deg);
+	}
+
+	24% {
+		transform: translate(-1.5px, 1.5px) rotate(-.5deg);
+	}
+
+	26% {
+		transform: translate(1.5px, .5px) rotate(1.5deg);
+	}
+
+	28% {
+		transform: translate(-.5px, -.5px) rotate(-.5deg);
+	}
+
+	30% {
+		transform: translate(1.5px, -.5px) rotate(-.5deg);
+	}
+
+	32% {
+		transform: translate(2.5px, -1.5px) rotate(1.5deg);
+	}
+
+	34% {
+		transform: translate(2.5px, 2.5px) rotate(-.5deg);
+	}
+
+	36% {
+		transform: translate(.5px, -1.5px) rotate(.5deg);
+	}
+
+	38% {
+		transform: translate(2.5px, -.5px) rotate(-.5deg);
+	}
+
+	40% {
+		transform: translate(-.5px, 2.5px) rotate(.5deg);
+	}
+
+	42% {
+		transform: translate(-1.5px, 2.5px) rotate(.5deg);
+	}
+
+	44% {
+		transform: translate(-1.5px, 1.5px) rotate(.5deg);
+	}
+
+	46% {
+		transform: translate(1.5px, -.5px) rotate(-.5deg);
+	}
+
+	48% {
+		transform: translate(2.5px, -.5px) rotate(.5deg);
+	}
+
+	50% {
+		transform: translate(-1.5px, 1.5px) rotate(.5deg);
+	}
+
+	52% {
+		transform: translate(-.5px, 1.5px) rotate(.5deg);
+	}
+
+	54% {
+		transform: translate(-1.5px, 1.5px) rotate(.5deg);
+	}
+
+	56% {
+		transform: translate(.5px, 2.5px) rotate(1.5deg);
+	}
+
+	58% {
+		transform: translate(2.5px, 2.5px) rotate(.5deg);
+	}
+
+	60% {
+		transform: translate(2.5px, -1.5px) rotate(1.5deg);
+	}
+
+	62% {
+		transform: translate(-1.5px, .5px) rotate(1.5deg);
+	}
+
+	64% {
+		transform: translate(-1.5px, 1.5px) rotate(1.5deg);
+	}
+
+	66% {
+		transform: translate(.5px, 2.5px) rotate(1.5deg);
+	}
+
+	68% {
+		transform: translate(2.5px, -1.5px) rotate(1.5deg);
+	}
+
+	70% {
+		transform: translate(2.5px, 2.5px) rotate(.5deg);
+	}
+
+	72% {
+		transform: translate(-.5px, -1.5px) rotate(1.5deg);
+	}
+
+	74% {
+		transform: translate(-1.5px, 2.5px) rotate(1.5deg);
+	}
+
+	76% {
+		transform: translate(-1.5px, 2.5px) rotate(1.5deg);
+	}
+
+	78% {
+		transform: translate(-1.5px, 2.5px) rotate(.5deg);
+	}
+
+	80% {
+		transform: translate(-1.5px, .5px) rotate(-.5deg);
+	}
+
+	82% {
+		transform: translate(-1.5px, .5px) rotate(-.5deg);
+	}
+
+	84% {
+		transform: translate(-.5px, .5px) rotate(1.5deg);
+	}
+
+	86% {
+		transform: translate(2.5px, 1.5px) rotate(.5deg);
+	}
+
+	88% {
+		transform: translate(-1.5px, .5px) rotate(1.5deg);
+	}
+
+	90% {
+		transform: translate(-1.5px, -.5px) rotate(-.5deg);
+	}
+
+	92% {
+		transform: translate(-1.5px, -1.5px) rotate(1.5deg);
+	}
+
+	94% {
+		transform: translate(.5px, .5px) rotate(-.5deg);
+	}
+
+	96% {
+		transform: translate(2.5px, -.5px) rotate(-.5deg);
+	}
+
+	98% {
+		transform: translate(-1.5px, -1.5px) rotate(-.5deg);
+	}
+
+	0%, 100% {
+		transform: translate(0, 0) rotate(0);
+	}
+}
+
+/* 流式响应工具调用信息样式 */
+.tool-call-info {
+	background-color: rgba(0, 153, 204, 0.1);
+	border: 1px solid rgba(0, 153, 204, 0.3);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin: 5px 0;
+	font-size: 12px;
+	color: #0066cc;
+	display: inline-block;
+	animation: fadeIn 0.3s ease-in;
+}
+
+.tool-call-info .tool-name {
+	font-weight: bold;
+	color: #004499;
+}
+
+.tool-call-info .tool-args {
+	color: #666;
+	margin-left: 5px;
+}
+
+.tool-call-result {
+	background-color: rgba(40, 167, 69, 0.1);
+	border: 1px solid rgba(40, 167, 69, 0.3);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin: 5px 0;
+	font-size: 12px;
+	color: #28a745;
+	display: inline-block;
+	animation: fadeIn 0.3s ease-in;
+}
+
+.thinking-indicator {
+	background-color: rgba(255, 193, 7, 0.1);
+	border: 1px solid rgba(255, 193, 7, 0.3);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin: 5px 0;
+	font-size: 12px;
+	color: #ffc107;
+	display: inline-block;
+	animation: pulse 1.5s ease-in-out infinite;
+}
+
+.stream-message {
+	max-width: 240px;
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+}
+
+.stream-complete {
+	opacity: 1;
+}
+
+.stream-loading {
+	opacity: 0.8;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(-5px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 0.6;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+/* 思考指示器样式 */
+.thinking-dots {
+	color: #666;
+	font-style: italic;
+	font-size: 14px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.thinking-dots .dots {
+	animation: thinking-dots 1.5s ease-in-out infinite;
+	font-weight: bold;
+}
+
+@keyframes thinking-dots {
+	0%, 20% {
+		opacity: 0.3;
+		transform: scale(1);
+	}
+	40% {
+		opacity: 1;
+		transform: scale(1.1);
+	}
+	60%, 100% {
+		opacity: 0.3;
+		transform: scale(1);
+	}
+}

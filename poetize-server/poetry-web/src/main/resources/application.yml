@@ -1,0 +1,154 @@
+server:
+  port: 8081
+  tomcat:
+    # 启用虚拟线程支持 - Java 21新特性
+    use-virtual-threads: true
+    # 调整为虚拟线程优化的配置
+    threads.max: 200
+    max-connections: 500
+    max-http-form-post-size: 120MB
+    connection-timeout: 60000
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+#  configuration:
+#    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+spring:
+  # Java 21 虚拟线程配置
+  threads:
+    virtual:
+      enabled: true
+  # 异步任务执行器也使用虚拟线程
+  task:
+    execution:
+      pool:
+        virtual-threads: true
+    scheduling:
+      pool:
+        virtual-threads: true
+  
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  mail:
+    # 邮箱配置已移至系统配置表，由Python服务管理
+    # 以下配置已注释，将从系统配置表动态获取
+    # host:
+    # username: 
+    # password:
+    default-encoding: utf-8
+    protocol: smtp
+    # port: 465
+    properties:
+      mail:
+        smtp:
+          # auth: true
+          starttls:
+            enable: true
+            required: true
+          socketFactory:
+            # port: 465
+            class: jakarta.net.ssl.SSLSocketFactory
+            fallback: false
+          # ssl:
+            # enable: true
+
+  datasource:
+    username: root
+    password: 123456
+    url: jdbc:mariadb://localhost:3306/poetize?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: org.mariadb.jdbc.Driver
+
+user:
+  code:
+    format:
+  subscribe:
+    format:
+
+store:
+  type:
+
+local:
+  enable:
+  uploadUrl:
+  downloadUrl:
+
+qiniu:
+  enable:
+  accessKey:
+  secretKey:
+  bucket:
+  downloadUrl:
+
+python:
+  server:
+    url: ${PYTHON_SERVICE_URL:http://localhost:5000}
+  service:
+    url: ${PYTHON_SERVICE_URL:http://localhost:5000}  # 添加此配置，与TranslationService中的@Value注解对应
+
+# 翻译API配置
+translation:
+  api:
+    url: https://api.fanyi.baidu.com/api/trans/vip/translate
+    key: your-api-id:your-api-key
+    cache-time-hours: 24
+  local:
+    enabled: false
+    url: ${python.service.url}/api/translate
+
+# Actuator配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  health:
+    defaults:
+      enabled: true
+  info:
+    build:
+      enabled: true
+    env:
+      enabled: true
+
+# 在现有配置中添加图片压缩配置
+image:
+  compress:
+    # 默认压缩配置
+    default:
+      max-width: 1920
+      max-height: 1080
+      quality: 0.85
+      target-size: 512000  # 500KB
+    # 缩略图配置
+    thumbnail:
+      max-width: 300
+      max-height: 300
+      quality: 0.7
+      target-size: 102400  # 100KB
+    # 头像配置
+    avatar:
+      max-width: 200
+      max-height: 200
+      quality: 0.8
+      target-size: 51200   # 50KB
+    # 是否启用自动压缩
+    auto-compress: true
+    # 压缩质量阈值（低于此质量不再压缩）
+    min-quality: 0.3
+    # 文件大小阈值（小于此大小不压缩）
+    size-threshold: 204800  # 200KB
+

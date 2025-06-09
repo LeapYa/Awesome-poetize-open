@@ -1,0 +1,142 @@
+/* 看板娘拖拽样式 */
+#waifu {
+  cursor: default; /* 改为默认光标 */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 1000;
+  transition: all 0.3s ease-in-out;
+  transform: translateY(3px);
+  opacity: 1 !important; /* 强制保持完全不透明 */
+  /* 重要：不设置user-select，让子元素自己控制 */
+}
+
+/* 只有canvas可以拖拽 */
+#waifu #live2d {
+  cursor: grab !important; /* 改为抓手样式 */
+  touch-action: none; /* 只对canvas应用touch-action限制 */
+  user-select: none !important; /* 只阻止canvas的文字选择 */
+}
+
+/* 拖拽时的指针样式 */
+#waifu.dragging #live2d {
+  cursor: grabbing !important; /* 拖拽时显示抓取样式 */
+}
+
+/* 确保提示框完全可以选择文字 */
+#waifu #waifu-tips {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  pointer-events: auto !important;
+  touch-action: auto !important;
+  cursor: text !important; /* 文字选择光标 */
+  -webkit-touch-callout: default !important;
+  -webkit-user-modify: read-only !important;
+  /* 确保最高优先级 */
+  z-index: 1005 !important;
+  /* 完全阻止拖拽相关的CSS属性 */
+  -webkit-user-drag: none !important;
+  -khtml-user-drag: none !important;
+  -moz-user-drag: none !important;
+  -o-user-drag: none !important;
+  user-drag: none !important;
+}
+
+/* 工具栏保持原有样式 */
+#waifu #waifu-tool {
+  pointer-events: auto !important;
+  user-select: none !important; /* 工具栏不需要文字选择 */
+  cursor: pointer !important; /* 工具栏显示指针 */
+}
+
+/* 聊天窗口完全独立 */
+#waifu #waifu-chat,
+#waifu .waifu-chat-container {
+  touch-action: auto !important;
+  user-select: auto !important;
+  pointer-events: auto !important;
+  position: absolute !important;
+  z-index: 1010 !important; /* 比tips更高的层级 */
+  cursor: default !important; /* 聊天窗口默认光标 */
+  /* 完全阻止拖拽 */
+  -webkit-user-drag: none !important;
+  -khtml-user-drag: none !important;
+  -moz-user-drag: none !important;
+  -o-user-drag: none !important;
+  user-drag: none !important;
+}
+
+/* 聊天框内的文字元素 */
+#waifu-chat .message-content,
+.waifu-chat-container .message-content {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  -webkit-touch-callout: default !important;
+  pointer-events: auto !important;
+  cursor: text !important; /* 消息内容显示文字光标 */
+  /* 阻止拖拽 */
+  -webkit-user-drag: none !important;
+  -khtml-user-drag: none !important;
+  -moz-user-drag: none !important;
+  -o-user-drag: none !important;
+  user-drag: none !important;
+}
+
+/* 聊天框按钮和标题栏 */
+#waifu-chat .chat-header,
+#waifu-chat .chat-close,
+#waifu-chat button,
+.waifu-chat-container .chat-header,
+.waifu-chat-container .chat-close,
+.waifu-chat-container button {
+  cursor: pointer !important; /* 按钮和关闭按钮显示指针 */
+  user-select: none !important; /* 按钮不需要文字选择 */
+}
+
+/* 聊天框输入区域特殊处理 */
+#waifu-chat input,
+#waifu-chat textarea,
+.waifu-chat-container input,
+.waifu-chat-container textarea {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  cursor: text !important; /* 输入框显示文字光标 */
+}
+
+#waifu.dragging {
+  transition: none;
+  opacity: 1 !important;
+}
+
+/* 拖拽时只影响canvas */
+#waifu.dragging #live2d {
+  cursor: grabbing !important;
+}
+
+#waifu-toggle {
+  z-index: 1001;
+}
+
+/* 移动设备适配 */
+@media screen and (max-width: 768px) {
+  #waifu {
+    transform: scale(0.8);
+    transform-origin: bottom left;
+    opacity: 1 !important;
+  }
+  
+  #waifu.dragging {
+    opacity: 1 !important;
+  }
+}
+
+/* 确保看板娘本体（canvas）在任何状态下都是完全不透明的 */
+#live2d {
+  opacity: 1 !important;
+} 

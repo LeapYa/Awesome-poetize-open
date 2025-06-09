@@ -1,0 +1,73 @@
+:root {
+    /* 背景 */
+    --background: white;
+    --gradualBackground: linear-gradient(to right bottom, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+    --gradualBlue: linear-gradient(to right, #23a6d5, #23d5ab);
+
+    /* 字体 */
+    --fontColor: black;
+    /* 边框 */
+    --borderColor: rgba(0, 0, 0, 0.5);
+    /* 边框 */
+    --borderHoverColor: rgba(110, 110, 110, 0.4);
+
+    /* 主题背景 */
+    --themeBackground: orange;
+    /* 主题悬停背景 */
+    --gradualRed: linear-gradient(to right, #ff4b2b, #ff416c);
+
+    /* 水波纹 */
+    --rippleColor: rgba(0, 0, 0, 0.5);
+    /* 导航栏字体 */
+    --toolbarFont: #333333;
+    /* 导航栏背景 */
+    --toolbarBackground: rgba(255, 255, 255, 1);
+    /* 灰色字体 */
+    --greyFont: #797979;
+    --maxGreyFont: #595A5A;
+    --commentContent: #F7F9FE;
+    /* footer背景 */
+    --gradientBG: linear-gradient(-90deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+    /* 透明 */
+    --transparent: rgba(0, 0, 0, 0);
+    /* 黑色遮罩 */
+    --mask: rgba(0, 0, 0, 0.3);
+    /* 白色遮罩 */
+    --whiteMask: rgba(255, 255, 255, 0.3);
+    /* max白色遮罩 */
+    --maxWhiteMask: rgba(255, 255, 255, 0.5);
+    /* mini黑色遮罩 */
+    --miniMask: rgba(0, 0, 0, 0.15);
+    /* mini白色遮罩 */
+    --miniWhiteMask: rgba(255, 255, 255, 0.15);
+    /* 半透明 */
+    --translucent: rgba(0, 0, 0, 0.5);
+    /* max黑色遮罩 */
+    --maxMask: rgba(0, 0, 0, 0.7);
+
+    --white: white;
+    --maxWhite: #fcfcfc;
+    --midWhite: #f3f3f3;
+
+    --red: red;
+    --lightRed: #ff4b2b;
+    --maxLightRed: #ff416c;
+    --orangeRed: #EF794F;
+
+    --azure: #ECF7FE;
+    --blue: rgb(3, 169, 244);
+    --messageColor: #cfe7ff;
+
+    --imBG: #edeff3;
+
+    --lowGray: #cacacb;
+    --lightGray: #DDDDDD;
+    --maxLightGray: #EEEEEE;
+    --maxMaxLightGray: rgba(242, 242, 242, 0.5);
+
+    --green: #67C23A;
+    --black: black;
+    --lightYellow: #F4E1C0;
+
+    --globalFont: poetize-font;
+}

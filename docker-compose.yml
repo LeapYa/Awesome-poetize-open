@@ -1,0 +1,303 @@
+services:
+  # Nginx代理服务，使用OpenResty 1.25.3.1，支持HTTP/3和Brotli
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: poetize-nginx
+    user: root
+    volumes:
+      - poetize_ui_dist:/usr/share/nginx/html/poetize
+      - poetize_im_dist:/usr/share/nginx/html/im
+      - ./nginx/default.http.conf:/usr/local/openresty/nginx/conf/conf.d/default.http.conf.template
+      - ./nginx/default.https.conf:/usr/local/openresty/nginx/conf/conf.d/default.https.conf.template
+      - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf
+      - ./nginx/enable-https.sh:/enable-https.sh
+      - ./py/data:/app/data
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - web-root:/usr/share/nginx/html
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "443:443/udp"
+    networks:
+      - poetize-network
+    depends_on:
+      poetize-ui:
+        condition: service_completed_successfully
+      poetize-im-ui:
+        condition: service_completed_successfully
+      java-backend:
+        condition: service_healthy
+      python-backend:
+        condition: service_healthy
+      translation-model:
+        condition: service_healthy
+    restart: always
+    command: ["/bin/sh", "-c", "cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf && exec openresty -g 'daemon off;'"]
+
+  # 主站前端（Vue 2）
+  poetize-ui:
+    image: node:14-slim
+    container_name: poetize-ui
+    volumes:
+      - ./poetize-ui:/app/src
+      - poetize_node_modules:/app/src/node_modules
+      - poetize_ui_dist:/app/dist
+    networks:
+      - poetize-network
+    restart: "no"
+    working_dir: /app/src
+    command: ["sh", "-c", "echo '=== 构建博客前端 (Vue 2) ===' && \
+                           apt-get update && apt-get install -y git && \
+                           npm config set registry https://registry.npmmirror.com && \
+                           echo '=== 清理npm缓存 ===' && \
+                           npm cache clean --force && \
+                           npm cache verify && \
+                           echo '=== 安装依赖 ===' && \
+                           npm install --force --legacy-peer-deps --no-fund --no-audit --prefer-offline --verbose && \
+                           echo '=== 运行构建 ===' && \
+                           npm run build && \
+                           echo '=== 构建完成，复制dist目录内容到挂载点 ===' && \
+                           cp -rf dist/* /app/dist/ && \
+                           echo '=== 处理静态资源 ===' && \
+                           if [ -d \"dist/static\" ]; then \
+                             echo '从dist/static复制静态资源' && \
+                             mkdir -p /app/dist/static && \
+                             cp -rf dist/static/* /app/dist/static/ 2>/dev/null || true; \
+                           elif [ -d \"public/static\" ]; then \
+                             echo '从public/static复制静态资源' && \
+                             mkdir -p /app/dist/static && \
+                             cp -rf public/static/* /app/dist/static/ 2>/dev/null || true; \
+                           else \
+                             echo '未找到静态资源目录'; \
+                           fi && \
+                           echo '主站构建完成' && \
+                           touch /app/dist/.ui_ready"]
+
+  # 聊天室前端（Vue 3）
+  poetize-im-ui:
+    image: node:14-slim
+    container_name: poetize-im-ui
+    volumes:
+      - ./poetize-im-ui:/app/src
+      - im_node_modules:/app/src/node_modules
+      - poetize_im_dist:/app/dist
+    networks:
+      - poetize-network
+    depends_on:
+      poetize-ui:
+        condition: service_completed_successfully
+    restart: "no"
+    working_dir: /app/src
+    command: ["sh", "-c", "echo '=== 构建聊天室前端 (Vue 3) ===' && \
+                           apt-get update && apt-get install -y git && \
+                           npm config set registry https://registry.npmmirror.com && \
+                           npm config set fetch-timeout 600000 && \
+                           npm config set network-timeout 600000 && \
+                           npm config set fetch-retries 5 && \
+                           npm config set cache-min 3600 && \
+                           echo '=== 清理npm缓存 ===' && \
+                           npm cache clean --force && \
+                           npm cache verify && \
+                           echo '=== 安装依赖（使用npm ci确保精确安装） ===' && \
+                           if [ -f package-lock.json ]; then \
+                             echo '使用npm ci安装依赖' && \
+                             npm ci --prefer-offline --verbose --no-audit --no-fund || \
+                             (echo '使用npm ci失败，回退到npm install' && \
+                             npm install --prefer-offline --verbose --no-audit --no-fund --legacy-peer-deps); \
+                           else \
+                             echo '无package-lock.json，使用npm install' && \
+                             npm install --prefer-offline --verbose --no-audit --no-fund --legacy-peer-deps; \
+                           fi && \
+                           echo '=== 运行构建 ===' && \
+                           echo 'set命令在Linux中无效，直接运行vue-cli-service build' && \
+                           npx vue-cli-service build && \
+                           echo '=== 构建完成，复制dist目录内容到挂载点 ===' && \
+                           cp -rf dist/* /app/dist/ && \
+                           echo '聊天室构建完成'"]
+
+  certbot:
+    image: certbot/certbot
+    container_name: poetize-certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - web-root:/usr/share/nginx/html
+      - ./nginx/certbot-logs:/var/log/letsencrypt
+      - ./nginx/certbot-entrypoint.sh:/certbot-entrypoint.sh
+    depends_on:
+      - nginx
+    restart: "no"
+    entrypoint: []
+    command: sh /certbot-entrypoint.sh
+
+  python-backend:
+    build:
+      context: .
+      dockerfile: docker/python/Dockerfile
+    container_name: poetize-python
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - FLASK_ENV=production
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=poetize
+      - MYSQL_PASSWORD=poetize123
+      - MYSQL_DATABASE=poetize
+      - DB_TYPE=mariadb
+      - JAVA_BACKEND_HOST=poetize-java
+      - JAVA_BACKEND_PORT=8081
+      - FRONTEND_HOST=example.com
+      - GUNICORN_WORKERS=2
+      - GUNICORN_THREADS=4
+      - GUNICORN_TIMEOUT=180
+      - GUNICORN_KEEPALIVE=5
+      - OLLAMA_API_URL=http://poetize-translation-model:11434/api
+      - OLLAMA_MODEL_NAME=qwen3:0.6b
+      - NGINX_URL=http://nginx/flush_seo_cache
+    volumes:
+      - ./py/data:/app/data
+    networks:
+      - poetize-network
+    depends_on:
+      java-backend:
+        condition: service_healthy
+      translation-model:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 40s
+
+  # Ollama翻译模型服务
+  translation-model:
+    build:
+      context: .
+      dockerfile: docker/translation_model/Dockerfile
+    container_name: poetize-translation-model
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_ORIGINS=*
+      - OLLAMA_MODELS=qwen3:0.6b
+      - OLLAMA_KEEP_ALIVE=-1
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - poetize-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 1200s
+
+  java-backend:
+    build:
+      context: .
+      dockerfile: docker/java/Dockerfile
+    container_name: poetize-java
+    volumes:
+      - poetize_ui_dist:/app/static
+    environment:
+      - JAVA_OPTS=-Xmx256m -Xms128m -XX:MaxMetaspaceSize=96m -XX:CompressedClassSpaceSize=48m -Xss512k -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+DisableExplicitGC
+      - SPRING_DATASOURCE_URL=jdbc:mariadb://mysql:3306/poetize?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=poetize
+      - SPRING_DATASOURCE_PASSWORD=poetize123
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.mariadb.jdbc.Driver
+      - SERVER_PORT=8081
+      - PYTHON_SERVICE_URL=http://poetize-python:5000
+      - TRANSLATION_LOCAL_URL=http://poetize-python:5000/api/translate
+      - TRANSLATION_LOCAL_ENABLED=true
+      - LOCAL_ENABLE=true
+      - LOCAL_UPLOADURL=/app/static
+      - LOCAL_DOWNLOADURL=/static
+      - OLLAMA_MODEL_NAME=qwen3:0.6b
+    networks:
+      - poetize-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      poetize-ui:
+        condition: service_completed_successfully
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # MariaDB服务
+  mysql:
+    image: mariadb:11
+    container_name: poetize-mariadb
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./poetize-server/sql/poetry.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./poetize-server/sql/poetry.sql:/poetry.sql
+      - ./mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+    environment:
+      - MARIADB_ROOT_PASSWORD=root123
+      - MARIADB_DATABASE=poetize
+      - MARIADB_USER=poetize
+      - MARIADB_PASSWORD=poetize123
+    command: >
+      bash -c "
+        # 安装RocksDB插件
+        apt-get update && apt-get install -y mariadb-plugin-rocksdb && \
+        
+        # 先启动MariaDB服务
+        docker-entrypoint.sh mariadbd --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --plugin-load-add=rocksdb=ha_rocksdb.so --rocksdb &
+        
+        # 等待MariaDB就绪
+        until mariadb-admin ping -h localhost -u root -proot123 --silent; do
+          echo 'MariaDB正在启动...'
+          sleep 3
+        done
+        
+        # 额外等待确保MariaDB完全就绪
+        echo '等待MariaDB完全就绪...'
+        sleep 10
+        
+        # 执行额外的SQL脚本
+        echo '执行额外的SQL脚本...'
+        mariadb -h localhost -u poetize -ppoetize123 poetize < /poetry.sql
+        echo 'SQL script execution completed'
+        
+        # 保持容器运行
+        wait
+      "
+    networks:
+      - poetize-network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -u poetize -ppoetize123 && echo 'SHOW ENGINES' | mariadb -h localhost -u poetize -ppoetize123 | grep -q 'RocksDB'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  poetize-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  certbot-etc:
+  certbot-var:
+  web-root:
+  poetize_node_modules:
+  im_node_modules:
+  poetize_ui_dist:
+  poetize_im_dist:
+  ollama_data:
