@@ -83,8 +83,8 @@ Poetize是一个将博客系统与即时通讯巧妙融合的内容平台，为�
 ## 🚀 快速开始
 
 ```bash
-# 只需一行命令，完成全部部署，你只需要输入域名邮箱即可
-git clone https://github.com/LeapYa/Awesome-poetize-open.git && cd Awesome-poetize-open && ./deploy.sh
+# 你只需要输入域名邮箱即可
+wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz && sudo tar -zxvf Awesome-poetize-open.tar.gz && cd Awesome-poetize-open && sudo chmod +x ./deploy.sh && sudo ./deploy.sh
 ```
 
 ## 📋 部署文档
@@ -108,8 +108,12 @@ git clone https://github.com/LeapYa/Awesome-poetize-open.git && cd Awesome-poeti
 #### 快速部署方式
 
 ```bash
-# 一键部署命令
-git clone https://github.com/LeapYa/Awesome-poetize-open.git && cd Awesome-poetize-open && ./deploy.sh
+# 下载
+wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz
+# 解压
+sudo tar -zxvf Awesome-poetize-open.tar.gz
+# 给权限并部署
+cd Awesome-poetize-open && sudo chmod +x ./deploy.sh && sudo ./deploy.sh
 ```
 
 无需手动配置Docker、编译代码或设置环境变量，脚本会自动处理所有细节，包括:
