@@ -399,7 +399,7 @@
             </el-form-item>
             
             <el-form-item label="API密钥" v-if="needsApiKey">
-              <el-input v-model="apiConfig.llmApiKey" type="password" show-password :placeholder="getModelPlaceholder() + 'API密钥'" class="input-field">
+              <el-input v-model="apiConfig.llmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field">
               <template slot="prefix">
                 <i class="el-icon-lock"></i>
               </template>
