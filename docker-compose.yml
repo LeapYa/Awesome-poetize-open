@@ -32,8 +32,6 @@ services:
         condition: service_healthy
       python-backend:
         condition: service_healthy
-      translation-model:
-        condition: service_healthy
     restart: always
     command: ["/bin/sh", "-c", "cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf && exec openresty -g 'daemon off;'"]
 
