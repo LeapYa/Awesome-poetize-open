@@ -3985,7 +3985,7 @@ main() {
   echo -e "${BLUE}=====================================${NC}"
   echo ""
   echo -e "作者: LeapYa    联系方式: enable_lazy@qq.com"
-  echo -e "仓库地址: https://github.com/LeapYa/Awesome-poetize-open.git"
+  echo -e "仓库地址: https://github.com/LeapYa/Awesome-poetize-open"
   echo ""
   
   # 打印调试信息
