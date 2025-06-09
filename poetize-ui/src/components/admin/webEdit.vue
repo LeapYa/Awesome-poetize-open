@@ -27,11 +27,11 @@
         </el-form-item>
 
         <el-form-item label="状态" prop="status">
-          <el-switch @click.native="changeWebStatus(webInfo)" v-model="webInfo.status"></el-switch>
+          <el-switch @change="changeWebStatus" v-model="webInfo.status"></el-switch>
         </el-form-item>
 
         <el-form-item label="看板娘" prop="enableWaifu">
-          <el-switch v-model="webInfo.enableWaifu"></el-switch>
+          <el-switch @change="handleWaifuChange" v-model="webInfo.enableWaifu"></el-switch>
         </el-form-item>
 
         <!-- 导航栏配置 -->
@@ -525,7 +525,9 @@
               <el-form-item label="启用第三方登录">
                 <el-switch 
                   v-model="thirdLoginConfig.enable" 
-                  @change="updateThirdLoginConfig">
+                  @change="handleThirdLoginToggle"
+                  active-color="#13ce66"
+                  inactive-color="#ff4949">
                 </el-switch>
                 <span style="margin-left: 10px; color: #909399; font-size: 12px;">
                   {{ thirdLoginConfig.enable ? '已启用' : '已禁用' }}
@@ -545,6 +547,7 @@
               </div>
               <el-switch
                 v-model="thirdLoginConfig.github.enabled"
+                @change="handlePlatformToggle('github', $event)"
                 active-color="#13ce66"
                 inactive-color="#ff4949"
                 :disabled="!thirdLoginConfig.enable">
@@ -604,6 +607,7 @@
               </div>
               <el-switch
                 v-model="thirdLoginConfig.google.enabled"
+                @change="handlePlatformToggle('google', $event)"
                 active-color="#13ce66"
                 inactive-color="#ff4949"
                 :disabled="!thirdLoginConfig.enable">
@@ -663,6 +667,7 @@
               </div>
               <el-switch
                 v-model="thirdLoginConfig.twitter.enabled"
+                @change="handlePlatformToggle('twitter', $event)"
                 active-color="#13ce66"
                 inactive-color="#ff4949"
                 :disabled="!thirdLoginConfig.enable">
@@ -722,6 +727,7 @@
               </div>
               <el-switch
                 v-model="thirdLoginConfig.yandex.enabled"
+                @change="handlePlatformToggle('yandex', $event)"
                 active-color="#13ce66"
                 inactive-color="#ff4949"
                 :disabled="!thirdLoginConfig.enable">
@@ -781,6 +787,7 @@
               </div>
               <el-switch
                 v-model="thirdLoginConfig.gitee.enabled"
+                @change="handlePlatformToggle('gitee', $event)"
                 active-color="#13ce66"
                 inactive-color="#ff4949"
                 :disabled="!thirdLoginConfig.enable">
@@ -870,7 +877,7 @@
               <el-form-item label="启用智能验证码">
                 <el-switch 
                   v-model="captchaConfig.enable" 
-                  @change="updateCaptchaStatus">
+                  @change="handleCaptchaToggle">
                 </el-switch>
                 <span style="margin-left: 10px; color: #909399; font-size: 12px;">
                   {{ captchaConfig.enable ? '已启用' : '已禁用' }}
@@ -1109,6 +1116,7 @@
             <el-form-item label="启用API">
               <el-switch 
                 v-model="apiConfig.enabled" 
+                @change="handleApiToggle"
                 active-color="#13ce66"
                 inactive-color="#ff4949">
               </el-switch>
@@ -1714,10 +1722,10 @@ X-API-KEY: {{apiConfig.apiKey}}
       addRandomCover(res) {
         this.randomCover.push(res);
       },
-      changeWebStatus(webInfo) {
+      changeWebStatus() {
         this.$http.post(this.$constant.baseURL + "/webInfo/updateWebInfo", {
-          id: webInfo.id,
-          status: webInfo.status
+          id: this.webInfo.id,
+          status: this.webInfo.status
         }, true)
           .then((res) => {
             this.getWebInfo();
@@ -2642,7 +2650,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       },
       // 检测设备类型
       checkDeviceType() {
-        this.isMobileDevice = window.innerWidth <= 768;
+        this.isMobileDevice = window.innerWidth <= 768 || this.isMobile();
       },
       // 处理默认邮箱变更
       handleDefaultChange(index) {
@@ -3106,6 +3114,40 @@ X-API-KEY: {{apiConfig.apiKey}}
         } else {
           this.$message.warning('开发者中心链接未配置');
         }
+      },
+      handleWaifuChange(value) {
+        this.webInfo.enableWaifu = value;
+      },
+      handleThirdLoginToggle(value) {
+        this.thirdLoginConfig.enable = value;
+      },
+      handlePlatformToggle(platform, value) {
+        this.thirdLoginConfig[platform].enabled = value;
+      },
+      handleCaptchaToggle(value) {
+        // 先设置本地状态，确保UI立即响应
+        this.captchaConfig.enable = value;
+        
+        if (!value) {
+          // 如果禁用了智能验证码，显示确认对话框
+          this.$confirm('禁用智能验证码将降低网站安全性，可能导致机器人攻击，确定要禁用吗?', '安全提示', {
+            confirmButtonText: '确定禁用',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }).then(() => {
+            // 用户确认禁用，保持禁用状态并保存
+            this.saveCaptchaConfig();
+          }).catch(() => {
+            // 用户取消，恢复开关状态为启用
+            this.captchaConfig.enable = true;
+          });
+        } else {
+          // 启用验证码，直接保存
+          this.saveCaptchaConfig();
+        }
+      },
+      handleApiToggle(value) {
+        this.apiConfig.enabled = value;
       }
     }
   }
