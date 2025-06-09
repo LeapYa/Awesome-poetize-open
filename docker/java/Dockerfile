@@ -4,7 +4,7 @@ WORKDIR /app
 
 # 安装健康检查所需工具
 RUN apt-get update && \
-    apt-get install -y netcat curl && \
+    apt-get install -y netcat-openbsd curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
