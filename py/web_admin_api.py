@@ -9,7 +9,6 @@ import traceback
 from auth_decorator import admin_required  # 导入管理员权限装饰器
 import httpx
 
-# 直接定义path_prefix，不从其他模块导入
 path_prefix = os.path.dirname(os.path.abspath(__file__))
 ENV = os.environ.get("ENV", "development")
 
@@ -20,7 +19,7 @@ if not os.path.exists(DATA_DIR):
 
 # 配置文件路径
 EMAIL_CONFIG_FILE = os.path.join(DATA_DIR, 'email_configs.json')
-THIRD_LOGIN_CONFIG_PATH = os.path.join(path_prefix, "third_login_config.json")
+THIRD_LOGIN_CONFIG_PATH = os.path.join(DATA_DIR, "third_login_config.json")
 
 # Java API基础URL，用于获取和更新数据库中的配置
 JAVA_API_URL = os.environ.get("JAVA_API_URL", BASE_BACKEND_URL)
@@ -53,7 +52,7 @@ def init_data_files():
             with open(EMAIL_CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump({"configs": [], "defaultIndex": -1}, f, ensure_ascii=False)
             
-    # 初始化第三方登录配置（FastAPI版本不能直接访问request，所以使用默认host）
+    # 初始化第三方登录配置
     if not os.path.exists(THIRD_LOGIN_CONFIG_PATH):
         with open(THIRD_LOGIN_CONFIG_PATH, 'w', encoding='utf-8') as f:
             default_host = "localhost:5000"  # 默认值，后续可以通过配置更新
@@ -62,29 +61,104 @@ def init_data_files():
                 "github": {
                     "client_id": "",
                     "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/github"
+                    "redirect_uri": f"http://{default_host}/callback/github",
+                    "enabled": True
                 },
                 "google": {
                     "client_id": "",
                     "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/google"
+                    "redirect_uri": f"http://{default_host}/callback/google",
+                    "enabled": True
                 },
                 "twitter": {
                     "client_key": "",
                     "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/x"
+                    "redirect_uri": f"http://{default_host}/callback/x",
+                    "enabled": True
                 },
                 "yandex": {
                     "client_id": "",
                     "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/yandex"
+                    "redirect_uri": f"http://{default_host}/callback/yandex",
+                    "enabled": True
                 },
                 "gitee": {
                     "client_id": "",
                     "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/gitee"
+                    "redirect_uri": f"http://{default_host}/callback/gitee",
+                    "enabled": True
                 }
             }, f, ensure_ascii=False)
+    else:
+        # 检查现有配置文件是否完整，如果不完整则修复
+        try:
+            with open(THIRD_LOGIN_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # 检查是否缺少gitee配置或enabled字段
+            needs_update = False
+            default_host = "localhost:5000"
+            
+            # 确保有gitee配置
+            if "gitee" not in config:
+                config["gitee"] = {
+                    "client_id": "",
+                    "client_secret": "",
+                    "redirect_uri": f"http://{default_host}/callback/gitee",
+                    "enabled": True
+                }
+                needs_update = True
+            
+            # 确保每个平台都有enabled字段
+            for platform in ["github", "google", "twitter", "yandex", "gitee"]:
+                if platform in config and "enabled" not in config[platform]:
+                    config[platform]["enabled"] = True
+                    needs_update = True
+            
+            # 如果需要更新，保存文件
+            if needs_update:
+                with open(THIRD_LOGIN_CONFIG_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, ensure_ascii=False, indent=2)
+                print("已修复第三方登录配置文件")
+                
+        except Exception as e:
+            print(f"修复第三方登录配置文件时出错: {e}")
+            # 如果文件损坏，重新创建
+            with open(THIRD_LOGIN_CONFIG_PATH, 'w', encoding='utf-8') as f:
+                default_host = "localhost:5000"
+                json.dump({
+                    "enable": False,
+                    "github": {
+                        "client_id": "",
+                        "client_secret": "",
+                        "redirect_uri": f"http://{default_host}/callback/github",
+                        "enabled": True
+                    },
+                    "google": {
+                        "client_id": "",
+                        "client_secret": "",
+                        "redirect_uri": f"http://{default_host}/callback/google",
+                        "enabled": True
+                    },
+                    "twitter": {
+                        "client_key": "",
+                        "client_secret": "",
+                        "redirect_uri": f"http://{default_host}/callback/x",
+                        "enabled": True
+                    },
+                    "yandex": {
+                        "client_id": "",
+                        "client_secret": "",
+                        "redirect_uri": f"http://{default_host}/callback/yandex",
+                        "enabled": True
+                    },
+                    "gitee": {
+                        "client_id": "",
+                        "client_secret": "",
+                        "redirect_uri": f"http://{default_host}/callback/gitee",
+                        "enabled": True
+                    }
+                }, f, ensure_ascii=False, indent=2)
 
 # 从Java API读取网站信息
 async def get_web_info():

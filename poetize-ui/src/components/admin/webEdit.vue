@@ -1684,23 +1684,17 @@ X-API-KEY: {{apiConfig.apiKey}}
     },
 
     created() {
-      this.getWebInfo();
-      this.getThirdLoginConfig();
-      this.getCaptchaConfig();
+      // 并行执行所有初始化请求
+      this.initializeData();
     },
 
     mounted() {
       if (this.isMobile()) {
         this.isMobileDevice = true;
       }
-      this.getWebInfo();
-      this.getEmailConfigs();
       
       // 检测设备类型
       this.checkDeviceType();
-      this.getThirdLoginConfig();
-      this.getCaptchaConfig();
-      this.getApiConfig(); // 添加获取API配置的调用
       window.addEventListener('resize', this.checkDeviceType);
     },
 
@@ -1710,6 +1704,30 @@ X-API-KEY: {{apiConfig.apiKey}}
     },
 
     methods: {
+      // 新增：并行初始化所有数据
+      async initializeData() {
+        console.log("开始并行加载所有配置数据...");
+        const startTime = Date.now();
+        
+        try {
+          // 并行执行所有请求
+          const promises = [
+            this.getWebInfo(),
+            this.getThirdLoginConfig(),
+            this.getCaptchaConfig(),
+            this.getEmailConfigs(),
+            this.getApiConfig()
+          ];
+          
+          // 等待所有请求完成
+          await Promise.allSettled(promises);
+          
+          const endTime = Date.now();
+          console.log(`所有配置数据加载完成，耗时: ${endTime - startTime}ms`);
+        } catch (error) {
+          console.error("初始化数据时出错:", error);
+        }
+      },
       addBackgroundImage(res) {
         this.webInfo.backgroundImage = res;
       },
@@ -1741,47 +1759,48 @@ X-API-KEY: {{apiConfig.apiKey}}
             });
           });
       },
-      getWebInfo() {
-        this.$http.get(this.$constant.pythonBaseURL + "/admin/webInfo/getAdminWebInfoDetails", {}, true)
-          .then((res) => {
-            if (!this.$common.isEmpty(res.data)) {
-              this.webInfo.id = res.data.id;
-              this.webInfo.webName = res.data.webName;
-              this.webInfo.webTitle = res.data.webTitle;
-              this.webInfo.footer = res.data.footer;
-              this.webInfo.backgroundImage = res.data.backgroundImage;
-              this.webInfo.avatar = res.data.avatar;
-              this.webInfo.waifuJson = res.data.waifuJson;
-              this.webInfo.enableWaifu = res.data.enableWaifu;
-              this.webInfo.status = res.data.status;
-              this.webInfo.navConfig = res.data.navConfig || "[]";
-              this.notices = JSON.parse(res.data.notices);
-              this.randomAvatar = JSON.parse(res.data.randomAvatar);
-              this.randomName = JSON.parse(res.data.randomName);
-              this.randomCover = JSON.parse(res.data.randomCover);
-              
-              // 解析导航栏配置并转换为文本
-              try {
-                const navItems = JSON.parse(this.webInfo.navConfig || "[]");
-                if (navItems.length > 0) {
-                  // 提取出导航项名称并转为文本
-                  this.navConfigText = navItems.map(item => item.name).join(',');
-                } else {
-                  this.resetToDefaultNav();
-                  console.log("导航栏配置为空数组，使用默认配置");
-                }
-              } catch (e) {
-                console.error("解析导航栏配置失败:", e);
+      // 优化：将getWebInfo改为异步方法
+      async getWebInfo() {
+        try {
+          const res = await this.$http.get(this.$constant.pythonBaseURL + "/admin/webInfo/getAdminWebInfoDetails", {}, true);
+          if (!this.$common.isEmpty(res.data)) {
+            this.webInfo.id = res.data.id;
+            this.webInfo.webName = res.data.webName;
+            this.webInfo.webTitle = res.data.webTitle;
+            this.webInfo.footer = res.data.footer;
+            this.webInfo.backgroundImage = res.data.backgroundImage;
+            this.webInfo.avatar = res.data.avatar;
+            this.webInfo.waifuJson = res.data.waifuJson;
+            this.webInfo.enableWaifu = res.data.enableWaifu;
+            this.webInfo.status = res.data.status;
+            this.webInfo.navConfig = res.data.navConfig || "[]";
+            this.notices = JSON.parse(res.data.notices);
+            this.randomAvatar = JSON.parse(res.data.randomAvatar);
+            this.randomName = JSON.parse(res.data.randomName);
+            this.randomCover = JSON.parse(res.data.randomCover);
+            
+            // 解析导航栏配置并转换为文本
+            try {
+              const navItems = JSON.parse(this.webInfo.navConfig || "[]");
+              if (navItems.length > 0) {
+                // 提取出导航项名称并转为文本
+                this.navConfigText = navItems.map(item => item.name).join(',');
+              } else {
                 this.resetToDefaultNav();
+                console.log("导航栏配置为空数组，使用默认配置");
               }
+            } catch (e) {
+              console.error("解析导航栏配置失败:", e);
+              this.resetToDefaultNav();
             }
-          })
-          .catch((error) => {
-            this.$message({
-              message: error.message,
-              type: "error"
-            });
+          }
+        } catch (error) {
+          this.$message({
+            message: error.message,
+            type: "error"
           });
+          throw error; // 重新抛出错误，让Promise.allSettled能够捕获
+        }
       },
       submitForm(formName) {
         this.$refs[formName].validate((valid) => {
@@ -1969,39 +1988,41 @@ X-API-KEY: {{apiConfig.apiKey}}
           });
         });
       },
-      getEmailConfigs() {
-        this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getEmailConfigs", {}, true)
-          .then((res) => {
-            this.emailConfigs = res.data || [];
-            // 修正属性名
-            this.emailConfigs.forEach(config => {
-              // 将ssl改为useSsl
-              if (config.hasOwnProperty('ssl') && !config.hasOwnProperty('useSsl')) {
-                config.useSsl = config.ssl;
-                delete config.ssl;
-              }
-              // 将starttls改为useStarttls
-              if (config.hasOwnProperty('starttls') && !config.hasOwnProperty('useStarttls')) {
-                config.useStarttls = config.starttls;
-                delete config.starttls;
-              }
-            });
-            
-            // 获取默认邮箱索引
-            this.getDefaultMailConfigIndex();
-                })
-                .catch((error) => {
-            this.$message.error("获取邮箱配置失败: " + error.message);
+      // 优化：将getEmailConfigs改为异步方法
+      async getEmailConfigs() {
+        try {
+          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getEmailConfigs", {}, true);
+          this.emailConfigs = res.data || [];
+          // 修正属性名
+          this.emailConfigs.forEach(config => {
+            // 将ssl改为useSsl
+            if (config.hasOwnProperty('ssl') && !config.hasOwnProperty('useSsl')) {
+              config.useSsl = config.ssl;
+              delete config.ssl;
+            }
+            // 将starttls改为useStarttls
+            if (config.hasOwnProperty('starttls') && !config.hasOwnProperty('useStarttls')) {
+              config.useStarttls = config.starttls;
+              delete config.starttls;
+            }
           });
+          
+          // 获取默认邮箱索引
+          await this.getDefaultMailConfigIndex();
+        } catch (error) {
+          this.$message.error("获取邮箱配置失败: " + error.message);
+          throw error;
+        }
       },
-      getDefaultMailConfigIndex() {
-        this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getDefaultMailConfig", {}, true)
-          .then((res) => {
-            this.defaultMailIndex = res.data || -1;
-          })
-          .catch((error) => {
-            this.$message.error("获取默认邮箱索引失败: " + error.message);
-          });
+      // 优化：将getDefaultMailConfigIndex改为异步方法
+      async getDefaultMailConfigIndex() {
+        try {
+          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getDefaultMailConfig", {}, true);
+          this.defaultMailIndex = res.data || -1;
+        } catch (error) {
+          this.$message.error("获取默认邮箱索引失败: " + error.message);
+          throw error;
+        }
       },
       addEmailConfig() {
         // 默认配置
@@ -2426,39 +2447,140 @@ X-API-KEY: {{apiConfig.apiKey}}
             });
           });
       },
-      getThirdLoginConfig() {
-        this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getThirdLoginConfig", true)
-          .then((res) => {
-            this.thirdLoginConfig = res.data || {
-              enable: false,
-              github: { enabled: false },
-              google: { enabled: false },
-              twitter: { enabled: false },
-              yandex: { enabled: false },
-              gitee: { enabled: false }
+      // 优化：将getThirdLoginConfig改为异步方法
+      async getThirdLoginConfig() {
+        console.log("开始获取第三方登录配置...");
+        try {
+          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getThirdLoginConfig", true);
+          console.log("第三方登录配置API响应:", res);
+          console.log("响应数据:", res.data);
+          
+          // 确保返回完整的配置结构
+          const defaultConfig = {
+            enable: false,
+            github: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/github',
+              enabled: false
+            },
+            google: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/google',
+              enabled: false
+            },
+            twitter: {
+              client_key: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/x',
+              enabled: false
+            },
+            yandex: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/yandex',
+              enabled: false
+            },
+            gitee: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/gitee',
+              enabled: false
+            }
+          };
+          
+          if (res.data) {
+            console.log("开始合并配置数据...");
+            // 合并返回的数据和默认配置，确保所有必需的属性都存在
+            this.thirdLoginConfig = {
+              enable: res.data.enable !== undefined ? res.data.enable : defaultConfig.enable,
+              github: {
+                ...defaultConfig.github,
+                ...(res.data.github || {})
+              },
+              google: {
+                ...defaultConfig.google,
+                ...(res.data.google || {})
+              },
+              twitter: {
+                ...defaultConfig.twitter,
+                ...(res.data.twitter || {})
+              },
+              yandex: {
+                ...defaultConfig.yandex,
+                ...(res.data.yandex || {})
+              },
+              gitee: {
+                ...defaultConfig.gitee,
+                ...(res.data.gitee || {})
+              }
             };
-          })
-          .catch((error) => {
-            this.$message.error("获取第三方登录配置失败: " + error.message);
-          });
+            console.log("合并后的第三方登录配置:", this.thirdLoginConfig);
+          } else {
+            console.log("API返回数据为空，使用默认配置");
+            this.thirdLoginConfig = defaultConfig;
+            console.log("默认第三方登录配置:", this.thirdLoginConfig);
+          }
+        } catch (error) {
+          console.error("获取第三方登录配置失败:", error);
+          console.log("错误详情:", error.response || error.message);
+          // 设置完整的默认配置
+          this.thirdLoginConfig = {
+            enable: false,
+            github: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/github',
+              enabled: false
+            },
+            google: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/google',
+              enabled: false
+            },
+            twitter: {
+              client_key: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/x',
+              enabled: false
+            },
+            yandex: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/yandex',
+              enabled: false
+            },
+            gitee: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: 'http://localhost:5000/callback/gitee',
+              enabled: false
+            }
+          };
+          console.log("使用错误处理的默认配置:", this.thirdLoginConfig);
+          this.$message.error("获取第三方登录配置失败: " + error.message);
+          throw error;
+        }
       },
       
-      // 获取API配置
-      getApiConfig() {
-        this.$http.get(this.$constant.baseURL + "/webInfo/getApiConfig", true)
-          .then((res) => {
-            if (res.data) {
-              this.apiConfig = res.data;
-            } else {
-              this.apiConfig = {
-                enabled: false,
-                apiKey: ''
-              };
-            }
-          })
-          .catch((error) => {
-            this.$message.error("获取API配置失败: " + error.message);
-          });
+      // 优化：将getApiConfig改为异步方法
+      async getApiConfig() {
+        try {
+          const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getApiConfig", true);
+          if (res.data) {
+            this.apiConfig = res.data;
+          } else {
+            this.apiConfig = {
+              enabled: false,
+              apiKey: ''
+            };
+          }
+        } catch (error) {
+          this.$message.error("获取API配置失败: " + error.message);
+          throw error;
+        }
       },
       saveThirdLoginConfig() {
         // 检查配置是否有效
@@ -2858,17 +2980,17 @@ X-API-KEY: {{apiConfig.apiKey}}
         }
       },
       
-      // 获取智能验证码配置
-      getCaptchaConfig() {
-        this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getCaptchaConfig", {}, true)
-          .then((res) => {
-            if (res.data) {
-              this.captchaConfig = res.data;
-            }
-          })
-          .catch((error) => {
-            this.$message.error("获取智能验证码配置失败: " + error.message);
-          });
+      // 优化：将getCaptchaConfig改为异步方法
+      async getCaptchaConfig() {
+        try {
+          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getCaptchaConfig", {}, true);
+          if (res.data) {
+            this.captchaConfig = res.data;
+          }
+        } catch (error) {
+          this.$message.error("获取智能验证码配置失败: " + error.message);
+          throw error;
+        }
       },
       
       // 更新智能验证码全局状态
