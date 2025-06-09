@@ -4187,15 +4187,20 @@ main() {
     fi
   else
     # 本地域名环境不支持HTTPS，跳过询问
-    if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      echo ""
-        info "正在启用HTTPS..."
-        if docker exec poetize-nginx /enable-https.sh; then
-        sleep 5
-          success "HTTPS已成功启用!"
-          ENABLE_HTTPS=true
-        else
-          warning "HTTPS启用失败。如果需要，请稍后手动运行: docker exec poetize-nginx /enable-https.sh"
+    if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      # 对于真实域名，应该使用完整的setup_https流程
+      info "检测到真实域名，正在启用HTTPS..."
+      SSL_RESULT=$(setup_https)
+      SSL_STATUS=$?
+      
+      if [ $SSL_STATUS -eq 0 ]; then
+        success "HTTPS已成功启用!"
+        ENABLE_HTTPS=true
+      elif [ $SSL_STATUS -eq 2 ]; then
+        warning "SSL证书申请失败，但将继续以HTTP模式运行"
+        info "您可以在部署完成后手动配置HTTPS"
+      else
+        warning "HTTPS启用失败。如果需要，请稍后手动运行: docker exec poetize-nginx /enable-https.sh"
       fi
     else
       info "本地域名环境不支持HTTPS，如需使用HTTPS请配置有效域名"
