@@ -177,6 +177,36 @@
                 </el-form-item>
               </el-col>
             </el-row>
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="遮罩颜色" label-width="80px">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <el-color-picker v-model="footerBgConfig.maskColor"
+                                   :predefine="['#000000', '#1a1a1a', '#333333', '#444444', '#555555', '#666666', '#FFFFFF']"
+                                   show-alpha
+                                   color-format="rgba">
+                    </el-color-picker>
+                    <span style="color: #999; font-size: 12px;">调整遮罩颜色和透明度</span>
+                  </div>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="效果预览" label-width="80px">
+                  <div style="width: 100px; height: 30px; border: 1px solid #ddd; border-radius: 4px; position: relative; overflow: hidden;">
+                    <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
+                    <div :style="{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: footerBgConfig.maskColor || 'rgba(0, 0, 0, 0.5)'
+                    }"></div>
+                    <span style="position: relative; z-index: 10; color: white; font-size: 11px; display: block; text-align: center; line-height: 30px;">样例文字</span>
+                  </div>
+                </el-form-item>
+              </el-col>
+            </el-row>
           </div>
         </el-form-item>
 
@@ -1709,7 +1739,8 @@ X-API-KEY: {{apiConfig.apiKey}}
           backgroundPosition: 'center center',
           backgroundRepeat: 'no-repeat',
           opacity: 100,
-          textShadow: false
+          textShadow: false,
+          maskColor: 'rgba(0, 0, 0, 0.5)'
         }
       }
     },
@@ -1882,7 +1913,8 @@ X-API-KEY: {{apiConfig.apiKey}}
                     backgroundPosition: 'center center',
                     backgroundRepeat: 'no-repeat',
                     opacity: 100,
-                    textShadow: false
+                    textShadow: false,
+                    maskColor: 'rgba(0, 0, 0, 0.5)'
                   };
                 }
               }

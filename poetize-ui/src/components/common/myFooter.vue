@@ -61,8 +61,15 @@
           style['--footer-bg-size'] = bgConfig.backgroundSize || 'cover';
           style['--footer-bg-position'] = bgConfig.backgroundPosition || 'center center';
           style['--footer-bg-repeat'] = bgConfig.backgroundRepeat || 'no-repeat';
-          // 透明度用于控制遮罩层，透明度越高遮罩越浅
-          style['--footer-mask-opacity'] = (100 - (bgConfig.opacity || 50)) / 100;
+          
+          // 如果设置了自定义遮罩颜色，使用自定义颜色；否则使用透明度控制的黑色遮罩
+          if (bgConfig.maskColor) {
+            style['--footer-mask-color'] = bgConfig.maskColor;
+          } else {
+            // 透明度用于控制遮罩层，透明度越高遮罩越浅
+            const maskOpacity = (100 - (bgConfig.opacity || 50)) / 100;
+            style['--footer-mask-color'] = `rgba(0, 0, 0, ${maskOpacity})`;
+          }
         } else {
           // 使用原来的渐变背景
           style.background = 'var(--gradientBG)';
@@ -164,7 +171,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, var(--footer-mask-opacity));
+    background: var(--footer-mask-color, rgba(0, 0, 0, 0.5));
     z-index: 1;
   }
 
