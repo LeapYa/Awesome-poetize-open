@@ -20,12 +20,9 @@ import time
 import jwt
 import re
 from functools import wraps
-from fastapi import FastAPI, Request, HTTPException, Depends, Response
-
-# AI库导入
+from fastapi import FastAPI, Request, HTTPException, Depends, Response, JSONResponse, PlainTextResponse
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
-
 import logging
 from urllib.parse import urlparse
 from config import JAVA_BACKEND_URL, FRONTEND_URL
