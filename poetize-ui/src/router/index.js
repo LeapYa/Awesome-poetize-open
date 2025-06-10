@@ -58,6 +58,10 @@ const routes = [
       path: "/letter",
       name: "letter",
       component: () => import('../components/letter')
+    }, {
+      path: "/privacy",
+      name: "privacy",
+      component: () => import('../views/Privacy')
     }]
   },
   {

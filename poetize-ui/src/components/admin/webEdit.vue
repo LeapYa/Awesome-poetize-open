@@ -102,6 +102,84 @@
           <el-input v-model="webInfo.footer" placeholder="页脚信息（可选）"></el-input>
         </el-form-item>
 
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="webInfo.email" placeholder="联系邮箱（用于隐私政策和侵权联系）"></el-input>
+        </el-form-item>
+
+        <el-form-item label="页脚背景" prop="footerBackgroundImage">
+          <div style="display: flex">
+            <el-input v-model="webInfo.footerBackgroundImage" placeholder="页脚背景图片URL（可选）"></el-input>
+            <el-image lazy class="table-td-thumb"
+                      style="margin-left: 10px"
+                      v-if="webInfo.footerBackgroundImage"
+                      :preview-src-list="[webInfo.footerBackgroundImage]"
+                      :src="webInfo.footerBackgroundImage"
+                      fit="cover"></el-image>
+          </div>
+          <uploadPicture :isAdmin="true" :prefix="'footerBackground'" style="margin-top: 15px"
+                         @addPicture="addFooterBackgroundImage"
+                         :maxSize="3"
+                         :maxNumber="1"></uploadPicture>
+          
+          <!-- 背景图片配置选项 -->
+          <div v-if="webInfo.footerBackgroundImage" style="margin-top: 15px;">
+            <el-divider content-position="left">背景图片设置</el-divider>
+            <el-row :gutter="20">
+              <el-col :span="8">
+                <el-form-item label="背景大小" label-width="80px">
+                  <el-select v-model="footerBgConfig.backgroundSize" placeholder="选择背景大小">
+                    <el-option label="覆盖 (cover)" value="cover"></el-option>
+                    <el-option label="包含 (contain)" value="contain"></el-option>
+                    <el-option label="自动 (auto)" value="auto"></el-option>
+                    <el-option label="拉伸 (100% 100%)" value="100% 100%"></el-option>
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="背景位置" label-width="80px">
+                  <el-select v-model="footerBgConfig.backgroundPosition" placeholder="选择背景位置">
+                    <el-option label="居中" value="center center"></el-option>
+                    <el-option label="顶部居中" value="center top"></el-option>
+                    <el-option label="底部居中" value="center bottom"></el-option>
+                    <el-option label="左上角" value="left top"></el-option>
+                    <el-option label="右上角" value="right top"></el-option>
+                    <el-option label="左下角" value="left bottom"></el-option>
+                    <el-option label="右下角" value="right bottom"></el-option>
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="重复方式" label-width="80px">
+                  <el-select v-model="footerBgConfig.backgroundRepeat" placeholder="选择重复方式">
+                    <el-option label="不重复" value="no-repeat"></el-option>
+                    <el-option label="重复" value="repeat"></el-option>
+                    <el-option label="水平重复" value="repeat-x"></el-option>
+                    <el-option label="垂直重复" value="repeat-y"></el-option>
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="透明度" label-width="80px">
+                  <el-slider v-model="footerBgConfig.opacity" 
+                           :min="0" 
+                           :max="100" 
+                           :step="5"
+                           :format-tooltip="val => val + '%'">
+                  </el-slider>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="文字阴影" label-width="80px">
+                  <el-switch v-model="footerBgConfig.textShadow"></el-switch>
+                  <span style="margin-left: 10px; color: #999; font-size: 12px;">增强文字可读性</span>
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </div>
+        </el-form-item>
+
         <el-form-item label="提示" prop="waifuJson">
           <div style="display: flex">
             <el-input :disabled="disabled" :rows="6" type="textarea" v-model="webInfo.waifuJson"></el-input>
@@ -1478,7 +1556,10 @@ X-API-KEY: {{apiConfig.apiKey}}
           waifuJson: "",
           enableWaifu: false,
           status: false,
-          navConfig: ""
+          navConfig: "",
+          footerBackgroundImage: "",
+          footerBackgroundConfig: "",
+          email: ""
         },
         notices: [],
         randomAvatar: [],
@@ -1622,7 +1703,14 @@ X-API-KEY: {{apiConfig.apiKey}}
           { name: "百宝箱", icon: "🧰", link: "/favorite", type: "internal" },
           { name: "留言", icon: "📪", link: "/message", type: "internal" },
           { name: "联系我", icon: "💬", link: "#chat", type: "special" }
-        ]
+        ],
+        footerBgConfig: {
+          backgroundSize: 'cover',
+          backgroundPosition: 'center center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 100,
+          textShadow: false
+        }
       }
     },
 
@@ -1763,42 +1851,62 @@ X-API-KEY: {{apiConfig.apiKey}}
       async getWebInfo() {
         try {
           const res = await this.$http.get(this.$constant.pythonBaseURL + "/admin/webInfo/getAdminWebInfoDetails", {}, true);
-          if (!this.$common.isEmpty(res.data)) {
-            this.webInfo.id = res.data.id;
-            this.webInfo.webName = res.data.webName;
-            this.webInfo.webTitle = res.data.webTitle;
-            this.webInfo.footer = res.data.footer;
-            this.webInfo.backgroundImage = res.data.backgroundImage;
-            this.webInfo.avatar = res.data.avatar;
-            this.webInfo.waifuJson = res.data.waifuJson;
-            this.webInfo.enableWaifu = res.data.enableWaifu;
-            this.webInfo.status = res.data.status;
-            this.webInfo.navConfig = res.data.navConfig || "[]";
-            this.notices = JSON.parse(res.data.notices);
-            this.randomAvatar = JSON.parse(res.data.randomAvatar);
-            this.randomName = JSON.parse(res.data.randomName);
-            this.randomCover = JSON.parse(res.data.randomCover);
-            
-            // 解析导航栏配置并转换为文本
-            try {
-              const navItems = JSON.parse(this.webInfo.navConfig || "[]");
-              if (navItems.length > 0) {
-                // 提取出导航项名称并转为文本
-                this.navConfigText = navItems.map(item => item.name).join(',');
-              } else {
-                this.resetToDefaultNav();
-                console.log("导航栏配置为空数组，使用默认配置");
+            if (!this.$common.isEmpty(res.data)) {
+              this.webInfo.id = res.data.id;
+              this.webInfo.webName = res.data.webName;
+              this.webInfo.webTitle = res.data.webTitle;
+              this.webInfo.footer = res.data.footer;
+              this.webInfo.backgroundImage = res.data.backgroundImage;
+              this.webInfo.avatar = res.data.avatar;
+              this.webInfo.waifuJson = res.data.waifuJson;
+              this.webInfo.enableWaifu = res.data.enableWaifu;
+              this.webInfo.status = res.data.status;
+              this.webInfo.navConfig = res.data.navConfig || "[]";
+              this.webInfo.footerBackgroundImage = res.data.footerBackgroundImage || "";
+              this.webInfo.footerBackgroundConfig = res.data.footerBackgroundConfig || "";
+              this.webInfo.email = res.data.email || "";
+              this.notices = JSON.parse(res.data.notices);
+              this.randomAvatar = JSON.parse(res.data.randomAvatar);
+              this.randomName = JSON.parse(res.data.randomName);
+              this.randomCover = JSON.parse(res.data.randomCover);
+              
+              // 加载页脚背景配置
+              if (this.webInfo.footerBackgroundConfig) {
+                try {
+                  this.footerBgConfig = JSON.parse(this.webInfo.footerBackgroundConfig);
+                } catch (e) {
+                  console.error("解析页脚背景配置失败:", e);
+                  // 使用默认配置
+                  this.footerBgConfig = {
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center center',
+                    backgroundRepeat: 'no-repeat',
+                    opacity: 100,
+                    textShadow: false
+                  };
+                }
               }
-            } catch (e) {
-              console.error("解析导航栏配置失败:", e);
-              this.resetToDefaultNav();
+              
+              // 解析导航栏配置并转换为文本
+              try {
+                const navItems = JSON.parse(this.webInfo.navConfig || "[]");
+                if (navItems.length > 0) {
+                  // 提取出导航项名称并转为文本
+                  this.navConfigText = navItems.map(item => item.name).join(',');
+                } else {
+                  this.resetToDefaultNav();
+                  console.log("导航栏配置为空数组，使用默认配置");
+                }
+              } catch (e) {
+                console.error("解析导航栏配置失败:", e);
+                this.resetToDefaultNav();
+              }
             }
-          }
         } catch (error) {
-          this.$message({
-            message: error.message,
-            type: "error"
-          });
+            this.$message({
+              message: error.message,
+              type: "error"
+            });
           throw error; // 重新抛出错误，让Promise.allSettled能够捕获
         }
       },
@@ -1815,6 +1923,9 @@ X-API-KEY: {{apiConfig.apiKey}}
             // 更新WebInfo对象中的navConfig
             const webInfoToUpdate = {...this.webInfo};
             webInfoToUpdate.navConfig = JSON.stringify(navItems);
+            
+            // 更新页脚背景配置
+            webInfoToUpdate.footerBackgroundConfig = JSON.stringify(this.footerBgConfig);
             
             this.updateWebInfo(webInfoToUpdate);
           } else {
@@ -1992,25 +2103,25 @@ X-API-KEY: {{apiConfig.apiKey}}
       async getEmailConfigs() {
         try {
           const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getEmailConfigs", {}, true);
-          this.emailConfigs = res.data || [];
-          // 修正属性名
-          this.emailConfigs.forEach(config => {
-            // 将ssl改为useSsl
-            if (config.hasOwnProperty('ssl') && !config.hasOwnProperty('useSsl')) {
-              config.useSsl = config.ssl;
-              delete config.ssl;
-            }
-            // 将starttls改为useStarttls
-            if (config.hasOwnProperty('starttls') && !config.hasOwnProperty('useStarttls')) {
-              config.useStarttls = config.starttls;
-              delete config.starttls;
-            }
-          });
-          
-          // 获取默认邮箱索引
+            this.emailConfigs = res.data || [];
+            // 修正属性名
+            this.emailConfigs.forEach(config => {
+              // 将ssl改为useSsl
+              if (config.hasOwnProperty('ssl') && !config.hasOwnProperty('useSsl')) {
+                config.useSsl = config.ssl;
+                delete config.ssl;
+              }
+              // 将starttls改为useStarttls
+              if (config.hasOwnProperty('starttls') && !config.hasOwnProperty('useStarttls')) {
+                config.useStarttls = config.starttls;
+                delete config.starttls;
+              }
+            });
+            
+            // 获取默认邮箱索引
           await this.getDefaultMailConfigIndex();
         } catch (error) {
-          this.$message.error("获取邮箱配置失败: " + error.message);
+            this.$message.error("获取邮箱配置失败: " + error.message);
           throw error;
         }
       },
@@ -2018,9 +2129,9 @@ X-API-KEY: {{apiConfig.apiKey}}
       async getDefaultMailConfigIndex() {
         try {
           const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getDefaultMailConfig", {}, true);
-          this.defaultMailIndex = res.data || -1;
+            this.defaultMailIndex = res.data || -1;
         } catch (error) {
-          this.$message.error("获取默认邮箱索引失败: " + error.message);
+            this.$message.error("获取默认邮箱索引失败: " + error.message);
           throw error;
         }
       },
@@ -2457,7 +2568,7 @@ X-API-KEY: {{apiConfig.apiKey}}
           
           // 确保返回完整的配置结构
           const defaultConfig = {
-            enable: false,
+              enable: false,
             github: {
               client_id: '',
               client_secret: '',
@@ -2560,7 +2671,7 @@ X-API-KEY: {{apiConfig.apiKey}}
             }
           };
           console.log("使用错误处理的默认配置:", this.thirdLoginConfig);
-          this.$message.error("获取第三方登录配置失败: " + error.message);
+            this.$message.error("获取第三方登录配置失败: " + error.message);
           throw error;
         }
       },
@@ -2569,16 +2680,16 @@ X-API-KEY: {{apiConfig.apiKey}}
       async getApiConfig() {
         try {
           const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getApiConfig", true);
-          if (res.data) {
-            this.apiConfig = res.data;
-          } else {
-            this.apiConfig = {
-              enabled: false,
-              apiKey: ''
-            };
-          }
+            if (res.data) {
+              this.apiConfig = res.data;
+            } else {
+              this.apiConfig = {
+                enabled: false,
+                apiKey: ''
+              };
+            }
         } catch (error) {
-          this.$message.error("获取API配置失败: " + error.message);
+            this.$message.error("获取API配置失败: " + error.message);
           throw error;
         }
       },
@@ -2984,11 +3095,11 @@ X-API-KEY: {{apiConfig.apiKey}}
       async getCaptchaConfig() {
         try {
           const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getCaptchaConfig", {}, true);
-          if (res.data) {
-            this.captchaConfig = res.data;
-          }
+            if (res.data) {
+              this.captchaConfig = res.data;
+            }
         } catch (error) {
-          this.$message.error("获取智能验证码配置失败: " + error.message);
+            this.$message.error("获取智能验证码配置失败: " + error.message);
           throw error;
         }
       },
@@ -3270,6 +3381,9 @@ X-API-KEY: {{apiConfig.apiKey}}
       },
       handleApiToggle(value) {
         this.apiConfig.enabled = value;
+      },
+      addFooterBackgroundImage(res) {
+        this.webInfo.footerBackgroundImage = res;
       }
     }
   }

@@ -1,15 +1,15 @@
 export default {
   // 测试环境
-  // baseURL: "http://localhost:8081",
-  // pythonBaseURL: "http://localhost:5000", // Python服务URL
-  // imBaseURL: "http://localhost:81/im",
-  // webURL: "http://localhost",
+  baseURL: "http://localhost:8081",
+  pythonBaseURL: "http://localhost:5000", // Python服务URL
+  imBaseURL: "http://localhost:81/im",
+  webURL: "http://localhost",
 
   // 生产环境
-  webURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),
-  baseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/api",
-  pythonBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/python",
-  imBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/im",
+  // webURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),
+  // baseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/api",
+  // pythonBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/python",
+  // imBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/im",
 
   host: location.hostname + (location.port ? ':' + location.port : ''),
 

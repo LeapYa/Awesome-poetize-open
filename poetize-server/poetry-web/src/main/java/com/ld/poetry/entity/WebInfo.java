@@ -125,4 +125,22 @@ public class WebInfo implements Serializable {
      */
     @TableField(value = "nav_config", exist = true)
     private String navConfig;
+
+    /**
+     * 页脚背景图片
+     */
+    @TableField(value = "footer_background_image", exist = true)
+    private String footerBackgroundImage;
+
+    /**
+     * 页脚背景图片位置配置(JSON格式)
+     */
+    @TableField(value = "footer_background_config", exist = true)
+    private String footerBackgroundConfig;
+
+    /**
+     * 联系邮箱
+     */
+    @TableField(value = "email", exist = true)
+    private String email;
 }

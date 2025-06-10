@@ -149,6 +149,9 @@ CREATE TABLE `poetize`.`web_info` (
   `api_key` varchar(255) DEFAULT NULL COMMENT 'API密钥',
   `nav_config` text DEFAULT NULL COMMENT '导航栏配置JSON',
   `enable_waifu` tinyint(1) DEFAULT 0 COMMENT '看板娘是否启用[0:否，1:是]',
+  `footer_background_image` varchar(256) DEFAULT NULL COMMENT '页脚背景图片',
+  `footer_background_config` text DEFAULT NULL COMMENT '页脚背景图片位置配置(JSON格式)',
+  `email` varchar(255) DEFAULT NULL COMMENT '联系邮箱',
 
   PRIMARY KEY (`id`)
 ) ENGINE=Aria DEFAULT CHARSET=utf8mb4 COMMENT='网站信息表';
@@ -328,58 +331,6 @@ CREATE TABLE `poetize`.`article_translation` (
   KEY `idx_article_id` (`article_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章翻译内容表';
 
-CREATE TABLE IF NOT EXISTS `qwen_session_memory` (
-  `id` int NOT NULL AUTO_INCREMENT COMMENT 'ID',
-  `session_id` varchar(128) NOT NULL COMMENT '会话ID',
-  `memory_data` longtext NOT NULL COMMENT '会话历史JSON数据',
-  `messages_count` int NOT NULL DEFAULT 0 COMMENT '消息数量',
-  `last_updated` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `conversation_summary` text NULL COMMENT '会话摘要',
-  `summary_updated` datetime NULL COMMENT '摘要更新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_session_id` (`session_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Qwen会话持久化记忆表';
-
-CREATE TABLE IF NOT EXISTS `qwen_message_importance` (
-  `id` int NOT NULL AUTO_INCREMENT COMMENT 'ID',
-  `session_id` varchar(128) NOT NULL COMMENT '会话ID',
-  `message_index` int NOT NULL COMMENT '消息在会话中的索引',
-  `message_id` varchar(64) NOT NULL COMMENT '消息唯一ID',
-  `importance_score` float NOT NULL DEFAULT 0 COMMENT '重要性评分(0-10)',
-  `message_role` varchar(20) NOT NULL COMMENT '消息角色(user/assistant/system)',
-  `message_summary` text NULL COMMENT '消息摘要',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_message_id` (`message_id`),
-  KEY `idx_session_importance` (`session_id`, `importance_score` DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息重要性评分表';
-
--- 会话统计表 - 存储每日会话统计数据
-CREATE TABLE IF NOT EXISTS `qwen_session_stats` (
-  `id` int NOT NULL AUTO_INCREMENT COMMENT 'ID',
-  `date` date NOT NULL COMMENT '统计日期',
-  `total_sessions` int NOT NULL DEFAULT 0 COMMENT '总会话数',
-  `new_sessions` int NOT NULL DEFAULT 0 COMMENT '新增会话数',
-  `active_sessions` int NOT NULL DEFAULT 0 COMMENT '活跃会话数',
-  `total_messages` int NOT NULL DEFAULT 0 COMMENT '消息总数',
-  `avg_importance` float NOT NULL DEFAULT 0 COMMENT '平均消息重要性',
-  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_date` (`date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Qwen会话统计表';
-
--- 会话标签表 - 存储会话的自定义标签和分类
-CREATE TABLE IF NOT EXISTS `qwen_session_tags` (
-  `id` int NOT NULL AUTO_INCREMENT COMMENT 'ID',
-  `session_id` varchar(128) NOT NULL COMMENT '会话ID',
-  `tag_name` varchar(64) NOT NULL COMMENT '标签名称',
-  `tag_value` varchar(255) NULL COMMENT '标签值',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_session_tag` (`session_id`, `tag_name`),
-  KEY `idx_tag_name` (`tag_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会话标签表';
 
 
 -- 创建索引提高查询性能
@@ -400,21 +351,21 @@ INSERT INTO `poetize`.`im_chat_group` (`id`, `group_name`, `master_user_id`, `in
 
 insert into `poetize`.`im_chat_group_user` (`id`, `group_id`, `user_id`, `admin_flag`, `user_status`) values(1, -1, 1, 1, 1);
 
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (3, '邮箱验证码模板', 'user.code.format', '【POETIZE】%s为本次验证的验证码，请在5分钟内完成验证。为保证账号安全，请勿泄漏此验证码。', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (4, '邮箱订阅模板', 'user.subscribe.format', '【POETIZE】您订阅的专栏【%s】新增一篇文章：%s。', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (5, '默认存储平台', 'store.type', 'local', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (6, '本地存储启用状态', 'local.enable', 'true', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (7, '七牛云存储启用状态', 'qiniu.enable', 'false', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (8, '本地存储上传文件根目录', 'local.uploadUrl', '/home/file/', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (9, '本地存储下载前缀', 'local.downloadUrl', '/static/', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (10, '七牛云-accessKey', 'qiniu.accessKey', '', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (11, '七牛云-secretKey', 'qiniu.secretKey', '', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (12, '七牛云-bucket', 'qiniu.bucket', '', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (13, '七牛云-域名', 'qiniu.downloadUrl', '仿照：【https://file.poetize.cn/】，将域名换成自己的七牛云ip或域名', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (15, 'IM-聊天室启用状态', 'im.enable', 'true', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (16, '七牛云上传地址', 'qiniuUrl', 'https://upload.qiniup.com', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (17, '备案号', 'beian', '', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (18, '前端静态资源路径前缀', 'webStaticResourcePrefix', '/static/', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (1, '邮箱验证码模板', 'user.code.format', '【POETIZE】%s为本次验证的验证码，请在5分钟内完成验证。为保证账号安全，请勿泄漏此验证码。', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (2, '邮箱订阅模板', 'user.subscribe.format', '【POETIZE】您订阅的专栏【%s】新增一篇文章：%s。', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (3, '默认存储平台', 'store.type', 'local', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (4, '本地存储启用状态', 'local.enable', 'true', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (5, '七牛云存储启用状态', 'qiniu.enable', 'false', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (6, '本地存储上传文件根目录', 'local.uploadUrl', '/home/file/', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (7, '本地存储下载前缀', 'local.downloadUrl', '/static/', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (8, '七牛云-accessKey', 'qiniu.accessKey', '', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (9, '七牛云-secretKey', 'qiniu.secretKey', '', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (10, '七牛云-bucket', 'qiniu.bucket', '', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (11, '七牛云-域名', 'qiniu.downloadUrl', '仿照：【https://file.poetize.cn/】，将域名换成自己的七牛云ip或域名', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (12, 'IM-聊天室启用状态', 'im.enable', 'true', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (13, '七牛云上传地址', 'qiniuUrl', 'https://upload.qiniup.com', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (14, '备案号', 'beian', '', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (15, '前端静态资源路径前缀', 'webStaticResourcePrefix', '/static/', '2');
 
 -- ========== 导入静态资源到resource表 ==========
 -- 将public/assets目录下的静态文件录入到数据库，使其在后台资源管理中可见
