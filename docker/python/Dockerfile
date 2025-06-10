@@ -3,7 +3,7 @@ FROM python:3.12-slim AS builder
 # 设置工作目录
 WORKDIR /build
 
-# 安装构建依赖
+# 安装构建依赖，包括Node.js和npm
 RUN apt-get update && apt-get install -y \
     gcc \
     libmariadb-dev-compat \
@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     git \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,6 +25,8 @@ ENV PATH="/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir wheel && \
     pip install --no-cache-dir -r requirements.txt && \
+    # 安装uvx用于通用可执行工具管理
+    pip install --no-cache-dir uvx && \
     # 清理pip缓存
     rm -rf /root/.cache/pip && \
     # 清理Python字节码文件
@@ -41,11 +45,13 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV FASTAPI_ENV=production
 
-# 安装运行时依赖
+# 安装运行时依赖，包括Node.js和npm
 RUN apt-get update && apt-get install -y \
     libmariadb-dev-compat \
     libmariadb-dev \
     curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -62,6 +68,9 @@ COPY --chown=root:root ./py/ /app/
 RUN find /app -name "*.pyc" -delete && \
     find /app -name "__pycache__" -type d -exec rm -rf {} + && \
     find /app -name "*.log" -delete
+
+# 验证安装
+RUN node --version && npm --version && npx --version && uvx --version
 
 # 暴露端口
 EXPOSE 5000
