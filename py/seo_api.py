@@ -20,7 +20,7 @@ import time
 import jwt
 import re
 from functools import wraps
-from fastapi import FastAPI, Request, HTTPException, Depends, Response, JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Request, Depends, Response, JSONResponse, PlainTextResponse
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 import logging
@@ -2466,7 +2466,7 @@ async def analyze_with_ai(site_info, api_config):
     try:
         provider = api_config.get('provider', 'openai')
         api_key = api_config.get('api_key')
-        model = api_config.get('model', 'gpt-3.5-turbo')
+        model = api_config.get('model', 'gpt-4o')
         api_base = api_config.get('api_base', '')
         
         # 构建简化的提示词
@@ -2803,6 +2803,62 @@ async def analyze_with_claude_api(prompt, api_key, model):
     except Exception as e:
         logger.error(f"Claude API调用异常: {str(e)}")
         raise ValueError(f"Claude API调用失败: {str(e)}")
+
+
+# Gemini API调用
+async def analyze_with_gemini_api(prompt, api_key, model="gemini-pro"):
+    """Google Gemini API调用"""
+    if not api_key:
+        raise ValueError("Gemini API需要提供api_key")
+    
+    try:
+        # 构建API URL
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": f"你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。\n\n{prompt}"
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.7,
+                "topK": 40,
+                "topP": 0.8,
+                "maxOutputTokens": 1024
+            }
+        }
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        params = {"key": api_key}
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(api_url, headers=headers, json=payload, params=params)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # 提取生成的内容
+        ai_response = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        
+        if not ai_response:
+            logger.error(f"Gemini API响应格式错误: {result}")
+            raise ValueError("Gemini API响应格式错误")
+        
+        return parse_ai_response(ai_response)
+        
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Gemini API HTTP错误: {e.response.status_code} - {e.response.text}")
+        raise ValueError(f"Gemini API请求失败: HTTP {e.response.status_code}")
+    except httpx.TimeoutException:
+        logger.error("Gemini API请求超时")
+        raise ValueError("Gemini API请求超时，请检查网络连接")
+    except Exception as e:
+        logger.error(f"Gemini API调用出错: {str(e)}")
+        raise ValueError(f"Gemini API调用失败: {str(e)}")
 
 # 自定义API调用（简化版）
 async def analyze_with_custom_api(prompt, api_config):
@@ -3326,58 +3382,3 @@ async def yahoo_push_url(url):
     except Exception as e:
         logger.error(f"Yahoo推送出错: {str(e)}")
         return False, str(e)
-
-# Gemini API调用
-async def analyze_with_gemini_api(prompt, api_key, model="gemini-pro"):
-    """Google Gemini API调用"""
-    if not api_key:
-        raise ValueError("Gemini API需要提供api_key")
-    
-    try:
-        # 构建API URL
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": f"你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。\n\n{prompt}"
-                }]
-            }],
-            "generationConfig": {
-                "temperature": 0.7,
-                "topK": 40,
-                "topP": 0.8,
-                "maxOutputTokens": 1024
-            }
-        }
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        params = {"key": api_key}
-        
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(api_url, headers=headers, json=payload, params=params)
-        response.raise_for_status()
-        
-        result = response.json()
-        
-        # 提取生成的内容
-        ai_response = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-        
-        if not ai_response:
-            logger.error(f"Gemini API响应格式错误: {result}")
-            raise ValueError("Gemini API响应格式错误")
-        
-        return parse_ai_response(ai_response)
-        
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Gemini API HTTP错误: {e.response.status_code} - {e.response.text}")
-        raise ValueError(f"Gemini API请求失败: HTTP {e.response.status_code}")
-    except httpx.TimeoutException:
-        logger.error("Gemini API请求超时")
-        raise ValueError("Gemini API请求超时，请检查网络连接")
-    except Exception as e:
-        logger.error(f"Gemini API调用出错: {str(e)}")
-        raise ValueError(f"Gemini API调用失败: {str(e)}")
