@@ -576,18 +576,15 @@ Sitemap: /sitemap.xml"
           
           <el-form-item label="请求格式">
             <el-select v-model="aiApiConfig.request_format" placeholder="选择请求格式">
-              <el-option label="OpenAI格式" value="openai">
-                <span>OpenAI格式 (ChatGPT、GPT-4、大部分兼容API)</span>
+              <el-option label="OpenAI兼容格式" value="openai">
+                <span>OpenAI兼容格式 (ChatGPT、GPT-4、DeepSeek、豆包、Gemini等大部分AI服务)</span>
               </el-option>
-              <el-option label="Claude格式" value="claude">
-                <span>Claude格式 (Anthropic Claude)</span>
-              </el-option>
-              <el-option label="完全自定义" value="custom">
-                <span>完全自定义 (自定义请求和响应格式)</span>
+              <el-option label="Anthropic兼容格式" value="anthropic">
+                <span>Anthropic兼容格式 (Claude系列模型)</span>
               </el-option>
             </el-select>
             <span class="tip">
-              选择API的请求格式，大多数AI服务都兼容OpenAI格式
+              选择API的请求格式。大多数AI服务都兼容OpenAI格式，只有Claude使用Anthropic格式
             </span>
           </el-form-item>
           
@@ -630,34 +627,9 @@ Sitemap: /sitemap.xml"
               </el-button>
             </div>
             <span class="tip">
-              添加额外的HTTP请求头，如认证、版本等信息
+              添加额外的HTTP请求头，如认证、版本等信息（大部分情况下不需要）
             </span>
           </el-form-item>
-          
-          <!-- 完全自定义格式时的额外配置 -->
-          <template v-if="aiApiConfig.request_format === 'custom'">
-            <el-form-item label="自定义载荷">
-              <el-input 
-                v-model="aiApiConfig.custom_payload_json" 
-                type="textarea" 
-                :rows="4" 
-                placeholder='{"prompt": "{prompt}", "max_tokens": 1000}'
-              ></el-input>
-              <span class="tip">
-                JSON格式的请求载荷模板，使用 {prompt} 作为提示词占位符
-              </span>
-            </el-form-item>
-            
-            <el-form-item label="响应解析路径">
-              <el-input 
-                v-model="aiApiConfig.response_path_str" 
-                placeholder="response.text 或 data.choices.0.message.content"
-              ></el-input>
-              <span class="tip">
-                用点号分隔的响应解析路径，如: data.choices.0.message.content
-              </span>
-            </el-form-item>
-          </template>
         </template>
         
         <el-form-item label="API Base URL" v-if="aiApiConfig.provider === 'openai'">
@@ -667,45 +639,55 @@ Sitemap: /sitemap.xml"
         
         <el-form-item label="模型名称">
           <template v-if="aiApiConfig.provider === 'custom'">
-            <el-input v-model="aiApiConfig.model" placeholder="输入模型名称，如: gpt-3.5-turbo"></el-input>
+            <el-input v-model="aiApiConfig.model" placeholder="输入模型名称，如: gpt-4o"></el-input>
             <span class="tip">输入您要使用的AI模型名称</span>
           </template>
           <template v-else>
-            <el-select v-model="aiApiConfig.model" placeholder="请选择模型">
+            <el-select 
+              v-model="aiApiConfig.model" 
+              placeholder="请选择或输入模型名称"
+              filterable
+              allow-create
+              default-first-option>
               <template v-if="aiApiConfig.provider === 'openai'">
-                <el-option label="GPT-3.5-Turbo" value="gpt-3.5-turbo"></el-option>
-                <el-option label="GPT-4" value="gpt-4"></el-option>
-                <el-option label="GPT-4 Turbo" value="gpt-4-turbo"></el-option>
                 <el-option label="GPT-4o" value="gpt-4o"></el-option>
                 <el-option label="GPT-4o mini" value="gpt-4o-mini"></el-option>
+                <el-option label="GPT-4 Turbo" value="gpt-4-turbo"></el-option>
+                <el-option label="GPT-4" value="gpt-4"></el-option>
+                <el-option label="GPT-4.1" value="gpt-4.1"></el-option>
+                <el-option label="o1-preview" value="o1-preview"></el-option>
+                <el-option label="o1-mini" value="o1-mini"></el-option>
+                <el-option label="o3" value="o3"></el-option>
               </template>
               <template v-else-if="aiApiConfig.provider === 'deepseek'">
-                <el-option label="DeepSeek-Coder" value="deepseek-coder"></el-option>
                 <el-option label="DeepSeek-Chat" value="deepseek-chat"></el-option>
+                <el-option label="DeepSeek-Coder" value="deepseek-coder"></el-option>
+                <el-option label="DeepSeek-V3" value="deepseek-v3"></el-option>
+                <el-option label="DeepSeek-R1" value="deepseek-r1"></el-option>
               </template>
               <template v-else-if="aiApiConfig.provider === 'baidu'">
-                <el-option label="文心一言" value="ernie-bot"></el-option>
                 <el-option label="文心一言4.0" value="ernie-bot-4"></el-option>
+                <el-option label="文心一言" value="ernie-bot"></el-option>
                 <el-option label="文心一言Turbo" value="ernie-bot-turbo"></el-option>
               </template>
               <template v-else-if="aiApiConfig.provider === 'zhipu'">
-                <el-option label="智谱ChatGLM" value="chatglm_turbo"></el-option>
                 <el-option label="智谱GLM-4" value="glm-4"></el-option>
                 <el-option label="智谱GLM-4V" value="glm-4v"></el-option>
+                <el-option label="智谱ChatGLM" value="chatglm_turbo"></el-option>
               </template>
               <template v-else-if="aiApiConfig.provider === 'doubao'">
                 <el-option label="豆包Pro" value="doubao-pro"></el-option>
                 <el-option label="豆包lite" value="doubao-lite"></el-option>
-                <el-option label="PLUG-Lingo" value="plug-lingo"></el-option>
                 <el-option label="混元大模型" value="hunyuan"></el-option>
               </template>
               <template v-else-if="aiApiConfig.provider === 'claude'">
-                <el-option label="Claude 3 Opus" value="claude-3-opus"></el-option>
-                <el-option label="Claude 3 Sonnet" value="claude-3-sonnet"></el-option>
-                <el-option label="Claude 3 Haiku" value="claude-3-haiku"></el-option>
-                <el-option label="Claude 3.5 Sonnet" value="claude-3-5-sonnet"></el-option>
+                <el-option label="Claude 3.5 Sonnet" value="claude-3.5-sonnet"></el-option>
+                <el-option label="Claude 3.5 Haiku" value="claude-3.5-haiku"></el-option>
+                <el-option label="Claude 3.7 Sonnet" value="claude-3-7-sonnet"></el-option>
+                <el-option label="Claude 4.0 Sonnet" value="claude-4-sonnet"></el-option>
               </template>
             </el-select>
+            <span class="tip">可选择预设模型或输入自定义模型名称</span>
           </template>
         </el-form-item>
         
@@ -939,9 +921,7 @@ export default {
         include_articles: false,
         custom_api_url: '',
         request_format: 'openai',
-        custom_headers_list: [],
-        custom_payload_json: '',
-        response_path_str: ''
+        custom_headers_list: []
       }
     };
   },
@@ -1184,7 +1164,7 @@ export default {
       
       // 根据不同提供商设置默认模型
       if (this.aiApiConfig.provider === 'openai') {
-        this.aiApiConfig.model = 'gpt-3.5-turbo';
+        this.aiApiConfig.model = 'gpt-4o';
       } else if (this.aiApiConfig.provider === 'deepseek') {
         this.aiApiConfig.model = 'deepseek-chat';
       } else if (this.aiApiConfig.provider === 'baidu') {
@@ -1194,14 +1174,12 @@ export default {
       } else if (this.aiApiConfig.provider === 'doubao') {
         this.aiApiConfig.model = 'doubao-pro';
       } else if (this.aiApiConfig.provider === 'claude') {
-        this.aiApiConfig.model = 'claude-3-sonnet';
+        this.aiApiConfig.model = 'claude-3.5-sonnet';
       } else if (this.aiApiConfig.provider === 'custom') {
         this.aiApiConfig.model = '';
         this.aiApiConfig.request_format = 'openai';
         this.aiApiConfig.custom_api_url = '';
         this.aiApiConfig.custom_headers_list = [];
-        this.aiApiConfig.custom_payload_json = '';
-        this.aiApiConfig.response_path_str = '';
       }
     },
     
@@ -1246,24 +1224,6 @@ export default {
         
         // 处理自定义请求头
         this.updateCustomHeaders();
-        
-        // 处理自定义载荷
-        if (this.aiApiConfig.request_format === 'custom') {
-          if (this.aiApiConfig.custom_payload_json) {
-            try {
-              configToSave.custom_payload = JSON.parse(this.aiApiConfig.custom_payload_json);
-            } catch (e) {
-              this.apiConfigLoading = false;
-              this.$message.error('自定义载荷JSON格式错误');
-              return;
-            }
-          }
-          
-          // 处理响应解析路径
-          if (this.aiApiConfig.response_path_str) {
-            configToSave.response_path = this.aiApiConfig.response_path_str.split('.');
-          }
-        }
       }
       
       this.$http.post(this.$constant.pythonBaseURL + '/python/seo/saveAiApiConfig', configToSave, true)

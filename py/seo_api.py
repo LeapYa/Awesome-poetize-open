@@ -18,16 +18,20 @@ import httpx
 import asyncio
 import time
 import jwt
-from fastapi import FastAPI, Request, HTTPException, Depends, Response
-from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 import re
+from functools import wraps
+from fastapi import FastAPI, Request, HTTPException, Depends, Response
+
+# AI库导入
+from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
+
+import logging
 from urllib.parse import urlparse
 from config import JAVA_BACKEND_URL, FRONTEND_URL
-import logging
 from cryptography.fernet import Fernet
 import threading
 from datetime import datetime
-from functools import wraps
 from auth_decorator import admin_required  # 导入管理员权限装饰器
 
 # 配置日志
@@ -35,7 +39,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger('seo_api')
 
 # 设置默认请求超时时间（秒）
-DEFAULT_TIMEOUT = 30
+DEFAULT_TIMEOUT = 90
 
 # 数据存储路径
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
@@ -2564,279 +2568,275 @@ def build_seo_analysis_prompt(site_info):
     
     return prompt
 
-# OpenAI API调用
+# OpenAI API调用（使用官方SDK）
 async def analyze_with_openai_api(prompt, api_key, model, api_base=None):
-    """OpenAI API调用"""
-    api_url = f"{api_base or 'https://api.openai.com/v1'}/chat/completions"
-    
-    payload = {
-        "model": model,
-        "messages": [
+    """OpenAI API调用 - 使用官方SDK"""
+    try:
+        # 确保API base URL格式正确
+        if api_base and not api_base.endswith('/v1'):
+            if api_base.endswith('/'):
+                api_base += 'v1'
+            else:
+                api_base += '/v1'
+        
+        if not api_base:
+            api_base = "https://api.openai.com/v1"
+        
+        # 创建OpenAI客户端
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=api_base,
+            timeout=30.0
+        )
+        
+        try:
+            # 使用OpenAI SDK调用API
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
             {"role": "system", "content": "你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。"},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.7
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json=payload, timeout=30)
-    response.raise_for_status()
-    
-    result = response.json()
-    ai_response = result["choices"][0]["message"]["content"]
-    return parse_ai_response(ai_response)
+                temperature=0.7,
+                max_tokens=2000
+            )
+            
+            if response.choices:
+                ai_response = response.choices[0].message.content
+                return parse_ai_response(ai_response)
+            else:
+                raise ValueError("OpenAI API响应格式异常")
+                
+        finally:
+            await client.close()
+            
+    except Exception as e:
+        logger.error(f"OpenAI API调用异常: {str(e)}")
+        raise ValueError(f"OpenAI API调用失败: {str(e)}")
 
-# DeepSeek API调用
+# DeepSeek API调用（OpenAI兼容）
 async def analyze_with_deepseek_api(prompt, api_key, model):
-    """DeepSeek API调用"""
-    api_url = "https://api.deepseek.com/v1/chat/completions"
-    
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。"},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json=payload, timeout=30)
-    response.raise_for_status()
-    
-    result = response.json()
-    ai_response = result["choices"][0]["message"]["content"]
-    return parse_ai_response(ai_response)
+    """DeepSeek API调用 - 使用OpenAI兼容格式"""
+    return await analyze_with_openai_api(prompt, api_key, model, "https://api.deepseek.com/v1")
 
 # 百度文心API调用
 async def analyze_with_baidu_api(prompt, api_key, model):
     """百度文心API调用"""
-    # 获取access_token
-    access_token_url = "https://aip.baidubce.com/oauth/2.0/token"
-    client_id, client_secret = api_key.split(":")
-    
-    async with httpx.AsyncClient() as client:
-        token_response = await client.post(
-            access_token_url,
-            params={
-                "grant_type": "client_credentials",
-                "client_id": client_id,
-                "client_secret": client_secret
-            }
-        )
-    token_response.raise_for_status()
-    access_token = token_response.json()["access_token"]
-    
-    # 调用聊天API
-    api_url = f"https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/{model}"
-    payload = {
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_url}?access_token={access_token}",
-            headers={"Content-Type": "application/json"},
-            json=payload,
-            timeout=30
-        )
-    response.raise_for_status()
-    
-    result = response.json()
-    ai_response = result["result"]
-    return parse_ai_response(ai_response)
+    if not api_key or ":" not in api_key:
+        raise ValueError("百度API需要提供格式为'client_id:client_secret'的api_key")
+        
+    try:
+        # 解析API密钥
+        client_id, client_secret = api_key.split(":", 1)
+        
+        # 获取access_token
+        access_token_url = "https://aip.baidubce.com/oauth/2.0/token"
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            token_response = await client.post(
+                access_token_url,
+                params={
+                    "grant_type": "client_credentials",
+                    "client_id": client_id,
+                    "client_secret": client_secret
+                }
+            )
+            token_response.raise_for_status()
+            
+            token_data = token_response.json()
+            if "access_token" not in token_data:
+                logger.error(f"百度API token响应异常: {token_data}")
+                raise ValueError("获取百度API access_token失败")
+                
+            access_token = token_data["access_token"]
+        
+        # 调用聊天API
+        api_url = f"https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/{model}"
+        payload = {
+            "messages": [
+                {"role": "user", "content": f"你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。\n\n{prompt}"}
+            ],
+            "temperature": 0.7
+        }
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{api_url}?access_token={access_token}",
+                headers={"Content-Type": "application/json"},
+                json=payload
+            )
+            response.raise_for_status()
+        
+            result = response.json()
+            
+            # 检查响应中是否有错误
+            if "error_code" in result:
+                logger.error(f"百度API错误: {result}")
+                raise ValueError(f"百度API请求失败: {result.get('error_msg', '未知错误')}")
+            
+            ai_response = result.get("result", "")
+            if not ai_response:
+                logger.error(f"百度API响应格式错误: {result}")
+                raise ValueError("百度API响应格式错误")
+            
+            return parse_ai_response(ai_response)
+        
+    except httpx.HTTPStatusError as e:
+        logger.error(f"百度API HTTP错误: {e.response.status_code} - {e.response.text}")
+        raise ValueError(f"百度API请求失败: HTTP {e.response.status_code}")
+    except httpx.TimeoutException:
+        logger.error("百度API请求超时")
+        raise ValueError("百度API请求超时，请检查网络连接")
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.error(f"百度API调用出错: {str(e)}")
+        raise ValueError(f"百度API调用失败: {str(e)}")
 
 # 智谱AI API调用
 async def analyze_with_zhipu_api(prompt, api_key, model):
     """智谱AI API调用"""
-    # 生成JWT token
-    api_key_parts = api_key.split(".")
-    if len(api_key_parts) != 2:
+    if not api_key or "." not in api_key:
         raise ValueError("智谱AI密钥格式错误，应为: id.secret")
         
-    id, secret = api_key_parts
-    payload = {
-        "api_key": id,
-        "exp": int(time.time()) + 3600,
-        "timestamp": int(time.time())
-    }
-    token = jwt.encode(payload, secret, algorithm="HS256")
-    
-    api_url = "https://open.bigmodel.cn/api/paas/v3/model-api/chatglm_turbo/invoke"
-    
-    request_payload = {
-        "model": model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json=request_payload, timeout=30)
-    response.raise_for_status()
-    
-    result = response.json()
-    ai_response = result["data"]["choices"][0]["content"]
-    return parse_ai_response(ai_response)
-
-# 豆包API调用
-async def analyze_with_doubao_api(prompt, api_key, model):
-    """豆包API调用"""
-    api_url = "https://api.doubao.com/v1/chat/completions"
-    
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。"},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json=payload, timeout=30)
-    response.raise_for_status()
-    
-    result = response.json()
-    ai_response = result["choices"][0]["message"]["content"]
-    return parse_ai_response(ai_response)
-
-# Claude API调用
-async def analyze_with_claude_api(prompt, api_key, model):
-    """Claude API调用"""
-    api_url = "https://api.anthropic.com/v1/messages"
-    
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 2000,
-        "temperature": 0.7,
-        "system": "你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。"
-    }
-    
-    headers = {
-        "Content-Type": "application/json",
-        "X-Api-Key": api_key,
-        "anthropic-version": "2023-06-01"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json=payload, timeout=30)
-    response.raise_for_status()
-    
-    result = response.json()
-    ai_response = result["content"][0]["text"]
-    return parse_ai_response(ai_response)
-
-# 自定义API调用
-async def analyze_with_custom_api(prompt, api_config):
-    """自定义AI API调用"""
-    api_url = api_config.get('custom_api_url')
-    api_key = api_config.get('api_key')
-    model = api_config.get('model', 'custom-model')
-    
-    if not api_url:
-        raise ValueError("自定义API需要提供custom_api_url")
-    
-    # 支持多种请求格式
-    request_format = api_config.get('request_format', 'openai')  # openai, claude, custom
-    
-    if request_format == 'openai':
+    try:
+        # 解析API密钥
+        api_key_parts = api_key.split(".", 1)
+        if len(api_key_parts) != 2:
+            raise ValueError("智谱AI密钥格式错误，应为: id.secret")
+            
+        id, secret = api_key_parts
+        
+        # 生成JWT token
         payload = {
+            "api_key": id,
+            "exp": int(time.time()) + 3600,
+            "timestamp": int(time.time())
+        }
+        
+        try:
+            token = jwt.encode(payload, secret, algorithm="HS256")
+        except Exception as e:
+            logger.error(f"智谱AI JWT生成失败: {str(e)}")
+            raise ValueError("智谱AI JWT生成失败，请检查密钥格式")
+    
+        api_url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    
+        request_payload = {
             "model": model,
             "messages": [
                 {"role": "system", "content": "你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。"},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7
-        }
-        response_path = ["choices", 0, "message", "content"]
-    elif request_format == 'claude':
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 2000,
             "temperature": 0.7,
-            "system": "你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。"
+            "max_tokens": 2000
         }
-        response_path = ["content", 0, "text"]
-    else:  # custom
-        # 使用自定义载荷模板
-        payload = api_config.get('custom_payload', {})
-        # 替换模板中的占位符
-        payload_str = json.dumps(payload, ensure_ascii=False)
-        payload_str = payload_str.replace('{prompt}', prompt)
-        payload = json.loads(payload_str)
         
-        # 使用自定义响应路径
-        response_path = api_config.get('response_path', ['response'])
-    
-    # 构建请求头
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    # 添加授权头
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    
-    # 添加自定义请求头
-    custom_headers = api_config.get('custom_headers', {})
-    headers.update(custom_headers)
-    
-    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+        
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(api_url, headers=headers, json=payload)
-        response.raise_for_status()
+            response = await client.post(api_url, headers=headers, json=request_payload)
+            response.raise_for_status()
         
-        result = response.json()
-        
-        # 根据响应路径提取内容
-        ai_response = result
-        for key in response_path:
-            if isinstance(key, int):
-                ai_response = ai_response[key]
-            else:
-                ai_response = ai_response.get(key, "")
-        
-        if not ai_response:
-            raise ValueError("响应解析路径错误，未能提取到有效内容")
-        
-        return parse_ai_response(ai_response)
+            result = response.json()
+            
+            # 检查响应格式
+            if "choices" not in result or not result["choices"]:
+                logger.error(f"智谱AI响应格式错误: {result}")
+                raise ValueError("智谱AI响应格式错误")
+            
+            ai_response = result["choices"][0]["message"]["content"]
+            if not ai_response:
+                logger.error(f"智谱AI响应内容为空: {result}")
+                raise ValueError("智谱AI响应内容为空")
+            
+            return parse_ai_response(ai_response)
         
     except httpx.HTTPStatusError as e:
-        logger.error(f"自定义API HTTP错误: {e.response.status_code} - {e.response.text}")
-        raise ValueError(f"自定义API请求失败: HTTP {e.response.status_code}")
+        logger.error(f"智谱AI HTTP错误: {e.response.status_code} - {e.response.text}")
+        raise ValueError(f"智谱AI请求失败: HTTP {e.response.status_code}")
     except httpx.TimeoutException:
-        logger.error("自定义API请求超时")
-        raise ValueError("自定义API请求超时，请检查网络连接或API响应速度")
+        logger.error("智谱AI请求超时")
+        raise ValueError("智谱AI请求超时，请检查网络连接")
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.error(f"智谱AI调用出错: {str(e)}")
+        raise ValueError(f"智谱AI调用失败: {str(e)}")
+
+# 豆包API调用（OpenAI兼容）
+async def analyze_with_doubao_api(prompt, api_key, model):
+    """豆包API调用 - 使用OpenAI兼容格式"""
+    return await analyze_with_openai_api(prompt, api_key, model, "https://api.doubao.com/v1")
+
+# Claude API调用（使用官方SDK）
+async def analyze_with_claude_api(prompt, api_key, model):
+    """Claude API调用 - 使用Anthropic官方SDK"""
+    try:
+        # 创建Anthropic客户端
+        client = AsyncAnthropic(
+            api_key=api_key,
+            timeout=30.0
+        )
+        
+        try:
+            # 使用Anthropic SDK调用API
+            response = await client.messages.create(
+                model=model,
+                max_tokens=2000,
+                temperature=0.7,
+                system="你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            if response.content:
+                ai_response = response.content[0].text
+                return parse_ai_response(ai_response)
+            else:
+                raise ValueError("Claude API响应格式异常")
+                
+        finally:
+            await client.close()
+            
+    except Exception as e:
+        logger.error(f"Claude API调用异常: {str(e)}")
+        raise ValueError(f"Claude API调用失败: {str(e)}")
+
+# 自定义API调用（简化版）
+async def analyze_with_custom_api(prompt, api_config):
+    """自定义AI API调用 - 仅支持OpenAI和Anthropic兼容格式"""
+    api_url = api_config.get('custom_api_url')
+    api_key = api_config.get('api_key')
+    model = api_config.get('model', 'custom-model')
+    request_format = api_config.get('request_format', 'openai')  # 默认openai格式
+    
+    if not api_url:
+        raise ValueError("自定义API需要提供custom_api_url")
+    
+    if not api_key:
+        raise ValueError("自定义API需要提供api_key")
+    
+    try:
+        if request_format == 'openai':
+            # 使用OpenAI兼容格式（大部分AI服务都采用此格式）
+            return await analyze_with_openai_api(prompt, api_key, model, api_url)
+            
+        elif request_format == 'anthropic':
+            # 使用Anthropic兼容格式
+            # 注意：这里需要确保API URL兼容Anthropic格式
+            return await analyze_with_claude_api(prompt, api_key, model)
+            
+        else:
+            raise ValueError(f"不支持的请求格式: {request_format}。仅支持 'openai' 或 'anthropic' 格式")
+            
     except Exception as e:
         logger.error(f"自定义API调用出错: {str(e)}")
-        raise ValueError(f"自定义API调用出错: {str(e)}")
+        raise ValueError(f"自定义API调用失败: {str(e)}")
 
 # 解析AI响应
 def parse_ai_response(ai_response):
@@ -2998,138 +2998,135 @@ async def generate_category_meta_tags(category_id):
         return None
 
 # 生成网站的元数据标签
-def generate_site_meta_tags():
+def generate_site_meta_tags(lang=None):
     """
     生成站点的元数据标签内容
+    :param lang: 语言参数，用于设置HTML语言标识
     :return: HTML格式的元数据标签内容
     """
     try:
         # 获取SEO配置
         seo_config = get_seo_config_sync()
         
-        # 直接使用SEO配置中的网站名称
+        # 统一使用配置文件中的站点信息（中文）
         site_name = seo_config.get('site_name', '')
-        logger.info(f"使用SEO配置中的网站标题: {site_name}")
+        site_description = seo_config.get('site_description', '')
+        site_keywords = seo_config.get('site_keywords', '')
         
-        meta_tags = {
-            "title": site_name,
-            "description": seo_config.get('site_description', ''),
-            "keywords": seo_config.get('site_keywords', ''),
-            "author": seo_config.get('default_author', ''),
-            "robots": "index, follow",
-            "og:title": site_name,
-            "og:description": seo_config.get('site_description', ''),
-            "og:type": seo_config.get('og_type', 'website'),
-            "og:url": seo_config.get('site_address', FRONTEND_URL),
-            "og:image": seo_config.get('og_image', ''),
-            "og:site_name": seo_config.get('og_site_name', site_name),
-            "twitter:card": seo_config.get('twitter_card', 'summary_large_image'),
-            "twitter:title": site_name,
-            "twitter:description": seo_config.get('site_description', ''),
-            "twitter:image": seo_config.get('og_image', ''),
-            "twitter:site": seo_config.get('twitter_site', ''),
-            "twitter:creator": seo_config.get('twitter_creator', ''),
-        }
+        logger.info(f"使用SEO配置中的网站标题: {site_name} (语言: {lang or '默认'})")
         
-        # 添加站点LOGO
-        if seo_config.get('site_logo'):
-            meta_tags["og:logo"] = seo_config.get('site_logo')
-            
-        # 添加站点图标
-        if seo_config.get('site_favicon'):
-            meta_tags["shortcut icon"] = seo_config.get('site_favicon')
-        
-        # 添加Facebook应用ID
-        if seo_config.get('fb_app_id'):
-            meta_tags["fb:app_id"] = seo_config.get('fb_app_id')
-            
-        # 添加Facebook页面URL
-        if seo_config.get('fb_page_url'):
-            meta_tags["article:publisher"] = seo_config.get('fb_page_url')
-            
-        # 添加Pinterest验证
-        if seo_config.get('pinterest_verification'):
-            meta_tags["p:domain_verify"] = seo_config.get('pinterest_verification')
-            
-        # 添加Pinterest描述
-        if seo_config.get('pinterest_description'):
-            meta_tags["pinterest:description"] = seo_config.get('pinterest_description')
-            
-        # 添加LinkedIn公司ID
-        if seo_config.get('linkedin_company_id'):
-            meta_tags["linkedin:owner"] = seo_config.get('linkedin_company_id')
-            
-        # 添加微信小程序相关
-        if seo_config.get('enable_wechat_miniprogram', False):
-            meta_tags["wechat:miniprogram:appid"] = seo_config.get('wechat_miniprogram_appid', '')
-            meta_tags["wechat:miniprogram:path"] = seo_config.get('wechat_miniprogram_path', 'pages/index/index')
-            
-        # 添加搜索引擎验证码
-        verification_tags = {}
-        if seo_config.get('baidu_site_verification'):
-            verification_tags['baidu-site-verification'] = seo_config.get('baidu_site_verification')
-            
-        if seo_config.get('google_site_verification'):
-            verification_tags['google-site-verification'] = seo_config.get('google_site_verification')
-            
-        if seo_config.get('bing_site_verification'):
-            verification_tags['msvalidate.01'] = seo_config.get('bing_site_verification')
-            
-        if seo_config.get('yandex_site_verification'):
-            verification_tags['yandex-verification'] = seo_config.get('yandex_site_verification')
-            
-        if seo_config.get('sogou_site_verification'):
-            verification_tags['sogou_site_verification'] = seo_config.get('sogou_site_verification')
-            
-        if seo_config.get('so_site_verification'):
-            verification_tags['360-site-verification'] = seo_config.get('so_site_verification')
-            
-        if seo_config.get('shenma_site_verification'):
-            verification_tags['shenma-site-verification'] = seo_config.get('shenma_site_verification')
-            
-        if seo_config.get('yahoo_site_verification'):
-            verification_tags['y_key'] = seo_config.get('yahoo_site_verification')
-            
-        if seo_config.get('duckduckgo_site_verification'):
-            verification_tags['duckduckgo-site-verification'] = seo_config.get('duckduckgo_site_verification')
-        
-        # 保存自定义头部代码
-        custom_head_code = seo_config.get('custom_head_code', '')
-        
-        # 将meta_tags转换为HTML格式
+        # 构建基础meta标签列表
         html_tags = []
         
-        # 1. 先处理title标签（最重要）
-        if meta_tags.get("title"):
-            html_tags.append(f'<title>{meta_tags["title"]}</title>')
+        # 1. 基础必需标签
+        if site_name:
+            html_tags.append(f'<title>{site_name}</title>')
+        if site_description:
+            html_tags.append(f'<meta name="description" content="{site_description}">')
+        if site_keywords:
+            html_tags.append(f'<meta name="keywords" content="{site_keywords}">')
         
-        # 2. 处理基本meta标签
-        for key, value in meta_tags.items():
-            if not value or key == "title":  # 跳过空值和已处理的title
-                continue
-                
-            if key == "shortcut icon":
-                html_tags.append(f'<link rel="shortcut icon" href="{value}">')
-            elif key.startswith("og:"):
-                html_tags.append(f'<meta property="{key}" content="{value}">')
-            elif key.startswith("fb:"):
-                html_tags.append(f'<meta property="{key}" content="{value}">')
-            elif key.startswith("article:"):
-                html_tags.append(f'<meta property="{key}" content="{value}">')
-            else:
-                html_tags.append(f'<meta name="{key}" content="{value}">')
+        # 2. 添加固定标签
+        html_tags.append('<meta name="robots" content="index, follow">')
         
-        # 3. 单独处理所有搜索引擎验证标签（确保正确格式）
-        for key, value in verification_tags.items():
+        # 3. 语言标识（如果有lang参数）
+        if lang:
+            html_tags.append(f'<meta name="language" content="{lang}">')
+            locale = "en_US" if lang == 'en' else "zh_CN"
+            html_tags.append(f'<meta property="og:locale" content="{locale}">')
+        
+        # 4. OpenGraph标签
+        if site_name:
+            html_tags.append(f'<meta property="og:title" content="{site_name}">')
+        if site_description:
+            html_tags.append(f'<meta property="og:description" content="{site_description}">')
+        
+        og_type = seo_config.get('og_type', 'website')
+        html_tags.append(f'<meta property="og:type" content="{og_type}">')
+        
+        site_address = seo_config.get('site_address', FRONTEND_URL)
+        if site_address:
+            html_tags.append(f'<meta property="og:url" content="{site_address}">')
+        
+        # 5. Twitter标签
+        twitter_card = seo_config.get('twitter_card', 'summary_large_image')
+        html_tags.append(f'<meta name="twitter:card" content="{twitter_card}">')
+        if site_name:
+            html_tags.append(f'<meta name="twitter:title" content="{site_name}">')
+        if site_description:
+            html_tags.append(f'<meta name="twitter:description" content="{site_description}">')
+        
+        # 6. 批量处理可选配置项
+        optional_tags = {
+            'default_author': lambda v: f'<meta name="author" content="{v}">',
+            'og_image': lambda v: [f'<meta property="og:image" content="{v}">', f'<meta name="twitter:image" content="{v}">'],
+            'og_site_name': lambda v: f'<meta property="og:site_name" content="{v}">',
+            'twitter_site': lambda v: f'<meta name="twitter:site" content="{v}">',
+            'twitter_creator': lambda v: f'<meta name="twitter:creator" content="{v}">',
+            'site_logo': lambda v: f'<meta property="og:logo" content="{v}">',
+            'site_favicon': lambda v: f'<link rel="shortcut icon" href="{v}">',
+            'fb_app_id': lambda v: f'<meta property="fb:app_id" content="{v}">',
+            'fb_page_url': lambda v: f'<meta property="article:publisher" content="{v}">',
+        }
+        
+        for key, tag_func in optional_tags.items():
+            value = seo_config.get(key)
             if value:
-                html_tags.append(f'<meta name="{key}" content="{value}">')
+                result = tag_func(value)
+                if isinstance(result, list):
+                    html_tags.extend(result)
+                else:
+                    html_tags.append(result)
         
-        # 4. 最后添加自定义头部代码（如果有）
+        # 7. 批量处理搜索引擎验证标签
+        verification_mapping = {
+            'baidu_site_verification': 'baidu-site-verification',
+            'google_site_verification': 'google-site-verification',
+            'bing_site_verification': 'msvalidate.01',
+            'yandex_site_verification': 'yandex-verification',
+            'sogou_site_verification': 'sogou_site_verification',
+            'so_site_verification': '360-site-verification',
+            'shenma_site_verification': 'shenma-site-verification',
+            'yahoo_site_verification': 'y_key',
+            'duckduckgo_site_verification': 'duckduckgo-site-verification'
+        }
+        
+        for config_key, meta_name in verification_mapping.items():
+            value = seo_config.get(config_key)
+            if value:
+                html_tags.append(f'<meta name="{meta_name}" content="{value}">')
+        
+        # 8. 微信小程序相关（批量处理）
+        if seo_config.get('enable_wechat_miniprogram', False):
+            wechat_tags = {
+                'wechat_miniprogram_appid': 'wechat:miniprogram:appid',
+                'wechat_miniprogram_path': 'wechat:miniprogram:path'
+            }
+            for config_key, meta_name in wechat_tags.items():
+                value = seo_config.get(config_key)
+                if value:
+                    html_tags.append(f'<meta name="{meta_name}" content="{value}">')
+        
+        # 9. 其他可选标签（批量处理）
+        other_optional_tags = {
+            'pinterest_verification': 'p:domain_verify',
+            'pinterest_description': 'pinterest:description',
+            'linkedin_company_id': 'linkedin:owner'
+        }
+        
+        for config_key, meta_name in other_optional_tags.items():
+            value = seo_config.get(config_key)
+            if value:
+                html_tags.append(f'<meta name="{meta_name}" content="{value}">')
+        
+        # 10. 自定义头部代码
+        custom_head_code = seo_config.get('custom_head_code')
         if custom_head_code:
             html_tags.append(custom_head_code)
         
-        logger.info(f"生成网站元数据成功，元标签数量: {len(html_tags)}")
+        logger.info(f"生成网站元数据成功，元标签数量: {len(html_tags)}，语言: {lang or '默认'}")
         return "\n".join(html_tags)
+        
     except Exception as e:
         logger.error(f"生成站点元数据标签异常: {str(e)}")
         logger.exception("详细错误信息:")
@@ -3154,111 +3151,106 @@ def generate_im_site_meta_tags():
         im_description = "实时在线聊天室，支持公共聊天、私聊、表情、图片分享等功能"
         im_keywords = "聊天室,在线聊天,IM,即时通讯,WebSocket,私聊,表情,图片分享"
         
-        meta_tags = {
-            "title": im_title,
-            "description": im_description,
-            "keywords": im_keywords,
-            "author": seo_config.get('default_author', ''),
-            "robots": "index, follow",
-            "og:title": im_title,
-            "og:description": im_description,
-            "og:type": "website",
-            "og:url": f"{seo_config.get('site_address', FRONTEND_URL)}/im",
-            "og:image": seo_config.get('og_image', ''),
-            "og:site_name": seo_config.get('og_site_name', site_name),
-            "twitter:card": seo_config.get('twitter_card', 'summary_large_image'),
-            "twitter:title": im_title,
-            "twitter:description": im_description,
-            "twitter:image": seo_config.get('og_image', ''),
-            "twitter:site": seo_config.get('twitter_site', ''),
-            "twitter:creator": seo_config.get('twitter_creator', ''),
-        }
-        
-        # 添加站点LOGO
-        if seo_config.get('site_logo'):
-            meta_tags["og:logo"] = seo_config.get('site_logo')
-            
-        # 添加站点图标
-        if seo_config.get('site_favicon'):
-            meta_tags["shortcut icon"] = seo_config.get('site_favicon')
-        
-        # 添加Facebook应用ID
-        if seo_config.get('fb_app_id'):
-            meta_tags["fb:app_id"] = seo_config.get('fb_app_id')
-            
-        # 添加Facebook页面URL
-        if seo_config.get('fb_page_url'):
-            meta_tags["article:publisher"] = seo_config.get('fb_page_url')
-        
-        # 添加IM页面特有的元标签
-        meta_tags["application-name"] = f"{site_name} IM"
-        meta_tags["application-type"] = "Chat"
-        meta_tags["application-tooltip"] = "在线聊天室"
-        meta_tags["revisit-after"] = "1 day"
-        
-        # 添加搜索引擎验证码，与站点主页相同
-        verification_tags = {}
-        if seo_config.get('baidu_site_verification'):
-            verification_tags['baidu-site-verification'] = seo_config.get('baidu_site_verification')
-            
-        if seo_config.get('google_site_verification'):
-            verification_tags['google-site-verification'] = seo_config.get('google_site_verification')
-            
-        if seo_config.get('bing_site_verification'):
-            verification_tags['msvalidate.01'] = seo_config.get('bing_site_verification')
-            
-        if seo_config.get('yandex_site_verification'):
-            verification_tags['yandex-verification'] = seo_config.get('yandex_site_verification')
-            
-        if seo_config.get('sogou_site_verification'):
-            verification_tags['sogou_site_verification'] = seo_config.get('sogou_site_verification')
-            
-        if seo_config.get('so_site_verification'):
-            verification_tags['360-site-verification'] = seo_config.get('so_site_verification')
-            
-        if seo_config.get('shenma_site_verification'):
-            verification_tags['shenma-site-verification'] = seo_config.get('shenma_site_verification')
-            
-        if seo_config.get('yahoo_site_verification'):
-            verification_tags['y_key'] = seo_config.get('yahoo_site_verification')
-            
-        if seo_config.get('duckduckgo_site_verification'):
-            verification_tags['duckduckgo-site-verification'] = seo_config.get('duckduckgo_site_verification')
-        
-        # 将meta_tags转换为HTML格式
+        # 构建HTML标签列表
         html_tags = []
         
-        # 1. 先处理title标签（最重要）
-        if meta_tags.get("title"):
-            html_tags.append(f'<title>{meta_tags["title"]}</title>')
+        # 1. 基础必需标签
+        html_tags.append(f'<title>{im_title}</title>')
+        html_tags.append(f'<meta name="description" content="{im_description}">')
+        html_tags.append(f'<meta name="keywords" content="{im_keywords}">')
+        html_tags.append('<meta name="robots" content="index, follow">')
         
-        # 2. 处理基本meta标签
-        for key, value in meta_tags.items():
-            if not value or key == "title":  # 跳过空值和已处理的title
-                continue
-                
-            if key == "shortcut icon":
-                html_tags.append(f'<link rel="shortcut icon" href="{value}">')
-            elif key.startswith("og:"):
-                html_tags.append(f'<meta property="{key}" content="{value}">')
-            elif key.startswith("fb:"):
-                html_tags.append(f'<meta property="{key}" content="{value}">')
-            elif key.startswith("article:"):
-                html_tags.append(f'<meta property="{key}" content="{value}">')
-            else:
-                html_tags.append(f'<meta name="{key}" content="{value}">')
+        # 2. 作者标签
+        author = seo_config.get('default_author')
+        if author:
+            html_tags.append(f'<meta name="author" content="{author}">')
         
-        # 3. 单独处理所有搜索引擎验证标签（确保正确格式）
-        for key, value in verification_tags.items():
+        # 3. OpenGraph标签
+        site_address = seo_config.get('site_address', FRONTEND_URL)
+        og_image = seo_config.get('og_image')
+        og_site_name = seo_config.get('og_site_name', site_name)
+        
+        og_tags = [
+            f'<meta property="og:title" content="{im_title}">',
+            f'<meta property="og:description" content="{im_description}">',
+            f'<meta property="og:type" content="website">',
+            f'<meta property="og:url" content="{site_address}/im">',
+            f'<meta property="og:site_name" content="{og_site_name}">'
+        ]
+        if og_image:
+            og_tags.append(f'<meta property="og:image" content="{og_image}">')
+        
+        html_tags.extend(og_tags)
+        
+        # 4. Twitter标签
+        twitter_card = seo_config.get('twitter_card', 'summary_large_image')
+        twitter_site = seo_config.get('twitter_site')
+        twitter_creator = seo_config.get('twitter_creator')
+        
+        twitter_tags = [
+            f'<meta name="twitter:card" content="{twitter_card}">',
+            f'<meta name="twitter:title" content="{im_title}">',
+            f'<meta name="twitter:description" content="{im_description}">'
+        ]
+        if og_image:
+            twitter_tags.append(f'<meta name="twitter:image" content="{og_image}">')
+        if twitter_site:
+            twitter_tags.append(f'<meta name="twitter:site" content="{twitter_site}">')
+        if twitter_creator:
+            twitter_tags.append(f'<meta name="twitter:creator" content="{twitter_creator}">')
+        
+        html_tags.extend(twitter_tags)
+        
+        # 5. 批量处理可选配置项
+        optional_tags = {
+            'site_logo': lambda v: f'<meta property="og:logo" content="{v}">',
+            'site_favicon': lambda v: f'<link rel="shortcut icon" href="{v}">',
+            'fb_app_id': lambda v: f'<meta property="fb:app_id" content="{v}">',
+            'fb_page_url': lambda v: f'<meta property="article:publisher" content="{v}">'
+        }
+        
+        for key, tag_func in optional_tags.items():
+            value = seo_config.get(key)
             if value:
-                html_tags.append(f'<meta name="{key}" content="{value}">')
+                html_tags.append(tag_func(value))
         
-        # 4. IM页面特有的预加载标签
-        html_tags.append(f'<link rel="preload" href="/im/css/chat.css" as="style">')
-        html_tags.append(f'<link rel="preload" href="/im/js/socket.io.min.js" as="script">')
+        # 6. IM页面特有的元标签
+        im_specific_tags = [
+            f'<meta name="application-name" content="{site_name} IM">',
+            f'<meta name="application-type" content="Chat">',
+            f'<meta name="application-tooltip" content="在线聊天室">',
+            f'<meta name="revisit-after" content="1 day">'
+        ]
+        html_tags.extend(im_specific_tags)
+        
+        # 7. 批量处理搜索引擎验证标签（使用与站点主页相同的映射）
+        verification_mapping = {
+            'baidu_site_verification': 'baidu-site-verification',
+            'google_site_verification': 'google-site-verification',
+            'bing_site_verification': 'msvalidate.01',
+            'yandex_site_verification': 'yandex-verification',
+            'sogou_site_verification': 'sogou_site_verification',
+            'so_site_verification': '360-site-verification',
+            'shenma_site_verification': 'shenma-site-verification',
+            'yahoo_site_verification': 'y_key',
+            'duckduckgo_site_verification': 'duckduckgo-site-verification'
+        }
+        
+        for config_key, meta_name in verification_mapping.items():
+            value = seo_config.get(config_key)
+            if value:
+                html_tags.append(f'<meta name="{meta_name}" content="{value}">')
+        
+        # 8. IM页面特有的预加载标签
+        preload_tags = [
+            f'<link rel="preload" href="/im/css/chat.css" as="style">',
+            f'<link rel="preload" href="/im/js/socket.io.min.js" as="script">'
+        ]
+        html_tags.extend(preload_tags)
         
         logger.info(f"生成IM聊天室元数据成功，元标签数量: {len(html_tags)}")
         return "\n".join(html_tags)
+        
     except Exception as e:
         logger.error(f"生成IM聊天室元数据标签异常: {str(e)}")
         logger.exception("详细错误信息:")
@@ -3337,3 +3329,58 @@ async def yahoo_push_url(url):
     except Exception as e:
         logger.error(f"Yahoo推送出错: {str(e)}")
         return False, str(e)
+
+# Gemini API调用
+async def analyze_with_gemini_api(prompt, api_key, model="gemini-pro"):
+    """Google Gemini API调用"""
+    if not api_key:
+        raise ValueError("Gemini API需要提供api_key")
+    
+    try:
+        # 构建API URL
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": f"你是一个专业的SEO专家，擅长网站优化分析。请用中文回答。\n\n{prompt}"
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.7,
+                "topK": 40,
+                "topP": 0.8,
+                "maxOutputTokens": 1024
+            }
+        }
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        params = {"key": api_key}
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(api_url, headers=headers, json=payload, params=params)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # 提取生成的内容
+        ai_response = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        
+        if not ai_response:
+            logger.error(f"Gemini API响应格式错误: {result}")
+            raise ValueError("Gemini API响应格式错误")
+        
+        return parse_ai_response(ai_response)
+        
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Gemini API HTTP错误: {e.response.status_code} - {e.response.text}")
+        raise ValueError(f"Gemini API请求失败: HTTP {e.response.status_code}")
+    except httpx.TimeoutException:
+        logger.error("Gemini API请求超时")
+        raise ValueError("Gemini API请求超时，请检查网络连接")
+    except Exception as e:
+        logger.error(f"Gemini API调用出错: {str(e)}")
+        raise ValueError(f"Gemini API调用失败: {str(e)}")
