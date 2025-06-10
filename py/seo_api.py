@@ -1041,8 +1041,8 @@ def register_seo_api(app: FastAPI):
                 try:
                     # 发送清理请求
                     logger.info("正在清理Nginx SEO缓存...")
-                    async with httpx.AsyncClient() as client:
-                        response = await client.post(nginx_url, timeout=5, verify=False)
+                    async with httpx.AsyncClient(verify=False) as client:
+                        response = await client.post(nginx_url, timeout=5)
                     logger.info(f"Nginx SEO缓存清理结果: {'成功' if response.status_code == 200 else f'失败,非200状态码: {response.status_code}, 响应: {response.text}'}")
                 except Exception as e:
                     logger.error(f"清理Nginx SEO缓存失败: {str(e)}")
@@ -1089,10 +1089,11 @@ def register_seo_api(app: FastAPI):
                 logger.info(f"SEO开关状态已更新: {old_status} -> {enable_status}")
                 
                 try:
+                    nginx_url = os.environ.get('NGINX_URL', 'http://localhost/flush_seo_cache')
                     # 发送清理请求
                     logger.info("正在清理Nginx SEO缓存...")
-                    async with httpx.AsyncClient() as client:
-                        response = await client.post("http://localhost/flush_seo_cache", timeout=5, verify=False)
+                    async with httpx.AsyncClient(verify=False) as client:
+                        response = await client.post(nginx_url, timeout=5)
                     logger.info(f"Nginx SEO缓存清理结果: {'成功' if response.status_code == 200 else f'失败,非200状态码: {response.status_code}, 响应: {response.text}'}")
                 except Exception as e:
                     logger.error(f"清理Nginx SEO缓存失败: {str(e)}")
