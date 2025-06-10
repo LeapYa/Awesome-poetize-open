@@ -331,12 +331,6 @@ CREATE TABLE `poetize`.`article_translation` (
   KEY `idx_article_id` (`article_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章翻译内容表';
 
-
-
--- 创建索引提高查询性能
-CREATE INDEX IF NOT EXISTS `idx_last_updated` ON `qwen_session_memory` (`last_updated`);
-CREATE INDEX IF NOT EXISTS `idx_create_time` ON `qwen_session_memory` (`create_time`); 
-
 INSERT INTO `poetize`.`user`(`id`, `username`, `password`, `phone_number`, `email`, `user_status`, `gender`, `open_id`, `admire`, `subscribe`, `avatar`, `introduction`, `user_type`, `update_by`, `deleted`) VALUES (1, 'Sara', '47bce5c74f589f4867dbd57e9ca9f808', '', '', 1, 1, '', '', '', '', '', 0, 'Sara', 0);
 
 INSERT INTO `poetize`.`web_info`(`id`, `web_name`, `web_title`, `notices`, `footer`, `background_image`, `avatar`, `random_avatar`, `random_name`, `random_cover`, `waifu_json`, `status`, `api_enabled`, `api_key`, `nav_config`) VALUES (1, 'Sara', 'POETIZE', '[]', '云想衣裳花想容， 春风拂槛露华浓。', '', '', '[]', '[]', '["/static/assets/backgroundPicture.jpg"]', '{
