@@ -5,7 +5,7 @@
 
 <h3 align="center">POETIZE 最美博客（AGPL 分支 · leapya 维护）</h3>
   <p align="center">
-    博客系统与即时通讯的完美融合，打造个性化内容空间
+    让内容创作与社交体验更美好
     <br />
     <a href="#-功能特性"><strong>探索功能特性 »</strong></a>
     <br />
@@ -21,7 +21,6 @@
    <img src="https://img.shields.io/badge/language-java-%23B07219.svg" alt="Java">
    <img src="https://img.shields.io/badge/language-python-%233572A5.svg" alt="Python">
    <img src="https://img.shields.io/badge/language-dockerfile-%23384D54.svg" alt="Dockerfile">
-   <img src="https://img.shields.io/badge/last%20commit-today-green.svg" alt="Last Commit">
   </p>
 </p>
 
@@ -87,6 +86,13 @@ Poetize是一个将博客系统与即时通讯巧妙融合的内容平台，为�
 wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz && sudo tar -zxvf Awesome-poetize-open.tar.gz && cd Awesome-poetize-open && sudo chmod +x ./deploy.sh && sudo ./deploy.sh
 ```
 
+无需手动配置Docker、编译代码或设置环境变量，脚本会自动处理所有细节，包括:
+
+* Docker环境检测与安装
+* 数据库初始化
+* 服务编排与启动
+* 自动HTTPS配置
+
 ## 📋 部署文档
 
 ### 架构概览
@@ -95,7 +101,7 @@ wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awes
 
 1. 主站前端 (Vue 2)
 2. 聊天室前端 (Vue 3)
-3. Java 后端（Java 11）
+3. Java 后端（Java 21）
 4. Python 后端（Python 3.9+）
 5. 数据库（MariaDB 11，兼容MySQL 5.7）
 6. Nginx 反向代理
@@ -104,90 +110,6 @@ wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awes
 > **注意**: 如需使用MySQL替代MariaDB，请查看本项目的开发指南
 
 ### 部署流程
-
-#### 快速部署方式
-
-```bash
-# 下载
-wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz
-# 解压
-sudo tar -zxvf Awesome-poetize-open.tar.gz
-# 给权限并部署
-cd Awesome-poetize-open && sudo chmod +x ./deploy.sh && sudo ./deploy.sh
-```
-
-无需手动配置Docker、编译代码或设置环境变量，脚本会自动处理所有细节，包括:
-
-* Docker环境检测与安装
-* 数据库初始化
-* 服务编排与启动
-* 自动HTTPS配置
-
-#### Ollama翻译模型配置（可选）
-
-如果你想启用本地AI翻译功能，我们也集成了Ollama模型支持。只需要取消`docker-compose.yml`中的相关注释即可：
-
-```bash
-# 编辑docker-compose.yml文件
-vim docker-compose.yml
-
-# 找到"# Ollama翻译模型服务"部分，取消注释即可启用
-# 模型会自动下载qwen3:0.6b轻量级翻译模型
-```
-
-启用后将提供：
-* 本地化AI翻译服务
-* 无需依赖第三方翻译API
-* 支持中英文互译
-* 模型数据持久化存储
-
-##### 自定义模型配置
-
-如果你不想使用默认的`qwen3:0.6b`模型，可以修改为其他支持的模型：
-
-1. **修改docker-compose.yml**
-   ```yaml
-   # 找到OLLAMA_MODELS环境变量，修改为你想要的模型
-   - OLLAMA_MODELS=deepseek-r1:8b  # 例如改为deepseek-r1:8b
-   ```
-
-2. **修改Dockerfile配置**
-   ```bash
-   # 编辑docker/translation_model/Dockerfile
-   vim docker/translation_model/Dockerfile
-   
-   # 将其中的qwen3:0.6b替换为你想要的模型名称，如deepseek-r1:8b、qwen3:8b等
-   ```
-
-**更多模型选择：**
-
-你可以访问 [Ollama官方模型库](https://ollama.com/library) 查看所有可用的模型，包括：
-* **推理模型**: `deepseek-r1` (1.5b, 7b, 8b, 14b, 32b, 70b, 671b)
-* **通用模型**: `qwen3` (0.6b, 1.7b, 4b, 8b, 14b, 30b, 32b), `llama3.2` (1b, 3b)
-* **代码模型**: `qwen2.5-coder` (0.5b, 1.5b, 3b, 7b, 14b, 32b)
-* **视觉模型**: `llama3.2-vision` (11b, 90b), `qwen2.5vl` (3b, 7b, 32b, 72b)
-
-选择模型时请考虑服务器配置，较大的模型需要更多内存和计算资源。
-
-**量化版本说明：**
-
-Ollama默认提供的是4位量化版本的模型，体积小但精度相对较低。如果需要更高的翻译准确度，可以使用其他量化版本：
-
-```yaml
-# 默认4位量化（体积小，速度快）
-- OLLAMA_MODELS=qwen3:8b
-
-# 8位量化（准确度更高，体积适中）
-- OLLAMA_MODELS=qwen3:8b-q8_0
-
-# 16位量化（最高准确度，体积最大）
-- OLLAMA_MODELS=qwen3:8b-fp16
-```
-
-**量化版本对比：**
-* **4位量化（默认）**: 体积最小，速度最快，适合资源受限环境
-* **8位量化（q8_0）**: 平衡准确度与资源消耗，推荐用于翻译任务
-* **16位量化（fp16）**: 最高准确度，需要充足内存和存储空间
 
 #### 1. 服务器要求
 
@@ -217,10 +139,16 @@ Ollama默认提供的是4位量化版本的模型，体积小但精度相对较�
 
 #### 3. 部署步骤
 
+1. **拉取仓库**
+
+```bash
+wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz && sudo tar -zxvf Awesome-poetize-open.tar.gz && cd Awesome-poetize-open
+```
+
 1. **启动脚本**
 
 ```bash
-./deploy.sh
+chmod +x ./deploy.sh && sudo ./deploy.sh
 ```
 
 3. **配置设置**
@@ -237,6 +165,77 @@ Ollama默认提供的是4位量化版本的模型，体积小但精度相对较�
 * 聊天室：`http(s)://域名/im`
 * 管理后台：`http(s)://域名/login`
 * 默认账号：`Sara / aaa`
+
+
+#### Ollama翻译模型配置（可选）
+
+如果你想启用本地AI翻译功能，我们也集成了Ollama模型支持。只需要取消 `docker-compose.yml`中的相关注释即可：
+
+```bash
+# 编辑docker-compose.yml文件
+vim docker-compose.yml
+
+# 找到"# Ollama翻译模型服务"部分，取消注释即可启用
+# 模型会自动下载qwen3:0.6b轻量级翻译模型
+```
+
+启用后将提供：
+
+* 本地化AI翻译服务
+* 无需依赖第三方翻译API
+* 支持中英文互译
+* 模型数据持久化存储
+
+##### 自定义模型配置
+
+如果你不想使用默认的 `qwen3:0.6b`模型，可以修改为其他支持的模型：
+
+1. **修改docker-compose.yml**
+
+   ```yaml
+   # 找到OLLAMA_MODELS环境变量，修改为你想要的模型
+   - OLLAMA_MODELS=deepseek-r1:8b  # 例如改为deepseek-r1:8b
+   ```
+2. **修改Dockerfile配置**
+
+   ```bash
+   # 编辑docker/translation_model/Dockerfile
+   vim docker/translation_model/Dockerfile
+
+   # 将其中的qwen3:0.6b替换为你想要的模型名称，如deepseek-r1:8b、qwen3:8b等
+   ```
+
+**更多模型选择：**
+
+你可以访问 [Ollama官方模型库](https://ollama.com/library) 查看所有可用的模型，包括：
+
+* **推理模型**: `deepseek-r1` (1.5b, 7b, 8b, 14b, 32b, 70b, 671b)
+* **通用模型**: `qwen3` (0.6b, 1.7b, 4b, 8b, 14b, 30b, 32b), `llama3.2` (1b, 3b)
+* **代码模型**: `qwen2.5-coder` (0.5b, 1.5b, 3b, 7b, 14b, 32b)
+* **视觉模型**: `llama3.2-vision` (11b, 90b), `qwen2.5vl` (3b, 7b, 32b, 72b)
+
+选择模型时请考虑服务器配置，较大的模型需要更多内存和计算资源。
+
+**量化版本说明：**
+
+Ollama默认提供的是4位量化版本的模型，体积小但精度相对较低。如果需要更高的翻译准确度，可以使用其他量化版本：
+
+```yaml
+# 默认4位量化（体积小，速度快）
+- OLLAMA_MODELS=qwen3:8b
+
+# 8位量化（准确度更高，体积适中）
+- OLLAMA_MODELS=qwen3:8b-q8_0
+
+# 16位量化（最高准确度，体积最大）
+- OLLAMA_MODELS=qwen3:8b-fp16
+```
+
+**量化版本对比：**
+
+* **4位量化（默认）**: 体积最小，速度最快，适合资源受限环境
+* **8位量化（q8_0）**: 平衡准确度与资源消耗，推荐用于翻译任务
+* **16位量化（fp16）**: 最高准确度，需要充足内存和存储空间
 
 ### 常用命令
 
@@ -425,7 +424,7 @@ offline/
 ### 环境要求
 
 * **Node.js 14** - 前端开发（其他版本可能不兼容）
-* **JDK 8** - Java后端开发
+* **JDK 21** - Java后端开发
 * **Maven/Gradle** - Java项目构建
 * **Python 3.9+** - Python后端开发
 * **Docker & Compose** - 容器化部署
@@ -723,16 +722,16 @@ Python服务提供以下关键功能：
 ## 🔧 技术栈
 
 * **前端** - Vue2/Vue3、Element UI、Socket.io、Live2D
-* **后端** - Spring Boot、MyBatis Plus、Flask、OAuth2.0
+* **后端** - Spring Boot、MyBatis Plus、Fastapi、OAuth2.0
 * **数据库** - MariaDB 11（兼容MySQL 5.7）
 * **部署** - Docker、Docker Compose、Nginx、Shell脚本
 
 ## 📞 联系方式
 
-* **邮箱** - enable_lazy@qq.com
-* **社交媒体** - [知乎](https://zhihu.com/people/xxx) | [GitHub](https://github.com/xxx)
+* **邮箱** - enable_lazy@qq.com 或 hi@leapya.com
+* **问题反馈** - [GitHub Issues](https://github.com/LeapYa/Awesome-poetize-open/issues)
 
-所有项目贡献者信息请参阅[贡献者](#贡献与许可)部分。
+所有项目贡献者信息请参阅[贡献者](#-贡献与许可)部分。
 
 ### 部署方式
 
