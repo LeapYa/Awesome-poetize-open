@@ -1,4 +1,8 @@
 #!/bin/bash
+## 作者: LeapYa
+## 修改时间: 2025-06-11
+## 描述: 部署 Poetize 博客系统安装脚本
+## 版本: 1.0.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -79,93 +83,101 @@ warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
 
 # 打印部署汇总信息
 print_summary() {
-  echo ""
-  echo -e "${BLUE}=== 部署信息汇总 ===${NC}"
-  echo "主域名: $PRIMARY_DOMAIN"
-  echo "所有域名: ${DOMAINS[*]}"
-  echo "管理员邮箱: $EMAIL"
-  echo ""
+  local https_enabled=false
   
   # 检查HTTPS是否真正启用
-  local https_enabled=false
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    # 检查Nginx是否配置了HTTPS
     if docker exec poetize-nginx nginx -T 2>/dev/null | grep -q "listen.*443.*ssl" && docker exec poetize-nginx test -f "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null; then
       https_enabled=true
     fi
   fi
+
+  echo ""
+  echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}║                            🎉 Poetize 部署成功！                            ║${NC}"
+  echo -e "${BLUE}╠═══════════════════════════════════════════════════════════════════════════════╣${NC}"
+  echo -e "${BLUE}║                                                                               ║${NC}"
+  echo -e "${BLUE}║  📋 基础配置信息                                                              ║${NC}"
+  echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
+  echo -e "${BLUE}║${NC}  🌐 主域名: ${GREEN}$PRIMARY_DOMAIN${NC}"
+  echo -e "${BLUE}║${NC}  🔗 所有域名: ${GREEN}${DOMAINS[*]}${NC}"
+  echo -e "${BLUE}║${NC}  📧 管理员邮箱: ${GREEN}$EMAIL${NC}"
+  echo -e "${BLUE}║                                                                               ║${NC}"
   
-  # 本地环境特殊处理
+  # 本地环境处理
   if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "本地开发环境服务地址:"
-    echo "- 网站首页: http://$PRIMARY_DOMAIN"
-    echo "- 聊天室: http://$PRIMARY_DOMAIN/im"
-    echo ""
-    echo "管理地址:"
-    echo "- 管理员登录: http://$PRIMARY_DOMAIN/admin"
+    echo -e "${BLUE}║  🚀 本地开发环境访问地址                                                      ║${NC}"
+    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
+    echo -e "${BLUE}║${NC}  🏠 网站首页: ${GREEN}http://$PRIMARY_DOMAIN${NC}"
+    echo -e "${BLUE}║${NC}  💬 聊天室: ${GREEN}http://$PRIMARY_DOMAIN/im${NC}"
+    echo -e "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}http://$PRIMARY_DOMAIN/admin${NC}"
   else
-    echo "服务地址:"
+    echo -e "${BLUE}║  🌍 服务访问地址                                                              ║${NC}"
+    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
     if [ "$https_enabled" = true ]; then
-      echo "- 网站首页: https://$PRIMARY_DOMAIN (HTTPS已启用 ✓)"
-      echo "- 聊天室: https://$PRIMARY_DOMAIN/im"
-      echo "- HTTP备用地址: http://$PRIMARY_DOMAIN (会自动重定向到HTTPS)"
+      echo -e "${BLUE}║${NC}  🏠 网站首页: ${GREEN}https://$PRIMARY_DOMAIN${NC} ${GREEN}🔒 HTTPS已启用${NC}"
+      echo -e "${BLUE}║${NC}  💬 聊天室: ${GREEN}https://$PRIMARY_DOMAIN/im${NC}"
+      echo -e "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}https://$PRIMARY_DOMAIN/admin${NC}"
+      echo -e "${BLUE}║${NC}  🔄 HTTP备用: ${YELLOW}http://$PRIMARY_DOMAIN${NC} ${YELLOW}(自动重定向)${NC}"
     else
-      echo "- 网站首页: http://$PRIMARY_DOMAIN"
-      echo "- 聊天室: http://$PRIMARY_DOMAIN/im"
-      echo "- HTTPS状态: 未启用或配置失败"
-    fi
-    echo ""
-    echo "管理地址:"
-    if [ "$https_enabled" = true ]; then
-      echo "- 管理员登录: https://$PRIMARY_DOMAIN/admin"
-    else
-      echo "- 管理员登录: http://$PRIMARY_DOMAIN/admin"
+      echo -e "${BLUE}║${NC}  🏠 网站首页: ${GREEN}http://$PRIMARY_DOMAIN${NC}"
+      echo -e "${BLUE}║${NC}  💬 聊天室: ${GREEN}http://$PRIMARY_DOMAIN/im${NC}"
+      echo -e "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}http://$PRIMARY_DOMAIN/admin${NC}"
+      echo -e "${BLUE}║${NC}  🔒 HTTPS状态: ${RED}未启用${NC}"
     fi
   fi
   
-  # 显示HTTPS配置状态
+  echo -e "${BLUE}║                                                                               ║${NC}"
+  
+  # HTTPS配置状态
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo ""
-    echo "HTTPS配置状态:"
+    echo -e "${BLUE}║  🔐 HTTPS配置状态                                                             ║${NC}"
+    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
     if [ "$https_enabled" = true ]; then
-      success "✓ HTTPS已成功配置并启用"
-      echo "  - SSL证书状态: 有效"
-      echo "  - Nginx HTTPS配置: 已启用"
-      echo "  - 安全连接: 可用"
+      echo -e "${BLUE}║${NC}  ${GREEN}✅ HTTPS已成功配置并启用${NC}"
+      echo -e "${BLUE}║${NC}     📜 SSL证书状态: ${GREEN}有效${NC}"
+      echo -e "${BLUE}║${NC}     🔧 Nginx HTTPS配置: ${GREEN}已启用${NC}"
+      echo -e "${BLUE}║${NC}     🛡️  安全连接: ${GREEN}可用${NC}"
     else
-      warning "✗ HTTPS未正确配置"
-      echo "  如需启用HTTPS，请运行: docker exec poetize-nginx /enable-https.sh"
-      echo "  然后检查域名DNS解析和防火墙配置"
+      echo -e "${BLUE}║${NC}  ${RED}❌ HTTPS未正确配置${NC}"
+      echo -e "${BLUE}║${NC}     💡 启用命令: ${YELLOW}docker exec poetize-nginx /enable-https.sh${NC}"
+      echo -e "${BLUE}║${NC}     📝 请检查域名DNS解析和防火墙配置${NC}"
     fi
+    echo -e "${BLUE}║                                                                               ║${NC}"
   fi
   
-  # 显示数据库凭据信息
+  # 数据库凭据信息
   if [ -f ".config/db_credentials.txt" ]; then
-    echo ""
-    echo "数据库凭据信息："
+    echo -e "${BLUE}║  🗄️  数据库凭据信息                                                           ║${NC}"
+    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
     
-    # 从db_credentials.txt文件中提取ROOT密码和用户密码
     DB_ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     DB_USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     
-    echo "- 数据库ROOT密码: ${DB_ROOT_PASSWORD}"
-    echo "- 数据库poetize用户密码: ${DB_USER_PASSWORD}"
-    echo -e "${YELLOW}注意: 这些是随机生成的密码，请妥善保存。完整信息已保存在 .config/db_credentials.txt 文件中。${NC}"
+    echo -e "${BLUE}║${NC}  🔑 ROOT密码: ${YELLOW}${DB_ROOT_PASSWORD}${NC}"
+    echo -e "${BLUE}║${NC}  👤 poetize用户密码: ${YELLOW}${DB_USER_PASSWORD}${NC}"
+    echo -e "${BLUE}║${NC}  ${YELLOW}⚠️  请妥善保存密码，完整信息在 .config/db_credentials.txt${NC}"
+    echo -e "${BLUE}║                                                                               ║${NC}"
   fi
   
-  echo ""
-  echo "常用命令:"
-  echo "- 查看所有容器: docker ps -a"
-  echo "- 查看容器日志: docker logs poetize-nginx"
-  echo "- 重启容器: $DOCKER_COMPOSE_CMD restart"
-  echo "- 停止服务: $DOCKER_COMPOSE_CMD down"
-  echo "- 启动服务: $DOCKER_COMPOSE_CMD up -d"
+  # 常用命令
+  echo -e "${BLUE}║  🛠️  常用管理命令                                                             ║${NC}"
+  echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
+  echo -e "${BLUE}║${NC}  📊 查看所有容器: ${GREEN}docker ps -a${NC}"
+  echo -e "${BLUE}║${NC}  📋 查看容器日志: ${GREEN}docker logs poetize-nginx${NC}"
+  echo -e "${BLUE}║${NC}  🔄 重启容器: ${GREEN}$DOCKER_COMPOSE_CMD restart${NC}"
+  echo -e "${BLUE}║${NC}  ⏹️  停止服务: ${GREEN}$DOCKER_COMPOSE_CMD down${NC}"
+  echo -e "${BLUE}║${NC}  ▶️  启动服务: ${GREEN}$DOCKER_COMPOSE_CMD up -d${NC}"
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "- 手动启用HTTPS: docker exec poetize-nginx /enable-https.sh"
+    echo -e "${BLUE}║${NC}  🔒 手动启用HTTPS: ${GREEN}docker exec poetize-nginx /enable-https.sh${NC}"
   fi
-  echo ""
-  echo -e "${YELLOW}注意: 初次登录时，默认管理员账号为'Sara'，密码为'aaa'。请登录后立即修改密码！${NC}"
-  echo ""
+  echo -e "${BLUE}║                                                                               ║${NC}"
+  echo -e "${BLUE}║  🔐 登录信息                                                                  ║${NC}"
+  echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
+  echo -e "${BLUE}║${NC}  ${YELLOW}⚠️  默认管理员账号: Sara, 密码: aaa${NC}"
+  echo -e "${BLUE}║${NC}  ${RED}🚨 请登录后立即修改密码以确保安全！${NC}"
+  echo -e "${BLUE}║                                                                               ║${NC}"
+  echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
 # 保存配置到文件
@@ -601,6 +613,500 @@ EOF
   return 1
 }
 
+# 检测是否为国内环境
+is_china_environment() {
+    # 方法1: 检测网络连通性
+    if command -v curl &>/dev/null; then
+        # 检测是否能访问Google（国内通常被屏蔽）
+        if ! curl -s --connect-timeout 3 --max-time 5 "https://www.google.com" >/dev/null 2>&1; then
+            # 无法访问Google，再检测是否能访问国内镜像源
+            if curl -s --connect-timeout 3 --max-time 5 "http://mirrors.aliyun.com" >/dev/null 2>&1; then
+                return 0  # 无法访问Google但能访问阿里云镜像，判断为国内环境
+            fi
+        fi
+    elif command -v ping &>/dev/null; then
+        # 如果没有curl，使用ping检测
+        if ! ping -c 1 -W 3 www.google.com >/dev/null 2>&1; then
+            # 无法ping通Google，再检测国内镜像源
+            if ping -c 1 -W 3 mirrors.aliyun.com >/dev/null 2>&1; then
+                return 0  # 无法ping通Google但能ping通阿里云镜像，判断为国内环境
+            fi
+        fi
+    fi
+
+    # 方法2: 检测IP地址归属
+    local ip_check_result=""
+    if command -v curl &>/dev/null; then
+        # 尝试获取公网IP并检测归属地
+        ip_check_result=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | grep -o '"country":"China"' || echo "")
+        if [[ -n "$ip_check_result" ]]; then
+            return 0  # 是国内环境
+        fi
+    fi
+    
+    # 方法3: 检测时区
+    if [[ -f /etc/timezone ]]; then
+        if grep -q "Asia/Shanghai\|Asia/Chongqing" /etc/timezone; then
+            return 0  # 是国内环境
+        fi
+    fi
+    
+    # 方法4: 检测locale
+    if [[ "$LANG" =~ zh_CN || "$LC_ALL" =~ zh_CN ]]; then
+        return 0  # 是国内环境
+    fi
+    
+    return 1  # 不是国内环境
+}
+
+
+# 检测操作系统类型
+detect_os_type() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        
+        # Ubuntu
+        if [[ "$ID" == "ubuntu" ]]; then
+            echo "ubuntu"
+            return 0
+        fi
+        
+        # Debian
+        if [[ "$ID" == "debian" ]]; then
+            echo "debian"
+            return 0
+        fi
+        
+        # CentOS
+        if [[ "$ID" == "centos" ]]; then
+            if [[ "$VERSION_ID" =~ ^7 ]]; then
+                echo "centos7"
+            else
+                echo "centos8"
+            fi
+            return 0
+        fi
+        
+        # Red Hat
+        if [[ "$ID" == "rhel" ]]; then
+            echo "centos8"  # 使用相同的安装方式
+            return 0
+        fi
+        
+        # Fedora
+        if [[ "$ID" == "fedora" ]]; then
+            echo "centos8"  # 使用相同的安装方式
+            return 0
+        fi
+        
+        # 龙蜥OS
+        if [[ "$ID" == "anolis" ]]; then
+            echo "anolis"
+            return 0
+        fi
+    fi
+    
+    # 兜底检测
+    if command -v apt-get &>/dev/null; then
+        if command -v lsb_release &>/dev/null; then
+            local distro=$(lsb_release -i -s 2>/dev/null | tr '[:upper:]' '[:lower:]')
+            if [[ "$distro" == "ubuntu" ]]; then
+                echo "ubuntu"
+            else
+                echo "debian"
+            fi
+        else
+            echo "debian"
+        fi
+    elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
+        if [ -f /etc/redhat-release ]; then
+            if grep -q "release 7" /etc/redhat-release; then
+                echo "centos7"
+            else
+                echo "centos8"
+            fi
+        else
+            echo "centos8"
+        fi
+    else
+        echo "unknown"
+    fi
+}
+
+# Docker CE 软件源列表 (格式："软件源名称@软件源地址")
+DOCKER_CE_MIRRORS=(
+    "阿里云@mirrors.aliyun.com/docker-ce"
+    "腾讯云@mirrors.tencent.com/docker-ce"
+    "华为云@mirrors.huaweicloud.com/docker-ce"
+    "微软 Azure 中国@mirror.azure.cn/docker-ce"
+    "网易@mirrors.163.com/docker-ce"
+    "清华大学@mirrors.tuna.tsinghua.edu.cn/docker-ce"
+    "中科大@mirrors.ustc.edu.cn/docker-ce"
+    "官方@download.docker.com"
+)
+
+# Docker Registry 仓库列表 (格式："软件源名称@软件源地址")
+DOCKER_REGISTRY_MIRRORS=(
+    "毫秒镜像@docker.1ms.run"
+    "轩辕镜像@docker.xuanyuan.me"
+    "Docker Proxy@dockerproxy.net"
+    "DaoCloud 道客@docker.m.daocloud.io"
+    "阿里云(杭州)@registry.cn-hangzhou.aliyuncs.com"
+    "阿里云(上海)@registry.cn-shanghai.aliyuncs.com"
+    "阿里云(北京)@registry.cn-beijing.aliyuncs.com"
+    "腾讯云@mirror.ccs.tencentyun.com"
+    "官方 Docker Hub@registry.hub.docker.com"
+)
+
+# 选择Docker CE镜像源
+choose_docker_ce_mirror() {
+    if [ -n "$DOCKER_MIRROR_SOURCE" ]; then
+        info "使用预设的Docker CE镜像源: $DOCKER_MIRROR_SOURCE"
+        return 0
+    fi
+
+    info "选择Docker CE镜像源："
+    echo ""
+    
+    local i=1
+    for mirror in "${DOCKER_CE_MIRRORS[@]}"; do
+        local name="${mirror%@*}"
+        local url="${mirror#*@}"
+        printf "  %d) %s (%s)\n" "$i" "$name" "$url"
+        ((i++))
+    done
+    
+    echo ""
+    auto_confirm "请选择镜像源 [1-${#DOCKER_CE_MIRRORS[@]}] (默认选择阿里云): " "1" "-n 1 -r"
+    
+    local choice="$REPLY"
+    if [[ ! "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#DOCKER_CE_MIRRORS[@]}" ]; then
+        warning "无效选择，使用默认阿里云镜像源"
+        choice=1
+    fi
+    
+    local selected_mirror="${DOCKER_CE_MIRRORS[$((choice-1))]}"
+    DOCKER_MIRROR_SOURCE="${selected_mirror#*@}"
+    local mirror_name="${selected_mirror%@*}"
+    
+    info "已选择: $mirror_name ($DOCKER_MIRROR_SOURCE)"
+    echo ""
+}
+
+# 选择Docker Registry镜像仓库
+choose_docker_registry_mirror() {
+    if [ -n "$DOCKER_REGISTRY_SOURCE" ]; then
+        info "使用预设的Docker Registry镜像源: $DOCKER_REGISTRY_SOURCE"
+        return 0
+    fi
+
+    info "选择Docker Registry镜像仓库："
+    echo ""
+    
+    local i=1
+    for mirror in "${DOCKER_REGISTRY_MIRRORS[@]}"; do
+        local name="${mirror%@*}"
+        local url="${mirror#*@}"
+        printf "  %d) %s (%s)\n" "$i" "$name" "$url"
+        ((i++))
+    done
+    
+    echo ""
+    auto_confirm "请选择镜像仓库 [1-${#DOCKER_REGISTRY_MIRRORS[@]}] (默认选择毫秒镜像): " "1" "-n 1 -r"
+    
+    local choice="$REPLY"
+    if [[ ! "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#DOCKER_REGISTRY_MIRRORS[@]}" ]; then
+        warning "无效选择，使用默认毫秒镜像"
+        choice=1
+    fi
+    
+    local selected_mirror="${DOCKER_REGISTRY_MIRRORS[$((choice-1))]}"
+    DOCKER_REGISTRY_SOURCE="${selected_mirror#*@}"
+    local mirror_name="${selected_mirror%@*}"
+    
+    info "已选择: $mirror_name ($DOCKER_REGISTRY_SOURCE)"
+    echo ""
+}
+
+# 配置Docker Registry镜像加速
+configure_docker_registry() {
+    if [ -z "$DOCKER_REGISTRY_SOURCE" ]; then
+        warning "未设置Docker Registry镜像源，跳过配置"
+        return 0
+    fi
+    
+    info "配置Docker Registry镜像加速..."
+    
+    local docker_config_dir="/etc/docker"
+    local docker_config_file="$docker_config_dir/daemon.json"
+    
+    # 创建配置目录
+    sudo mkdir -p "$docker_config_dir"
+    
+    # 备份原配置文件
+    if [ -f "$docker_config_file" ]; then
+        sudo cp "$docker_config_file" "$docker_config_file.bak.$(date +%Y%m%d_%H%M%S)"
+        info "已备份原配置文件"
+    fi
+    
+    # 使用官方Docker Hub时，移除镜像配置
+    if [ "$DOCKER_REGISTRY_SOURCE" = "registry.hub.docker.com" ]; then
+        if [ -f "$docker_config_file" ]; then
+            # 如果存在配置文件，移除registry-mirrors配置
+            if command -v jq &>/dev/null; then
+                sudo jq 'del(.["registry-mirrors"])' "$docker_config_file" > "/tmp/daemon.json.tmp" && \
+                sudo mv "/tmp/daemon.json.tmp" "$docker_config_file"
+            else
+                info "使用官方Docker Hub，如需移除镜像配置请手动编辑 $docker_config_file"
+            fi
+        fi
+        info "已配置使用官方Docker Hub"
+    else
+        # 配置镜像加速
+        local config_content
+        if [ -f "$docker_config_file" ] && [ -s "$docker_config_file" ]; then
+            # 如果配置文件存在且不为空，尝试合并配置
+            if command -v jq &>/dev/null; then
+                config_content=$(sudo jq '.["registry-mirrors"] = ["https://'"$DOCKER_REGISTRY_SOURCE"'"]' "$docker_config_file" 2>/dev/null)
+            fi
+        fi
+        
+        # 如果无法合并或jq不可用，创建新配置
+        if [ -z "$config_content" ]; then
+            config_content='{
+  "registry-mirrors": ["https://'"$DOCKER_REGISTRY_SOURCE"'"]
+}'
+        fi
+        
+        echo "$config_content" | sudo tee "$docker_config_file" > /dev/null
+        info "已配置Docker Registry镜像: https://$DOCKER_REGISTRY_SOURCE"
+    fi
+    
+    # 重启Docker服务使配置生效
+    if systemctl is-active --quiet docker 2>/dev/null; then
+        info "重启Docker服务使配置生效..."
+        sudo systemctl daemon-reload
+        sudo systemctl restart docker
+        
+        if [ $? -eq 0 ]; then
+            success "Docker Registry镜像配置完成"
+        else
+            warning "Docker服务重启失败，请手动重启: sudo systemctl restart docker"
+        fi
+    else
+        info "Docker服务未运行，配置将在下次启动时生效"
+    fi
+}
+
+# 国内环境Debian系统安装Docker
+install_docker_china_debian() {
+    info "在Debian系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
+    
+    # 更新软件包索引
+    sudo apt-get update
+    
+    # 安装必要的软件包
+    sudo apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release
+    
+    # 添加Docker的GPG密钥
+    curl -fsSL "https://$DOCKER_MIRROR_SOURCE/linux/debian/gpg" | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    
+    # 添加Docker软件源
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://$DOCKER_MIRROR_SOURCE/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # 更新软件包索引
+    sudo apt-get update
+    
+    # 安装Docker CE
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    
+    # 启动和启用Docker服务
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    info "Debian Docker安装完成"
+    return 0
+}
+
+# 国内环境Ubuntu系统安装Docker
+install_docker_china_ubuntu() {
+    info "在Ubuntu系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
+    
+    # 更新软件包索引
+    sudo apt-get update
+    
+    # 安装必要的软件包
+    sudo apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release
+    
+    # 添加Docker的GPG密钥
+    curl -fsSL "https://$DOCKER_MIRROR_SOURCE/linux/ubuntu/gpg" | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    
+    # 添加Docker软件源
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://$DOCKER_MIRROR_SOURCE/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # 更新软件包索引
+    sudo apt-get update
+    
+    # 安装Docker CE
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    
+    # 启动和启用Docker服务
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    info "Ubuntu Docker安装完成"
+    return 0
+}
+
+# 国内环境CentOS 7系统安装Docker
+install_docker_china_centos7() {
+    info "在CentOS 7系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
+    
+    # 移除旧版本Docker
+    sudo yum remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
+    
+    # 安装必要的软件包
+    sudo yum install -y yum-utils device-mapper-persistent-data lvm2
+    
+    # 添加Docker软件源
+    sudo yum-config-manager --add-repo "https://$DOCKER_MIRROR_SOURCE/linux/centos/docker-ce.repo"
+    
+    # 安装Docker CE
+    sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    
+    # 启动和启用Docker服务
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    info "CentOS 7 Docker安装完成"
+    return 0
+}
+
+# 国内环境CentOS 8/Fedora/Red Hat系统安装Docker
+install_docker_china_centos8() {
+    info "在CentOS 8/Fedora/Red Hat系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
+    
+    # 移除旧版本Docker
+    sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
+    
+    # 安装必要的软件包
+    sudo dnf install -y dnf-utils device-mapper-persistent-data lvm2
+    
+    # 添加Docker软件源
+    sudo dnf config-manager --add-repo "https://$DOCKER_MIRROR_SOURCE/linux/centos/docker-ce.repo"
+    
+    # 安装Docker CE
+    sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    
+    # 启动和启用Docker服务
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    info "CentOS 8/Fedora/Red Hat Docker安装完成"
+    return 0
+}
+
+# 国内环境Anolis OS系统安装Docker
+install_docker_china_anolis() {
+    info "在Anolis OS系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
+    
+    # 移除旧版本Docker
+    sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
+    
+    # 安装必要的软件包
+    sudo dnf install -y dnf-utils device-mapper-persistent-data lvm2
+    
+    # 添加Docker软件源
+    sudo dnf config-manager --add-repo "https://$DOCKER_MIRROR_SOURCE/linux/centos/docker-ce.repo"
+    
+    # 安装Docker CE
+    sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    
+    # 启动和启用Docker服务
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    info "Anolis OS Docker安装完成"
+    return 0
+}
+
+# 国内环境Docker安装主函数
+install_docker_china() {
+    info "开始在国内环境安装Docker..."
+    
+    # 选择Docker CE镜像源
+    choose_docker_ce_mirror
+    
+    # 选择Docker Registry镜像源
+    choose_docker_registry_mirror
+    
+    # 检测操作系统类型
+    local os_type=$(detect_os_type)
+    info "检测到操作系统类型: $os_type"
+    
+    # 根据操作系统类型安装Docker
+    case "$os_type" in
+        "debian")
+            install_docker_china_debian
+            ;;
+        "ubuntu")
+            install_docker_china_ubuntu
+            ;;
+        "centos7")
+            install_docker_china_centos7
+            ;;
+        "centos8")
+            install_docker_china_centos8
+            ;;
+        "anolis")
+            install_docker_china_anolis
+            ;;
+        *)
+            warning "不支持的操作系统类型: $os_type"
+            return 1
+            ;;
+    esac
+    
+    local install_result=$?
+    if [ $install_result -ne 0 ]; then
+        error "Docker安装失败"
+        return 1
+    fi
+    
+    # 配置Docker Registry镜像加速
+    configure_docker_registry
+    
+    # 如果不是WSL环境，添加用户到docker组
+    if ! is_wsl; then
+        local current_user=$(whoami)
+        if [ "$current_user" != "root" ]; then
+            info "将用户 $current_user 添加到 docker 组..."
+            sudo usermod -aG docker "$current_user"
+            info "请重新登录或执行 'newgrp docker' 以使权限生效"
+        fi
+    fi
+    
+    # 验证Docker安装
+    if command -v docker &>/dev/null; then
+        success "Docker安装成功！"
+        docker --version
+        return 0
+    else
+        error "Docker安装验证失败"
+        return 1
+    fi
+}
+
 # Docker安装函数
 install_docker() {
     info "安装Docker..."
@@ -644,36 +1150,27 @@ install_docker() {
         fi
     fi
     
-    # 检查是否为龙蜥OS(Anolis)
-    if [ -f "/etc/os-release" ] && grep -q "anolis" /etc/os-release; then
-        info "检测到龙蜥操作系统(Anolis OS)，使用专用安装方法..."
-        install_docker_anolis || {
-            # 即使龙蜥OS安装失败，也再次检查Docker是否可用
-            if command -v docker &>/dev/null; then
-                info "检测到Docker命令可用，继续执行..."
-                success "Docker安装成功"
-                return 0
-            fi
-        }
+    # 检查是否为国内环境
+    if is_china_environment; then
+        info "检测到国内环境，使用国内镜像源安装Docker..."
+        install_docker_china
     else
-    # 使用官方安装脚本
-    info "使用官方安装脚本..."
-    
-    # 先尝试使用官方脚本
-    if curl -fsSL https://get.docker.com -o get-docker.sh; then
-        # 执行安装脚本
-            if ! sh get-docker.sh; then
-            warning "Docker官方脚本安装失败，尝试使用包管理器安装..."
-            install_docker_from_package_manager
-            fi
-    else
-        warning "下载Docker安装脚本失败，尝试使用包管理器安装..."
-        install_docker_from_package_manager
-        fi
+      # 使用官方安装脚本
+      info "使用官方安装脚本..."
+      
+      # 先尝试使用官方脚本
+      if curl -fsSL https://get.docker.com -o get-docker.sh; then
+          # 执行安装脚本
+          if ! sh get-docker.sh; then
+              error "Docker官方脚本安装失败，当前系统可能不支持Docker"
+              error "请检查系统版本和架构，或手动安装Docker"
+              return 1
+          fi
+      else
+          warning "无法下载Docker官方安装脚本，将回退到国内镜像源安装Docker"
+          install_docker_china
+      fi
     fi
-    
-    # 检查是否需要设置podman别名
-    setup_podman_alias
     
     # 删除安装脚本
     rm -f get-docker.sh
@@ -693,1265 +1190,6 @@ install_docker() {
     fi
 }
 
-# 在龙蜥OS上安装Docker
-install_docker_anolis() {
-  info "为龙蜥OS(Anolis)安装Docker..."
-  
-  # 检查是否有dnf命令
-  if command -v dnf &>/dev/null; then
-    info "使用dnf作为龙蜥OS的包管理器"
-    
-    # 安装依赖包
-    sudo dnf install -y dnf-plugins-core device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-    
-    # 第一种方法：尝试直接安装系统内置的Docker
-    info "尝试从系统仓库安装Docker..."
-    if sudo dnf install -y docker; then
-      # 启动docker服务
-      sudo systemctl start docker || warning "启动Docker服务失败，可能没有docker服务单元文件"
-      sudo systemctl enable docker 2>/dev/null || true
-      
-      # 验证docker是否可用
-      if docker info &>/dev/null; then
-        info "从系统仓库成功安装Docker并验证可用"
-        return 0
-      else
-        warning "Docker已安装但无法启动，尝试其他安装方法..."
-      fi
-    fi
-    
-    # 第二种方法：使用阿里云Docker CE仓库
-    info "系统仓库安装Docker失败，尝试使用阿里云Docker CE仓库..."
-    
-    # 添加Docker CE仓库
-    sudo dnf config-manager --add-repo=https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo || warning "添加阿里云Docker仓库失败"
-    
-    # 修改仓库配置以适配龙蜥OS
-    sudo_sed_i 's/\$releasever/8/g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库配置失败"
-    
-    # 安装Docker CE
-    if sudo dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io; then
-      sudo systemctl start docker
-      sudo systemctl enable docker
-      
-      # 验证docker是否可用
-      if docker info &>/dev/null; then
-        info "使用阿里云仓库成功安装Docker CE并验证可用"
-        return 0
-      else
-        warning "Docker CE已安装但无法启动，尝试其他安装方法..."
-      fi
-    fi
-    
-    # 第三种方法：使用podman作为替代品
-    warning "Docker CE安装失败或无法启动，尝试使用podman作为替代方案..."
-    if sudo dnf install -y podman podman-docker; then
-      info "Podman安装成功，配置podman作为docker的替代品"
-      
-      # 创建docker别名 - 系统级
-      echo 'alias docker=podman' | sudo tee /etc/profile.d/podman-docker.sh
-      sudo chmod +x /etc/profile.d/podman-docker.sh
-      
-      # 当前用户 .bashrc
-      if [ -f "$HOME/.bashrc" ]; then
-        grep -q "alias docker=podman" "$HOME/.bashrc" || echo 'alias docker=podman' >> "$HOME/.bashrc"
-      fi
-      
-      # 当前会话中立即设置别名
-      alias docker=podman
-      export PATH="/usr/bin:$PATH"  # 确保路径中包含podman
-      
-      info "已将podman配置为docker的替代品"
-      
-      # 验证podman是否正常工作
-      if podman --version &>/dev/null; then
-        info "Podman安装验证成功，版本: $(podman --version)"
-        info "使用以下命令在当前会话中使docker别名生效: source /etc/profile.d/podman-docker.sh"
-        
-        # 立即检查别名是否工作
-        if docker --version &>/dev/null; then
-          success "Docker别名已成功设置，当前会话中可用"
-        else
-          warning "Docker别名未能在当前会话中生效，请手动运行: alias docker=podman"
-        fi
-        
-        return 0
-      else
-        warning "Podman安装后无法运行，继续尝试其他方法..."
-      fi
-    fi
-    
-    error "在龙蜥OS上安装Docker或podman失败"
-    return 1
-  elif command -v yum &>/dev/null; then
-    info "使用yum作为龙蜥OS的包管理器"
-    
-    # 安装依赖
-    sudo yum install -y yum-utils device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-    
-    # 尝试直接安装系统内置的Docker
-    info "尝试从系统仓库安装Docker..."
-    if sudo yum install -y docker; then
-      # 启动docker服务
-      sudo systemctl start docker || warning "启动Docker服务失败，可能没有docker服务单元文件"
-      sudo systemctl enable docker 2>/dev/null || true
-      
-      # 验证docker是否可用
-      if docker info &>/dev/null; then
-        info "从系统仓库成功安装Docker并验证可用"
-        return 0
-      else
-        warning "Docker已安装但无法启动，尝试其他安装方法..."
-      fi
-    fi
-    
-    # 使用阿里云Docker CE仓库
-    info "系统仓库安装Docker失败，尝试使用阿里云Docker CE仓库..."
-    
-    # 添加Docker CE仓库
-    sudo yum-config-manager --add-repo=https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo || warning "添加阿里云Docker仓库失败"
-    
-    # 修改仓库配置以适配龙蜥OS
-    sudo_sed_i 's/\$releasever/8/g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库配置失败"
-    
-    # 安装Docker CE
-    if sudo yum install -y --allowerasing docker-ce docker-ce-cli containerd.io; then
-      sudo systemctl start docker
-      sudo systemctl enable docker
-      
-      # 验证docker是否可用
-      if docker info &>/dev/null; then
-        info "使用阿里云仓库成功安装Docker CE并验证可用"
-        return 0
-      else
-        warning "Docker CE已安装但无法启动，尝试其他安装方法..."
-      fi
-    fi
-    
-    # 尝试使用podman作为替代品
-    warning "Docker CE安装失败或无法启动，尝试使用podman作为替代方案..."
-    if sudo yum install -y podman podman-docker; then
-      info "Podman安装成功，配置podman作为docker的替代品"
-      
-      # 创建docker别名 - 系统级
-      echo 'alias docker=podman' | sudo tee /etc/profile.d/podman-docker.sh
-      sudo chmod +x /etc/profile.d/podman-docker.sh
-      
-      # 当前用户 .bashrc
-      if [ -f "$HOME/.bashrc" ]; then
-        grep -q "alias docker=podman" "$HOME/.bashrc" || echo 'alias docker=podman' >> "$HOME/.bashrc"
-      fi
-      
-      # 当前会话中立即设置别名
-      alias docker=podman
-      export PATH="/usr/bin:$PATH"  # 确保路径中包含podman
-      
-      info "已将podman配置为docker的替代品"
-      
-      # 验证podman是否正常工作
-      if podman --version &>/dev/null; then
-        info "Podman安装验证成功，版本: $(podman --version)"
-        info "使用以下命令在当前会话中使docker别名生效: source /etc/profile.d/podman-docker.sh"
-        
-        # 立即检查别名是否工作
-        if docker --version &>/dev/null; then
-          success "Docker别名已成功设置，当前会话中可用"
-        else
-          warning "Docker别名未能在当前会话中生效，请手动运行: alias docker=podman"
-        fi
-        
-        return 0
-      else
-        warning "Podman安装后无法运行，继续尝试其他方法..."
-      fi
-    fi
-    
-    error "在龙蜥OS上安装Docker或podman失败"
-    return 1
-  else
-    error "龙蜥OS缺少dnf和yum包管理器，无法安装Docker"
-    return 1
-  fi
-}
-
-# 检查是否需要设置podman作为docker别名
-setup_podman_alias() {
-  if ! command -v docker &>/dev/null && command -v podman &>/dev/null; then
-    info "系统中没有Docker但找到了Podman，设置Docker别名..."
-    
-    # 创建docker别名 - 系统级
-    echo 'alias docker=podman' | sudo tee /etc/profile.d/podman-docker.sh
-    sudo chmod +x /etc/profile.d/podman-docker.sh
-    
-    # 当前用户 .bashrc
-    if [ -f "$HOME/.bashrc" ]; then
-      grep -q "alias docker=podman" "$HOME/.bashrc" || echo 'alias docker=podman' >> "$HOME/.bashrc"
-    fi
-    
-    # 当前会话中立即设置别名
-    alias docker=podman
-    
-    # 验证是否生效
-    if docker --version &>/dev/null; then
-      success "已将podman配置为docker的替代品，当前会话中可用"
-    else
-      warning "Docker别名未能立即生效，请手动运行: alias docker=podman"
-    fi
-  fi
-}
-
-# 使用包管理器安装Docker
-install_docker_from_package_manager() {
-    info "使用包管理器安装Docker..."
-    
-    # 检查系统类型并安装Docker
-    if command -v apt-get &>/dev/null; then
-        # Debian/Ubuntu系统
-        info "检测到Debian/Ubuntu系统，使用apt安装Docker..."
-        
-        # 安装依赖包
-        if command -v sudo &>/dev/null; then
-            sudo apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-            sudo apt-get install -y apt-transport-https ca-certificates gnupg lsb-release || warning "安装依赖包失败，继续尝试安装Docker..."
-            
-            # 添加Docker GPG密钥
-            if [ -x "$(command -v curl)" ]; then
-                curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg || warning "添加Docker GPG密钥失败，继续尝试安装..."
-            elif [ -x "$(command -v wget)" ]; then
-                wget -q -O - https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg || warning "添加Docker GPG密钥失败，继续尝试安装..."
-            fi
-            
-            # 添加Docker仓库
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null || warning "添加Docker仓库失败，继续尝试安装..."
-            
-            # 更新包索引
-            sudo apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-            
-            # 安装Docker
-            sudo apt-get install -y docker-ce docker-ce-cli containerd.io || {
-                warning "Docker官方仓库安装失败，尝试使用系统仓库安装..."
-                sudo apt-get install -y docker.io || {
-                    error "Docker安装失败"
-                    return 1
-                }
-            }
-        else
-            apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-            apt-get install -y apt-transport-https ca-certificates gnupg lsb-release || warning "安装依赖包失败，继续尝试安装Docker..."
-            
-            # 添加Docker GPG密钥
-            if [ -x "$(command -v curl)" ]; then
-                curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg || warning "添加Docker GPG密钥失败，继续尝试安装..."
-            elif [ -x "$(command -v wget)" ]; then
-                wget -q -O - https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg || warning "添加Docker GPG密钥失败，继续尝试安装..."
-            fi
-            
-            # 添加Docker仓库
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null || warning "添加Docker仓库失败，继续尝试安装..."
-            
-            # 更新包索引
-            apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-            
-            # 安装Docker
-            apt-get install -y docker-ce docker-ce-cli containerd.io || {
-                warning "Docker官方仓库安装失败，尝试使用系统仓库安装..."
-                apt-get install -y docker.io || {
-                    error "Docker安装失败"
-                    return 1
-                }
-            }
-        fi
-    elif command -v yum &>/dev/null; then
-        # RHEL/CentOS/AlmaLinux/Alibaba Cloud Linux系统
-        info "检测到RHEL/CentOS系统，使用yum安装Docker..."
-        
-        # 检查是否为CentOS 6，此版本已不被Docker CE支持
-        if grep -q "CentOS release 6" /etc/redhat-release || grep -q "CentOS Linux release 6" /etc/redhat-release; then
-            info "检测到CentOS 6系统，Docker CE已不支持此版本，尝试安装兼容版本..."
-            
-            if command -v sudo &>/dev/null; then
-                # 禁用Docker CE仓库以防止干扰
-                if [ -f "/etc/yum.repos.d/docker-ce.repo" ]; then
-                    info "禁用不兼容的Docker CE仓库..."
-                    sudo_sed_i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/docker-ce.repo || warning "禁用Docker CE仓库失败"
-                fi
-                
-                # 安装EPEL仓库 - 使用CentOS 6专用URL
-                info "安装EPEL仓库..."
-                sudo rpm -Uvh https://archives.fedoraproject.org/pub/archive/epel/6/x86_64/epel-release-6-8.noarch.rpm || warning "安装EPEL仓库失败，尝试继续安装Docker"
-                
-                # 尝试使用RPM直接安装Docker
-                info "尝试直接安装Docker..."
-                
-                # 方法1: 使用CentOS EPEL仓库
-                sudo yum install -y docker-io && {
-                    info "成功从EPEL仓库安装docker-io"
-                    sudo service docker start || warning "启动Docker服务失败"
-                    sudo chkconfig docker on || warning "设置Docker服务开机启动失败"
-                    success "成功安装CentOS 6兼容的Docker版本!"
-                    return 0
-                }
-                
-                # 方法2: 使用系统仓库的docker包
-                warning "docker-io安装失败，尝试安装系统docker包..."
-                sudo yum install -y docker && {
-                    info "成功从系统仓库安装docker"
-                    sudo service docker start || warning "启动Docker服务失败"
-                    sudo chkconfig docker on || warning "设置Docker服务开机启动失败"
-                    success "成功安装CentOS 6兼容的Docker版本!"
-                    return 0
-                }
-                
-                # 方法3: 直接下载Docker RPM包安装
-                warning "系统仓库docker安装失败，尝试直接下载RPM包安装..."
-                tmp_dir=$(mktemp -d)
-                cd $tmp_dir
-                
-                info "下载Docker RPM包..."
-                if ! curl -L -o docker-io.rpm http://mirror.centos.org/centos/6/extras/x86_64/Packages/docker-io-1.7.1-2.el6.x86_64.rpm; then
-                    warning "下载Docker RPM包失败，尝试备用链接..."
-                    if ! curl -L -o docker-io.rpm https://vault.centos.org/6.10/extras/x86_64/Packages/docker-io-1.7.1-2.el6.x86_64.rpm; then
-                        error "无法下载Docker RPM包"
-                        cd - > /dev/null
-                        rm -rf $tmp_dir
-                        return 1
-                    fi
-                fi
-                
-                info "安装Docker RPM包..."
-                sudo rpm -ivh docker-io.rpm && {
-                    info "成功从RPM包安装docker-io"
-                    cd - > /dev/null
-                    rm -rf $tmp_dir
-                    sudo service docker start || warning "启动Docker服务失败"
-                    sudo chkconfig docker on || warning "设置Docker服务开机启动失败"
-                    success "成功安装CentOS 6兼容的Docker版本!"
-                    return 0
-                }
-                
-                cd - > /dev/null
-                rm -rf $tmp_dir
-                error "所有Docker安装方法都失败，CentOS 6版本可能无法安装Docker"
-                warning "建议升级至CentOS 7或更高版本"
-                return 1
-            else
-                # 禁用Docker CE仓库以防止干扰
-                if [ -f "/etc/yum.repos.d/docker-ce.repo" ]; then
-                    info "禁用不兼容的Docker CE仓库..."
-                    sed_i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/docker-ce.repo || warning "禁用Docker CE仓库失败"
-                fi
-                
-                # 安装EPEL仓库 - 使用CentOS 6专用URL
-                info "安装EPEL仓库..."
-                rpm -Uvh https://archives.fedoraproject.org/pub/archive/epel/6/x86_64/epel-release-6-8.noarch.rpm || warning "安装EPEL仓库失败，尝试继续安装Docker"
-                
-                # 尝试使用RPM直接安装Docker
-                info "尝试直接安装Docker..."
-                
-                # 方法1: 使用CentOS EPEL仓库
-                yum install -y docker-io && {
-                    info "成功从EPEL仓库安装docker-io"
-                    service docker start || warning "启动Docker服务失败"
-                    chkconfig docker on || warning "设置Docker服务开机启动失败"
-                    success "成功安装CentOS 6兼容的Docker版本!"
-                    return 0
-                }
-                
-                # 方法2: 使用系统仓库的docker包
-                warning "docker-io安装失败，尝试安装系统docker包..."
-                yum install -y docker && {
-                    info "成功从系统仓库安装docker"
-                    service docker start || warning "启动Docker服务失败"
-                    chkconfig docker on || warning "设置Docker服务开机启动失败"
-                    success "成功安装CentOS 6兼容的Docker版本!"
-                    return 0
-                }
-                
-                # 方法3: 直接下载Docker RPM包安装
-                warning "系统仓库docker安装失败，尝试直接下载RPM包安装..."
-                tmp_dir=$(mktemp -d)
-                cd $tmp_dir
-                
-                info "下载Docker RPM包..."
-                if ! curl -L -o docker-io.rpm http://mirror.centos.org/centos/6/extras/x86_64/Packages/docker-io-1.7.1-2.el6.x86_64.rpm; then
-                    warning "下载Docker RPM包失败，尝试备用链接..."
-                    if ! curl -L -o docker-io.rpm https://vault.centos.org/6.10/extras/x86_64/Packages/docker-io-1.7.1-2.el6.x86_64.rpm; then
-                        error "无法下载Docker RPM包"
-                        cd - > /dev/null
-                        rm -rf $tmp_dir
-                        return 1
-                    fi
-                fi
-                
-                info "安装Docker RPM包..."
-                rpm -ivh docker-io.rpm && {
-                    info "成功从RPM包安装docker-io"
-                    cd - > /dev/null
-                    rm -rf $tmp_dir
-                    service docker start || warning "启动Docker服务失败"
-                    chkconfig docker on || warning "设置Docker服务开机启动失败"
-                    success "成功安装CentOS 6兼容的Docker版本!"
-                    return 0
-                }
-                
-                cd - > /dev/null
-                rm -rf $tmp_dir
-                error "所有Docker安装方法都失败，CentOS 6版本可能无法安装Docker"
-                warning "建议升级至CentOS 7或更高版本"
-                return 1
-            fi
-        fi
-        
-        # 检查是否为Alibaba Cloud Linux
-        if grep -q "Alibaba Cloud Linux" /etc/os-release || grep -q "Aliyun Linux" /etc/os-release || grep -q "alinux" /etc/os-release; then
-            info "检测到Alibaba Cloud Linux系统，使用阿里云源安装Docker..."
-            
-            if command -v sudo &>/dev/null; then
-                # 安装依赖包
-                sudo yum install -y yum-utils device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-                
-                # 配置阿里云Docker镜像源
-                info "配置阿里云Docker镜像源..."
-                # 如果仓库文件不存在则创建
-                sudo tee /etc/yum.repos.d/docker-ce.repo > /dev/null << 'EOF'
-[docker-ce-stable]
-name=Docker CE Stable - $basearch
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/7/$basearch/stable
-enabled=1
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-EOF
-                
-                # 清理缓存
-                sudo yum clean all
-                sudo yum makecache fast || warning "更新仓库缓存失败，继续尝试安装..."
-                
-                # 安装Docker
-                sudo yum install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                    warning "Docker CE安装失败，尝试安装系统内置的docker..."
-                    sudo yum install -y docker && {
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
-                        success "成功从系统仓库安装Docker!"
-                        return 0
-                    } || {
-                        error "Docker安装失败"
-                        return 1
-                    }
-                }
-                
-                # 启动Docker服务
-                sudo systemctl start docker
-                sudo systemctl enable docker
-                success "成功从阿里云镜像源安装Docker!"
-                return 0
-            else
-                # 安装依赖包
-                yum install -y yum-utils device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-                
-                # 配置阿里云Docker镜像源
-                info "配置阿里云Docker镜像源..."
-                # 如果仓库文件不存在则创建
-                tee /etc/yum.repos.d/docker-ce.repo > /dev/null << 'EOF'
-[docker-ce-stable]
-name=Docker CE Stable - $basearch
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/7/$basearch/stable
-enabled=1
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-EOF
-                
-                # 清理缓存
-                yum clean all
-                yum makecache fast || warning "更新仓库缓存失败，继续尝试安装..."
-                
-                # 安装Docker
-                yum install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                    warning "Docker CE安装失败，尝试使用系统仓库安装..."
-                    sudo yum install -y docker && {
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
-                        success "成功从系统仓库安装Docker!"
-                        return 0
-                    } || {
-                        error "Docker安装失败"
-                        return 1
-                    }
-                }
-                
-                # 启动Docker服务
-                systemctl start docker
-                systemctl enable docker
-                success "成功从阿里云镜像源安装Docker!"
-                return 0
-            fi
-        fi
-        
-        # 检查是否为AlmaLinux
-        if [ -f "/etc/almalinux-release" ] || grep -q "AlmaLinux" /etc/os-release; then
-            info "检测到AlmaLinux系统，使用适配的安装方式..."
-            
-            # 检查是否有dnf命令（AlmaLinux 8+优先使用dnf）
-            if command -v dnf &>/dev/null; then
-                info "使用dnf作为AlmaLinux的包管理器"
-                
-                # 添加备选方案函数
-                setup_container_engine() {
-                    info "配置容器引擎..."
-                    
-                    # 先尝试安装podman
-                    info "尝试安装Podman作为容器引擎..."
-                    if command -v sudo &>/dev/null; then
-                        sudo dnf install -y podman podman-docker container-selinux || warning "Podman安装失败，尝试其他方法..."
-                    else
-                        dnf install -y podman podman-docker container-selinux || warning "Podman安装失败，尝试其他方法..."
-                    fi
-                    
-                    # 检查podman是否安装成功
-                    if command -v podman &>/dev/null; then
-                        info "Podman安装成功，配置Docker兼容层..."
-                        # 创建docker命令的别名
-                        if command -v sudo &>/dev/null; then
-                            echo 'alias docker=podman' | sudo tee -a /etc/profile.d/podman-docker.sh
-                            sudo chmod +x /etc/profile.d/podman-docker.sh
-                        else
-                            echo 'alias docker=podman' | tee -a /etc/profile.d/podman-docker.sh
-                            chmod +x /etc/profile.d/podman-docker.sh
-                        fi
-                        
-                        # 应用别名
-                        source /etc/profile.d/podman-docker.sh
-                        export PATH="/usr/bin:$PATH"  # 确保路径中包含podman
-                        
-                        info "podman已配置为docker的替代品"
-                        return 0
-                    fi
-                    
-                    # 如果podman安装失败，尝试系统自带的docker
-                    info "尝试从系统仓库安装Docker..."
-                    if command -v sudo &>/dev/null; then
-                        sudo dnf install -y docker || warning "系统Docker安装失败..."
-                    else
-                        dnf install -y docker || warning "系统Docker安装失败..."
-                    fi
-                    
-                    # 检查docker是否安装成功
-                    if command -v docker &>/dev/null; then
-                        info "系统Docker安装成功"
-                        if command -v sudo &>/dev/null; then
-                            sudo systemctl start docker || warning "启动Docker服务失败"
-                            sudo systemctl enable docker || warning "设置Docker服务开机启动失败"
-                        else
-                            systemctl start docker || warning "启动Docker服务失败"
-                            systemctl enable docker || warning "设置Docker服务开机启动失败"
-                        fi
-                        return 0
-                    fi
-                    
-                    # 如果以上全部失败，返回错误
-                    error "无法安装任何容器引擎"
-                    return 1
-                }
-                
-                if command -v sudo &>/dev/null; then
-                    # 安装依赖包
-                    sudo dnf install -y dnf-plugins-core device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-                    
-                    # 直接尝试安装系统自带的Docker
-                    info "尝试直接从AlmaLinux AppStream安装Docker..."
-                    sudo dnf install -y docker && {
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
-                        success "成功从系统仓库安装Docker!"
-                        return 0
-                    }
-                    
-                    warning "从系统仓库安装Docker失败，尝试配置Docker CE仓库"
-                    
-                    # 添加Docker CE仓库
-                    sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || warning "添加Docker仓库失败"
-                    
-                    # 修改仓库配置以适配AlmaLinux
-                    sudo_sed_i 's/\$releasever/8/g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库配置失败"
-                    
-                    # 尝试处理SSL错误
-                    if [ -f "/etc/yum.repos.d/docker-ce.repo" ]; then
-                        info "尝试修改仓库URL以处理SSL问题..."
-                        # 尝试将https改为http以避免SSL问题
-                        sudo_sed_i 's|https://download.docker.com|http://download.docker.com|g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库URL失败"
-                        
-                        # 尝试添加国内镜像源
-                        info "尝试添加国内Docker镜像源..."
-                        # 备份原始文件
-                        sudo cp /etc/yum.repos.d/docker-ce.repo /etc/yum.repos.d/docker-ce.repo.bak || warning "备份仓库文件失败"
-                        
-                        # 修改为阿里云镜像
-                        sudo tee /etc/yum.repos.d/docker-ce.repo > /dev/null << 'EOF'
-[docker-ce-stable]
-name=Docker CE Stable - $basearch
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/8/$basearch/stable
-enabled=1
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-
-[docker-ce-stable-debuginfo]
-name=Docker CE Stable - Debuginfo $basearch
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/8/$basearch/debug-stable
-enabled=0
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-
-[docker-ce-stable-source]
-name=Docker CE Stable - Sources
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/8/source/stable
-enabled=0
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-EOF
-                    fi
-                    
-                    # 清理和更新缓存
-                    sudo dnf clean all
-                    sudo dnf makecache
-                    
-                    # 安装Docker
-                    sudo dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io && {
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
-                        success "成功安装Docker CE!"
-                        return 0
-                    } || {
-                        warning "Docker CE安装失败，尝试使用替代方案"
-                        setup_container_engine
-                    }
-                else
-                    # 安装依赖包
-                    dnf install -y dnf-plugins-core device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-                    
-                    # 直接尝试安装系统自带的Docker
-                    info "尝试直接从AlmaLinux AppStream安装Docker..."
-                    dnf install -y docker && {
-                        systemctl start docker
-                        systemctl enable docker
-                        success "成功从系统仓库安装Docker!"
-                        return 0
-                    }
-                    
-                    warning "从系统仓库安装Docker失败，尝试配置Docker CE仓库"
-                    
-                    # 添加Docker CE仓库
-                    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || warning "添加Docker仓库失败"
-                    
-                    # 修改仓库配置以适配AlmaLinux
-                    sed_i 's/\$releasever/8/g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库配置失败"
-                    
-                    # 尝试处理SSL错误
-                    if [ -f "/etc/yum.repos.d/docker-ce.repo" ]; then
-                        info "尝试修改仓库URL以处理SSL问题..."
-                        # 尝试将https改为http以避免SSL问题
-                        sed_i 's|https://download.docker.com|http://download.docker.com|g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库URL失败"
-                        
-                        # 尝试添加国内镜像源
-                        info "尝试添加国内Docker镜像源..."
-                        # 备份原始文件
-                        cp /etc/yum.repos.d/docker-ce.repo /etc/yum.repos.d/docker-ce.repo.bak || warning "备份仓库文件失败"
-                        
-                        # 修改为阿里云镜像
-                        tee /etc/yum.repos.d/docker-ce.repo > /dev/null << 'EOF'
-[docker-ce-stable]
-name=Docker CE Stable - $basearch
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/8/$basearch/stable
-enabled=1
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-
-[docker-ce-stable-debuginfo]
-name=Docker CE Stable - Debuginfo $basearch
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/8/$basearch/debug-stable
-enabled=0
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-
-[docker-ce-stable-source]
-name=Docker CE Stable - Sources
-baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/8/source/stable
-enabled=0
-gpgcheck=1
-gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
-EOF
-                    fi
-                    
-                    # 清理和更新缓存
-                    dnf clean all
-                    dnf makecache
-                    
-                    # 安装Docker
-                    dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io && {
-                        systemctl start docker
-                        systemctl enable docker
-                        success "成功安装Docker CE!"
-                        return 0
-                    } || {
-                        warning "Docker CE安装失败，尝试使用替代方案"
-                        setup_container_engine
-                    }
-                fi
-            # 回退到yum命令（如果dnf不可用）
-            elif command -v yum &>/dev/null; then
-                info "回退使用yum作为AlmaLinux的包管理器"
-                
-                if command -v sudo &>/dev/null; then
-                    # 安装依赖包
-                    sudo yum install -y yum-utils device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-                    
-                    # 直接安装Docker CE
-                    info "尝试直接从AlmaLinux AppStream安装Docker..."
-                    sudo yum install -y docker || {
-                        warning "从系统仓库安装Docker失败，尝试配置Docker CE仓库"
-                        
-                        # 使用CentOS 8的仓库
-                        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || warning "添加Docker仓库失败"
-                        
-                        # 修改仓库配置以适配AlmaLinux
-                        sed_i 's/\$releasever/8/g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库配置失败"
-                        
-                        # 尝试处理SSL错误
-                        if [ -f "/etc/yum.repos.d/docker-ce.repo" ]; then
-                            info "尝试修改仓库URL以处理SSL问题..."
-                            # 尝试将https改为http以避免SSL问题
-                            sed_i 's|https://download.docker.com|http://download.docker.com|g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库URL失败"
-                        fi
-                        
-                        # 安装Docker
-                        sudo yum install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                            warning "Docker CE安装失败，尝试使用podman作为替代方案"
-                            
-                            # 安装podman
-                            info "安装podman容器引擎..."
-                            sudo dnf install -y podman podman-docker || {
-                                # 尝试安装系统内置的docker包
-                                warning "Podman安装失败，尝试安装系统内置的docker包"
-                                sudo dnf install -y docker || {
-                                    # 尝试使用系统自带的容器工具
-                                    warning "系统docker包安装失败，检查是否已有容器工具"
-                                    if command -v podman &>/dev/null; then
-                                        info "系统已有podman，配置docker兼容性..."
-                                        # 创建docker命令的别名
-                                        echo 'alias docker=podman' | sudo tee -a /etc/profile.d/podman-docker.sh
-                                        sudo chmod +x /etc/profile.d/podman-docker.sh
-                                        source /etc/profile.d/podman-docker.sh
-                                        info "已将podman配置为docker的替代品"
-                                    else
-                                        error "所有Docker安装方式都失败，无法继续部署"
-                                        return 1
-                                    fi
-                                }
-                            }
-                        }
-                    }
-                    
-                    # 启动Docker服务
-                    sudo systemctl start docker || warning "启动Docker服务失败"
-                    sudo systemctl enable docker || warning "设置Docker服务开机启动失败"
-                else
-                    # 安装依赖包
-                    yum install -y yum-utils device-mapper-persistent-data lvm2 || warning "安装依赖包失败，继续尝试安装Docker..."
-                    
-                    # 直接安装Docker CE
-                    info "尝试直接从AlmaLinux AppStream安装Docker..."
-                    yum install -y docker || {
-                        warning "从系统仓库安装Docker失败，尝试配置Docker CE仓库"
-                        
-                        # 使用CentOS 8的仓库
-                        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || warning "添加Docker仓库失败"
-                        
-                        # 修改仓库配置以适配AlmaLinux
-                        sed_i 's/\$releasever/8/g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库配置失败"
-                        
-                        # 尝试处理SSL错误
-                        if [ -f "/etc/yum.repos.d/docker-ce.repo" ]; then
-                            info "尝试修改仓库URL以处理SSL问题..."
-                            # 尝试将https改为http以避免SSL问题
-                            sed_i 's|https://download.docker.com|http://download.docker.com|g' /etc/yum.repos.d/docker-ce.repo || warning "修改仓库URL失败"
-                        fi
-                        
-                        # 安装Docker
-                        yum install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                            warning "Docker CE安装失败，尝试使用podman作为替代方案"
-                            
-                            # 安装podman
-                            info "安装podman容器引擎..."
-                            sudo dnf install -y podman podman-docker || {
-                                # 尝试安装系统内置的docker包
-                                warning "Podman安装失败，尝试安装系统内置的docker包"
-                                sudo dnf install -y docker || {
-                                    # 尝试使用系统自带的容器工具
-                                    warning "系统docker包安装失败，检查是否已有容器工具"
-                                    if command -v podman &>/dev/null; then
-                                        info "系统已有podman，配置docker兼容性..."
-                                        # 创建docker命令的别名
-                                        echo 'alias docker=podman' | sudo tee -a /etc/profile.d/podman-docker.sh
-                                        sudo chmod +x /etc/profile.d/podman-docker.sh
-                                        source /etc/profile.d/podman-docker.sh
-                                        info "已将podman配置为docker的替代品"
-                                    else
-                                        error "所有Docker安装方式都失败，无法继续部署"
-                                        return 1
-                                    fi
-                                }
-                            }
-                        }
-                    }
-                    
-                    # 启动Docker服务
-                    systemctl start docker || warning "启动Docker服务失败"
-                    systemctl enable docker || warning "设置Docker服务开机启动失败"
-                fi
-            else
-                error "AlmaLinux系统上找不到dnf或yum包管理器"
-                return 1
-            fi
-        else
-            # 标准RHEL/CentOS流程
-            # 安装依赖包
-            if command -v sudo &>/dev/null; then
-                sudo yum install -y yum-utils || warning "安装yum-utils失败，继续尝试安装Docker..."
-                
-                # 添加Docker仓库
-                sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || warning "添加Docker仓库失败，继续尝试安装..."
-                
-                # 安装Docker
-                sudo yum install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                    error "Docker安装失败"
-                    return 1
-                }
-                
-                # 启动Docker服务
-                sudo systemctl start docker || warning "启动Docker服务失败"
-                sudo systemctl enable docker || warning "设置Docker服务开机启动失败"
-            else
-                yum install -y yum-utils || warning "安装yum-utils失败，继续尝试安装Docker..."
-                
-                # 添加Docker仓库
-                yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || warning "添加Docker仓库失败，继续尝试安装..."
-                
-                # 安装Docker
-                yum install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                    error "Docker安装失败"
-                    return 1
-                }
-                
-                # 启动Docker服务
-                systemctl start docker || warning "启动Docker服务失败"
-                systemctl enable docker || warning "设置Docker服务开机启动失败"
-            fi
-        fi
-    elif command -v dnf &>/dev/null; then
-        # Fedora系统
-        info "检测到Fedora系统，使用dnf安装Docker..."
-        
-        # 安装依赖包
-        if command -v sudo &>/dev/null; then
-            sudo dnf -y install dnf-plugins-core || warning "安装dnf-plugins-core失败，继续尝试安装Docker..."
-            
-            # 添加Docker仓库
-            sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || warning "添加Docker仓库失败，继续尝试安装..."
-            
-            # 安装Docker
-            sudo dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                error "Docker安装失败"
-                return 1
-            }
-            
-            # 启动Docker服务
-            sudo systemctl start docker || warning "启动Docker服务失败"
-            sudo systemctl enable docker || warning "设置Docker服务开机启动失败"
-        else
-            dnf -y install dnf-plugins-core || warning "安装dnf-plugins-core失败，继续尝试安装Docker..."
-            
-            # 添加Docker仓库
-            dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo || warning "添加Docker仓库失败，继续尝试安装..."
-            
-            # 安装Docker
-            dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io || {
-                error "Docker安装失败"
-                return 1
-            }
-            
-            # 启动Docker服务
-            systemctl start docker || warning "启动Docker服务失败"
-            systemctl enable docker || warning "设置Docker服务开机启动失败"
-        fi
-    elif command -v apt &>/dev/null; then
-        # 纯apt系统
-        info "使用apt安装Docker..."
-        
-        if command -v sudo &>/dev/null; then
-            sudo apt update -qq || warning "apt update失败，继续尝试安装..."
-            sudo apt install -y docker.io || {
-                error "Docker安装失败"
-                return 1
-            }
-            
-            # 启动Docker服务
-            sudo systemctl start docker || warning "启动Docker服务失败"
-            sudo systemctl enable docker || warning "设置Docker服务开机启动失败"
-        else
-            apt update -qq || warning "apt update失败，继续尝试安装..."
-            apt install -y docker.io || {
-                error "Docker安装失败"
-                return 1
-            }
-            
-            # 启动Docker服务
-            systemctl start docker || warning "启动Docker服务失败"
-            systemctl enable docker || warning "设置Docker服务开机启动失败"
-        fi
-    elif command -v zypper &>/dev/null; then
-        # openSUSE系统
-        info "检测到openSUSE系统，使用zypper安装Docker..."
-        
-        if command -v sudo &>/dev/null; then
-            # 添加Docker仓库
-            sudo zypper addrepo --refresh https://download.docker.com/linux/sles/docker-ce.repo || warning "添加Docker仓库失败，继续尝试安装..."
-            
-            # 刷新仓库
-            sudo zypper refresh || warning "更新仓库缓存失败，继续尝试安装..."
-            
-            # 安装Docker
-            sudo zypper install -y docker-ce docker-ce-cli containerd.io || {
-                warning "Docker CE安装失败，尝试使用系统仓库安装..."
-                sudo zypper install -y docker || {
-                    # 检查Docker命令是否已经可用
-                    if command -v docker &>/dev/null; then
-                        warning "尽管安装命令返回错误，但Docker命令已可用，继续执行"
-                    else
-                        error "Docker安装失败"
-                        return 1
-                    fi
-                }
-            }
-            
-            # 启动Docker服务
-            sudo systemctl start docker || warning "启动Docker服务失败"
-            sudo systemctl enable docker || warning "设置Docker服务开机启动失败"
-            
-            # 配置Docker镜像加速器
-            sudo mkdir -p /etc/docker
-            echo '{
-  "registry-mirrors": ["https://registry.docker-cn.com", "https://docker.mirrors.ustc.edu.cn", "https://hub-mirror.c.163.com", "https://hub.fast360.xyz","https://hub.rat.dev","https://hub.littlediary.cn","https://docker.kejilion.pro","https://dockerpull.cn","https://docker-0.unsee.tech","https://docker.tbedu.top","https://docker.1panelproxy.com","https://docker.melikeme.cn","https://cr.laoyou.ip-ddns.com","https://hub.firefly.store","https://docker.hlmirror.com","https://docker.m.daocloud.io","https://docker.1panel.live","https://image.cloudlayer.icu","https://docker.1ms.run"]
-}' | sudo tee /etc/docker/daemon.json > /dev/null
-            
-            # 重启Docker服务以应用镜像加速器配置
-            sudo systemctl daemon-reload
-            sudo systemctl restart docker
-        else
-            # 无sudo情况下的安装（需要root权限）
-            zypper addrepo --refresh https://download.docker.com/linux/sles/docker-ce.repo || warning "添加Docker仓库失败，继续尝试安装..."
-            zypper refresh || warning "更新仓库缓存失败，继续尝试安装..."
-            zypper install -y docker-ce docker-ce-cli containerd.io || {
-                warning "Docker CE安装失败，尝试使用系统仓库安装..."
-                zypper install -y docker || {
-                    # 检查Docker命令是否已经可用
-                    if command -v docker &>/dev/null; then
-                        warning "尽管安装命令返回错误，但Docker命令已可用，继续执行"
-                    else
-                        error "Docker安装失败"
-                        return 1
-                    fi
-                }
-            }
-            
-            # 启动Docker服务
-            systemctl start docker || warning "启动Docker服务失败"
-            systemctl enable docker || warning "设置Docker服务开机启动失败"
-            
-            # 配置Docker镜像加速器
-            mkdir -p /etc/docker
-            echo '{
-  "registry-mirrors": ["https://registry.docker-cn.com", "https://docker.mirrors.ustc.edu.cn", "https://hub-mirror.c.163.com", "https://hub.fast360.xyz","https://hub.rat.dev","https://hub.littlediary.cn","https://docker.kejilion.pro","https://dockerpull.cn","https://docker-0.unsee.tech","https://docker.tbedu.top","https://docker.1panelproxy.com","https://docker.melikeme.cn","https://cr.laoyou.ip-ddns.com","https://hub.firefly.store","https://docker.hlmirror.com","https://docker.m.daocloud.io","https://docker.1panel.live","https://image.cloudlayer.icu","https://docker.1ms.run"]
-}' > /etc/docker/daemon.json
-            
-            # 重启Docker服务以应用镜像加速器配置
-            systemctl daemon-reload
-            systemctl restart docker
-        fi
-    else
-        error "无法识别的包管理器，无法自动安装Docker"
-        return 1
-    fi
-    
-    # 最终检查Docker命令是否可用
-    if command -v docker &>/dev/null; then
-        info "Docker命令已可用，安装成功"
-    return 0
-    fi
-    
-    error "Docker安装失败，但可能在重启后变得可用"
-    return 1
-}
-
-# 安装Docker Compose
-install_docker_compose() {
-    info "安装Docker Compose..."
-    
-    # 检查Docker是否已安装
-    if ! command -v docker &>/dev/null; then
-        error "需要先安装Docker才能安装Docker Compose"
-        exit 1
-    fi
-    
-    # 在WSL中检查Docker Compose插件
-    if grep -q Microsoft /proc/version 2>/dev/null; then
-        if docker compose version &>/dev/null; then
-            info "检测到Docker已内置Compose插件，无需单独下载"
-            info "将使用新版 'docker compose' 命令"
-            info "创建docker-compose别名以兼容旧脚本"
-            setup_docker_compose_alias
-            success "Docker Compose已安装"
-            return 0
-        fi
-    fi
-    
-    # 检查是否存在离线安装包
-    if check_offline_resources; then
-        info "检测到本地离线资源，优先使用离线安装..."
-        
-        # 尝试离线安装Docker Compose
-        if install_docker_compose_offline; then
-            return 0
-        fi
-        
-        warning "离线安装Docker Compose失败，将回退到在线安装方式"
-    fi
-    
-    # 确保curl已安装
-    check_and_install_curl
-    
-    # 下载Docker Compose二进制文件
-    ARCH=$(uname -m)
-    # 对amd64/x86_64处理
-    if [ "$ARCH" = "x86_64" ]; then
-        ARCH="amd64"
-    fi
-    COMPOSE_VERSION="v2.24.5"
-    
-    info "下载Docker Compose $COMPOSE_VERSION..."
-    
-    # 首先检查docker compose子命令是否已可用
-    if docker compose version &>/dev/null; then
-        info "检测到Docker已内置Compose插件，无需单独下载"
-        info "将使用新版 'docker compose' 命令"
-        info "创建docker-compose别名以兼容旧脚本"
-        setup_docker_compose_alias
-        success "Docker Compose已安装"
-        return 0
-    fi
-    
-    # 使用官方源
-    download_success=false
-    COMPOSE_URL="https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-    
-    # 尝试使用wget下载
-    if command -v wget &>/dev/null; then
-        info "使用wget从官方源下载..."
-        if wget -q -O docker-compose.tmp "$COMPOSE_URL" && [ -s docker-compose.tmp ]; then
-            mv docker-compose.tmp docker-compose
-            download_success=true
-        fi
-    fi
-    
-    # 如果wget失败或不存在，尝试curl
-    if [ "$download_success" = false ] && command -v curl &>/dev/null; then
-        info "使用curl从官方源下载..."
-        if curl -s -L -o docker-compose.tmp "$COMPOSE_URL" && [ -s docker-compose.tmp ]; then
-            mv docker-compose.tmp docker-compose
-            download_success=true
-        fi
-    fi
-    
-    # 如果下载成功，安装到系统
-    if [ "$download_success" = true ] && [ -s docker-compose ]; then
-        # 安装Docker Compose
-        chmod +x docker-compose
-        
-        # 尝试移动到系统路径
-            if command -v sudo &>/dev/null; then
-            if ! sudo mv docker-compose /usr/local/bin/docker-compose; then
-                mkdir -p "$HOME/bin"
-                mv docker-compose "$HOME/bin/"
-                export PATH="$HOME/bin:$PATH"
-                echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
-            fi
-            else
-                mkdir -p "$HOME/bin"
-            mv docker-compose "$HOME/bin/"
-                export PATH="$HOME/bin:$PATH"
-                echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
-            fi
-            
-        # 验证安装
-            if command -v docker-compose &>/dev/null; then
-            success "Docker Compose安装成功"
-            docker-compose --version || true
-                return 0
-            fi
-    fi
-    
-    # 如果下载或安装失败，检查docker compose子命令
-    info "Docker Compose二进制文件下载失败，检查Docker是否包含Compose插件..."
-    if docker compose version &>/dev/null; then
-        info "检测到Docker自带Compose插件可用"
-        info "将使用新版 'docker compose' 命令"
-        info "创建docker-compose别名以兼容旧脚本"
-        setup_docker_compose_alias
-        return 0
-    else
-        warning "无法从预设镜像源下载Docker Compose，也无法使用Docker插件版Compose"
-        echo ""
-        info "正在尝试从多个镜像站自动下载Docker Compose..."
-        
-        # 创建临时脚本尝试所有可能的镜像站
-        cat << 'EOF' > get_compose.sh
-#!/bin/bash
-COMPOSE_VERSION="$1"
-ARCH="$2"
-OUTPUT_FILE="$3"
-
-# 设置超时时间（秒）
-TIMEOUT=10
-
-# 所有可能的镜像站
-MIRRORS=(
-  # 开源社区镜像
-  "https://mirrors.tuna.tsinghua.edu.cn/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirrors.ustc.edu.cn/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirror.sjtu.edu.cn/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirrors.163.com/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirrors.cloud.tencent.com/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirrors.aliyun.com/docker-toolbox/linux/compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirrors.huaweicloud.com/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirror.bytedance.com/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://mirrors.baidubce.com/docker-compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  
-  # 代码托管平台镜像
-  "https://hub.fastgit.xyz/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://gitee.com/mirrors/compose/raw/master/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://gitlab.cn/api/v4/projects/gitlab-cn%2Fmirror%2Fdocker%2Fcompose/packages/generic/compose/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  
-  # GitHub代理
-  "https://mirror.ghproxy.com/https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://github.91chi.fun/https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://gh.ddlc.top/https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://kgithub.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://moeyy.cn/gh-proxy/https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://ghproxy.net/https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://ghps.cc/https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://gh.api.99988866.xyz/https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://github.abskoop.workers.dev/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-  "https://download.fastgit.org/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-)
-
-echo "开始自动尝试多个镜像站下载Docker Compose ${COMPOSE_VERSION}..."
-echo "这可能需要一点时间，请耐心等待..."
-
-# 尝试使用curl下载
-if command -v curl &>/dev/null; then
-  for url in "${MIRRORS[@]}"; do
-    echo "尝试从 $url 下载..."
-    if curl -m $TIMEOUT -s -L -o "$OUTPUT_FILE" "$url" && [ -s "$OUTPUT_FILE" ]; then
-      echo "下载成功: $url"
-      exit 0
-    fi
-  done
-fi
-
-# 尝试使用wget下载
-if command -v wget &>/dev/null; then
-  for url in "${MIRRORS[@]}"; do
-    echo "尝试从 $url 下载..."
-    if wget --timeout=$TIMEOUT -q -O "$OUTPUT_FILE" "$url" && [ -s "$OUTPUT_FILE" ]; then
-      echo "下载成功: $url"
-      exit 0
-    fi
-  done
-fi
-
-# 如果全部失败
-echo "所有镜像站下载失败"
-            exit 1
-EOF
-        chmod +x get_compose.sh
-        
-        download_success=false
-        if ./get_compose.sh "$COMPOSE_VERSION" "$ARCH" "docker-compose.tmp"; then
-            mv docker-compose.tmp docker-compose
-            download_success=true
-            success "已自动找到可用镜像站并成功下载Docker Compose"
-        else
-            warning "自动尝试所有镜像站均失败"
-            echo ""
-            echo -e "${BLUE}=== 手动输入镜像站 ===${NC}"
-            echo "请输入完整的Docker Compose下载链接:"
-            read -r custom_url
-            
-            if [ -n "$custom_url" ]; then
-                info "尝试从手动输入的URL下载: $custom_url"
-                
-                # 尝试使用wget下载
-                if command -v wget &>/dev/null; then
-                    if wget -q -O docker-compose.tmp "$custom_url" && [ -s docker-compose.tmp ]; then
-                        mv docker-compose.tmp docker-compose
-                        download_success=true
-                    fi
-                fi
-                
-                # 如果wget失败或不存在，尝试curl
-                if [ "$download_success" = false ] && command -v curl &>/dev/null; then
-                    if curl -s -L -o docker-compose.tmp "$custom_url" && [ -s docker-compose.tmp ]; then
-                        mv docker-compose.tmp docker-compose
-                        download_success=true
-                    fi
-                fi
-                
-                if [ "$download_success" = false ]; then
-                    error "从手动输入的URL下载Docker Compose失败"
-                fi
-            fi
-        fi
-        
-        # 清理临时脚本
-        rm -f get_compose.sh
-        
-        # 如果下载成功，安装到系统
-        if [ "$download_success" = true ] && [ -s docker-compose ]; then
-    # 安装Docker Compose
-    chmod +x docker-compose
-    
-    # 尝试移动到系统路径
-    if command -v sudo &>/dev/null; then
-        if ! sudo mv docker-compose /usr/local/bin/docker-compose; then
-            mkdir -p "$HOME/bin"
-            mv docker-compose "$HOME/bin/"
-            export PATH="$HOME/bin:$PATH"
-            echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
-        fi
-    else
-        mkdir -p "$HOME/bin"
-        mv docker-compose "$HOME/bin/"
-        export PATH="$HOME/bin:$PATH"
-        echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
-    fi
-    
-    # 验证安装
-            if command -v docker-compose &>/dev/null; then
-            success "Docker Compose安装成功"
-            docker-compose --version || true
-                return 0
-            fi
-        fi
-    fi
-}
 
 # 设置Docker Compose别名
 setup_docker_compose_alias() {
@@ -2153,7 +1391,10 @@ setup_docker_compose_command() {
             read -p "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " -n 1 -r
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-              install_docker
+              if ! install_docker; then
+                error "Docker安装失败，无法继续部署"
+                exit 1
+              fi
             elif [[ $REPLY =~ ^[Ss]$ ]]; then
               warning "跳过Docker安装，尝试继续部署"
               warning "某些功能可能无法正常工作"
@@ -2765,11 +2006,17 @@ confirm_setup() {
   echo "主域名: $PRIMARY_DOMAIN"
   echo "所有域名: ${DOMAINS[*]}"
   echo "管理员邮箱: $EMAIL"
+  echo "默认启用HTTPS"
   echo ""
   
-  echo -n "是否确认以上设置? [Y/n]: "
+  echo -n "是否确认以上设置? [Y/n]（默认Y）: "
   read CONFIRM
   
+  if [ -z "$CONFIRM" ]; then
+    CONFIRM="Y"
+    info "使用默认设置: $CONFIRM"
+  fi
+
   if [[ "$CONFIRM" =~ ^[Nn] ]]; then
     echo "已取消部署"
     exit 0
@@ -2958,7 +2205,7 @@ apply_memory_optimizations() {
       JAVA_CLASS_SPACE="144m"
       JAVA_XSS="512k"
       
-      JAVA_LIMIT="768M"
+      JAVA_LIMIT="1024M"
       PYTHON_LIMIT="768M"
       NGINX_LIMIT="128M"
       MYSQL_LIMIT="256M"
@@ -3511,43 +2758,6 @@ install_docker_offline() {
   return 1
 }
 
-# 从离线包安装Docker Compose
-install_docker_compose_offline() {
-  info "使用离线文件安装Docker Compose..."
-  
-  if [ -f "./offline/docker-compose" ]; then
-    # 复制到系统路径
-    if command -v sudo &>/dev/null; then
-      sudo cp -f ./offline/docker-compose /usr/local/bin/docker-compose
-      sudo chmod +x /usr/local/bin/docker-compose
-    else
-      # 如果没有sudo，尝试直接复制或复制到用户目录
-      if cp -f ./offline/docker-compose /usr/local/bin/docker-compose 2>/dev/null; then
-        chmod +x /usr/local/bin/docker-compose
-      else
-        mkdir -p "$HOME/bin"
-        cp -f ./offline/docker-compose "$HOME/bin/"
-        chmod +x "$HOME/bin/docker-compose"
-        export PATH="$HOME/bin:$PATH"
-        grep -q "PATH=\"\$HOME/bin:\$PATH\"" "$HOME/.bashrc" || echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
-      fi
-    fi
-    
-    # 检查安装结果
-    if command -v docker-compose &>/dev/null; then
-      success "从离线文件安装Docker Compose成功"
-      docker-compose --version || true
-      return 0
-    else
-      warning "从离线文件安装Docker Compose失败，将尝试在线安装"
-    fi
-  else
-    warning "未找到离线Docker Compose安装包"
-  fi
-  
-  return 1
-}
-
 # 加载离线Docker镜像
 load_offline_images() {
   if [ -d "./offline/images" ] && [ "$(ls -A ./offline/images/*.tar 2>/dev/null)" ]; then
@@ -3691,7 +2901,10 @@ setup_docker_compose_command() {
             read -p "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " -n 1 -r
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-              install_docker
+              if ! install_docker; then
+                error "Docker安装失败，无法继续部署"
+                exit 1
+              fi
             elif [[ $REPLY =~ ^[Ss]$ ]]; then
               warning "跳过Docker安装，尝试继续部署"
               warning "某些功能可能无法正常工作"
@@ -3980,19 +3193,31 @@ verify_https_status() {
 # 主函数
 main() {
   # 显示横幅
-  echo -e "${BLUE}=====================================${NC}"
-  echo -e "${BLUE}    欢迎使用 Poetize 部署脚本    ${NC}"
-  echo -e "${BLUE}=====================================${NC}"
   echo ""
-  echo -e "作者: LeapYa    联系方式: enable_lazy@qq.com"
-  echo -e "仓库地址: https://github.com/LeapYa/Awesome-poetize-open"
+  echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${NC}                 ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${NC}                 ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${NC}                   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${NC}                   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${NC}                 ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${NC}                 ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}                      ${YELLOW}🚀 优雅的博客与聊天平台部署脚本 🚀${NC}                     ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}┌─────────────────────────────────────────────────────────────────────┐${NC}      ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  👤 作者: ${GREEN}LeapYa${NC}                                               ${YELLOW}│${NC}      ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  📧 邮箱: ${GREEN}enable_lazy@qq.com${NC}                                   ${YELLOW}│${NC}      ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  🔗 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${NC}        ${YELLOW}│${NC}      ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}└─────────────────────────────────────────────────────────────────────┘${NC}      ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
+  echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+  echo ""
+
+  echo -e "${YELLOW}✨ 正在初始化部署环境...${NC}"
+  sleep 3
   echo ""
   
-  # 打印调试信息
-  echo "----------------------------------------"
-  echo "调试信息: AUTO_YES=$AUTO_YES"
-  echo "RUN_IN_BACKGROUND=$RUN_IN_BACKGROUND"
-  echo "----------------------------------------"
   
   # 解析命令行参数
   parse_arguments "$@"
@@ -4019,7 +3244,10 @@ main() {
       
       auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " "y" "-n 1 -r"
       if [[ $REPLY =~ ^[Yy]$ ]]; then
-        install_docker
+        if ! install_docker; then
+          error "Docker安装失败，无法继续部署"
+          exit 1
+        fi
       elif [[ $REPLY =~ ^[Ss]$ ]]; then
         warning "跳过Docker安装，尝试继续部署"
         warning "某些功能可能无法正常工作"
@@ -4036,10 +3264,8 @@ main() {
     info "Docker已安装，无需执行安装程序"
   fi
   
-  # 检查并安装Docker Compose
+  # 检查Docker Compose可用性
   if ! (command -v docker &>/dev/null && docker compose version &>/dev/null) && ! command -v docker-compose &>/dev/null; then
-    info "Docker Compose未安装"
-    
     if grep -q Microsoft /proc/version 2>/dev/null; then
       echo ""
       echo -e "${BLUE}=== 在WSL中使用Docker Compose ===${NC}"
@@ -4048,23 +3274,24 @@ main() {
       echo "3. 确保在WSL集成设置中启用了当前发行版"
       echo ""
       
-      auto_confirm "是否安装Docker Compose? (y/n/s) [y=安装, n=退出, s=跳过]: " "y" "-n 1 -r"
-      if [[ $REPLY =~ ^[Yy]$ ]]; then
-        install_docker_compose
-      elif [[ $REPLY =~ ^[Ss]$ ]]; then
-        warning "跳过Docker Compose安装，尝试继续部署"
-        warning "将尝试使用docker命令直接管理容器"
-      else
+      warning "Docker Compose不可用，请检查Docker安装"
+      auto_confirm "是否继续部署? (y/n) [y=继续, n=退出]: " "y" "-n 1 -r"
+      if [[ $REPLY =~ ^[Nn]$ ]]; then
         error "已取消部署"
         exit 1
       fi
+      warning "将尝试使用docker命令直接管理容器"
     else
-      info "开始执行安装程序"
-      install_docker_compose
-      success "Docker Compose安装成功"
+      warning "Docker Compose不可用，请确保安装了完整的Docker Engine"
+      info "现代Docker安装通常已包含docker compose插件"
+      auto_confirm "是否继续部署? (y/n) [y=继续, n=退出]: " "y" "-n 1 -r"
+      if [[ $REPLY =~ ^[Nn]$ ]]; then
+        error "已取消部署"
+        exit 1
+      fi
     fi
   else
-    info "Docker Compose已安装，无需执行安装程序"
+    info "Docker Compose已可用"
   fi
   
   # 设置Docker Compose命令
@@ -4224,9 +3451,6 @@ main() {
   print_summary
   
   echo ""
-  echo -e "${BLUE}=============================================================================${NC}"
-  echo -e "${BLUE}      Poetize 部署脚本执行完毕，请留意以上的汇总信息，感谢您选择Poetize      ${NC}"
-  echo -e "${BLUE}=============================================================================${NC}"
 }
 
 # 执行主函数
