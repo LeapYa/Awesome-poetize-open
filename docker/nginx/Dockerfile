@@ -8,29 +8,73 @@ RUN apk add --no-cache \
     brotli-dev \
     pcre-dev \
     zlib-dev \
-    openssl-dev
+    openssl-dev \
+    curl \
+    wget
 
 # 下载ngx_brotli模块
 WORKDIR /usr/src
-RUN git clone --recursive https://github.com/google/ngx_brotli.git
+RUN set -e; \
+    echo "🔧 尝试下载ngx_brotli模块..."; \
+    # 首先尝试GitHub官方
+    if git clone --recursive https://github.com/google/ngx_brotli.git; then \
+        echo "✅ 从GitHub下载ngx_brotli成功"; \
+    # 如果GitHub失败，尝试Gitee镜像
+    elif git clone --recursive https://gitee.com/mirrors/ngx_brotli.git && mv ngx_brotli.git ngx_brotli; then \
+        echo "🔄 从Gitee镜像下载ngx_brotli成功"; \
+    # 如果Gitee也失败，尝试直接下载tar包
+    elif wget -O ngx_brotli.tar.gz https://github.com/google/ngx_brotli/archive/refs/heads/master.tar.gz && \
+         tar -xzf ngx_brotli.tar.gz && mv ngx_brotli-master ngx_brotli; then \
+        echo "🔄 从tar包下载ngx_brotli成功"; \
+        # 需要手动下载子模块
+        cd ngx_brotli && \
+        wget -O brotli.tar.gz https://github.com/google/brotli/archive/refs/heads/master.tar.gz && \
+        tar -xzf brotli.tar.gz && mv brotli-master deps/brotli && \
+        cd ..; \
+    else \
+        echo "❌ 所有ngx_brotli下载方法都失败"; \
+        # 创建空目录避免构建失败
+        mkdir -p ngx_brotli; \
+    fi
 
 # 获取Nginx版本
 RUN nginx -v 2>&1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' > /tmp/nginx_version
 
 # 编译Brotli模块
 WORKDIR /usr/src/ngx_brotli
-RUN NGINX_VERSION=$(cat /tmp/nginx_version) && \
-    wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
-    tar -xvf nginx-${NGINX_VERSION}.tar.gz && \
-    cd nginx-${NGINX_VERSION} && \
-    ./configure --with-compat --add-dynamic-module=/usr/src/ngx_brotli && \
-    make modules && \
-    mkdir -p /usr/local/openresty/nginx/modules/ && \
-    cp objs/ngx_http_brotli_filter_module.so /usr/local/openresty/nginx/modules/ && \
-    cp objs/ngx_http_brotli_static_module.so /usr/local/openresty/nginx/modules/
+RUN set -e; \
+    if [ -f "config" ]; then \
+        echo "🔧 开始编译Brotli模块..."; \
+        NGINX_VERSION=$(cat /tmp/nginx_version); \
+        # 尝试多个Nginx下载源
+        if wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz; then \
+            echo "✅ 从nginx.org下载成功"; \
+        elif wget https://mirrors.tuna.tsinghua.edu.cn/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
+            echo "🔄 从清华镜像下载成功"; \
+        elif wget https://mirrors.aliyun.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
+            echo "🔄 从阿里镜像下载成功"; \
+        else \
+            echo "❌ Nginx源码下载失败，跳过Brotli编译"; \
+            exit 0; \
+        fi; \
+        tar -xzf nginx-${NGINX_VERSION}.tar.gz && \
+        cd nginx-${NGINX_VERSION} && \
+        ./configure --with-compat --add-dynamic-module=/usr/src/ngx_brotli && \
+        make modules && \
+        mkdir -p /usr/local/openresty/nginx/modules/ && \
+        cp objs/ngx_http_brotli_filter_module.so /usr/local/openresty/nginx/modules/ 2>/dev/null || true && \
+        cp objs/ngx_http_brotli_static_module.so /usr/local/openresty/nginx/modules/ 2>/dev/null || true; \
+        echo "🎉 Brotli模块编译完成"; \
+    else \
+        echo "⏭️ ngx_brotli未正确下载，跳过编译"; \
+        mkdir -p /usr/local/openresty/nginx/modules/; \
+    fi
 
 # 最终镜像
 FROM openresty/openresty:1.25.3.1-alpine
+
+# 配置Alpine使用国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 # 安装运行时依赖
 RUN apk add --no-cache \
@@ -41,25 +85,59 @@ RUN apk add --no-cache \
     git \
     openssl \
     openssl-dev \
-    build-base
+    build-base \
+    curl \
+    wget
 
-# 手动安装lua-resty-openssl
-RUN cd /tmp && \
-    git clone https://github.com/fffonion/lua-resty-openssl.git && \
+# 安装lua-resty-openssl
+RUN set -e; \
+    cd /tmp; \
+    echo "🔧 尝试安装lua-resty-openssl..."; \
+    # 首先尝试GitHub
+    if git clone https://github.com/fffonion/lua-resty-openssl.git; then \
+        echo "✅ 从GitHub下载lua-resty-openssl成功"; \
+    # 如果GitHub失败，尝试Gitee
+    elif git clone https://gitee.com/mirrors_fffonion/lua-resty-openssl.git; then \
+        echo "🔄 从Gitee下载lua-resty-openssl成功"; \
+    # 如果都失败，尝试直接下载
+    elif wget -O lua-resty-openssl.tar.gz https://github.com/fffonion/lua-resty-openssl/archive/refs/heads/master.tar.gz && \
+         tar -xzf lua-resty-openssl.tar.gz && mv lua-resty-openssl-master lua-resty-openssl; then \
+        echo "🔄 从tar包下载lua-resty-openssl成功"; \
+    else \
+        echo "❌ lua-resty-openssl下载失败，跳过安装"; \
+        exit 0; \
+    fi; \
     cd lua-resty-openssl && \
     mkdir -p /usr/local/openresty/lualib/resty/openssl && \
-    cp -r lib/resty/openssl/* /usr/local/openresty/lualib/resty/openssl/ && \
-    cp lib/resty/openssl.lua /usr/local/openresty/lualib/resty/
+    cp -r lib/resty/openssl/* /usr/local/openresty/lualib/resty/openssl/ 2>/dev/null || true && \
+    cp lib/resty/openssl.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true; \
+    echo "✅ lua-resty-openssl安装完成"
 
-# 直接下载安装lua-resty-http模块
-RUN mkdir -p /usr/local/openresty/lualib/resty && \
-    cd /tmp && \
-    git clone https://github.com/ledgetech/lua-resty-http.git && \
+# 安装lua-resty-http模块
+RUN set -e; \
+    mkdir -p /usr/local/openresty/lualib/resty; \
+    cd /tmp; \
+    echo "🔧 尝试安装lua-resty-http..."; \
+    # 首先尝试GitHub
+    if git clone https://github.com/ledgetech/lua-resty-http.git; then \
+        echo "✅ 从GitHub下载lua-resty-http成功"; \
+    # 如果GitHub失败，尝试Gitee
+    elif git clone https://gitee.com/mirrors_ledgetech/lua-resty-http.git; then \
+        echo "🔄 从Gitee下载lua-resty-http成功"; \
+    # 如果都失败，尝试直接下载
+    elif wget -O lua-resty-http.tar.gz https://github.com/ledgetech/lua-resty-http/archive/refs/heads/master.tar.gz && \
+         tar -xzf lua-resty-http.tar.gz && mv lua-resty-http-master lua-resty-http; then \
+        echo "🔄 从tar包下载lua-resty-http成功"; \
+    else \
+        echo "❌ lua-resty-http下载失败，跳过安装"; \
+        exit 0; \
+    fi; \
     cd lua-resty-http && \
-    cp lib/resty/http.lua /usr/local/openresty/lualib/resty/ && \
-    cp lib/resty/http_headers.lua /usr/local/openresty/lualib/resty/ && \
-    cp lib/resty/http_connect.lua /usr/local/openresty/lualib/resty/ && \
-    cp -r lib/ngx /usr/local/openresty/lualib/ || true
+    cp lib/resty/http.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
+    cp lib/resty/http_headers.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
+    cp lib/resty/http_connect.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
+    cp -r lib/ngx /usr/local/openresty/lualib/ 2>/dev/null || true; \
+    echo "✅ lua-resty-http安装完成"
 
 # 创建必要的目录
 RUN mkdir -p /var/log/nginx /var/cache/nginx

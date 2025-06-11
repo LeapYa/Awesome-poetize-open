@@ -92,92 +92,92 @@ print_summary() {
     fi
   fi
 
-  echo ""
-  echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║                            🎉 Poetize 部署成功！                            ║${NC}"
-  echo -e "${BLUE}╠═══════════════════════════════════════════════════════════════════════════════╣${NC}"
-  echo -e "${BLUE}║                                                                               ║${NC}"
-  echo -e "${BLUE}║  📋 基础配置信息                                                              ║${NC}"
-  echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
-  echo -e "${BLUE}║${NC}  🌐 主域名: ${GREEN}$PRIMARY_DOMAIN${NC}"
-  echo -e "${BLUE}║${NC}  🔗 所有域名: ${GREEN}${DOMAINS[*]}${NC}"
-  echo -e "${BLUE}║${NC}  📧 管理员邮箱: ${GREEN}$EMAIL${NC}"
-  echo -e "${BLUE}║                                                                               ║${NC}"
+  printf "\n"
+  printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}\n"
+  printf "${BLUE}║                            🎉 Poetize 部署成功！                            ║${NC}\n"
+  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════════════════╣${NC}\n"
+  printf "${BLUE}║                                                                               ║${NC}\n"
+  printf "${BLUE}║  📋 基础配置信息                                                              ║${NC}\n"
+  printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
+  printf "${BLUE}║${NC}  🌐 主域名: ${GREEN}%-50s${NC} ║${NC}\n" "$PRIMARY_DOMAIN"
+  printf "${BLUE}║${NC}  🔗 所有域名: ${GREEN}%-46s${NC} ║${NC}\n" "${DOMAINS[*]}"
+  printf "${BLUE}║${NC}  📧 管理员邮箱: ${GREEN}%-44s${NC} ║${NC}\n" "$EMAIL"
+  printf "${BLUE}║                                                                               ║${NC}\n"
   
   # 本地环境处理
   if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo -e "${BLUE}║  🚀 本地开发环境访问地址                                                      ║${NC}"
-    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
-    echo -e "${BLUE}║${NC}  🏠 网站首页: ${GREEN}http://$PRIMARY_DOMAIN${NC}"
-    echo -e "${BLUE}║${NC}  💬 聊天室: ${GREEN}http://$PRIMARY_DOMAIN/im${NC}"
-    echo -e "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}http://$PRIMARY_DOMAIN/admin${NC}"
+    printf "${BLUE}║  🚀 本地开发环境访问地址                                                      ║${NC}\n"
+    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
+    printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN"
+    printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
+    printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
   else
-    echo -e "${BLUE}║  🌍 服务访问地址                                                              ║${NC}"
-    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
+    printf "${BLUE}║  🌍 服务访问地址                                                              ║${NC}\n"
+    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
     if [ "$https_enabled" = true ]; then
-      echo -e "${BLUE}║${NC}  🏠 网站首页: ${GREEN}https://$PRIMARY_DOMAIN${NC} ${GREEN}🔒 HTTPS已启用${NC}"
-      echo -e "${BLUE}║${NC}  💬 聊天室: ${GREEN}https://$PRIMARY_DOMAIN/im${NC}"
-      echo -e "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}https://$PRIMARY_DOMAIN/admin${NC}"
-      echo -e "${BLUE}║${NC}  🔄 HTTP备用: ${YELLOW}http://$PRIMARY_DOMAIN${NC} ${YELLOW}(自动重定向)${NC}"
+      printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-35s${NC} ${GREEN}🔒 HTTPS已启用${NC}        ║${NC}\n" "https://$PRIMARY_DOMAIN"
+      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-53s${NC} ║${NC}\n" "https://$PRIMARY_DOMAIN/im"
+      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-50s${NC} ║${NC}\n" "https://$PRIMARY_DOMAIN/admin"
+      printf "${BLUE}║${NC}  🔄 HTTP备用: ${YELLOW}%-35s${NC} ${YELLOW}(自动重定向)${NC}       ║${NC}\n" "http://$PRIMARY_DOMAIN"
     else
-      echo -e "${BLUE}║${NC}  🏠 网站首页: ${GREEN}http://$PRIMARY_DOMAIN${NC}"
-      echo -e "${BLUE}║${NC}  💬 聊天室: ${GREEN}http://$PRIMARY_DOMAIN/im${NC}"
-      echo -e "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}http://$PRIMARY_DOMAIN/admin${NC}"
-      echo -e "${BLUE}║${NC}  🔒 HTTPS状态: ${RED}未启用${NC}"
+      printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN"
+      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
+      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
+      printf "${BLUE}║${NC}  🔒 HTTPS状态: ${RED}%-58s${NC} ║${NC}\n" "未启用"
     fi
   fi
   
-  echo -e "${BLUE}║                                                                               ║${NC}"
+  printf "${BLUE}║                                                                               ║${NC}\n"
   
   # HTTPS配置状态
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo -e "${BLUE}║  🔐 HTTPS配置状态                                                             ║${NC}"
-    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
+    printf "${BLUE}║  🔐 HTTPS配置状态                                                             ║${NC}\n"
+    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
     if [ "$https_enabled" = true ]; then
-      echo -e "${BLUE}║${NC}  ${GREEN}✅ HTTPS已成功配置并启用${NC}"
-      echo -e "${BLUE}║${NC}     📜 SSL证书状态: ${GREEN}有效${NC}"
-      echo -e "${BLUE}║${NC}     🔧 Nginx HTTPS配置: ${GREEN}已启用${NC}"
-      echo -e "${BLUE}║${NC}     🛡️  安全连接: ${GREEN}可用${NC}"
+      printf "${BLUE}║${NC}  ${GREEN}✅ HTTPS已成功配置并启用${NC}                                            ║${NC}\n"
+      printf "${BLUE}║${NC}     📜 SSL证书状态: ${GREEN}%-47s${NC} ║${NC}\n" "有效"
+      printf "${BLUE}║${NC}     🔧 Nginx HTTPS配置: ${GREEN}%-44s${NC} ║${NC}\n" "已启用"
+      printf "${BLUE}║${NC}     🛡️  安全连接: ${GREEN}%-49s${NC} ║${NC}\n" "可用"
     else
-      echo -e "${BLUE}║${NC}  ${RED}❌ HTTPS未正确配置${NC}"
-      echo -e "${BLUE}║${NC}     💡 启用命令: ${YELLOW}docker exec poetize-nginx /enable-https.sh${NC}"
-      echo -e "${BLUE}║${NC}     📝 请检查域名DNS解析和防火墙配置${NC}"
+      printf "${BLUE}║${NC}  ${RED}❌ HTTPS未正确配置${NC}                                                    ║${NC}\n"
+      printf "${BLUE}║${NC}     💡 启用命令: ${YELLOW}%-42s${NC} ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
+      printf "${BLUE}║${NC}     📝 请检查域名DNS解析和防火墙配置${NC}                                        ║${NC}\n"
     fi
-    echo -e "${BLUE}║                                                                               ║${NC}"
+    printf "${BLUE}║                                                                               ║${NC}\n"
   fi
   
   # 数据库凭据信息
   if [ -f ".config/db_credentials.txt" ]; then
-    echo -e "${BLUE}║  🗄️  数据库凭据信息                                                           ║${NC}"
-    echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
+    printf "${BLUE}║  🗄️  数据库凭据信息                                                           ║${NC}\n"
+    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
     
     DB_ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     DB_USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     
-    echo -e "${BLUE}║${NC}  🔑 ROOT密码: ${YELLOW}${DB_ROOT_PASSWORD}${NC}"
-    echo -e "${BLUE}║${NC}  👤 poetize用户密码: ${YELLOW}${DB_USER_PASSWORD}${NC}"
-    echo -e "${BLUE}║${NC}  ${YELLOW}⚠️  请妥善保存密码，完整信息在 .config/db_credentials.txt${NC}"
-    echo -e "${BLUE}║                                                                               ║${NC}"
+    printf "${BLUE}║${NC}  🔑 ROOT密码: ${YELLOW}%-55s${NC} ║${NC}\n" "$DB_ROOT_PASSWORD"
+    printf "${BLUE}║${NC}  👤 poetize用户密码: ${YELLOW}%-45s${NC} ║${NC}\n" "$DB_USER_PASSWORD"
+    printf "${BLUE}║${NC}  ${YELLOW}⚠️  请妥善保存密码，完整信息在 .config/db_credentials.txt${NC}             ║${NC}\n"
+    printf "${BLUE}║                                                                               ║${NC}\n"
   fi
   
   # 常用命令
-  echo -e "${BLUE}║  🛠️  常用管理命令                                                             ║${NC}"
-  echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
-  echo -e "${BLUE}║${NC}  📊 查看所有容器: ${GREEN}docker ps -a${NC}"
-  echo -e "${BLUE}║${NC}  📋 查看容器日志: ${GREEN}docker logs poetize-nginx${NC}"
-  echo -e "${BLUE}║${NC}  🔄 重启容器: ${GREEN}$DOCKER_COMPOSE_CMD restart${NC}"
-  echo -e "${BLUE}║${NC}  ⏹️  停止服务: ${GREEN}$DOCKER_COMPOSE_CMD down${NC}"
-  echo -e "${BLUE}║${NC}  ▶️  启动服务: ${GREEN}$DOCKER_COMPOSE_CMD up -d${NC}"
+  printf "${BLUE}║  🛠️  常用管理命令                                                             ║${NC}\n"
+  printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
+  printf "${BLUE}║${NC}  📊 查看所有容器: ${GREEN}%-46s${NC} ║${NC}\n" "docker ps -a"
+  printf "${BLUE}║${NC}  📋 查看容器日志: ${GREEN}%-46s${NC} ║${NC}\n" "docker logs poetize-nginx"
+  printf "${BLUE}║${NC}  🔄 重启容器: ${GREEN}%-50s${NC} ║${NC}\n" "$DOCKER_COMPOSE_CMD restart"
+  printf "${BLUE}║${NC}  ⏹️  停止服务: ${GREEN}%-50s${NC} ║${NC}\n" "$DOCKER_COMPOSE_CMD down"
+  printf "${BLUE}║${NC}  ▶️  启动服务: ${GREEN}%-50s${NC} ║${NC}\n" "$DOCKER_COMPOSE_CMD up -d"
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo -e "${BLUE}║${NC}  🔒 手动启用HTTPS: ${GREEN}docker exec poetize-nginx /enable-https.sh${NC}"
+    printf "${BLUE}║${NC}  🔒 手动启用HTTPS: ${GREEN}%-42s${NC} ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
   fi
-  echo -e "${BLUE}║                                                                               ║${NC}"
-  echo -e "${BLUE}║  🔐 登录信息                                                                  ║${NC}"
-  echo -e "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}"
-  echo -e "${BLUE}║${NC}  ${YELLOW}⚠️  默认管理员账号: Sara, 密码: aaa${NC}"
-  echo -e "${BLUE}║${NC}  ${RED}🚨 请登录后立即修改密码以确保安全！${NC}"
-  echo -e "${BLUE}║                                                                               ║${NC}"
-  echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}"
+  printf "${BLUE}║                                                                               ║${NC}\n"
+  printf "${BLUE}║  🔐 登录信息                                                                  ║${NC}\n"
+  printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
+  printf "${BLUE}║${NC}  ${YELLOW}⚠️  默认管理员账号: Sara, 密码: aaa${NC}%-33s ║${NC}\n" ""
+  printf "${BLUE}║${NC}  ${RED}🚨 请登录后立即修改密码以确保安全！${NC}%-35s ║${NC}\n" ""
+  printf "${BLUE}║                                                                               ║${NC}\n"
+  printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}\n"
 }
 
 # 保存配置到文件
@@ -3093,20 +3093,20 @@ main() {
   echo ""
   echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
   echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${NC}                 ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${NC}                 ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${NC}                   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${NC}                   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${NC}                 ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${NC}                 ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}          ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${NC}               ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}          ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${NC}               ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}          ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${NC}                 ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}          ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${NC}                 ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}          ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${NC}               ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}          ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${NC}               ${BLUE}║${NC}"
   echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}                      ${YELLOW}🚀 优雅的博客与聊天平台部署脚本 🚀${NC}                     ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}                      ${YELLOW}   优雅的博客与聊天平台部署脚本   ${NC}                      ${BLUE}║${NC}"
   echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}┌─────────────────────────────────────────────────────────────────────┐${NC}      ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  👤 作者: ${GREEN}LeapYa${NC}                                               ${YELLOW}│${NC}      ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  📧 邮箱: ${GREEN}enable_lazy@qq.com${NC}                                   ${YELLOW}│${NC}      ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  🔗 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${NC}        ${YELLOW}│${NC}      ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}└─────────────────────────────────────────────────────────────────────┘${NC}      ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}┌─────────────────────────────────────────────────────────────────────┐${NC}   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}     作者: ${GREEN}LeapYa${NC}                                                    ${YELLOW}│${NC}   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}     邮箱: ${GREEN}enable_lazy@qq.com${NC}                                        ${YELLOW}│${NC}   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}     仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${NC}            ${YELLOW}│${NC}   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}└─────────────────────────────────────────────────────────────────────┘${NC}   ${BLUE}║${NC}"
   echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
   echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
   echo ""
