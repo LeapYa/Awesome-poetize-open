@@ -81,6 +81,16 @@ success() { echo -e "${GREEN}[成功]${NC} $1"; }
 error() { echo -e "${RED}[失败]${NC} $1"; }
 warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
 
+# 检测是否在WSL环境中
+is_wsl() {
+  # 检查/proc/version文件中是否包含Microsoft字符串
+  if [ -f /proc/version ] && grep -q Microsoft /proc/version 2>/dev/null; then
+    return 0  # 是WSL环境
+  else
+    return 1  # 不是WSL环境
+  fi
+}
+
 # 打印部署汇总信息
 print_summary() {
   local https_enabled=false
@@ -91,7 +101,7 @@ print_summary() {
       https_enabled=true
     fi
   fi
-
+  
   printf "\n"
   printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}\n"
   printf "${BLUE}║                            🎉 Poetize 部署成功！                            ║${NC}\n"
@@ -751,18 +761,20 @@ DOCKER_REGISTRY_MIRRORS=(
     "轩辕镜像@docker.xuanyuan.me"
     "Docker Proxy@dockerproxy.net"
     "DaoCloud 道客@docker.m.daocloud.io"
+    "1Panel@docker.1panel.live"
     "阿里云(杭州)@registry.cn-hangzhou.aliyuncs.com"
     "阿里云(上海)@registry.cn-shanghai.aliyuncs.com"
     "阿里云(北京)@registry.cn-beijing.aliyuncs.com"
     "腾讯云@mirror.ccs.tencentyun.com"
     "官方 Docker Hub@registry.hub.docker.com"
+    "Docker Hub@hub.docker.com"
 )
 
 # 选择Docker CE镜像源
 choose_docker_ce_mirror() {
     if [ -n "$DOCKER_MIRROR_SOURCE" ]; then
         info "使用预设的Docker CE镜像源: $DOCKER_MIRROR_SOURCE"
-        return 0
+            return 0
     fi
 
     info "选择Docker CE镜像源："
@@ -790,7 +802,7 @@ choose_docker_ce_mirror() {
     local mirror_name="${selected_mirror%@*}"
     
     info "已选择: $mirror_name ($DOCKER_MIRROR_SOURCE)"
-    echo ""
+        echo ""
 }
 
 # 选择Docker Registry镜像仓库
@@ -800,42 +812,53 @@ choose_docker_registry_mirror() {
         return 0
     fi
 
-    info "选择Docker Registry镜像仓库："
+    info "Docker Registry镜像源配置："
+    echo ""
+    echo "为了提高Docker镜像下载成功率，建议配置多个镜像源作为备用。"
+    echo "当一个镜像源不可用时，Docker会自动尝试下一个镜像源。"
     echo ""
     
-    local i=1
-    for mirror in "${DOCKER_REGISTRY_MIRRORS[@]}"; do
-        local name="${mirror%@*}"
-        local url="${mirror#*@}"
-        printf "  %d) %s (%s)\n" "$i" "$name" "$url"
-        ((i++))
-    done
+    auto_confirm "是否自动配置所有可用的镜像源作为备用？ (推荐) [y/n]: " "y" "-n 1 -r"
     
-    echo ""
-    auto_confirm "请选择镜像仓库 [1-${#DOCKER_REGISTRY_MIRRORS[@]}] (默认选择毫秒镜像): " "1" "-n 1 -r"
-    
-    local choice="$REPLY"
-    if [[ ! "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#DOCKER_REGISTRY_MIRRORS[@]}" ]; then
-        warning "无效选择，使用默认毫秒镜像"
-        choice=1
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        info "将自动配置所有可用的镜像源作为备用"
+        echo ""
+        
+        # 显示将要配置的镜像源列表
+        info "以下镜像源将按优先级顺序配置："
+        local i=1
+        for mirror in "${DOCKER_REGISTRY_MIRRORS[@]}"; do
+            local name="${mirror%@*}"
+            local url="${mirror#*@}"
+            printf "  %d) %s (%s)\n" "$i" "$name" "$url"
+            ((i++))
+        done
+        
+        echo ""
+        info "Docker将按优先级顺序自动选择可用的镜像源"
+        
+        # 设置一个标记，表示使用所有镜像源
+        DOCKER_REGISTRY_SOURCE="all_mirrors"
+    else
+        info "跳过Docker镜像源配置，将使用默认设置"
+        info "如需要，可稍后手动配置 /etc/docker/daemon.json"
+        
+        # 设置为官方Docker Hub，不配置镜像源
+        DOCKER_REGISTRY_SOURCE="skip_config"
     fi
     
-    local selected_mirror="${DOCKER_REGISTRY_MIRRORS[$((choice-1))]}"
-    DOCKER_REGISTRY_SOURCE="${selected_mirror#*@}"
-    local mirror_name="${selected_mirror%@*}"
-    
-    info "已选择: $mirror_name ($DOCKER_REGISTRY_SOURCE)"
     echo ""
 }
 
 # 配置Docker Registry镜像加速
 configure_docker_registry() {
-    if [ -z "$DOCKER_REGISTRY_SOURCE" ]; then
-        warning "未设置Docker Registry镜像源，跳过配置"
+    # 如果用户选择跳过配置，则不配置镜像源
+    if [ "$DOCKER_REGISTRY_SOURCE" = "skip_config" ]; then
+        info "跳过Docker镜像源配置，使用默认设置"
         return 0
     fi
     
-    info "配置Docker Registry镜像加速..."
+    info "配置Docker Registry镜像加速（使用多个备用镜像源）..."
     
     local docker_config_dir="/etc/docker"
     local docker_config_file="$docker_config_dir/daemon.json"
@@ -849,38 +872,44 @@ configure_docker_registry() {
         info "已备份原配置文件"
     fi
     
-    # 使用官方Docker Hub时，移除镜像配置
-    if [ "$DOCKER_REGISTRY_SOURCE" = "registry.hub.docker.com" ]; then
-        if [ -f "$docker_config_file" ]; then
-            # 如果存在配置文件，移除registry-mirrors配置
-            if command -v jq &>/dev/null; then
-                sudo jq 'del(.["registry-mirrors"])' "$docker_config_file" > "/tmp/daemon.json.tmp" && \
-                sudo mv "/tmp/daemon.json.tmp" "$docker_config_file"
-            else
-                info "使用官方Docker Hub，如需移除镜像配置请手动编辑 $docker_config_file"
-            fi
+    # 配置多个镜像源
+    local config_content
+    if [ -f "$docker_config_file" ] && [ -s "$docker_config_file" ]; then
+        # 如果配置文件存在且不为空，尝试合并配置
+        if command -v jq &>/dev/null; then
+            # 构建多个镜像源列表
+            local mirrors_list=""
+            for mirror in "${DOCKER_REGISTRY_MIRRORS[@]}"; do
+                local mirror_url=$(echo "$mirror" | cut -d'@' -f2)
+                if [ -n "$mirrors_list" ]; then
+                    mirrors_list="$mirrors_list,"
+                fi
+                mirrors_list="$mirrors_list\"https://$mirror_url\""
+            done
+            
+            config_content=$(sudo jq '.["registry-mirrors"] = ['"$mirrors_list"']' "$docker_config_file" 2>/dev/null)
         fi
-        info "已配置使用官方Docker Hub"
-    else
-        # 配置镜像加速
-        local config_content
-        if [ -f "$docker_config_file" ] && [ -s "$docker_config_file" ]; then
-            # 如果配置文件存在且不为空，尝试合并配置
-            if command -v jq &>/dev/null; then
-                config_content=$(sudo jq '.["registry-mirrors"] = ["https://'"$DOCKER_REGISTRY_SOURCE"'"]' "$docker_config_file" 2>/dev/null)
-            fi
-        fi
-        
-        # 如果无法合并或jq不可用，创建新配置
-        if [ -z "$config_content" ]; then
-            config_content='{
-  "registry-mirrors": ["https://'"$DOCKER_REGISTRY_SOURCE"'"]
-}'
-        fi
-        
-        echo "$config_content" | sudo tee "$docker_config_file" > /dev/null
-        info "已配置Docker Registry镜像: https://$DOCKER_REGISTRY_SOURCE"
     fi
+    
+    # 如果无法合并或jq不可用，创建新配置
+    if [ -z "$config_content" ]; then
+        # 构建多个镜像源列表
+        local mirrors_list=""
+        for mirror in "${DOCKER_REGISTRY_MIRRORS[@]}"; do
+            local mirror_url=$(echo "$mirror" | cut -d'@' -f2)
+            if [ -n "$mirrors_list" ]; then
+                mirrors_list="$mirrors_list,"
+            fi
+            mirrors_list="$mirrors_list\"https://$mirror_url\""
+        done
+        
+        config_content='{
+  "registry-mirrors": ['"$mirrors_list"']
+}'
+    fi
+    
+    echo "$config_content" | sudo tee "$docker_config_file" > /dev/null
+    info "已配置多个Docker Registry镜像源作为备用"
     
     # 重启Docker服务使配置生效
     if systemctl is-active --quiet docker 2>/dev/null; then
@@ -913,6 +942,12 @@ install_docker_china_debian() {
         gnupg \
         lsb-release
     
+    # 确保 /etc/apt/sources.list.d/ 目录存在
+    sudo mkdir -p /etc/apt/sources.list.d
+    
+    # 确保 /usr/share/keyrings/ 目录存在
+    sudo mkdir -p /usr/share/keyrings
+    
     # 添加Docker的GPG密钥
     curl -fsSL "https://$DOCKER_MIRROR_SOURCE/linux/debian/gpg" | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
     
@@ -930,9 +965,9 @@ install_docker_china_debian() {
     sudo systemctl enable docker
     
     info "Debian Docker安装完成"
-    return 0
-}
-
+                    return 0
+                }
+                
 # 国内环境Ubuntu系统安装Docker
 install_docker_china_ubuntu() {
     info "在Ubuntu系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
@@ -948,6 +983,12 @@ install_docker_china_ubuntu() {
         gnupg \
         lsb-release
     
+    # 确保 /etc/apt/sources.list.d/ 目录存在
+    sudo mkdir -p /etc/apt/sources.list.d
+    
+    # 确保 /usr/share/keyrings/ 目录存在
+    sudo mkdir -p /usr/share/keyrings
+    
     # 添加Docker的GPG密钥
     curl -fsSL "https://$DOCKER_MIRROR_SOURCE/linux/ubuntu/gpg" | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
     
@@ -961,11 +1002,11 @@ install_docker_china_ubuntu() {
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
-    sudo systemctl start docker
-    sudo systemctl enable docker
+                        sudo systemctl start docker
+                        sudo systemctl enable docker
     
     info "Ubuntu Docker安装完成"
-    return 0
+                return 0
 }
 
 # 国内环境CentOS 7系统安装Docker
@@ -985,13 +1026,13 @@ install_docker_china_centos7() {
     sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
-    sudo systemctl start docker
-    sudo systemctl enable docker
+                        sudo systemctl start docker
+                        sudo systemctl enable docker
     
     info "CentOS 7 Docker安装完成"
-    return 0
-}
-
+                        return 0
+                    }
+                    
 # 国内环境CentOS 8/Fedora/Red Hat系统安装Docker
 install_docker_china_centos8() {
     info "在CentOS 8/Fedora/Red Hat系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
@@ -1009,13 +1050,13 @@ install_docker_china_centos8() {
     sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
-    sudo systemctl start docker
-    sudo systemctl enable docker
+                        sudo systemctl start docker
+                        sudo systemctl enable docker
     
     info "CentOS 8/Fedora/Red Hat Docker安装完成"
-    return 0
-}
-
+                        return 0
+                    }
+                    
 # 国内环境Anolis OS系统安装Docker
 install_docker_china_anolis() {
     info "在Anolis OS系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
@@ -1037,7 +1078,7 @@ install_docker_china_anolis() {
     sudo systemctl enable docker
     
     info "Anolis OS Docker安装完成"
-    return 0
+                        return 0
 }
 
 # 国内环境Docker安装主函数
@@ -1073,14 +1114,14 @@ install_docker_china() {
             ;;
         *)
             warning "不支持的操作系统类型: $os_type"
-            return 1
+                                        return 1
             ;;
     esac
     
     local install_result=$?
     if [ $install_result -ne 0 ]; then
-        error "Docker安装失败"
-        return 1
+                    error "Docker安装失败"
+                    return 1
     fi
     
     # 配置Docker Registry镜像加速
@@ -1097,14 +1138,14 @@ install_docker_china() {
     fi
     
     # 验证Docker安装
-    if command -v docker &>/dev/null; then
+                    if command -v docker &>/dev/null; then
         success "Docker安装成功！"
         docker --version
         return 0
-    else
+                    else
         error "Docker安装验证失败"
-        return 1
-    fi
+                        return 1
+                    fi
 }
 
 # Docker安装函数
@@ -1112,10 +1153,10 @@ install_docker() {
     info "安装Docker..."
     
     # 先检查Docker是否已安装
-    if command -v docker &>/dev/null; then
+                    if command -v docker &>/dev/null; then
         info "Docker命令已可用，跳过安装"
         success "Docker已安装"
-        return 0
+    return 0
     fi
     
     # 检查是否存在离线安装包
@@ -1989,7 +2030,7 @@ confirm_setup() {
     CONFIRM="Y"
     info "使用默认设置: $CONFIRM"
   fi
-
+  
   if [[ "$CONFIRM" =~ ^[Nn] ]]; then
     echo "已取消部署"
     exit 0
@@ -3087,6 +3128,111 @@ verify_https_status() {
   fi
 }
 
+
+# 检查项目环境
+check_project_environment() {
+  # 定义需要检测的目录和文件
+  local directories=("docker" "poetize-server" "py" "poetize-ui")
+  local files=("docker-compose.yml")
+  
+  # 静默检测所有目录和文件
+  for dir in "${directories[@]}"; do
+    if [ ! -d "$dir" ]; then
+      return 1
+    fi
+  done
+  
+  for file in "${files[@]}"; do
+    if [ ! -f "$file" ]; then
+      return 1
+    fi
+  done
+  
+  # 所有文件都存在
+  return 0
+}
+
+
+# 下载并解压项目源码
+download_and_extract_project() {
+  local download_url="https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz"
+  local tar_file="Awesome-poetize-open.tar.gz"
+  local extract_dir="Awesome-poetize-open"
+  
+  info "正在下载项目源码..."
+  
+  # 下载源码包
+  if command -v wget &> /dev/null; then
+    wget "$download_url"
+  elif command -v curl &> /dev/null; then
+    curl -sL "$download_url" -o "$tar_file"
+  else
+    error "未找到wget或curl命令，无法下载源码"
+    return 1
+  fi
+  
+  # 检查下载是否成功
+  if [ ! -f "$tar_file" ]; then
+    error "源码下载失败"
+    return 1
+  fi
+  
+  info "正在解压源码包..."
+  
+  # 解压源码包
+  if tar -zxvf "$tar_file"; then
+    success "源码解压成功"
+    # 创建项目目录并移动文件
+    if [ -d "Awesome-poetize-open" ]; then
+      cd "$extract_dir"
+      info "已进入项目目录: $(pwd)"
+      
+      # 清理下载文件
+      rm -f "../$tar_file"
+      
+      success "项目环境准备完成"
+      return 0
+    else
+      error "解压目录不存在"
+      return 1
+    fi
+  else
+    error "源码解压失败"
+    return 1
+  fi
+}
+
+# 环境检测后的处理逻辑
+handle_environment_status() {
+
+  check_project_environment
+  status=$?
+  
+  if [ $status -eq 0 ]; then
+    :
+  else
+    # 不完整环境 - 自动下载源码
+    info "正在下载最新源码..."
+    echo ""
+    
+    if download_and_extract_project; then
+      success "✅ 源码下载和解压完成，继续部署安装..."
+      echo ""
+    else
+      error "❌ 源码下载失败，部署终止"
+      exit 1
+    fi
+  fi
+}
+
+check_write_permission() {
+  if [ ! -w "." ]; then
+    error "当前目录没有写权限，请切换到有权限的目录"
+    return 1
+  fi
+  return 0
+}
+
 # 主函数
 main() {
   # 显示横幅
@@ -3110,11 +3256,20 @@ main() {
   echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
   echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
   echo ""
-
+  
   echo -e "${YELLOW}✨ 正在初始化部署环境...${NC}"
   sleep 3
   echo ""
-  
+
+  check_write_permission
+  status=$?
+  if [ $status -eq 0 ]; then
+    :
+  else
+    exit 1
+  fi
+
+  handle_environment_status
   
   # 解析命令行参数
   parse_arguments "$@"
@@ -3177,8 +3332,8 @@ main() {
         error "已取消部署"
         exit 1
       fi
-      warning "将尝试使用docker命令直接管理容器"
-    else
+        warning "将尝试使用docker命令直接管理容器"
+      else
       warning "Docker Compose不可用，请确保安装了完整的Docker Engine"
       info "现代Docker安装通常已包含docker compose插件"
       auto_confirm "是否继续部署? (y/n) [y=继续, n=退出]: " "y" "-n 1 -r"
@@ -3329,7 +3484,7 @@ main() {
   fi
 
   # 等待5秒让HTTPS配置完全生效
-  if [ "$ENABLE_HTTPS" = true ] || [ $SSL_STATUS -eq 0 ]; then
+  if [ "$ENABLE_HTTPS" = true ] || [ "${SSL_STATUS:-1}" -eq 0 ]; then
     info "等待HTTPS配置生效..."
     sleep 5
     
