@@ -3,7 +3,7 @@
     <img src="poetize_picture\首页1.jpg" alt="Logo" width="100%">
   </a>
 
-<h3 align="center">POETIZE 最美博客（AGPL 分支 · leapya 维护）</h3>
+<h3 align="center">POETIZE 最美博客（AGPL 分支 · LeapYa 维护）</h3>
   <p align="center">
     让内容创作与社交体验更美好
     <br />
@@ -166,7 +166,6 @@ chmod +x ./deploy.sh && sudo ./deploy.sh
 * 管理后台：`http(s)://域名/login`
 * 默认账号：`Sara / aaa`
 
-
 #### Ollama翻译模型配置（可选）
 
 如果你想启用本地AI翻译功能，我们也集成了Ollama模型支持。只需要取消 `docker-compose.yml`中的相关注释即可：
@@ -317,18 +316,33 @@ docker exec poetize-nginx /enable-https.sh
 
 国内环境存在Docker安装困难或网络受限的情况，为确保顺利部署，项目已提供完整的离线部署方案。只需从Release页面下载离线资源包并按以下结构放置：
 
-```
-offline/
-├── docker.tar.gz           # Docker离线安装包
-├── docker-compose          # Docker Compose二进制文件 
-└── images/                 # Docker镜像目录
-    ├── mysql.tar           # MySQL数据库镜像
-    ├── nginx.tar           # Nginx反向代理镜像
-    ├── java.tar            # Java后端服务镜像
-    └── python.tar          # Python后端服务镜像
-```
+##### 1. 使用deploy.sh脚本：
+ - 项目中提供的**deploy.sh**脚本已经包含了国内环境的配置和加速源设置。
+ - 该脚本会自动配置npm使用淘宝镜像源，并增加网络参数以提高下载速度。
+ - 通过执行**deploy.sh**，可以自动完成环境的初始化和依赖的安装。
 
-将上述资源放置在项目根目录的 `offline`文件夹中后，执行 `deploy.sh`脚本时将自动检测并优先使用这些离线资源，无需担心网络问题。这种方式很适合内网环境或网络条件受限的服务器。
+##### 2. 离线资源包：
+ - 从Release页面下载离线资源包。
+ - 按照以下结构放置资源包：
+
+   ```
+   offline/
+   ├── docker.tar.gz           # Docker离线安装包
+   ├── docker-compose          # Docker Compose二进制文件 
+   └── images/                 # Docker镜像目录
+      ├── mysql.tar           # MySQL数据库镜像
+      ├── nginx.tar           # Nginx反向代理镜像
+      ├── java.tar            # Java后端服务镜像
+      └── python.tar          # Python后端服务镜像
+   ```
+
+##### 3. 执行部署：
+ - 确保所有资源包和配置文件已正确放置。
+ - 运行以下命令以启动部署：
+   ```
+   chmod +x ./deploy.sh && sudo ./deploy.sh
+   ```
+通过这些步骤，您可以在中国国内环境中顺利部署项目，避免网络限制带来的问题。
 
 ## ✨ 功能特性
 
@@ -416,7 +430,7 @@ offline/
 ## 🤝 贡献与许可
 
 * 原作者：Sara (POETIZE最美博客)
-* Fork版本开发：[LeapYa]
+* Fork版本开发：LeapYa
 * 开源协议：遵循原项目AGPL协议
 
 ## 🛠️ 开发指南
@@ -439,9 +453,7 @@ offline/
 
 ```
 ├── deploy.sh                # 部署脚本
-├── docker-compose.yml       # 服务编排
-├── mysql/                   # MySQL配置
-├── nginx/                   # Nginx配置
+├── docker-compose.yml       # docker服务编排文件
 ├── poetize-im-ui/           # 聊天室UI (Vue3)
 ├── poetize-server/          # Java后端
 ├── poetize-ui/              # 博客系统UI (Vue2)

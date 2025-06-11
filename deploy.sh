@@ -1443,36 +1443,9 @@ setup_docker_compose_command() {
     info "将使用命令: $DOCKER_COMPOSE_CMD"
 }
 
-# 检查并设置环境
-setup_environment() {
-  info "检查并创建必要的目录..."
-  mkdir -p nginx
-  
-  # 检查nginx配置文件是否存在
-  if [ ! -f "nginx/default.http.conf" ]; then
-    error "找不到nginx/default.http.conf文件，请确保文件存在。"
-    exit 1
-  fi
-  
-  if [ ! -f "nginx/default.https.conf" ]; then
-    error "找不到nginx/default.https.conf文件，请确保文件存在。"
-    exit 1
-  fi
-  
-  # 检查docker-compose文件
-  if [ ! -f "docker-compose.yml" ]; then
-    error "找不到docker-compose.yml文件，请确保文件存在。"
-    exit 1
-  fi
-  
-  success "环境检查完成"
-}
-
 # 初始化部署
 init_deploy() {
   info "正在初始化部署环境..."
-  
-  setup_environment
   
   # 配置swap空间
   setup_swap
@@ -1487,8 +1460,8 @@ init_deploy() {
     DOMAIN_CONFIG="${DOMAINS[@]}"
     
     info "配置服务器名称为: $DOMAIN_CONFIG"
-    sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" nginx/default.http.conf
-    sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" nginx/default.https.conf
+    sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" docker/nginx/default.http.conf
+    sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" docker/nginx/default.https.conf
     
     # 更新docker-compose.yml中的FRONTEND_HOST环境变量
     info "更新Python后端FRONTEND_HOST环境变量为: $PRIMARY_DOMAIN"
@@ -1515,7 +1488,7 @@ init_deploy() {
   
   # 确保初始时使用HTTP配置
   info "设置初始Nginx配置为HTTP模式..."
-  cp nginx/default.http.conf nginx/default.conf
+  cp docker/nginx/default.http.conf docker/nginx/default.conf
   
   # 如果使用localhost，跳过certbot配置
   if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -1528,10 +1501,10 @@ init_deploy() {
     done
     
     # 使用sed替换certbot命令行certbot-entrypoint.sh
-    info "尝试在nginx/certbot-entrypoint.sh中替换邮箱和域名参数..."
+    info "尝试在docker/nginx/certbot-entrypoint.sh中替换邮箱和域名参数..."
     # 直接替换邮箱和域名参数
-    sed_i "s|--email your-email@example.com|--email $EMAIL|g" nginx/certbot-entrypoint.sh
-    sed_i "s|-d example.com -d www.example.com|$DOMAINS_PARAM|g" nginx/certbot-entrypoint.sh
+    sed_i "s|--email your-email@example.com|--email $EMAIL|g" docker/nginx/certbot-entrypoint.sh
+    sed_i "s|-d example.com -d www.example.com|$DOMAINS_PARAM|g" docker/nginx/certbot-entrypoint.sh
     
     success "成功更新certbot-entrypoint.sh中的邮箱和域名参数"
   fi
@@ -1545,8 +1518,8 @@ update_nginx_volumes() {
   DOMAIN_CONFIG="${DOMAINS[*]}"
   
   info "配置服务器名称为: $DOMAIN_CONFIG"
-  sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" nginx/default.http.conf
-  sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" nginx/default.https.conf
+  sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" docker/nginx/default.http.conf
+  sed_i "s/example.com www.example.com/$DOMAIN_CONFIG/g" docker/nginx/default.https.conf
   
   # 添加default.conf挂载
   if ! grep -q "default.conf:" docker-compose.yml; then
@@ -1561,7 +1534,7 @@ update_nginx_volumes() {
     
     if [ -n "$NGINX_CONF_LINE" ] && [[ "$NGINX_CONF_LINE" =~ ^[0-9]+$ ]]; then
       # 新的挂载行
-      NEW_MOUNT_LINE="      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf"
+      NEW_MOUNT_LINE="      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf"
       
       # 创建配置文件备份
       cp docker-compose.yml "$TEMP_FILE"
@@ -1627,11 +1600,11 @@ start_services() {
   fix_mysql_config_permissions
   
   # 确保enable-https.sh有执行权限
-  if [ -f "nginx/enable-https.sh" ]; then
+  if [ -f "docker/nginx/enable-https.sh" ]; then
     info "确保enable-https.sh有执行权限..."
-    chmod +x nginx/enable-https.sh || warning "无法修改nginx/enable-https.sh权限，容器内可能会出现权限问题"
+    chmod +x docker/nginx/enable-https.sh || warning "无法修改docker/nginx/enable-https.sh权限，容器内可能会出现权限问题"
     # 检查是否成功赋权
-    if [ -x "nginx/enable-https.sh" ]; then
+    if [ -x "docker/nginx/enable-https.sh" ]; then
       success "成功设置enable-https.sh执行权限"
     else 
       warning "未能确认enable-https.sh是否有执行权限，但会继续部署"
@@ -1916,18 +1889,18 @@ check_docker_compose() {
 # 设置脚本执行权限
 setup_script_permissions() {
   info "设置脚本执行权限..."
-  if [ -f "nginx/enable-https.sh" ]; then
-    chmod +x nginx/enable-https.sh 2>/dev/null || {
-      warning "无法修改nginx/enable-https.sh的权限，可能需要手动设置"
-      info "您可以稍后手动运行: chmod +x nginx/enable-https.sh"
+  if [ -f "docker/nginx/enable-https.sh" ]; then
+    chmod +x docker/nginx/enable-https.sh 2>/dev/null || {
+      warning "无法修改docker/nginx/enable-https.sh的权限，可能需要手动设置"
+      info "您可以稍后手动运行: chmod +x docker/nginx/enable-https.sh"
     }
-    if [ -x "nginx/enable-https.sh" ]; then
+    if [ -x "docker/nginx/enable-https.sh" ]; then
       success "已设置脚本执行权限"
     else
       warning "无法验证脚本是否有执行权限，继续部署"
     fi
   else
-    error "找不到nginx/enable-https.sh文件"
+    error "找不到docker/nginx/enable-https.sh文件"
     exit 1
   fi
 }
@@ -1956,18 +1929,18 @@ setup_directories() {
   fi
   
   # 检查是否存在必要的nginx配置文件
-  if [ ! -f "nginx/default.http.conf" ]; then
-    error "找不到nginx/default.http.conf文件"
+  if [ ! -f "docker/nginx/default.http.conf" ]; then
+    error "找不到docker/nginx/default.http.conf文件"
     exit 1
   fi
   
-  if [ ! -f "nginx/default.https.conf" ]; then
-    error "找不到nginx/default.https.conf文件"
+  if [ ! -f "docker/nginx/default.https.conf" ]; then
+    error "找不到docker/nginx/default.https.conf文件"
     exit 1
   fi
   
-  if [ ! -f "nginx/enable-https.sh" ]; then
-    error "找不到nginx/enable-https.sh文件"
+  if [ ! -f "docker/nginx/enable-https.sh" ]; then
+    error "找不到docker/nginx/enable-https.sh文件"
     exit 1
   fi
   
@@ -2136,28 +2109,6 @@ check_system_resources() {
   success "系统资源检查完成（请注意以上警告信息）"
 }
 
-# 备份配置
-backup_config() {
-  info "备份当前配置..."
-  
-  local BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
-  mkdir -p "$BACKUP_DIR"
-  
-  # 备份配置文件
-  cp nginx/default.http.conf "$BACKUP_DIR/" 2>/dev/null || true
-  cp nginx/default.https.conf "$BACKUP_DIR/" 2>/dev/null || true
-  cp docker-compose.yml "$BACKUP_DIR/" 2>/dev/null || true
-  cp mysql/conf/my.cnf "$BACKUP_DIR/" 2>/dev/null || true
-  
-  # 备份数据库
-  if docker ps | grep -q poetize-mysql; then
-    info "备份数据库..."
-    docker exec poetize-mysql mysqldump -u root -proot123 poetize > "$BACKUP_DIR/poetize.sql"
-  fi
-  
-  success "配置已备份到 $BACKUP_DIR"
-}
-
 # 动态内存优化函数
 apply_memory_optimizations() {
   local MEMORY_MODE="$1"
@@ -2166,7 +2117,7 @@ apply_memory_optimizations() {
   info "应用动态内存优化 (模式: $MEMORY_MODE, 总内存: ${TOTAL_MEM_GB}GB)..."
   
   # 创建MySQL配置目录
-  mkdir -p mysql/conf
+  mkdir -p docker/mysql/conf
   
   # 根据内存模式设置配置参数
   local MYSQL_BUFFER_POOL_SIZE
@@ -2303,11 +2254,8 @@ apply_memory_optimizations() {
   
   # 1. 创建/更新MySQL配置
   info "创建/更新MySQL配置文件..."
-  # 备份原配置(如果存在)
-  [ -f "mysql/conf/my.cnf" ] && cp mysql/conf/my.cnf mysql/conf/my.cnf.bak
-  
   # 创建新配置
-  cat > mysql/conf/my.cnf << EOF
+  cat > docker/mysql/conf/my.cnf << EOF
 [mysqld]
 # $MEMORY_MODE 内存环境MySQL配置 (总内存: ${TOTAL_MEM_GB}GB)
 performance_schema = $([ "$MEMORY_MODE" = "very-low" ] && echo "off" || echo "on")
@@ -2514,57 +2462,6 @@ EOF
   success "$MEMORY_MODE 内存模式优化配置完成"
   info "系统将使用动态优化的内存设置 (总内存: ${TOTAL_MEM_GB}GB)"
 }
-
-# 清理函数
-cleanup() {
-  info "执行清理操作..."
-  
-  # 确保DOCKER_COMPOSE_CMD已定义
-  DOCKER_COMPOSE_CMD=${DOCKER_COMPOSE_CMD:-"docker-compose"}
-  
-  # 停止所有服务
-  eval "$DOCKER_COMPOSE_CMD down" || warning "无法停止服务，可能服务未运行"
-  
-  # 清理临时文件
-  rm -f nginx/default.conf
-  rm -f .poetize-config
-  rm -f docker-compose.yml.resource_backup
-  rm -f mysql/conf/my.cnf.bak
-  
-  # 清理未使用的镜像和卷
-  docker system prune -f
-  docker volume prune -f
-  
-  success "清理完成"
-}
-
-# 回滚函数
-rollback() {
-  info "执行回滚操作..."
-  
-  # 停止所有服务
-  eval "$DOCKER_COMPOSE_CMD down"
-  
-  # 恢复备份的配置
-  if [ -d "$BACKUP_DIR" ]; then
-    cp "$BACKUP_DIR/default.http.conf" nginx/ 2>/dev/null || true
-    cp "$BACKUP_DIR/default.https.conf" nginx/ 2>/dev/null || true
-    cp "$BACKUP_DIR/docker-compose.yml" . 2>/dev/null || true
-    cp "$BACKUP_DIR/my.cnf" mysql/conf/ 2>/dev/null || true
-    
-    # 恢复数据库
-    if [ -f "$BACKUP_DIR/poetize.sql" ]; then
-      docker exec -i poetize-mysql mysql -u root -proot123 poetize < "$BACKUP_DIR/poetize.sql"
-    fi
-  fi
-  
-  success "回滚完成"
-}
-
-# 设置错误处理
-set -e
-trap 'error "部署失败，执行回滚..."; rollback; exit 1' ERR
-# trap 'cleanup' EXIT
 
 # 添加一个函数用于检查和安装bc命令
 check_and_install_bc() {
@@ -3030,20 +2927,20 @@ EOF
 fix_mysql_config_permissions() {
   info "检查并修复MySQL配置文件权限..."
   
-  if [ -f "./mysql/conf/my.cnf" ]; then
+  if [ -f "./docker/mysql/conf/my.cnf" ]; then
     # 获取当前权限
-    current_perm=$(stat -c "%a" ./mysql/conf/my.cnf 2>/dev/null || stat -f "%Lp" ./mysql/conf/my.cnf 2>/dev/null)
+    current_perm=$(stat -c "%a" ./docker/mysql/conf/my.cnf 2>/dev/null || stat -f "%Lp" ./docker/mysql/conf/my.cnf 2>/dev/null)
     
     # 如果权限不是644，则修改
     if [ "$current_perm" != "644" ]; then
       info "MySQL配置文件权限不正确，当前权限: $current_perm，修改为644..."
-      chmod 644 ./mysql/conf/my.cnf
+      chmod 644 ./docker/mysql/conf/my.cnf
       success "MySQL配置文件权限已修复"
     else
       info "MySQL配置文件权限正确: 644"
     fi
   else
-    warning "MySQL配置文件 ./mysql/conf/my.cnf 不存在，将在首次运行时创建"
+    warning "MySQL配置文件 ./docker/mysql/conf/my.cnf 不存在，将在首次运行时创建"
   fi
 }
 
@@ -3365,9 +3262,6 @@ main() {
   
   # 添加系统资源检查
   check_system_resources
-  
-  # 添加配置备份
-  backup_config
   
   # 初始化部署
   init_deploy

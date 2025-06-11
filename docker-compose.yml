@@ -2,17 +2,17 @@ services:
   # Nginx代理服务，使用OpenResty 1.25.3.1，支持HTTP/3和Brotli
   nginx:
     build:
-      context: ./nginx
+      context: ./docker/nginx
       dockerfile: Dockerfile
     container_name: poetize-nginx
     user: root
     volumes:
       - poetize_ui_dist:/usr/share/nginx/html/poetize
       - poetize_im_dist:/usr/share/nginx/html/im
-      - ./nginx/default.http.conf:/usr/local/openresty/nginx/conf/conf.d/default.http.conf.template
-      - ./nginx/default.https.conf:/usr/local/openresty/nginx/conf/conf.d/default.https.conf.template
-      - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf
-      - ./nginx/enable-https.sh:/enable-https.sh
+      - ./docker/nginx/default.http.conf:/usr/local/openresty/nginx/conf/conf.d/default.http.conf.template
+      - ./docker/nginx/default.https.conf:/usr/local/openresty/nginx/conf/conf.d/default.https.conf.template
+      - ./docker/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf
+      - ./docker/nginx/enable-https.sh:/enable-https.sh
       - ./py/data:/app/data
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
@@ -123,8 +123,8 @@ services:
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - web-root:/usr/share/nginx/html
-      - ./nginx/certbot-logs:/var/log/letsencrypt
-      - ./nginx/certbot-entrypoint.sh:/certbot-entrypoint.sh
+      - ./docker/nginx/certbot-logs:/var/log/letsencrypt
+      - ./docker/nginx/certbot-entrypoint.sh:/certbot-entrypoint.sh
     depends_on:
       - nginx
     restart: "no"
@@ -241,7 +241,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ./poetize-server/sql/poetry.sql:/docker-entrypoint-initdb.d/init.sql
       - ./poetize-server/sql/poetry.sql:/poetry.sql
-      - ./mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - ./docker/mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf:ro
     environment:
       - MARIADB_ROOT_PASSWORD=root123
       - MARIADB_DATABASE=poetize
