@@ -70,6 +70,8 @@ RUN set -e; \
 # 复制所有Python服务代码
 COPY --chown=root:root ./py/ /app/
 
+RUN uv venv
+
 # 复制并安装Python依赖
 RUN uv pip install --no-cache-dir --upgrade pip && \
     uv pip install --no-cache-dir wheel && \
