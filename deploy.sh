@@ -2373,17 +2373,13 @@ check_and_install_bc() {
       ;;
   esac
   fi
-    
-    # 再次检查是否安装成功
-    if ! command -v bc &>/dev/null; then
-      warning "bc安装失败，将使用替代方法进行浮点数比较"
-      return 1
-    else
-      success "bc安装成功"
-      return 0
-    fi
+  # 再次检查是否安装成功
+  if ! command -v bc &>/dev/null; then
+    warning "bc安装失败，将使用替代方法进行浮点数比较"
+    return 1
+  else
+    success "bc安装成功"
   fi
-  
   return 0
 }
 
