@@ -563,6 +563,8 @@ DOCKER_REGISTRY_MIRRORS=(
     "阿里云(上海)@registry.cn-shanghai.aliyuncs.com"
     "阿里云(北京)@registry.cn-beijing.aliyuncs.com"
     "腾讯云@mirror.ccs.tencentyun.com"
+    "geekery1@hub.icert.top"
+    "geekery2@ghcr.geekery.cn"
     "官方 Docker Hub@registry.hub.docker.com"
     "Docker Hub@hub.docker.com"
 )
@@ -3084,11 +3086,7 @@ handle_environment_status() {
   
   if [ $status -eq 0 ]; then
     :
-  else
-    # 不完整环境 - 自动下载源码
-    info "正在下载最新源码..."
-    echo ""
-    
+  else    
     if download_and_extract_project; then
       success "✅ 源码下载和解压完成，继续部署安装..."
       echo ""
