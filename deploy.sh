@@ -3063,18 +3063,14 @@ download_and_extract_project() {
     # 解压源码包
     if tar -zxvf "$tar_file"; then
       success "源码解压成功"
-      else
-        error "解压目录不存在"
-        return 1
-      fi
     else
       error "源码解压失败"
       return 1
     fi
   fi
 
-    # 创建项目目录并移动文件
-  if [ -d "Awesome-poetize-open" ]; then
+  # 创建项目目录并移动文件
+  if [ -d "$extract_dir" ]; then
     cd "$extract_dir"
     info "已进入项目目录: $(pwd)"
     
@@ -3084,6 +3080,7 @@ download_and_extract_project() {
     rm -rf "README.md"
     
     success "项目环境准备完成"
+  fi
 }
 
 # 环境检测后的处理逻辑
