@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
@@ -52,37 +52,6 @@ RUN set -e; \
         npm config set registry https://registry.npmmirror.com; \
     fi
 
-# 安装uv和uvx - 优先官方安装脚本
-RUN set -e; \
-    echo "尝试从官方源安装uv..."; \
-    # 首先尝试官方安装脚本
-    if curl -fsSL --connect-timeout 30 --max-time 300 https://astral.sh/uv/install.sh | sh; then \
-        echo "✅ 官方脚本安装uv成功"; \
-    # 如果官方脚本失败，尝试直接下载二进制文件
-    else \
-        echo "⚠️ 官方脚本失败，尝试直接下载uv二进制文件"; \
-        UV_VERSION="0.1.18"; \
-        if wget -O /tmp/uv.tar.gz https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz; then \
-            echo "✅ 从GitHub下载uv成功"; \
-        elif curl -fsSL -o /tmp/uv.tar.gz https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz; then \
-            echo "✅ 从GitHub下载uv成功"; \
-        else \
-            echo "❌ uv下载失败，跳过安装"; \
-            exit 0; \
-        fi; \
-        tar -xzf /tmp/uv.tar.gz -C /tmp; \
-        mkdir -p /root/.local/bin; \
-        cp /tmp/uv-x86_64-unknown-linux-gnu/uv /root/.local/bin/ 2>/dev/null || true; \
-        cp /tmp/uv-x86_64-unknown-linux-gnu/uvx /root/.local/bin/ 2>/dev/null || true; \
-        chmod +x /root/.local/bin/uv /root/.local/bin/uvx 2>/dev/null || true; \
-        rm -rf /tmp/uv*; \
-        echo "✅ uv二进制安装完成"; \
-    fi; \
-    . /root/.local/bin/env 2>/dev/null || true
-
-# 将uv和uvx添加到PATH
-ENV PATH="/root/.local/bin:$PATH"
-
 # 设置工作目录
 WORKDIR /app
 
@@ -93,17 +62,17 @@ RUN set -e; \
         echo "✅ pip官方源可用，保持官方配置"; \
     else \
         echo "⚠️ pip官方源不可用，配置清华镜像"; \
-        pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/; \
-        pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn; \
+        uv pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/; \
+        uv pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn; \
     fi
 
 # 复制所有Python服务代码
 COPY --chown=root:root ./py/ /app/
 
 # 复制并安装Python依赖
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir wheel && \
-    pip install --no-cache-dir -r requirements.txt && \
+RUN uv pip install --no-cache-dir --upgrade pip && \
+    uv pip install --no-cache-dir wheel && \
+    uv pip install --no-cache-dir -r requirements.txt && \
     # 清理pip缓存
     rm -rf /root/.cache/pip
 
@@ -121,4 +90,4 @@ RUN node --version && npm --version && npx --version && \
 EXPOSE 5000
 
 # 使用Uvicorn启动FastAPI应用
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"] 
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"] 

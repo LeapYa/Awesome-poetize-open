@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-06-11
+## 修改时间: 2025-06-12
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.0
+## 版本: 1.0.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -103,91 +103,93 @@ print_summary() {
   fi
   
   printf "\n"
-  printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}\n"
-  printf "${BLUE}║                            🎉 Poetize 部署成功！                            ║${NC}\n"
-  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════════════════╣${NC}\n"
-  printf "${BLUE}║                                                                               ║${NC}\n"
-  printf "${BLUE}║  📋 基础配置信息                                                              ║${NC}\n"
-  printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-  printf "${BLUE}║${NC}  🌐 主域名: ${GREEN}%-50s${NC}                 ║${NC}\n" "$PRIMARY_DOMAIN"
-  printf "${BLUE}║${NC}  🔗 所有域名: ${GREEN}%-46s${NC}                     ║${NC}\n" "${DOMAINS[*]}"
-  printf "${BLUE}║${NC}  📧 管理员邮箱: ${GREEN}%-44s${NC}                       ║${NC}\n" "$EMAIL"
-  printf "${BLUE}║                                                                               ║${NC}\n"
+  printf "${GREEN}%80s${NC}\n" | tr ' ' '='
+  printf "${GREEN}%s${NC}\n" "$(printf '%*s' $(((80-20)/2)) '')Poetize 部署成功！$(printf '%*s' $(((80-20)/2)) '')"
+  printf "${GREEN}%80s${NC}\n" | tr ' ' '='
+  printf "\n"
+  
+  printf "${CYAN}基础配置信息${NC}\n"
+  printf "${CYAN}%s${NC}\n" "$(printf '%*s' 12 '' | tr ' ' '-')"
+  printf "  主域名: ${GREEN}%s${NC}\n" "$PRIMARY_DOMAIN"
+  printf "  所有域名: ${GREEN}%s${NC}\n" "${DOMAINS[*]}"
+  printf "  管理员邮箱: ${GREEN}%s${NC}\n" "$EMAIL"
+  printf "\n"
   
   # 本地环境处理
   if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    printf "${BLUE}║  🚀 本地开发环境访问地址                                                      ║${NC}\n"
-    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-    printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC}               ║${NC}\n" "http://$PRIMARY_DOMAIN"
-    printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC}             ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
-    printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC}                ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
+    printf "${CYAN}本地开发环境访问地址${NC}\n"
+    printf "${CYAN}%s${NC}\n" "$(printf '%*s' 20 '' | tr ' ' '-')"
+    printf "  网站首页: ${GREEN}http://%s${NC}\n" "$PRIMARY_DOMAIN"
+    printf "  聊天室: ${GREEN}http://%s/im${NC}\n" "$PRIMARY_DOMAIN"
+    printf "  管理后台: ${GREEN}http://%s/admin${NC}\n" "$PRIMARY_DOMAIN"
   else
-    printf "${BLUE}║  🌍 服务访问地址                                                              ║${NC}\n"
-    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
+    printf "${CYAN}服务访问地址${NC}\n"
+    printf "${CYAN}%s${NC}\n" "$(printf '%*s' 12 '' | tr ' ' '-')"
     if [ "$https_enabled" = true ]; then
-      printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-35s${NC} ${GREEN}🔒 HTTPS已启用${NC}        ║${NC}\n" "https://$PRIMARY_DOMAIN"
-      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-53s${NC}              ║${NC}\n" "https://$PRIMARY_DOMAIN/im"
-      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-50s${NC}                 ║${NC}\n" "https://$PRIMARY_DOMAIN/admin"
-      printf "${BLUE}║${NC}  🔄 HTTP备用: ${YELLOW}%-35s${NC} ${YELLOW}(自动重定向)${NC}       ║${NC}\n" "http://$PRIMARY_DOMAIN"
+      printf "  网站首页: ${GREEN}https://%s${NC} ${GREEN}(HTTPS已启用)${NC}\n" "$PRIMARY_DOMAIN"
+      printf "  聊天室: ${GREEN}https://%s/im${NC}\n" "$PRIMARY_DOMAIN"
+      printf "  管理后台: ${GREEN}https://%s/admin${NC}\n" "$PRIMARY_DOMAIN"
+      printf "  HTTP备用: ${YELLOW}http://%s${NC} ${YELLOW}(自动重定向)${NC}\n" "$PRIMARY_DOMAIN"
     else
-      printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC}               ║${NC}\n" "http://$PRIMARY_DOMAIN"
-      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC}             ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
-      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC}                ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
-      printf "${BLUE}║${NC}  🔒 HTTPS状态: ${RED}%-48s${NC}                         ║${NC}\n" "未启用"
+      printf "  网站首页: ${GREEN}http://%s${NC}\n" "$PRIMARY_DOMAIN"
+      printf "  聊天室: ${GREEN}http://%s/im${NC}\n" "$PRIMARY_DOMAIN"
+      printf "  管理后台: ${GREEN}http://%s/admin${NC}\n" "$PRIMARY_DOMAIN"
+      printf "  HTTPS状态: ${RED}未启用${NC}\n"
     fi
   fi
-  
-  printf "${BLUE}║                                                                               ║${NC}\n"
+  printf "\n"
   
   # HTTPS配置状态
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    printf "${BLUE}║  🔐 HTTPS配置状态                                                             ║${NC}\n"
-    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
+    printf "${CYAN}HTTPS配置状态${NC}\n"
+    printf "${CYAN}%s${NC}\n" "$(printf '%*s' 13 '' | tr ' ' '-')"
     if [ "$https_enabled" = true ]; then
-      printf "${BLUE}║${NC}  ${GREEN}✅ HTTPS已成功配置并启用${NC}                                            ║${NC}\n"
-      printf "${BLUE}║${NC}     📜 SSL证书状态: ${GREEN}%-37s${NC}                         ║${NC}\n" "有效"
-      printf "${BLUE}║${NC}     🔧 Nginx HTTPS配置: ${GREEN}%-34s${NC}                            ║${NC}\n" "已启用"
-      printf "${BLUE}║${NC}     🛡️  安全连接: ${GREEN}%-39s${NC}                       ║${NC}\n" "可用"
+      printf "  ${GREEN}HTTPS已成功配置并启用${NC}\n"
+      printf "  SSL证书状态: ${GREEN}有效${NC}\n"
+      printf "  Nginx HTTPS配置: ${GREEN}已启用${NC}\n"
+      printf "  安全连接: ${GREEN}可用${NC}\n"
     else
-      printf "${BLUE}║${NC}  ${RED}❌ HTTPS未正确配置${NC}                                                    ║${NC}\n"
-      printf "${BLUE}║${NC}     💡 启用命令: ${YELLOW}%-32s${NC}                                ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
-      printf "${BLUE}║${NC}     📝 请检查域名DNS解析和防火墙配置                                        ║${NC}\n"
+      printf "  ${RED}HTTPS未正确配置${NC}\n"
+      printf "  启用命令: ${YELLOW}docker exec poetize-nginx /enable-https.sh${NC}\n"
+      printf "  请检查域名DNS解析和防火墙配置\n"
     fi
-    printf "${BLUE}║                                                                               ║${NC}\n"
+    printf "\n"
   fi
   
   # 数据库凭据信息
   if [ -f ".config/db_credentials.txt" ]; then
-    printf "${BLUE}║  🗄️  数据库凭据信息                                                           ║${NC}\n"
-    printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
+    printf "${CYAN}数据库凭据信息${NC}\n"
+    printf "${CYAN}%s${NC}\n" "$(printf '%*s' 14 '' | tr ' ' '-')"
     
     DB_ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     DB_USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     
-    printf "${BLUE}║${NC}  🔑 ROOT密码: ${YELLOW}%-45s${NC}                         ║${NC}\n" "$DB_ROOT_PASSWORD"
-    printf "${BLUE}║${NC}  👤 poetize用户密码: ${YELLOW}%-35s${NC}                             ║${NC}\n" "$DB_USER_PASSWORD"
-    printf "${BLUE}║${NC}  ${YELLOW}⚠️  请妥善保存密码，完整信息在 .config/db_credentials.txt${NC}             ║${NC}\n"
-    printf "${BLUE}║                                                                               ║${NC}\n"
+    printf "  ROOT密码: ${YELLOW}%s${NC}\n" "$DB_ROOT_PASSWORD"
+    printf "  poetize用户密码: ${YELLOW}%s${NC}\n" "$DB_USER_PASSWORD"
+    printf "  ${YELLOW}请妥善保存密码，完整信息在 .config/db_credentials.txt${NC}\n"
+    printf "\n"
   fi
   
   # 常用命令
-  printf "${BLUE}║  🛠️  常用管理命令                                                             ║${NC}\n"
-  printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-  printf "${BLUE}║${NC}  📊 查看所有容器: ${GREEN}%-36s${NC}                              ║${NC}\n" "docker ps -a"
-  printf "${BLUE}║${NC}  📋 查看容器日志: ${GREEN}%-36s${NC}                              ║${NC}\n" "docker logs poetize-nginx"
-  printf "${BLUE}║${NC}  🔄 重启容器: ${GREEN}%-40s${NC}                          ║${NC}\n" "$DOCKER_COMPOSE_CMD restart"
-  printf "${BLUE}║${NC}  ⏹️  停止服务: ${GREEN}%-40s${NC}                          ║${NC}\n" "$DOCKER_COMPOSE_CMD down"
-  printf "${BLUE}║${NC}  ▶️  启动服务: ${GREEN}%-40s${NC}                          ║${NC}\n" "$DOCKER_COMPOSE_CMD up -d"
+  printf "${CYAN}常用管理命令${NC}\n"
+  printf "${CYAN}%s${NC}\n" "$(printf '%*s' 12 '' | tr ' ' '-')"
+  printf "  查看所有容器: ${GREEN}docker ps -a${NC}\n"
+  printf "  查看容器日志: ${GREEN}docker logs poetize-nginx${NC}\n"
+  printf "  重启容器: ${GREEN}%s restart${NC}\n" "$DOCKER_COMPOSE_CMD"
+  printf "  停止服务: ${GREEN}%s down${NC}\n" "$DOCKER_COMPOSE_CMD"
+  printf "  启动服务: ${GREEN}%s up -d${NC}\n" "$DOCKER_COMPOSE_CMD"
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    printf "${BLUE}║${NC}  🔒 手动启用HTTPS: ${GREEN}%-32s${NC}                                ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
+    printf "  手动启用HTTPS: ${GREEN}docker exec poetize-nginx /enable-https.sh${NC}\n"
   fi
-  printf "${BLUE}║                                                                               ║${NC}\n"
-  printf "${BLUE}║  🔐 登录信息                                                                  ║${NC}\n"
-  printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-  printf "${BLUE}║${NC}  ${YELLOW}⚠️  默认管理员账号: Sara, 密码: aaa${NC}                                 ║${NC}\n"
-  printf "${BLUE}║${NC}  ${RED}🚨 请登录后立即修改密码以确保安全！${NC}                                 ║${NC}\n"
-  printf "${BLUE}║                                                                               ║${NC}\n"
-  printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}\n"
+  printf "\n"
+  
+  printf "${CYAN}登录信息${NC}\n"
+  printf "${CYAN}%s${NC}\n" "$(printf '%*s' 8 '' | tr ' ' '-')"
+  printf "  ${YELLOW}默认管理员账号: Sara, 密码: aaa${NC}\n"
+  printf "  ${RED}请登录后立即修改密码以确保安全！${NC}\n"
+  printf "\n"
+  
+  printf "${GREEN}%80s${NC}\n" | tr ' ' '='
 }
 
 # 保存配置到文件
@@ -3032,18 +3034,7 @@ download_and_extract_project() {
   
   info "正在下载项目源码..."
   
-  # 下载源码包
-  if command -v wget &> /dev/null; then
-    wget "$download_url"
-  elif command -v curl &> /dev/null; then
-    curl -sL "$download_url" -o "$tar_file"
-  else
-    error "未找到wget或curl命令，无法下载源码"
-    return 1
-  fi
-  
-  # 检查下载是否成功
-  if [ ! -f "$tar_file" ]; then
+  if is_china_environment; then
     if ! command -v git &> /dev/null; then
       warning "Git未安装，正在尝试安装..."
       if ! install_git; then
@@ -3059,14 +3050,29 @@ download_and_extract_project() {
       return 1
     fi
   else
-    info "正在解压源码包..."
-    # 解压源码包
-    if tar -zxvf "$tar_file"; then
-      success "源码解压成功"
-    else
-      error "源码解压失败"
-      return 1
-    fi
+      # 下载源码包
+      if command -v wget &> /dev/null; then
+        wget "$download_url"
+      elif command -v curl &> /dev/null; then
+        curl -sL "$download_url" -o "$tar_file"
+      else
+        error "未找到wget或curl命令，无法下载源码"
+        return 1
+      fi
+      
+      # 检查下载是否成功
+      if [ ! -f "$tar_file" ]; then
+        :
+      else
+        info "正在解压源码包..."
+        # 解压源码包
+        if tar -zxvf "$tar_file"; then
+          success "源码解压成功"
+        else
+          error "源码解压失败"
+          return 1
+        fi
+      fi
   fi
 
   # 创建项目目录并移动文件
@@ -3114,29 +3120,170 @@ check_write_permission() {
   return 0
 }
 
+# 添加跨平台系统更新函数
+update_system_packages() {
+  info "更新系统包列表..."
+  
+  # 使用现有的系统检测函数
+  local os_type=$(detect_os_type)
+  
+  # 根据不同系统执行相应的更新命令
+  case "$os_type" in
+    ubuntu|debian)
+      update_debian_based
+      ;;
+    centos7)
+      update_centos7_based
+      ;;
+    centos8|fedora|anolis)
+      update_centos8_based
+      ;;
+    arch)
+      update_arch_based
+      ;;
+    alpine)
+      update_alpine_based
+      ;;
+    unknown)
+      warning "未识别的操作系统，跳过系统包更新"
+      warning "请手动更新系统包列表"
+      ;;
+    *)
+      warning "不支持的操作系统类型: $os_type，跳过系统包更新"
+      ;;
+  esac
+}
+
+# Debian/Ubuntu系统更新
+update_debian_based() {
+  if [ "$EUID" -eq 0 ]; then
+    if apt update &>/dev/null; then
+      success "系统包列表更新成功 (apt)"
+    else
+      warning "apt update 失败，但不影响部署继续"
+    fi
+  else
+    if command -v sudo &>/dev/null; then
+      if sudo apt update &>/dev/null; then
+        success "系统包列表更新成功 (sudo apt)"
+      else
+        warning "sudo apt update 失败，但不影响部署继续"
+      fi
+    else
+      warning "无权限执行 apt update，建议手动执行"
+    fi
+  fi
+}
+
+# CentOS 7系统更新
+update_centos7_based() {
+  if [ "$EUID" -eq 0 ]; then
+    if yum check-update &>/dev/null || [ $? -eq 100 ]; then
+      success "系统包列表更新成功 (yum)"
+    else
+      warning "yum check-update 失败，但不影响部署继续"
+    fi
+  else
+    if command -v sudo &>/dev/null; then
+      if sudo yum check-update &>/dev/null || [ $? -eq 100 ]; then
+        success "系统包列表更新成功 (sudo yum)"
+      else
+        warning "sudo yum check-update 失败，但不影响部署继续"
+      fi
+    else
+      warning "无权限执行 yum check-update，建议手动执行"
+    fi
+  fi
+}
+
+# CentOS 8/Fedora/Anolis系统更新
+update_centos8_based() {
+  if [ "$EUID" -eq 0 ]; then
+    if dnf check-update &>/dev/null || [ $? -eq 100 ]; then
+      success "系统包列表更新成功 (dnf)"
+    else
+      warning "dnf check-update 失败，但不影响部署继续"
+    fi
+  else
+    if command -v sudo &>/dev/null; then
+      if sudo dnf check-update &>/dev/null || [ $? -eq 100 ]; then
+        success "系统包列表更新成功 (sudo dnf)"
+      else
+        warning "sudo dnf check-update 失败，但不影响部署继续"
+      fi
+    else
+      warning "无权限执行 dnf check-update，建议手动执行"
+    fi
+  fi
+}
+
+# Arch Linux系统更新
+update_arch_based() {
+  if [ "$EUID" -eq 0 ]; then
+    if pacman -Sy &>/dev/null; then
+      success "系统包列表更新成功 (pacman)"
+    else
+      warning "pacman -Sy 失败，但不影响部署继续"
+    fi
+  else
+    if command -v sudo &>/dev/null; then
+      if sudo pacman -Sy &>/dev/null; then
+        success "系统包列表更新成功 (sudo pacman)"
+      else
+        warning "sudo pacman -Sy 失败，但不影响部署继续"
+      fi
+    else
+      warning "无权限执行 pacman -Sy，建议手动执行"
+    fi
+  fi
+}
+
+# Alpine Linux系统更新
+update_alpine_based() {
+  if [ "$EUID" -eq 0 ]; then
+    if apk update &>/dev/null; then
+      success "系统包列表更新成功 (apk)"
+    else
+      warning "apk update 失败，但不影响部署继续"
+    fi
+  else
+    if command -v sudo &>/dev/null; then
+      if sudo apk update &>/dev/null; then
+        success "系统包列表更新成功 (sudo apk)"
+      else
+        warning "sudo apk update 失败，但不影响部署继续"
+      fi
+    else
+      warning "无权限执行 apk update，建议手动执行"
+    fi
+  fi
+}
+
 # 主函数
 main() {
   # 显示横幅
   echo ""
-  echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}          ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${NC}               ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}          ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${NC}               ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}          ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${NC}                 ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}          ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${NC}                 ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}          ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${NC}               ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}          ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${NC}               ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}                      ${YELLOW}   优雅的博客与聊天平台部署脚本   ${NC}                      ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}┌─────────────────────────────────────────────────────────────────────┐${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  ✨ 作者: ${GREEN}LeapYa${NC}                                                    ${YELLOW}│${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  ✨ 邮箱: ${GREEN}enable_lazy@qq.com${NC}                                        ${YELLOW}│${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  ✨ 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${NC}            ${YELLOW}│${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}└─────────────────────────────────────────────────────────────────────┘${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
-  echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
-  echo ""
+  printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════╗${NC}\n"
+  printf "${BLUE}║                                                                           ║${NC}\n"
+  printf "${BLUE}║                              ${GREEN}P O E T I Z E${BLUE}                                ║${NC}\n"
+  printf "${BLUE}║                        ${YELLOW}* 优雅的博客与聊天平台 *${BLUE}                           ║${NC}\n"
+  printf "${BLUE}║                                                                           ║${NC}\n"
+  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════════════╣${NC}\n"
+  printf "${BLUE}║                                                                           ║${NC}\n"
+  printf "${BLUE}║          ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${BLUE}            ║${NC}\n"
+  printf "${BLUE}║          ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${BLUE}            ║${NC}\n"
+  printf "${BLUE}║          ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${BLUE}              ║${NC}\n"
+  printf "${BLUE}║          ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${BLUE}              ║${NC}\n"
+  printf "${BLUE}║          ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${BLUE}            ║${NC}\n"
+  printf "${BLUE}║          ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${BLUE}            ║${NC}\n"
+  printf "${BLUE}║                                                                           ║${NC}\n"
+  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════════════╣${NC}\n"
+  printf "${BLUE}║                                                                           ║${NC}\n"
+  printf "${BLUE}║           ${YELLOW}* 作者: ${GREEN}LeapYa${BLUE}                                                  ║${NC}\n"
+  printf "${BLUE}║           ${YELLOW}* 邮箱: ${GREEN}enable_lazy@qq.com${BLUE}                                      ║${NC}\n"
+  printf "${BLUE}║           ${YELLOW}* 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${BLUE}          ║${NC}\n"
+  printf "${BLUE}║                                                                           ║${NC}\n"
+  printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════╝${NC}\n"
   
   echo -e "${YELLOW}✨ 正在初始化部署环境...${NC}"
   sleep 3
@@ -3149,6 +3296,8 @@ main() {
   else
     exit 1
   fi
+
+  update_system_packages
 
   handle_environment_status
   
@@ -3245,7 +3394,7 @@ main() {
   
   # 检查依赖
   check_dependencies
-
+  
   
   # 如果没有输入域名，提示用户
   if [ ${#DOMAINS[@]} -eq 0 ]; then
