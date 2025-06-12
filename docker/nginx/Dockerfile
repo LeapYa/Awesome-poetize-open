@@ -26,17 +26,8 @@ RUN set -e; \
     if git clone --recursive https://github.com/google/ngx_brotli.git; then \
         echo "✅ 从GitHub下载ngx_brotli成功"; \
     # 如果GitHub失败，尝试Gitee镜像
-    elif git clone --recursive https://gitee.com/lirko/ngx_brotli.git && mv ngx_brotli.git ngx_brotli; then \
+    elif git clone --recursive https://gitee.com/lirko/ngx_brotli.git; then \
         echo "🔄 从Gitee镜像下载ngx_brotli成功"; \
-    # 如果Gitee也失败，尝试直接下载tar包
-    elif wget -O ngx_brotli.tar.gz https://github.com/google/ngx_brotli/archive/refs/heads/master.tar.gz && \
-         tar -xzf ngx_brotli.tar.gz && mv ngx_brotli-master ngx_brotli; then \
-        echo "🔄 从tar包下载ngx_brotli成功"; \
-        # 需要手动下载子模块
-        cd ngx_brotli && \
-        wget -O brotli.tar.gz https://github.com/google/brotli/archive/refs/heads/master.tar.gz && \
-        tar -xzf brotli.tar.gz && mv brotli-master deps/brotli && \
-        cd ..; \
     else \
         echo "❌ 所有ngx_brotli下载方法都失败"; \
         # 创建空目录避免构建失败
@@ -55,10 +46,6 @@ RUN set -e; \
         # 尝试多个Nginx下载源
         if wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从nginx.org下载成功"; \
-        elif wget https://mirrors.tuna.tsinghua.edu.cn/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
-            echo "🔄 从清华镜像下载成功"; \
-        elif wget https://mirrors.aliyun.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
-            echo "🔄 从阿里镜像下载成功"; \
         else \
             echo "❌ Nginx源码下载失败，跳过Brotli编译"; \
             exit 0; \
