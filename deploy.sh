@@ -472,68 +472,68 @@ detect_os_type() {
 # 安装curl工具
 check_and_install_curl() {
   if ! command -v curl &>/dev/null; then
-  # 检测系统类型
+    # 检测系统类型
     local os_type=$(detect_os_type)
-  # 根据操作系统类型安装curl
+    # 根据操作系统类型安装curl
     case "$os_type" in
     "debian"|"ubuntu")
       # Ubuntu/Debian系统
       info "使用apt-get安装curl..."
-      if sudo apt-get update && sudo apt-get install -y curl; then
+      if sudo apt-get install -y curl; then
         success "curl安装成功"
       else
         error "curl安装失败，请手动安装: sudo apt-get install curl"
         return 1
       fi
-            ;;
-        "centos7")
+      ;;
+      "centos7")
       # CentOS/RHEL/Anolis系统
-      info "使用yum安装Git..."
-      if sudo yum install -y git; then
-        success "Git安装成功"
+      info "使用yum安装curl..."
+      if sudo yum install -y curl; then
+        success "curl安装成功"
       else
-        error "Git安装失败，请手动安装: sudo yum install git"
+        error "curl安装失败，请手动安装: sudo yum install curl"
             return 1
       fi
       ;;
     "fedora"|"centos8"|"anolis")
       # Fedora系统
       info "使用dnf安装Git..."
-      if sudo dnf install -y git; then
-        success "Git安装成功"
+      if sudo dnf install -y curl; then
+        success "curl安装成功"
       else
-        error "Git安装失败，请手动安装: sudo dnf install git"
+        error "curl安装失败，请手动安装: sudo dnf install curl"
             return 1
         fi
       ;;
     "arch")
       # Arch Linux系统
-      info "使用pacman安装Git..."
-      if sudo pacman -S --noconfirm git; then
-        success "Git安装成功"
+      info "使用pacman安装curl..."
+      if sudo pacman -S --noconfirm curl; then
+        success "curl安装成功"
       else
-        error "Git安装失败，请手动安装: sudo pacman -S git"
+        error "curl安装失败，请手动安装: sudo pacman -S curl"
         return 1
     fi
-      ;;
+    ;;
     "alpine")
       # Alpine Linux系统
-      info "使用apk安装Git..."
-      if sudo apk add git; then
-        success "Git安装成功"
+      info "使用apk安装curl..."
+      if sudo apk add curl; then
+        success "curl安装成功"
       else
-        error "Git安装失败，请手动安装: sudo apk add git"
+        error "curl安装失败，请手动安装: sudo apk add curl"
         return 1
       fi
-      ;;
+    ;;
     *)
-      error "不支持的操作系统类型: $os_type，请手动安装Git"
+      error "不支持的操作系统类型: $os_type，请手动安装curl"
       echo "常见安装命令："
-      echo "  Ubuntu/Debian: sudo apt-get install git"
-      echo "  CentOS/RHEL:   sudo yum install git"
-      echo "  Fedora:        sudo dnf install git"
-      echo "  Arch Linux:    sudo pacman -S git"
-      echo "  Alpine Linux:  sudo apk add git"
+      echo "  Ubuntu/Debian: sudo apt-get install curl"
+      echo "  CentOS/RHEL:   sudo yum install curl"
+      echo "  Fedora:        sudo dnf install curl"
+      echo "  Arch Linux:    sudo pacman -S curl"
+      echo "  Alpine Linux:  sudo apk add curl"
       return 1
       ;;
   esac
@@ -975,9 +975,6 @@ install_docker() {
         
       warning "离线安装失败，将回退到在线安装方式"
     fi
-    
-  # 检查并安装curl
-    check_and_install_curl
     
   # 检查是否在WSL环境中
   if grep -q Microsoft /proc/version 2>/dev/null; then
@@ -1880,8 +1877,6 @@ check_system_resources() {
   local TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
   local TOTAL_MEM_GB=$(awk "BEGIN {printf \"%.1f\", ${TOTAL_MEM}/1024}")
   
-  # 检查bc命令是否可用
-  check_and_install_bc
   
   # 根据内存大小自动调整SWAP_SIZE
   if command -v bc &>/dev/null; then
@@ -2312,68 +2307,72 @@ EOF
 # 添加一个函数用于检查和安装bc命令
 check_and_install_bc() {
   if ! command -v bc &>/dev/null; then
-    warning "未检测到bc命令，尝试自动安装..."
-    
-    # 检查是否存在过期的仓库配置
-    if [ -f "/etc/apt/sources.list" ] && grep -q "buster-backports" /etc/apt/sources.list; then
-      info "检测到buster-backports源可能有问题，尝试修复..."
-      # 创建备份
-      if command -v sudo &>/dev/null; then
-        sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
-        # 注释掉有问题的backports源
-        sudo_sed_i 's/^deb http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
-        sudo_sed_i 's/^deb-src http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
+    # 检测系统类型
+    local os_type=$(detect_os_type)
+    # 根据操作系统类型安装curl
+    case "$os_type" in
+    "debian"|"ubuntu")
+      # Ubuntu/Debian系统
+      info "使用apt-get安装bc..."
+      if sudo apt-get install -y bc; then
+        success "bc安装成功"
       else
-        cp /etc/apt/sources.list /etc/apt/sources.list.bak
-        # 注释掉有问题的backports源
-        sed_i 's/^deb http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
-        sed_i 's/^deb-src http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
+        error "bc安装失败，请手动安装: sudo apt-get install bc"
+        return 1
       fi
-      info "已注释掉过期的backports源，重试安装..."
+      ;;
+      "centos7")
+      # CentOS/RHEL/Anolis系统
+      info "使用yum安装Git..."
+      if sudo yum install -y bc; then
+        success "bc安装成功"
+      else
+        error "bc安装失败，请手动安装: sudo yum install bc"
+            return 1
+      fi
+      ;;
+    "fedora"|"centos8"|"anolis")
+      # Fedora系统
+      info "使用dnf安装Git..."
+      if sudo dnf install -y bc; then
+        success "bc安装成功"
+      else
+        error "bc安装失败，请手动安装: sudo dnf install bc"
+            return 1
+        fi
+      ;;
+    "arch")
+      # Arch Linux系统
+      info "使用pacman安装Git..."
+      if sudo pacman -S --noconfirm bc; then
+        success "bc安装成功"
+      else
+        error "bc安装失败，请手动安装: sudo pacman -S bc"
+        return 1
     fi
-    
-    # 检测操作系统类型并安装bc
-    if command -v apt-get &>/dev/null; then
-      # Debian/Ubuntu
-      if command -v sudo &>/dev/null; then
-        sudo apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-        sudo apt-get install -y bc || warning "安装bc失败，将使用替代方法"
+      ;;
+    "alpine")
+      # Alpine Linux系统
+      info "使用apk安装bc..."
+      if sudo apk add bc; then
+        success "bc安装成功"
       else
-        apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-        apt-get install -y bc || warning "安装bc失败，将使用替代方法"
+        error "bc安装失败，请手动安装: sudo apk add bc"
+        return 1
       fi
-    elif command -v yum &>/dev/null; then
-      # CentOS/RHEL
-      if command -v sudo &>/dev/null; then
-        sudo yum install -y bc || warning "安装bc失败，将使用替代方法"
-      else
-        yum install -y bc || warning "安装bc失败，将使用替代方法"
-      fi
-    elif command -v dnf &>/dev/null; then
-      # Fedora
-      if command -v sudo &>/dev/null; then
-        sudo dnf install -y bc || warning "安装bc失败，将使用替代方法"
-      else
-        dnf install -y bc || warning "安装bc失败，将使用替代方法"
-      fi
-    elif command -v pacman &>/dev/null; then
-      # Arch Linux
-      if command -v sudo &>/dev/null; then
-        sudo pacman -S --noconfirm bc || warning "安装bc失败，将使用替代方法"
-      else
-        pacman -S --noconfirm bc || warning "安装bc失败，将使用替代方法"
-      fi
-    elif command -v zypper &>/dev/null; then
-      # openSUSE
-      if command -v sudo &>/dev/null; then
-        sudo zypper install -y bc || warning "安装bc失败，将使用替代方法"
-      else
-        zypper install -y bc || warning "安装bc失败，将使用替代方法"
-      fi
-    else
-      warning "无法自动安装bc，将使用替代方法进行浮点数比较"
+      ;;
+    *)
+      error "不支持的操作系统类型: $os_type，请手动安装bc"
+      echo "常见安装命令："
+      echo "  Ubuntu/Debian: sudo apt-get install bc"
+      echo "  CentOS/RHEL:   sudo yum install bc"
+      echo "  Fedora:        sudo dnf install bc"
+      echo "  Arch Linux:    sudo pacman -S bc"
+      echo "  Alpine Linux:  sudo apk add bc"
       return 1
-    fi
+      ;;
+  esac
+  fi
     
     # 再次检查是否安装成功
     if ! command -v bc &>/dev/null; then
@@ -2458,7 +2457,7 @@ install_docker_offline() {
     
     if [ -f /tmp/docker_offline/install.sh ]; then
       info "执行离线安装脚本..."
-      chmod +x /tmp/docker_offline/install.sh
+      sudo chmod +x /tmp/docker_offline/install.sh
       /tmp/docker_offline/install.sh
       
       # 检查安装结果
@@ -3035,14 +3034,6 @@ download_and_extract_project() {
   info "正在下载项目源码..."
   
   if is_china_environment; then
-    if ! command -v git &> /dev/null; then
-      warning "Git未安装，正在尝试安装..."
-      if ! install_git; then
-        error "Git安装失败，无法克隆源码"
-        return 1
-      fi
-    fi
-
     git clone --depth 1 "$repo_url" "$extract_dir"
     rm -rf "$extract_dir/.git"
     if [ $? -ne 0 ]; then
@@ -3298,6 +3289,25 @@ main() {
   fi
 
   update_system_packages
+
+  # 检查并安装curl
+  check_and_install_curl
+
+  if ! command -v git &> /dev/null; then
+    warning "Git未安装，正在尝试安装..."
+    if ! install_git; then
+      error "Git安装失败，无法克隆源码"
+      return 1
+    fi
+  fi
+
+  # 检查并安装bc
+  if check_and_install_bc; then
+    :
+  else
+    error "bc安装失败，无法继续部署,请切换到root用户再试..."
+    exit 1
+  fi
 
   handle_environment_status
   

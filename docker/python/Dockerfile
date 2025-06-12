@@ -55,15 +55,17 @@ RUN set -e; \
 # 设置工作目录
 WORKDIR /app
 
+ARG UV_DEFAULT_INDEX
+ENV UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX:-https://pypi.org/simple}
+
 RUN set -e; \
     echo "测试PyPI官方源连接..."; \
     if curl -fsSL --connect-timeout 10 --max-time 30 https://pypi.org/simple/ >/dev/null 2>&1; then \
         echo "✅ PyPI官方源可用，保持官方配置"; \
+        export UV_DEFAULT_INDEX=https://pypi.org/simple; \
     else \
         echo "⚠️ PyPI 官方源不可用，使用清华镜像"; \
-        mkdir -p /root/.pip && \
-        echo '[global]' > /root/.pip/pip.conf && \
-        echo 'index-url = https://pypi.tuna.tsinghua.edu.cn/simple' >> /root/.pip/pip.conf; \
+        export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple; \
     fi
 
 
@@ -73,9 +75,9 @@ COPY --chown=root:root ./py/ /app/
 RUN uv venv
 
 # 复制并安装Python依赖
-RUN uv pip install --no-cache-dir --upgrade pip && \
-    uv pip install --no-cache-dir wheel && \
-    uv pip install --no-cache-dir -r requirements.txt && \
+RUN uv pip install --no-cache-dir --upgrade pip -i ${UV_DEFAULT_INDEX} && \
+    uv pip install --no-cache-dir wheel -i ${UV_DEFAULT_INDEX} && \
+    uv pip install --no-cache-dir -r requirements.txt -i ${UV_DEFAULT_INDEX} && \
     # 清理pip缓存
     rm -rf /root/.cache/pip
 
