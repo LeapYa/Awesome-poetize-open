@@ -55,16 +55,17 @@ RUN set -e; \
 # 设置工作目录
 WORKDIR /app
 
-# 配置pip - 优先官方源，不可用时才使用镜像
 RUN set -e; \
-    echo "测试pip官方源连接..."; \
+    echo "测试PyPI官方源连接..."; \
     if curl -fsSL --connect-timeout 10 --max-time 30 https://pypi.org/simple/ >/dev/null 2>&1; then \
-        echo "✅ pip官方源可用，保持官方配置"; \
+        echo "✅ PyPI官方源可用，保持官方配置"; \
     else \
-        echo "⚠️ pip官方源不可用，配置清华镜像"; \
-        uv pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/; \
-        uv pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn; \
+        echo "⚠️ PyPI 官方源不可用，使用清华镜像"; \
+        mkdir -p /root/.pip && \
+        echo '[global]' > /root/.pip/pip.conf && \
+        echo 'index-url = https://pypi.tuna.tsinghua.edu.cn/simple' >> /root/.pip/pip.conf; \
     fi
+
 
 # 复制所有Python服务代码
 COPY --chown=root:root ./py/ /app/
