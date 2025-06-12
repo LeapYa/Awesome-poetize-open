@@ -1481,7 +1481,7 @@ start_services() {
   
   if [ $START_RESULT -ne 0 ]; then
     error "服务启动失败，请检查日志"
-    return 1
+    exit 1
   fi
   
   success "服务启动命令执行成功"

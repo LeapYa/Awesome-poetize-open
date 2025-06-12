@@ -20,7 +20,8 @@ import time
 import jwt
 import re
 from functools import wraps
-from fastapi import FastAPI, Request, Depends, Response, JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Request, Depends, Response
+from fastapi.responses import JSONResponse, PlainTextResponse
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 import logging

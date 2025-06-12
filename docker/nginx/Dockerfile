@@ -12,6 +12,12 @@ RUN apk add --no-cache \
     curl \
     wget
 
+# 配置 Git 下载策略
+RUN git config --global http.lowSpeedLimit 1 \
+ && git config --global http.lowSpeedTime 30 \
+ && git config --global http.postBuffer 524288000
+
+ 
 # 下载ngx_brotli模块
 WORKDIR /usr/src
 RUN set -e; \
@@ -20,7 +26,7 @@ RUN set -e; \
     if git clone --recursive https://github.com/google/ngx_brotli.git; then \
         echo "✅ 从GitHub下载ngx_brotli成功"; \
     # 如果GitHub失败，尝试Gitee镜像
-    elif git clone --recursive https://gitee.com/mirrors/ngx_brotli.git && mv ngx_brotli.git ngx_brotli; then \
+    elif git clone --recursive https://gitee.com/lirko/ngx_brotli.git && mv ngx_brotli.git ngx_brotli; then \
         echo "🔄 从Gitee镜像下载ngx_brotli成功"; \
     # 如果Gitee也失败，尝试直接下载tar包
     elif wget -O ngx_brotli.tar.gz https://github.com/google/ngx_brotli/archive/refs/heads/master.tar.gz && \
