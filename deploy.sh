@@ -109,31 +109,31 @@ print_summary() {
   printf "${BLUE}║                                                                               ║${NC}\n"
   printf "${BLUE}║  📋 基础配置信息                                                              ║${NC}\n"
   printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-  printf "${BLUE}║${NC}  🌐 主域名: ${GREEN}%-50s${NC} ║${NC}\n" "$PRIMARY_DOMAIN"
-  printf "${BLUE}║${NC}  🔗 所有域名: ${GREEN}%-46s${NC} ║${NC}\n" "${DOMAINS[*]}"
-  printf "${BLUE}║${NC}  📧 管理员邮箱: ${GREEN}%-44s${NC} ║${NC}\n" "$EMAIL"
+  printf "${BLUE}║${NC}  🌐 主域名: ${GREEN}%-50s${NC}                 ║${NC}\n" "$PRIMARY_DOMAIN"
+  printf "${BLUE}║${NC}  🔗 所有域名: ${GREEN}%-46s${NC}                     ║${NC}\n" "${DOMAINS[*]}"
+  printf "${BLUE}║${NC}  📧 管理员邮箱: ${GREEN}%-44s${NC}                       ║${NC}\n" "$EMAIL"
   printf "${BLUE}║                                                                               ║${NC}\n"
   
   # 本地环境处理
   if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     printf "${BLUE}║  🚀 本地开发环境访问地址                                                      ║${NC}\n"
     printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-    printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN"
-    printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
-    printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
+    printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC}               ║${NC}\n" "http://$PRIMARY_DOMAIN"
+    printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC}             ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
+    printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC}                ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
   else
     printf "${BLUE}║  🌍 服务访问地址                                                              ║${NC}\n"
     printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
     if [ "$https_enabled" = true ]; then
       printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-35s${NC} ${GREEN}🔒 HTTPS已启用${NC}        ║${NC}\n" "https://$PRIMARY_DOMAIN"
-      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-53s${NC} ║${NC}\n" "https://$PRIMARY_DOMAIN/im"
-      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-50s${NC} ║${NC}\n" "https://$PRIMARY_DOMAIN/admin"
+      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-53s${NC}              ║${NC}\n" "https://$PRIMARY_DOMAIN/im"
+      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-50s${NC}                 ║${NC}\n" "https://$PRIMARY_DOMAIN/admin"
       printf "${BLUE}║${NC}  🔄 HTTP备用: ${YELLOW}%-35s${NC} ${YELLOW}(自动重定向)${NC}       ║${NC}\n" "http://$PRIMARY_DOMAIN"
     else
-      printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN"
-      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
-      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC} ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
-      printf "${BLUE}║${NC}  🔒 HTTPS状态: ${RED}%-58s${NC} ║${NC}\n" "未启用"
+      printf "${BLUE}║${NC}  🏠 网站首页: ${GREEN}%-52s${NC}               ║${NC}\n" "http://$PRIMARY_DOMAIN"
+      printf "${BLUE}║${NC}  💬 聊天室: ${GREEN}%-54s${NC}             ║${NC}\n" "http://$PRIMARY_DOMAIN/im"
+      printf "${BLUE}║${NC}  ⚙️  管理后台: ${GREEN}%-51s${NC}                ║${NC}\n" "http://$PRIMARY_DOMAIN/admin"
+      printf "${BLUE}║${NC}  🔒 HTTPS状态: ${RED}%-48s${NC}                         ║${NC}\n" "未启用"
     fi
   fi
   
@@ -145,13 +145,13 @@ print_summary() {
     printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
     if [ "$https_enabled" = true ]; then
       printf "${BLUE}║${NC}  ${GREEN}✅ HTTPS已成功配置并启用${NC}                                            ║${NC}\n"
-      printf "${BLUE}║${NC}     📜 SSL证书状态: ${GREEN}%-47s${NC} ║${NC}\n" "有效"
-      printf "${BLUE}║${NC}     🔧 Nginx HTTPS配置: ${GREEN}%-44s${NC} ║${NC}\n" "已启用"
-      printf "${BLUE}║${NC}     🛡️  安全连接: ${GREEN}%-49s${NC} ║${NC}\n" "可用"
+      printf "${BLUE}║${NC}     📜 SSL证书状态: ${GREEN}%-37s${NC}                         ║${NC}\n" "有效"
+      printf "${BLUE}║${NC}     🔧 Nginx HTTPS配置: ${GREEN}%-34s${NC}                            ║${NC}\n" "已启用"
+      printf "${BLUE}║${NC}     🛡️  安全连接: ${GREEN}%-39s${NC}                       ║${NC}\n" "可用"
     else
       printf "${BLUE}║${NC}  ${RED}❌ HTTPS未正确配置${NC}                                                    ║${NC}\n"
-      printf "${BLUE}║${NC}     💡 启用命令: ${YELLOW}%-42s${NC} ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
-      printf "${BLUE}║${NC}     📝 请检查域名DNS解析和防火墙配置${NC}                                        ║${NC}\n"
+      printf "${BLUE}║${NC}     💡 启用命令: ${YELLOW}%-32s${NC}                                ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
+      printf "${BLUE}║${NC}     📝 请检查域名DNS解析和防火墙配置                                        ║${NC}\n"
     fi
     printf "${BLUE}║                                                                               ║${NC}\n"
   fi
@@ -164,8 +164,8 @@ print_summary() {
     DB_ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     DB_USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
     
-    printf "${BLUE}║${NC}  🔑 ROOT密码: ${YELLOW}%-55s${NC} ║${NC}\n" "$DB_ROOT_PASSWORD"
-    printf "${BLUE}║${NC}  👤 poetize用户密码: ${YELLOW}%-45s${NC} ║${NC}\n" "$DB_USER_PASSWORD"
+    printf "${BLUE}║${NC}  🔑 ROOT密码: ${YELLOW}%-45s${NC}                         ║${NC}\n" "$DB_ROOT_PASSWORD"
+    printf "${BLUE}║${NC}  👤 poetize用户密码: ${YELLOW}%-35s${NC}                             ║${NC}\n" "$DB_USER_PASSWORD"
     printf "${BLUE}║${NC}  ${YELLOW}⚠️  请妥善保存密码，完整信息在 .config/db_credentials.txt${NC}             ║${NC}\n"
     printf "${BLUE}║                                                                               ║${NC}\n"
   fi
@@ -173,19 +173,19 @@ print_summary() {
   # 常用命令
   printf "${BLUE}║  🛠️  常用管理命令                                                             ║${NC}\n"
   printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-  printf "${BLUE}║${NC}  📊 查看所有容器: ${GREEN}%-46s${NC} ║${NC}\n" "docker ps -a"
-  printf "${BLUE}║${NC}  📋 查看容器日志: ${GREEN}%-46s${NC} ║${NC}\n" "docker logs poetize-nginx"
-  printf "${BLUE}║${NC}  🔄 重启容器: ${GREEN}%-50s${NC} ║${NC}\n" "$DOCKER_COMPOSE_CMD restart"
-  printf "${BLUE}║${NC}  ⏹️  停止服务: ${GREEN}%-50s${NC} ║${NC}\n" "$DOCKER_COMPOSE_CMD down"
-  printf "${BLUE}║${NC}  ▶️  启动服务: ${GREEN}%-50s${NC} ║${NC}\n" "$DOCKER_COMPOSE_CMD up -d"
+  printf "${BLUE}║${NC}  📊 查看所有容器: ${GREEN}%-36s${NC}                              ║${NC}\n" "docker ps -a"
+  printf "${BLUE}║${NC}  📋 查看容器日志: ${GREEN}%-36s${NC}                              ║${NC}\n" "docker logs poetize-nginx"
+  printf "${BLUE}║${NC}  🔄 重启容器: ${GREEN}%-40s${NC}                          ║${NC}\n" "$DOCKER_COMPOSE_CMD restart"
+  printf "${BLUE}║${NC}  ⏹️  停止服务: ${GREEN}%-40s${NC}                          ║${NC}\n" "$DOCKER_COMPOSE_CMD down"
+  printf "${BLUE}║${NC}  ▶️  启动服务: ${GREEN}%-40s${NC}                          ║${NC}\n" "$DOCKER_COMPOSE_CMD up -d"
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    printf "${BLUE}║${NC}  🔒 手动启用HTTPS: ${GREEN}%-42s${NC} ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
+    printf "${BLUE}║${NC}  🔒 手动启用HTTPS: ${GREEN}%-32s${NC}                                ║${NC}\n" "docker exec poetize-nginx /enable-https.sh"
   fi
   printf "${BLUE}║                                                                               ║${NC}\n"
   printf "${BLUE}║  🔐 登录信息                                                                  ║${NC}\n"
   printf "${BLUE}║  ──────────────────────────────────────────────────────────────────────────  ║${NC}\n"
-  printf "${BLUE}║${NC}  ${YELLOW}⚠️  默认管理员账号: Sara, 密码: aaa${NC}%-33s ║${NC}\n" ""
-  printf "${BLUE}║${NC}  ${RED}🚨 请登录后立即修改密码以确保安全！${NC}%-35s ║${NC}\n" ""
+  printf "${BLUE}║${NC}  ${YELLOW}⚠️  默认管理员账号: Sara, 密码: aaa${NC}                                 ║${NC}\n"
+  printf "${BLUE}║${NC}  ${RED}🚨 请登录后立即修改密码以确保安全！${NC}                                 ║${NC}\n"
   printf "${BLUE}║                                                                               ║${NC}\n"
   printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}\n"
 }
@@ -329,299 +329,6 @@ parse_arguments() {
   done
 }
 
-# 安装curl工具
-check_and_install_curl() {
-  if ! command -v curl &>/dev/null; then
-    info "检测到系统未安装curl，正在尝试安装..."
-    
-    # 检查是否存在wget
-    if command -v wget &>/dev/null; then
-      info "系统中存在wget，使用wget安装curl..."
-      
-      # 确定系统架构
-      ARCH=$(uname -m)
-      if [ "$ARCH" = "x86_64" ]; then
-        # 对于x86_64架构，下载静态编译的curl
-        info "下载curl静态二进制文件..."
-        wget -q -O /tmp/curl "https://github.com/moparisthebest/static-curl/releases/latest/download/curl-amd64" || {
-          error "使用wget下载curl失败"
-        }
-      else
-        # 对于其他架构，尝试用包管理器安装
-        info "系统架构不是x86_64，尝试使用包管理器安装..."
-      fi
-      
-      # 如果wget下载成功，使用下载的二进制文件
-      if [ -f "/tmp/curl" ] && [ -s "/tmp/curl" ]; then
-        chmod +x /tmp/curl
-        # 尝试移动到系统路径
-        if command -v sudo &>/dev/null; then
-          sudo mv /tmp/curl /usr/local/bin/curl || {
-            # 如果无法移动到系统路径，放到当前目录
-            mv /tmp/curl ./curl
-            export PATH="$PWD:$PATH"
-            info "curl已安装到当前目录，请将其移动到系统路径中"
-          }
-        else
-          mv /tmp/curl ./curl
-          export PATH="$PWD:$PATH"
-          info "curl已安装到当前目录，请将其移动到系统路径中"
-        fi
-        
-        # 检查安装结果
-        if command -v curl &>/dev/null || [ -x "./curl" ]; then
-          success "curl安装成功!"
-          return 0
-        fi
-      fi
-    fi
-    
-    # 如果wget方法失败，尝试修复软件源并使用包管理器
-    if [ -f "/etc/apt/sources.list" ] && grep -q "buster-backports" /etc/apt/sources.list; then
-      info "检测到buster-backports源可能有问题，尝试修复..."
-      # 创建备份
-      if command -v sudo &>/dev/null; then
-        sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
-        # 注释掉有问题的backports源
-        sudo_sed_i 's/^deb http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
-        sudo_sed_i 's/^deb-src http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
-      else
-        cp /etc/apt/sources.list /etc/apt/sources.list.bak
-        # 注释掉有问题的backports源
-        sed_i 's/^deb http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
-        sed_i 's/^deb-src http:\/\/deb.debian.org\/debian buster-backports/# &/' /etc/apt/sources.list
-      fi
-      info "已注释掉过期的backports源，重试安装..."
-    fi
-    
-    # 检查不同的包管理器并安装curl
-    if command -v apt-get &>/dev/null; then
-      info "使用apt-get安装curl..."
-      if command -v sudo &>/dev/null; then
-        sudo apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-        sudo apt-get install -y curl || {
-          warning "使用sudo安装curl失败，尝试不使用sudo..."
-          apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-          apt-get install -y curl || {
-            # 如果apt-get也失败，尝试使用编译安装方法
-            warning "使用apt-get安装curl失败，尝试其他方法..."
-            install_curl_from_source
-          }
-        }
-      else
-        apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-        apt-get install -y curl || {
-          # 如果apt-get也失败，尝试使用编译安装方法
-          warning "使用apt-get安装curl失败，尝试其他方法..."
-          install_curl_from_source
-        }
-      fi
-    # 其他包管理器的尝试保持不变...
-    elif command -v apt &>/dev/null; then
-      info "使用apt安装curl..."
-      sudo apt update -qq && sudo apt install -y curl || {
-        apt update -qq && apt install -y curl || {
-          error "curl安装失败"
-          exit 1
-        }
-      }
-    elif command -v yum &>/dev/null; then
-      info "使用yum安装curl..."
-      sudo yum install -y curl || {
-        yum install -y curl || {
-          error "curl安装失败"
-          exit 1
-        }
-      }
-    elif command -v dnf &>/dev/null; then
-      info "使用dnf安装curl..."
-      sudo dnf install -y curl || {
-        dnf install -y curl || {
-          error "curl安装失败"
-          exit 1
-        }
-      }
-    elif command -v apk &>/dev/null; then
-      info "使用apk安装curl (Alpine Linux)..."
-      apk add --no-cache curl || {
-        error "curl安装失败"
-        exit 1
-      }
-    elif command -v pacman &>/dev/null; then
-      info "使用pacman安装curl (Arch Linux)..."
-      sudo pacman -S --noconfirm curl || {
-        pacman -S --noconfirm curl || {
-          error "curl安装失败"
-          exit 1
-        }
-      }
-    elif command -v zypper &>/dev/null; then
-      info "使用zypper安装curl (openSUSE)..."
-      sudo zypper install -y curl || {
-        zypper install -y curl || {
-          error "curl安装失败"
-          exit 1
-        }
-      }
-    else
-      error "无法识别的包管理器，无法自动安装curl"
-      install_curl_from_source
-    fi
-    
-    # 检查安装结果
-    if command -v curl &>/dev/null || [ -x "./curl" ]; then
-      success "curl安装成功!"
-    else
-      error "curl安装失败"
-      error "请手动安装curl后重试"
-      exit 1
-    fi
-  fi
-}
-
-# 从源码安装curl的函数
-install_curl_from_source() {
-  info "尝试从源码编译安装curl..."
-  
-  # 检查必要的编译工具
-  if ! command -v gcc &>/dev/null || ! command -v make &>/dev/null; then
-    info "安装编译工具..."
-    if command -v apt-get &>/dev/null; then
-      if command -v sudo &>/dev/null; then
-        sudo apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-        sudo apt-get install -y build-essential || warning "安装build-essential失败，尝试继续..."
-      else
-        apt-get update -qq || warning "apt-get update失败，继续尝试安装..."
-        apt-get install -y build-essential || warning "安装build-essential失败，尝试继续..."
-      fi
-    elif command -v yum &>/dev/null; then
-      if command -v sudo &>/dev/null; then
-        sudo yum groupinstall -y "Development Tools" || warning "安装开发工具失败，尝试继续..."
-      else
-        yum groupinstall -y "Development Tools" || warning "安装开发工具失败，尝试继续..."
-      fi
-    fi
-  fi
-  
-  # 如果wget不可用，尝试静态链接获取curl
-  if command -v gcc &>/dev/null && command -v make &>/dev/null; then
-    # 创建临时目录
-    mkdir -p /tmp/curl_build && cd /tmp/curl_build || {
-      error "无法创建临时构建目录"
-      return 1
-    }
-    
-    # 尝试使用简单的C代码创建一个最小HTTP下载工具
-    cat > minicurl.c << 'EOF'
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-
-int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        fprintf(stderr, "用法: %s <主机名> <路径>\n", argv[0]);
-        return 1;
-    }
-
-    const char *hostname = argv[1];
-    const char *path = argv[2];
-    
-    struct hostent *server = gethostbyname(hostname);
-    if (server == NULL) {
-        fprintf(stderr, "无法解析主机: %s\n", hostname);
-        return 1;
-    }
-    
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        fprintf(stderr, "无法创建套接字\n");
-        return 1;
-    }
-    
-    struct sockaddr_in serv_addr;
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(80);
-    memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-    
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        fprintf(stderr, "连接失败\n");
-        return 1;
-    }
-    
-    char request[1024];
-    sprintf(request, "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: minicurl/1.0\r\nConnection: close\r\n\r\n", path, hostname);
-    
-    if (write(sockfd, request, strlen(request)) < 0) {
-        fprintf(stderr, "写入请求失败\n");
-        return 1;
-    }
-    
-    char buffer[1024];
-    int in_headers = 1;
-    int n;
-    while ((n = read(sockfd, buffer, sizeof(buffer) - 1)) > 0) {
-        buffer[n] = '\0';
-        
-        if (in_headers) {
-            char *body_start = strstr(buffer, "\r\n\r\n");
-            if (body_start) {
-                in_headers = 0;
-                body_start += 4;
-                printf("%s", body_start);
-            }
-        } else {
-            printf("%s", buffer);
-        }
-    }
-    
-    close(sockfd);
-    return 0;
-}
-EOF
-    
-    # 编译minicurl
-    if gcc -o minicurl minicurl.c; then
-      info "编译简易HTTP工具成功"
-      
-      # 使用minicurl获取curl的最新版本
-      if ./minicurl curl.se /download/curl-7.88.1.tar.gz > curl-7.88.1.tar.gz; then
-        info "下载curl源码成功"
-        tar -xzf curl-7.88.1.tar.gz
-        cd curl-7.88.1
-        
-        # 配置和编译
-        ./configure --prefix=/usr/local --disable-shared --enable-static
-        make -j$(nproc)
-        
-        # 安装
-        if command -v sudo &>/dev/null; then
-          sudo make install
-        else
-          make install
-        fi
-        
-        # 清理
-        cd .. && rm -rf curl-7.88.1 curl-7.88.1.tar.gz minicurl minicurl.c
-        cd -
-        
-        # 检查安装
-        if command -v curl &>/dev/null; then
-          return 0
-        fi
-      fi
-    fi
-  fi
-  
-  # 如果所有方法都失败，返回失败
-  error "无法安装curl"
-  return 1
-}
 
 # 检测是否为国内环境
 is_china_environment() {
@@ -640,10 +347,10 @@ is_china_environment() {
             # 无法ping通Google，再检测国内镜像源
             if ping -c 1 -W 3 mirrors.aliyun.com >/dev/null 2>&1; then
                 return 0  # 无法ping通Google但能ping通阿里云镜像，判断为国内环境
-            fi
         fi
+      fi
     fi
-
+    
     # 方法2: 检测IP地址归属
     local ip_check_result=""
     if command -v curl &>/dev/null; then
@@ -705,7 +412,19 @@ detect_os_type() {
         
         # Fedora
         if [[ "$ID" == "fedora" ]]; then
-            echo "centos8"  # 使用相同的安装方式
+            echo "centos8"
+            return 0
+        fi
+        
+        # Arch Linux
+        if [[ "$ID" == "arch" ]]; then
+            echo "arch"
+            return 0
+        fi
+        
+        # Alpine Linux
+        if [[ "$ID" == "alpine" ]]; then
+            echo "alpine"
             return 0
         fi
         
@@ -728,6 +447,10 @@ detect_os_type() {
         else
             echo "debian"
         fi
+    elif command -v pacman &>/dev/null; then
+        echo "arch"
+    elif command -v apk &>/dev/null; then
+        echo "alpine"
     elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
         if [ -f /etc/redhat-release ]; then
             if grep -q "release 7" /etc/redhat-release; then
@@ -741,6 +464,78 @@ detect_os_type() {
     else
         echo "unknown"
     fi
+}
+
+
+# 安装curl工具
+check_and_install_curl() {
+  if ! command -v curl &>/dev/null; then
+  # 检测系统类型
+    local os_type=$(detect_os_type)
+  # 根据操作系统类型安装curl
+    case "$os_type" in
+    "debian"|"ubuntu")
+      # Ubuntu/Debian系统
+      info "使用apt-get安装curl..."
+      if sudo apt-get update && sudo apt-get install -y curl; then
+        success "curl安装成功"
+      else
+        error "curl安装失败，请手动安装: sudo apt-get install curl"
+        return 1
+      fi
+            ;;
+        "centos7")
+      # CentOS/RHEL/Anolis系统
+      info "使用yum安装Git..."
+      if sudo yum install -y git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo yum install git"
+            return 1
+      fi
+      ;;
+    "fedora"|"centos8"|"anolis")
+      # Fedora系统
+      info "使用dnf安装Git..."
+      if sudo dnf install -y git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo dnf install git"
+            return 1
+        fi
+      ;;
+    "arch")
+      # Arch Linux系统
+      info "使用pacman安装Git..."
+      if sudo pacman -S --noconfirm git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo pacman -S git"
+        return 1
+    fi
+      ;;
+    "alpine")
+      # Alpine Linux系统
+      info "使用apk安装Git..."
+      if sudo apk add git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo apk add git"
+        return 1
+      fi
+      ;;
+    *)
+      error "不支持的操作系统类型: $os_type，请手动安装Git"
+      echo "常见安装命令："
+      echo "  Ubuntu/Debian: sudo apt-get install git"
+      echo "  CentOS/RHEL:   sudo yum install git"
+      echo "  Fedora:        sudo dnf install git"
+      echo "  Arch Linux:    sudo pacman -S git"
+      echo "  Alpine Linux:  sudo apk add git"
+      return 1
+      ;;
+  esac
+  fi
 }
 
 # Docker CE 软件源列表 (格式："软件源名称@软件源地址")
@@ -769,41 +564,6 @@ DOCKER_REGISTRY_MIRRORS=(
     "官方 Docker Hub@registry.hub.docker.com"
     "Docker Hub@hub.docker.com"
 )
-
-# 选择Docker CE镜像源
-choose_docker_ce_mirror() {
-    if [ -n "$DOCKER_MIRROR_SOURCE" ]; then
-        info "使用预设的Docker CE镜像源: $DOCKER_MIRROR_SOURCE"
-            return 0
-    fi
-
-    info "选择Docker CE镜像源："
-    echo ""
-    
-    local i=1
-    for mirror in "${DOCKER_CE_MIRRORS[@]}"; do
-        local name="${mirror%@*}"
-        local url="${mirror#*@}"
-        printf "  %d) %s (%s)\n" "$i" "$name" "$url"
-        ((i++))
-    done
-    
-    echo ""
-    auto_confirm "请选择镜像源 [1-${#DOCKER_CE_MIRRORS[@]}] (默认选择阿里云): " "1" "-n 1 -r"
-    
-    local choice="$REPLY"
-    if [[ ! "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#DOCKER_CE_MIRRORS[@]}" ]; then
-        warning "无效选择，使用默认阿里云镜像源"
-        choice=1
-    fi
-    
-    local selected_mirror="${DOCKER_CE_MIRRORS[$((choice-1))]}"
-    DOCKER_MIRROR_SOURCE="${selected_mirror#*@}"
-    local mirror_name="${selected_mirror%@*}"
-    
-    info "已选择: $mirror_name ($DOCKER_MIRROR_SOURCE)"
-        echo ""
-}
 
 # 选择Docker Registry镜像仓库
 choose_docker_registry_mirror() {
@@ -965,8 +725,8 @@ install_docker_china_debian() {
     sudo systemctl enable docker
     
     info "Debian Docker安装完成"
-                    return 0
-                }
+    return 0
+}
                 
 # 国内环境Ubuntu系统安装Docker
 install_docker_china_ubuntu() {
@@ -1002,13 +762,13 @@ install_docker_china_ubuntu() {
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
+    sudo systemctl start docker
+    sudo systemctl enable docker
     
     info "Ubuntu Docker安装完成"
-                return 0
+    return 0
 }
-
+                    
 # 国内环境CentOS 7系统安装Docker
 install_docker_china_centos7() {
     info "在CentOS 7系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
@@ -1026,12 +786,12 @@ install_docker_china_centos7() {
     sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
+    sudo systemctl start docker
+    sudo systemctl enable docker
     
     info "CentOS 7 Docker安装完成"
-                        return 0
-                    }
+    return 0
+}
                     
 # 国内环境CentOS 8/Fedora/Red Hat系统安装Docker
 install_docker_china_centos8() {
@@ -1050,12 +810,12 @@ install_docker_china_centos8() {
     sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
-                        sudo systemctl start docker
-                        sudo systemctl enable docker
+    sudo systemctl start docker
+    sudo systemctl enable docker
     
     info "CentOS 8/Fedora/Red Hat Docker安装完成"
                         return 0
-                    }
+}
                     
 # 国内环境Anolis OS系统安装Docker
 install_docker_china_anolis() {
@@ -1078,84 +838,127 @@ install_docker_china_anolis() {
     sudo systemctl enable docker
     
     info "Anolis OS Docker安装完成"
-                        return 0
+    return 0
+}
+
+# Arch Linux Docker安装
+install_docker_china_arch() {
+    info "在Arch Linux系统上安装Docker..."
+    
+    # 更新包数据库
+    sudo pacman -Sy
+                        
+    # 安装Docker
+    sudo pacman -S --noconfirm docker docker-compose
+    
+    # 启动和启用Docker服务
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    info "Arch Linux Docker安装完成"
+    return 0
+}
+
+# Alpine Linux Docker安装
+install_docker_china_alpine() {
+    info "在Alpine Linux系统上安装Docker..."
+    
+    # 更新包索引
+    sudo apk update
+                
+    # 安装Docker
+    sudo apk add docker docker-compose
+                
+    # 启动Docker服务
+    sudo rc-update add docker boot
+    sudo service docker start
+    
+    info "Alpine Linux Docker安装完成"
+    return 0
 }
 
 # 国内环境Docker安装主函数
 install_docker_china() {
     info "开始在国内环境安装Docker..."
     
-    # 选择Docker CE镜像源
-    choose_docker_ce_mirror
-    
     # 选择Docker Registry镜像源
     choose_docker_registry_mirror
-    
+
     # 检测操作系统类型
     local os_type=$(detect_os_type)
     info "检测到操作系统类型: $os_type"
-    
-    # 根据操作系统类型安装Docker
-    case "$os_type" in
-        "debian")
-            install_docker_china_debian
-            ;;
-        "ubuntu")
-            install_docker_china_ubuntu
-            ;;
-        "centos7")
-            install_docker_china_centos7
-            ;;
-        "centos8")
-            install_docker_china_centos8
-            ;;
-        "anolis")
-            install_docker_china_anolis
-            ;;
-        *)
+
+    for mirror in "${DOCKER_CE_MIRRORS[@]}"; do
+        local name="${mirror%@*}"
+        local url="${mirror#*@}"
+        DOCKER_MIRROR_SOURCE="$url"
+        info "尝试使用 $name 镜像源安装Docker..."
+        
+        # 根据操作系统类型安装Docker
+        case "$os_type" in
+            "debian")
+                install_docker_china_debian
+                ;;
+            "ubuntu")
+                install_docker_china_ubuntu
+                ;;
+            "centos7")
+                install_docker_china_centos7
+                ;;
+            "centos8")
+                install_docker_china_centos8
+                ;;
+            "arch")
+                install_docker_china_arch
+                ;;
+            "alpine")
+                install_docker_china_alpine
+                ;;
+            "anolis")
+                install_docker_china_anolis
+                ;;
+            *)
             warning "不支持的操作系统类型: $os_type"
-                                        return 1
+                return 1
             ;;
-    esac
-    
-    local install_result=$?
-    if [ $install_result -ne 0 ]; then
-                    error "Docker安装失败"
-                    return 1
-    fi
-    
-    # 配置Docker Registry镜像加速
-    configure_docker_registry
-    
-    # 如果不是WSL环境，添加用户到docker组
-    if ! is_wsl; then
-        local current_user=$(whoami)
-        if [ "$current_user" != "root" ]; then
-            info "将用户 $current_user 添加到 docker 组..."
-            sudo usermod -aG docker "$current_user"
-            info "请重新登录或执行 'newgrp docker' 以使权限生效"
+        esac
+        
+        local install_result=$?
+
+        if [ $install_result -eq 0 ]; then
+            break
+        else
+            warning "使用 $name 镜像源安装Docker失败，尝试下一个镜像源..."  
         fi
-    fi
+    done
     
-    # 验证Docker安装
-                    if command -v docker &>/dev/null; then
-        success "Docker安装成功！"
-        docker --version
-        return 0
-                    else
-        error "Docker安装验证失败"
-                        return 1
-                    fi
+    if command -v docker &>/dev/null; then
+        # 配置Docker Registry镜像加速
+        configure_docker_registry
+            
+        # 如果不是WSL环境，添加用户到docker组
+        if ! is_wsl; then
+            local current_user=$(whoami)
+            if [ "$current_user" != "root" ]; then
+                info "将用户 $current_user 添加到 docker 组..."
+                sudo usermod -aG docker "$current_user"
+                info "请重新登录或执行 'newgrp docker' 以使权限生效"
+            fi
+        fi
+    else
+        error "所有镜像源安装Docker失败，请手动安装Docker"
+        return 1
+    fi
 }
 
 # Docker安装函数
 install_docker() {
-    info "安装Docker..."
-    
-    # 先检查Docker是否已安装
-                    if command -v docker &>/dev/null; then
-        info "Docker命令已可用，跳过安装"
-        success "Docker已安装"
+  info "安装Docker..."
+  
+  # 先检查Docker是否已安装
+    if command -v docker &>/dev/null; then
+      info "Docker命令已可用，跳过安装"
+      success "Docker已安装"
     return 0
     fi
     
@@ -1163,72 +966,72 @@ install_docker() {
     if check_offline_resources; then
         info "检测到本地离线资源，优先使用离线安装..."
         
-        # 尝试离线安装Docker
-        if install_docker_offline; then
+      # 尝试离线安装Docker
+      if install_docker_offline; then
             return 0
         fi
         
-        warning "离线安装失败，将回退到在线安装方式"
+      warning "离线安装失败，将回退到在线安装方式"
     fi
     
-    # 检查并安装curl
+  # 检查并安装curl
     check_and_install_curl
     
-    # 检查是否在WSL环境中
-    if grep -q Microsoft /proc/version 2>/dev/null; then
-        warning "检测到WSL环境，建议使用Docker Desktop for Windows"
-        info "请参考: https://docs.docker.com/desktop/wsl/"
-        echo ""
-        echo -e "${BLUE}=== 推荐安装方法 ===${NC}"
-        echo "1. 下载安装Docker Desktop: https://www.docker.com/products/docker-desktop/"
-        echo "2. 在设置中启用WSL集成"
-        echo "3. 重启Docker Desktop和WSL"
-        echo ""
-        auto_confirm "仍然尝试安装Docker? (y/n): " "y" "-n 1 -r"
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            error "用户取消安装"
-            exit 1
-        fi
-    fi
-    
-    # 检查是否为国内环境
-    if is_china_environment; then
-        info "检测到国内环境，使用国内镜像源安装Docker..."
-        install_docker_china
-    else
-      # 使用官方安装脚本
-      info "使用官方安装脚本..."
-      
-      # 先尝试使用官方脚本
-      if curl -fsSL https://get.docker.com -o get-docker.sh; then
-          # 执行安装脚本
-          if ! sh get-docker.sh; then
-              error "Docker官方脚本安装失败，当前系统可能不支持Docker"
-              error "请检查系统版本和架构，或手动安装Docker"
-              return 1
-          fi
-      else
-          warning "无法下载Docker官方安装脚本，将回退到国内镜像源安装Docker"
-          install_docker_china
+  # 检查是否在WSL环境中
+  if grep -q Microsoft /proc/version 2>/dev/null; then
+      warning "检测到WSL环境，建议使用Docker Desktop for Windows"
+      info "请参考: https://docs.docker.com/desktop/wsl/"
+      echo ""
+      echo -e "${BLUE}=== 推荐安装方法 ===${NC}"
+      echo "1. 下载安装Docker Desktop: https://www.docker.com/products/docker-desktop/"
+      echo "2. 在设置中启用WSL集成"
+      echo "3. 重启Docker Desktop和WSL"
+      echo ""
+      auto_confirm "仍然尝试安装Docker? (y/n): " "y" "-n 1 -r"
+      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+          error "用户取消安装"
+          exit 1
       fi
-    fi
+  fi
+  
+  # 检查是否为国内环境
+  if is_china_environment; then
+      info "检测到国内环境，使用国内镜像源安装Docker..."
+      install_docker_china
+  else
+    # 使用官方安装脚本
+    info "使用官方安装脚本..."
     
-    # 删除安装脚本
-    rm -f get-docker.sh
-    
-    # 添加用户到docker组
-    if ! grep -q Microsoft /proc/version 2>/dev/null; then
-        sudo usermod -aG docker "$USER" || true
-    fi
-    
-    # 最终检查Docker是否可用
-    if command -v docker &>/dev/null; then
-    success "Docker安装成功"
-        return 0
+    # 先尝试使用官方脚本
+    if curl -fsSL https://get.docker.com -o get-docker.sh; then
+        # 执行安装脚本
+        if ! sh get-docker.sh; then
+            error "Docker官方脚本安装失败，当前系统可能不支持Docker"
+            error "请检查系统版本和架构，或手动安装Docker"
+            return 1
+        fi
     else
-        error "Docker安装失败"
-        return 1
+        warning "无法下载Docker官方安装脚本，将回退到国内镜像源安装Docker"
+        install_docker_china
     fi
+  fi
+  
+  # 删除安装脚本
+  rm -f get-docker.sh
+  
+  # 添加用户到docker组
+  if ! grep -q Microsoft /proc/version 2>/dev/null; then
+      sudo usermod -aG docker "$USER" || true
+  fi
+  
+  # 最终检查Docker是否可用
+  if command -v docker &>/dev/null; then
+  success "Docker安装成功"
+      return 0
+  else
+      error "Docker安装失败"
+      return 1
+  fi
 }
 
 
@@ -3152,12 +2955,80 @@ check_project_environment() {
   return 0
 }
 
+install_git() {
+  # 检测系统类型
+  local os_type=$(detect_os_type)  
+  # 根据操作系统类型安装Git
+  case "$os_type" in
+    "debian"|"ubuntu")
+      # Ubuntu/Debian系统
+      info "使用apt-get安装Git..."
+      if sudo apt-get update && sudo apt-get install -y git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo apt-get install git"
+        return 1
+      fi
+      ;;
+    "centos7")
+      # CentOS/RHEL/Anolis系统
+      info "使用yum安装Git..."
+      if sudo yum install -y git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo yum install git"
+        return 1
+      fi
+      ;;
+    "fedora"|"centos8"|"anolis")
+      # Fedora系统
+      info "使用dnf安装Git..."
+      if sudo dnf install -y git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo dnf install git"
+        return 1
+      fi
+      ;;
+    "arch")
+      # Arch Linux系统
+      info "使用pacman安装Git..."
+      if sudo pacman -S --noconfirm git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo pacman -S git"
+        return 1
+      fi
+      ;;
+    "alpine")
+      # Alpine Linux系统
+      info "使用apk安装Git..."
+      if sudo apk add git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo apk add git"
+        return 1
+      fi
+      ;;
+    *)
+      error "不支持的操作系统类型: $os_type，请手动安装Git"
+      echo "常见安装命令："
+      echo "  Ubuntu/Debian: sudo apt-get install git"
+      echo "  CentOS/RHEL:   sudo yum install git"
+      echo "  Fedora:        sudo dnf install git"
+      echo "  Arch Linux:    sudo pacman -S git"
+      echo "  Alpine Linux:  sudo apk add git"
+      return 1
+      ;;
+  esac
+}
 
 # 下载并解压项目源码
 download_and_extract_project() {
   local download_url="https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz"
   local tar_file="Awesome-poetize-open.tar.gz"
   local extract_dir="Awesome-poetize-open"
+  local repo_url="https://gitee.com/leapya/poetize.git"
   
   info "正在下载项目源码..."
   
@@ -3173,33 +3044,46 @@ download_and_extract_project() {
   
   # 检查下载是否成功
   if [ ! -f "$tar_file" ]; then
-    error "源码下载失败"
-    return 1
-  fi
-  
-  info "正在解压源码包..."
-  
-  # 解压源码包
-  if tar -zxvf "$tar_file"; then
-    success "源码解压成功"
-    # 创建项目目录并移动文件
-    if [ -d "Awesome-poetize-open" ]; then
-      cd "$extract_dir"
-      info "已进入项目目录: $(pwd)"
-      
-      # 清理下载文件
-      rm -f "../$tar_file"
-      
-      success "项目环境准备完成"
-      return 0
-    else
-      error "解压目录不存在"
+    if ! command -v git &> /dev/null; then
+      warning "Git未安装，正在尝试安装..."
+      if ! install_git; then
+        error "Git安装失败，无法克隆源码"
+        return 1
+      fi
+    fi
+
+    git clone --depth 1 "$repo_url" "$extract_dir"
+    rm -rf "$extract_dir/.git"
+    if [ $? -ne 0 ]; then
+      error "项目源码克隆失败"
       return 1
     fi
   else
-    error "源码解压失败"
-    return 1
+    info "正在解压源码包..."
+    # 解压源码包
+    if tar -zxvf "$tar_file"; then
+      success "源码解压成功"
+      else
+        error "解压目录不存在"
+        return 1
+      fi
+    else
+      error "源码解压失败"
+      return 1
+    fi
   fi
+
+    # 创建项目目录并移动文件
+  if [ -d "Awesome-poetize-open" ]; then
+    cd "$extract_dir"
+    info "已进入项目目录: $(pwd)"
+    
+    # 清理下载文件
+    rm -f "../$tar_file"
+    rm -rf "poetize-picture"
+    rm -rf "README.md"
+    
+    success "项目环境准备完成"
 }
 
 # 环境检测后的处理逻辑
@@ -3249,9 +3133,9 @@ main() {
   echo -e "${BLUE}║${NC}                      ${YELLOW}   优雅的博客与聊天平台部署脚本   ${NC}                      ${BLUE}║${NC}"
   echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
   echo -e "${BLUE}║${NC}    ${YELLOW}┌─────────────────────────────────────────────────────────────────────┐${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}     作者: ${GREEN}LeapYa${NC}                                                    ${YELLOW}│${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}     邮箱: ${GREEN}enable_lazy@qq.com${NC}                                        ${YELLOW}│${NC}   ${BLUE}║${NC}"
-  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}     仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${NC}            ${YELLOW}│${NC}   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  ✨ 作者: ${GREEN}LeapYa${NC}                                                    ${YELLOW}│${NC}   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  ✨ 邮箱: ${GREEN}enable_lazy@qq.com${NC}                                        ${YELLOW}│${NC}   ${BLUE}║${NC}"
+  echo -e "${BLUE}║${NC}    ${YELLOW}│${NC}  ✨ 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${NC}            ${YELLOW}│${NC}   ${BLUE}║${NC}"
   echo -e "${BLUE}║${NC}    ${YELLOW}└─────────────────────────────────────────────────────────────────────┘${NC}   ${BLUE}║${NC}"
   echo -e "${BLUE}║${NC}                                                                              ${BLUE}║${NC}"
   echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
