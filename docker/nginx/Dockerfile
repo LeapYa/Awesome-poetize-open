@@ -44,11 +44,15 @@ RUN set -e; \
         echo "🔧 开始编译Brotli模块..."; \
         NGINX_VERSION=$(cat /tmp/nginx_version); \
         # 尝试多个Nginx下载源
-        if wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz; then \
+        if wget --timeout=30 --tries=3 https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从nginx.org下载成功"; \
+        elif wget --timeout=30 --tries=3 https://mirrors.huaweicloud.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
+            echo "✅ 从华为云下载成功，感谢newbe博客的整理"; \
+        elif wget --timeout=30 --tries=3 https://mirror.azure.cn/nginx/download/nginx-${NGINX_VERSION}.tar.gz; then \
+            echo "✅ 从Azure下载成功"; \
         else \
-            echo "❌ Nginx源码下载失败，跳过Brotli编译"; \
-            exit 0; \
+            echo "❌ Nginx源码下载失败"; \
+            exit 1; \
         fi; \
         tar -xzf nginx-${NGINX_VERSION}.tar.gz && \
         cd nginx-${NGINX_VERSION} && \
