@@ -1,5 +1,10 @@
 FROM openresty/openresty:1.25.3.1-alpine AS builder
 
+# 配置Alpine使用国内镜像源
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
+
+RUN apk update
+
 # 安装构建依赖
 RUN apk add --no-cache \
     build-base \
@@ -12,18 +17,17 @@ RUN apk add --no-cache \
     curl \
     wget \
     busybox-extras
-
  
 # 下载ngx_brotli模块
 WORKDIR /usr/src
 RUN set -e; \
     echo "🔧 尝试下载ngx_brotli模块..."; \
     # 首先尝试GitHub官方
-    if timeout -s TERM 60 \
+    if timeout -s TERM 240 \
         git clone --depth=1 --shallow-submodules --recursive https://github.com/google/ngx_brotli.git; then \
         echo "✅ 从GitHub下载ngx_brotli成功"; \
     # 如果GitHub失败，尝试Gitee镜像
-    elif timeout -s TERM 60 \
+    elif timeout -s TERM 240 \
         git clone --depth=1 https://gitee.com/lirko/ngx_brotli.git; then \
         echo "🔄 Gitee 主仓库成功，开始处理子模块…"; \
         cd ngx_brotli && \
@@ -48,13 +52,13 @@ RUN set -e; \
         echo "🔧 开始编译Brotli模块..."; \
         NGINX_VERSION=$(cat /tmp/nginx_version); \
         # 尝试多个Nginx下载源
-        if wget --timeout=30 --tries=3 https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz; then \
+        if wget --timeout=120 --tries=3 https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从nginx.org下载成功"; \
-        elif wget --timeout=30 --tries=3 https://mirrors.huaweicloud.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
+        elif wget --timeout=120 --tries=3 https://mirrors.huaweicloud.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从华为云下载成功，感谢newbe博客的整理"; \
-        elif wget --timeout=30 --tries=3 https://mirror.azure.cn/nginx/download/nginx-${NGINX_VERSION}.tar.gz; then \
+        elif wget --timeout=120 --tries=3 https://mirror.azure.cn/nginx/download/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从Azure下载成功"; \
-        elif wget --timeout=60 --tries=3 https://mirrors.sohu.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
+        elif wget --timeout=120 --tries=3 https://mirrors.sohu.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从搜狐下载成功"; \
         else \
             echo "❌ Nginx源码下载失败，请检查网络连接"; \
@@ -77,7 +81,9 @@ RUN set -e; \
 FROM openresty/openresty:1.25.3.1-alpine
 
 # 配置Alpine使用国内镜像源
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
+
+RUN apk update
 
 # 安装运行时依赖
 RUN apk add --no-cache \
@@ -98,11 +104,11 @@ RUN set -e; \
     cd /tmp; \
     echo "🔧 尝试安装lua-resty-openssl..."; \
     # 首先尝试GitHub
-    if timeout -s TERM 45 \
+    if timeout -s TERM 240 \
         git clone --depth=1 https://github.com/fffonion/lua-resty-openssl.git; then \
         echo "✅ 从GitHub下载lua-resty-openssl成功"; \
     # 如果GitHub失败，尝试Gitee
-    elif timeout -s TERM 45 \
+    elif timeout -s TERM 240 \
         git clone --depth=1 https://gitee.com/mirrors_fffonion/lua-resty-openssl.git; then \
         echo "🔄 从Gitee下载lua-resty-openssl成功"; \
     # 如果都失败，尝试直接下载
@@ -125,11 +131,11 @@ RUN set -e; \
     cd /tmp; \
     echo "🔧 尝试安装lua-resty-http..."; \
     # 首先尝试GitHub
-    if timeout -s TERM 45 \
+    if timeout -s TERM 240 \
         git clone --depth=1 https://github.com/ledgetech/lua-resty-http.git; then \
         echo "✅ 从GitHub下载lua-resty-http成功"; \
     # 如果GitHub失败，尝试Gitee
-    elif timeout -s TERM 45 \
+    elif timeout -s TERM 240 \
         git clone --depth=1 https://gitee.com/mirrors_ledgetech/lua-resty-http.git; then \
         echo "🔄 从Gitee下载lua-resty-http成功"; \
     # 如果都失败，尝试直接下载

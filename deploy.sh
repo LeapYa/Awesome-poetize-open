@@ -1034,7 +1034,7 @@ install_docker() {
   
   # 最终检查Docker是否可用
   if command -v docker &>/dev/null; then
-  success "Docker安装成功"
+      success "Docker安装成功"
       return 0
   else
       error "Docker安装失败"
