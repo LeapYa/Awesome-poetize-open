@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-06-12
+## 修改时间: 2025-06-13
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.1
+## 版本: 1.0.2
 
 # 定义颜色
 RED='\033[0;31m'
@@ -549,6 +549,8 @@ DOCKER_CE_MIRRORS=(
     "网易@mirrors.163.com/docker-ce"
     "清华大学@mirrors.tuna.tsinghua.edu.cn/docker-ce"
     "中科大@mirrors.ustc.edu.cn/docker-ce"
+    "北外@mirrors.bfsu.edu.cn/docker-ce"
+    "搜狐@mirrors.sohu.com/docker-ce"
     "官方@download.docker.com"
 )
 

@@ -10,12 +10,8 @@ RUN apk add --no-cache \
     zlib-dev \
     openssl-dev \
     curl \
-    wget
-
-# 配置 Git 下载策略
-RUN git config --global http.lowSpeedLimit 1 \
- && git config --global http.lowSpeedTime 30 \
- && git config --global http.postBuffer 524288000
+    wget \
+    busybox-extras
 
  
 # 下载ngx_brotli模块
@@ -23,15 +19,16 @@ WORKDIR /usr/src
 RUN set -e; \
     echo "🔧 尝试下载ngx_brotli模块..."; \
     # 首先尝试GitHub官方
-    if git clone --recursive https://github.com/google/ngx_brotli.git; then \
+    if timeout -s TERM 45 \
+        git clone --depth=1 --recursive https://github.com/google/ngx_brotli.git; then \
         echo "✅ 从GitHub下载ngx_brotli成功"; \
     # 如果GitHub失败，尝试Gitee镜像
-    elif git clone --recursive https://gitee.com/lirko/ngx_brotli.git; then \
+    elif timeout -s TERM 45 \
+        git clone --depth=1 --recursive https://gitee.com/lirko/ngx_brotli.git; then \
         echo "🔄 从Gitee镜像下载ngx_brotli成功"; \
     else \
         echo "❌ 所有ngx_brotli下载方法都失败"; \
-        # 创建空目录避免构建失败
-        mkdir -p ngx_brotli; \
+        exit 1; \
     fi
 
 # 获取Nginx版本
@@ -50,6 +47,8 @@ RUN set -e; \
             echo "✅ 从华为云下载成功，感谢newbe博客的整理"; \
         elif wget --timeout=30 --tries=3 https://mirror.azure.cn/nginx/download/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从Azure下载成功"; \
+        elif wget --timeout=60 --tries=3 https://mirrors.sohu.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
+            echo "✅ 从搜狐下载成功"; \
         else \
             echo "❌ Nginx源码下载失败"; \
             exit 1; \
@@ -63,8 +62,8 @@ RUN set -e; \
         cp objs/ngx_http_brotli_static_module.so /usr/local/openresty/nginx/modules/ 2>/dev/null || true; \
         echo "🎉 Brotli模块编译完成"; \
     else \
-        echo "⏭️ ngx_brotli未正确下载，跳过编译"; \
-        mkdir -p /usr/local/openresty/nginx/modules/; \
+        echo "⏭️ ngx_brotli未正确下载"; \
+        exit 1; \
     fi
 
 # 最终镜像
@@ -84,25 +83,28 @@ RUN apk add --no-cache \
     openssl-dev \
     build-base \
     curl \
-    wget
+    wget \
+    busybox-extras
 
 # 安装lua-resty-openssl
 RUN set -e; \
     cd /tmp; \
     echo "🔧 尝试安装lua-resty-openssl..."; \
     # 首先尝试GitHub
-    if git clone https://github.com/fffonion/lua-resty-openssl.git; then \
+    if timeout -s TERM 45 \
+        git clone --depth=1 https://github.com/fffonion/lua-resty-openssl.git; then \
         echo "✅ 从GitHub下载lua-resty-openssl成功"; \
     # 如果GitHub失败，尝试Gitee
-    elif git clone https://gitee.com/mirrors_fffonion/lua-resty-openssl.git; then \
+    elif timeout -s TERM 45 \
+        git clone --depth=1 https://gitee.com/mirrors_fffonion/lua-resty-openssl.git; then \
         echo "🔄 从Gitee下载lua-resty-openssl成功"; \
     # 如果都失败，尝试直接下载
     elif wget -O lua-resty-openssl.tar.gz https://github.com/fffonion/lua-resty-openssl/archive/refs/heads/master.tar.gz && \
          tar -xzf lua-resty-openssl.tar.gz && mv lua-resty-openssl-master lua-resty-openssl; then \
         echo "🔄 从tar包下载lua-resty-openssl成功"; \
     else \
-        echo "❌ lua-resty-openssl下载失败，跳过安装"; \
-        exit 0; \
+        echo "❌ lua-resty-openssl下载失败"; \
+        exit 1; \
     fi; \
     cd lua-resty-openssl && \
     mkdir -p /usr/local/openresty/lualib/resty/openssl && \
@@ -116,18 +118,20 @@ RUN set -e; \
     cd /tmp; \
     echo "🔧 尝试安装lua-resty-http..."; \
     # 首先尝试GitHub
-    if git clone https://github.com/ledgetech/lua-resty-http.git; then \
+    if timeout -s TERM 45 \
+        git clone --depth=1 https://github.com/ledgetech/lua-resty-http.git; then \
         echo "✅ 从GitHub下载lua-resty-http成功"; \
     # 如果GitHub失败，尝试Gitee
-    elif git clone https://gitee.com/mirrors_ledgetech/lua-resty-http.git; then \
+    elif timeout -s TERM 45 \
+        git clone --depth=1 https://gitee.com/mirrors_ledgetech/lua-resty-http.git; then \
         echo "🔄 从Gitee下载lua-resty-http成功"; \
     # 如果都失败，尝试直接下载
     elif wget -O lua-resty-http.tar.gz https://github.com/ledgetech/lua-resty-http/archive/refs/heads/master.tar.gz && \
          tar -xzf lua-resty-http.tar.gz && mv lua-resty-http-master lua-resty-http; then \
         echo "🔄 从tar包下载lua-resty-http成功"; \
     else \
-        echo "❌ lua-resty-http下载失败，跳过安装"; \
-        exit 0; \
+        echo "❌ lua-resty-http下载失败"; \
+        exit 1; \
     fi; \
     cd lua-resty-http && \
     cp lib/resty/http.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
