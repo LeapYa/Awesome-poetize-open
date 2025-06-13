@@ -19,15 +19,22 @@ WORKDIR /usr/src
 RUN set -e; \
     echo "🔧 尝试下载ngx_brotli模块..."; \
     # 首先尝试GitHub官方
-    if timeout -s TERM 45 \
-        git clone --depth=1 --recursive https://github.com/google/ngx_brotli.git; then \
+    if timeout -s TERM 60 \
+        git clone --depth=1 --shallow-submodules --recursive https://github.com/google/ngx_brotli.git; then \
         echo "✅ 从GitHub下载ngx_brotli成功"; \
     # 如果GitHub失败，尝试Gitee镜像
-    elif timeout -s TERM 45 \
-        git clone --depth=1 --recursive https://gitee.com/lirko/ngx_brotli.git; then \
-        echo "🔄 从Gitee镜像下载ngx_brotli成功"; \
+    elif timeout -s TERM 60 \
+        git clone --depth=1 https://gitee.com/lirko/ngx_brotli.git; then \
+        echo "🔄 Gitee 主仓库成功，开始处理子模块…"; \
+        cd ngx_brotli && \
+        # 把子模块地址改到 Gitee 镜像
+        git submodule set-url deps/brotli https://gitee.com/mities/brotli.git && \
+        # 浅克隆子模块
+        git submodule update --init --depth=1 --recommend-shallow && \
+        echo "✅ 子模块 brotli 已就位"; \
+        cd ..; \
     else \
-        echo "❌ 所有ngx_brotli下载方法都失败"; \
+        echo "❌ 所有ngx_brotli下载方法都失败，请检查网络连接"; \
         exit 1; \
     fi
 
@@ -50,7 +57,7 @@ RUN set -e; \
         elif wget --timeout=60 --tries=3 https://mirrors.sohu.com/nginx/nginx-${NGINX_VERSION}.tar.gz; then \
             echo "✅ 从搜狐下载成功"; \
         else \
-            echo "❌ Nginx源码下载失败"; \
+            echo "❌ Nginx源码下载失败，请检查网络连接"; \
             exit 1; \
         fi; \
         tar -xzf nginx-${NGINX_VERSION}.tar.gz && \
