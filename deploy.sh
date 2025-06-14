@@ -3427,27 +3427,45 @@ update_base_source() {
 
 patch_dockerfile_slim_mirror() {
   local df=$1
-  # 检查是否存在Dockerfile文件
-  if [ -f "$df" ]; then    
-    # 镜像源
-    sed_i "4i\\
-# ===== 国内镜像加速 begin =====\\
-RUN set -eux; \\\\
-version_id=\$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '\"'); \\\\
-codename=\$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2); \\\\
-if [ \"\$version_id\" -ge 12 ]; then \\\\
-    mirror='https://mirrors.tuna.tsinghua.edu.cn/debian'; \\\\
-    security_mirror='https://mirrors.tuna.tsinghua.edu.cn/debian-security'; \\\\
-else \\\\
-    mirror='http://mirrors.163.com/debian'; \\\\
-    security_mirror='http://mirrors.163.com/debian-security'; \\\\
-fi; \\\\
-echo \"deb \${mirror}/ \${codename} main contrib non-free non-free-firmware\"        >  /etc/apt/sources.list; \\\\
-echo \"deb \${mirror}/ \${codename}-updates main contrib non-free non-free-firmware\" >> /etc/apt/sources.list; \\\\
-echo \"deb \${mirror}/ \${codename}-backports main contrib non-free non-free-firmware\" >> /etc/apt/sources.list; \\\\
-echo \"deb \${security_mirror}/ \${codename}-security main contrib non-free non-free-firmware\" >> /etc/apt/sources.list\\
-# ===== 国内镜像加速 end =====" "$df"
-  fi
+  [ ! -f "$df" ] && return
+  # 在第 4 行之前插入（即在第 3 行之后读取）
+  local insert_line=3
+  command -v mktemp >/dev/null 2>&1 || {
+    echo "未找到 mktemp，尝试使用 BusyBox…" >&2
+    if command -v busybox >/dev/null 2>&1; then
+      alias mktemp='busybox mktemp'
+    else
+      echo "系统缺少 mktemp，脚本无法安全创建临时文件" >&2
+      exit 1
+    fi
+  }
+  # 生成临时文件保存完整代码块，使用单引号 here-doc 保留美元符号
+  local tmp_file
+  tmp_file=$(mktemp)
+  cat > "$tmp_file" <<'BLOCK'
+# ===== 国内镜像加速 begin =====
+RUN set -eux; \
+    version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"'); \
+    codename=$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2); \
+    if [ "$version_id" -ge 12 ]; then \
+        mirror='https://mirrors.tuna.tsinghua.edu.cn/debian'; \
+        security_mirror='https://mirrors.tuna.tsinghua.edu.cn/debian-security'; \
+        comps='main contrib non-free non-free-firmware'; \
+    else \
+        mirror='http://mirrors.163.com/debian'; \
+        security_mirror='http://mirrors.163.com/debian-security'; \
+        comps='main contrib non-free'; \
+    fi; \
+    echo "deb ${mirror}/ ${codename} ${comps}"        >  /etc/apt/sources.list; \
+    echo "deb ${mirror}/ ${codename}-updates ${comps}" >> /etc/apt/sources.list; \
+    echo "deb ${mirror}/ ${codename}-backports ${comps}" >> /etc/apt/sources.list; \
+    echo "deb ${security_mirror}/ ${codename}-security ${comps}" >> /etc/apt/sources.list
+# ===== 国内镜像加速 end =====
+BLOCK
+
+  # 使用 sed 一次性读入，避免顺序错乱
+  sed_i "${insert_line}r $tmp_file" "$df"
+  rm -f "$tmp_file"
 }
 
 patch_dockerfile_alpine_mirror() {
