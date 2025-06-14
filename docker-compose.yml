@@ -37,7 +37,9 @@ services:
 
   # 主站前端（Vue 2）
   poetize-ui:
-    image: node:14-slim
+    build:
+      context: .
+      dockerfile: docker/node-base/Dockerfile
     container_name: poetize-ui
     volumes:
       - ./poetize-ui:/app/src
@@ -48,7 +50,6 @@ services:
     restart: "no"
     working_dir: /app/src
     command: ["sh", "-c", "echo '=== 构建博客前端 (Vue 2) ===' && \
-                           apt-get update && apt-get install -y git && \
                            npm config set registry https://registry.npmmirror.com && \
                            echo '=== 清理npm缓存 ===' && \
                            npm cache clean --force && \
@@ -76,7 +77,9 @@ services:
 
   # 聊天室前端（Vue 3）
   poetize-im-ui:
-    image: node:14-slim
+    build:
+      context: .
+      dockerfile: docker/node-base/Dockerfile
     container_name: poetize-im-ui
     volumes:
       - ./poetize-im-ui:/app/src
@@ -90,15 +93,7 @@ services:
     restart: "no"
     working_dir: /app/src
     command: ["sh", "-c", "echo '=== 构建聊天室前端 (Vue 3) ===' && \
-                           apt-get update && apt-get install -y git && \
                            npm config set registry https://registry.npmmirror.com && \
-                           npm config set fetch-timeout 600000 && \
-                           npm config set network-timeout 600000 && \
-                           npm config set fetch-retries 5 && \
-                           npm config set cache-min 3600 && \
-                           echo '=== 清理npm缓存 ===' && \
-                           npm cache clean --force && \
-                           npm cache verify && \
                            echo '=== 安装依赖（使用npm ci确保精确安装） ===' && \
                            if [ -f package-lock.json ]; then \
                              echo '使用npm ci安装依赖' && \
