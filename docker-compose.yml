@@ -273,7 +273,7 @@ services:
       test: ["CMD-SHELL", "mariadb-admin ping -h localhost -u poetize -ppoetize123 && echo 'SHOW ENGINES' | mariadb -h localhost -u poetize -ppoetize123 | grep -q 'RocksDB'"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 30s
 
 networks:

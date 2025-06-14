@@ -1,7 +1,5 @@
 FROM openresty/openresty:1.25.3.1-alpine AS builder
 
-# 配置Alpine使用国内镜像源
-RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
 
 RUN apk update
 
@@ -79,9 +77,6 @@ RUN set -e; \
 
 # 最终镜像
 FROM openresty/openresty:1.25.3.1-alpine
-
-# 配置Alpine使用国内镜像源
-RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
 
 RUN apk update
 

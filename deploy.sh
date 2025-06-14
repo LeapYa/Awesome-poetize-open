@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-06-14
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.3
+## 版本: 1.0.5
 
 # 定义颜色
 RED='\033[0;31m'
@@ -412,9 +412,15 @@ detect_os_type() {
             return 0
         fi
         
-        # Fedora
-        if [[ "$ID" == "fedora" ]]; then
+        # Fedora、Rocky、AlmaLinux、Amazon Linux、Oracle Linux
+        if [[ "$ID" == "fedora" || "$ID" == "rocky" || "$ID" == "almalinux" || "$ID" == "amzn" || "$ID" == "ol" ]]; then
             echo "centos8"
+            return 0
+        fi
+
+        # openSUSE
+        if [[ "$ID" == "opensuse-leap" || "$ID" == "sles" || "$ID" == "opensuse-tumbleweed" ]]; then
+            echo "opensuse"
             return 0
         fi
         
@@ -433,6 +439,23 @@ detect_os_type() {
         # 龙蜥OS
         if [[ "$ID" == "anolis" ]]; then
             echo "anolis"
+            return 0
+        fi
+        # 麒麟 / 银河麒麟
+        if [[ "$ID" == "kylin" ]]; then
+            echo "ubuntu"
+            return 0
+        fi
+
+        # 统信 UOS / Deepin
+        if [[ "$ID" == "uos" || "$ID" == "deepin" ]]; then
+            echo "debian"
+            return 0
+        fi
+
+        # NeoKylin
+        if [[ "$ID" == "neokylin" ]]; then
+            echo "centos7"
             return 0
         fi
     fi
@@ -526,6 +549,16 @@ check_and_install_curl() {
         return 1
       fi
     ;;
+    "opensuse")
+      # openSUSE系统
+      info "使用zypper安装curl..."
+      if sudo zypper install -y curl; then
+        success "curl安装成功"
+      else
+        error "curl安装失败，请手动安装: sudo zypper install curl"
+        return 1
+      fi
+    ;;
     *)
       error "不支持的操作系统类型: $os_type，请手动安装curl"
       echo "常见安装命令："
@@ -589,12 +622,15 @@ choose_docker_registry_mirror() {
     echo "当一个镜像源不可用时，Docker会自动尝试下一个镜像源。"
     echo ""
     
-    auto_confirm "是否自动配置所有可用的镜像源作为备用？ (推荐) [y/n]: " "y" "-n 1 -r"
-    
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # 交互：5 秒内未输入或输入 Y/y，都视为同意自动配置
+    echo -n "是否自动配置所有可用镜像源？[Y/n]（5 秒后默认 Y）: "
+    read -t 5 -n 1 REPLY
+    echo   # 换行
+
+    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
         info "将自动配置所有可用的镜像源作为备用"
         echo ""
-        
+
         # 显示将要配置的镜像源列表
         info "以下镜像源将按优先级顺序配置："
         local i=1
@@ -604,19 +640,16 @@ choose_docker_registry_mirror() {
             printf "  %d) %s (%s)\n" "$i" "$name" "$url"
             ((i++))
         done
-        
+
         echo ""
         info "Docker将按优先级顺序自动选择可用的镜像源"
-        
-        # 设置一个标记，表示使用所有镜像源
         DOCKER_REGISTRY_SOURCE="all_mirrors"
     else
-        info "跳过Docker镜像源配置，将使用默认设置"
-        info "如需要，可稍后手动配置 /etc/docker/daemon.json"
-        
-        # 设置为官方Docker Hub，不配置镜像源
+        info "跳过 Docker 镜像源配置，将使用官方默认仓库"
         DOCKER_REGISTRY_SOURCE="skip_config"
     fi
+
+    sleep 2
     
     echo ""
 }
@@ -702,11 +735,11 @@ configure_docker_registry() {
 install_docker_china_debian() {
     info "在Debian系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
     
-    # 更新软件包索引
-    sudo apt-get update
+    # 更新软件包索引 (静默)
+    sudo apt-get update -qq
     
-    # 安装必要的软件包
-    sudo apt-get install -y \
+    # 安装必要的软件包 (静默)
+    sudo apt-get install -y -qq \
         apt-transport-https \
         ca-certificates \
         curl \
@@ -728,8 +761,8 @@ install_docker_china_debian() {
     # 更新软件包索引
     sudo apt-get update
     
-    # 安装Docker CE
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    # 安装Docker CE (静默)
+    sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
     sudo systemctl start docker
@@ -743,11 +776,11 @@ install_docker_china_debian() {
 install_docker_china_ubuntu() {
     info "在Ubuntu系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
     
-    # 更新软件包索引
-    sudo apt-get update
+    # 更新软件包索引 (静默)
+    sudo apt-get update -qq
     
-    # 安装必要的软件包
-    sudo apt-get install -y \
+    # 安装必要的软件包 (静默)
+    sudo apt-get install -y -qq \
         apt-transport-https \
         ca-certificates \
         curl \
@@ -769,8 +802,8 @@ install_docker_china_ubuntu() {
     # 更新软件包索引
     sudo apt-get update
     
-    # 安装Docker CE
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    # 安装Docker CE (静默)
+    sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
     sudo systemctl start docker
@@ -785,16 +818,16 @@ install_docker_china_centos7() {
     info "在CentOS 7系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
     
     # 移除旧版本Docker
-    sudo yum remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
+    sudo yum remove -y -q docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
     
     # 安装必要的软件包
-    sudo yum install -y yum-utils device-mapper-persistent-data lvm2
+    sudo yum install -y -q yum-utils device-mapper-persistent-data lvm2
     
     # 添加Docker软件源
     sudo yum-config-manager --add-repo "https://$DOCKER_MIRROR_SOURCE/linux/centos/docker-ce.repo"
     
     # 安装Docker CE
-    sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    sudo yum install -y -q docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
     sudo systemctl start docker
@@ -809,23 +842,23 @@ install_docker_china_centos8() {
     info "在CentOS 8/Fedora/Red Hat系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
     
     # 移除旧版本Docker
-    sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
+    sudo dnf remove -y -q docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
     
     # 安装必要的软件包
-    sudo dnf install -y dnf-utils device-mapper-persistent-data lvm2
+    sudo dnf install -y -q dnf-utils device-mapper-persistent-data lvm2
     
     # 添加Docker软件源
     sudo dnf config-manager --add-repo "https://$DOCKER_MIRROR_SOURCE/linux/centos/docker-ce.repo"
     
     # 安装Docker CE
-    sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    sudo dnf install -y -q docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
     sudo systemctl start docker
     sudo systemctl enable docker
     
     info "CentOS 8/Fedora/Red Hat Docker安装完成"
-                        return 0
+    return 0
 }
                     
 # 国内环境Anolis OS系统安装Docker
@@ -833,16 +866,16 @@ install_docker_china_anolis() {
     info "在Anolis OS系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
     
     # 移除旧版本Docker
-    sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
+    sudo dnf remove -y -q docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
     
     # 安装必要的软件包
-    sudo dnf install -y dnf-utils device-mapper-persistent-data lvm2
+    sudo dnf install -y -q dnf-utils device-mapper-persistent-data lvm2
     
     # 添加Docker软件源
     sudo dnf config-manager --add-repo "https://$DOCKER_MIRROR_SOURCE/linux/centos/docker-ce.repo"
     
     # 安装Docker CE
-    sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    sudo dnf install -y -q docker-ce docker-ce-cli containerd.io docker-compose-plugin
     
     # 启动和启用Docker服务
     sudo systemctl start docker
@@ -857,10 +890,10 @@ install_docker_china_arch() {
     info "在Arch Linux系统上安装Docker..."
     
     # 更新包数据库
-    sudo pacman -Sy
+    sudo pacman -Sy --quiet
                         
     # 安装Docker
-    sudo pacman -S --noconfirm docker docker-compose
+    sudo pacman -S --noconfirm --quiet docker docker-compose
     
     # 启动和启用Docker服务
     sudo systemctl start docker
@@ -875,16 +908,31 @@ install_docker_china_alpine() {
     info "在Alpine Linux系统上安装Docker..."
     
     # 更新包索引
-    sudo apk update
+    sudo apk update -q
                 
     # 安装Docker
-    sudo apk add docker docker-compose
+    sudo apk add -q docker docker-compose
                 
     # 启动Docker服务
     sudo rc-update add docker boot
     sudo service docker start
     
     info "Alpine Linux Docker安装完成"
+    return 0
+}
+
+# 国内环境openSUSE系统安装Docker
+install_docker_china_opensuse() {
+    info "在openSUSE系统安装Docker..."
+    
+    # 安装Docker
+    sudo zypper install -y docker docker-compose
+    
+    # 启动Docker服务
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    info "openSUSE Docker安装完成"
     return 0
 }
 
@@ -897,7 +945,7 @@ install_docker_china() {
 
     # 检测操作系统类型
     local os_type=$(detect_os_type)
-    info "检测到操作系统类型: $os_type"
+    info "检测到操作系统类型(或属于): $os_type"
 
     for mirror in "${DOCKER_CE_MIRRORS[@]}"; do
         local name="${mirror%@*}"
@@ -927,6 +975,9 @@ install_docker_china() {
                 ;;
             "anolis")
                 install_docker_china_anolis
+                ;;
+            "opensuse")
+                install_docker_china_opensuse
                 ;;
             *)
             warning "不支持的操作系统类型: $os_type"
@@ -1164,11 +1215,13 @@ setup_swap() {
 DOCKER_COMPOSE_CMD=""
 
 setup_docker_compose_command() {
-    # 检查是否在WSL环境中
+    # 构建 compose_cmd 数组，自动探测版本并按需加入 sudo
+    local compose_cmd=()
+
+    # 在 WSL 环境下额外提示，但检测逻辑保持一致
     if grep -q Microsoft /proc/version 2>/dev/null; then
         info "检测到WSL环境"
-        
-        # 检查Docker Desktop是否在WSL中可用
+        # 如果 docker info 不可用仍按原逻辑提醒并可选安装
         if ! docker info &>/dev/null; then
             error "Docker在WSL中不可用"
             echo ""
@@ -1179,7 +1232,6 @@ setup_docker_compose_command() {
             echo "   - 勾选 'Use the WSL 2 based engine'"
             echo "   - 在 'Resources > WSL Integration' 中启用当前WSL发行版"
             echo ""
-            
             read -p "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " -n 1 -r
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -1195,35 +1247,29 @@ setup_docker_compose_command() {
               exit 1
             fi
         fi
-        
-        # 优先检查新版docker compose命令
-        if docker compose version &>/dev/null; then
-            info "将使用新版 'docker compose' 命令"
-            DOCKER_COMPOSE_CMD="docker compose"
-        elif command -v docker-compose &>/dev/null && docker-compose --version &>/dev/null; then
-            info "将使用旧版 'docker-compose' 命令"
-            DOCKER_COMPOSE_CMD="docker-compose"
-        else
-            warning "Docker Compose未启用，尝试使用docker compose子命令"
-            DOCKER_COMPOSE_CMD="docker compose"
-        fi
-    else
-        # 非WSL环境，优先检查新版docker compose命令
-        if command -v docker &>/dev/null && docker compose version &>/dev/null; then
-            info "检测到新版docker compose命令可用"
-            DOCKER_COMPOSE_CMD="docker compose"
-        elif command -v docker-compose &>/dev/null && docker-compose --version &>/dev/null; then
-            info "检测到旧版docker-compose命令可用"
-            DOCKER_COMPOSE_CMD="docker-compose"
-        else
-            error "无法找到可用的Docker Compose命令"
-            exit 1
-        fi
     fi
-    
-    # 最终验证所选命令
+
+    # 探测可用 compose 命令
+    if docker compose version &>/dev/null; then
+        compose_cmd+=(docker compose)
+    elif command -v docker-compose &>/dev/null && docker-compose --version &>/dev/null; then
+        compose_cmd+=(docker-compose)
+    else
+        error "无法找到可用的Docker Compose命令"
+        exit 1
+    fi
+
+    # 如果当前用户非 root 且 sudo 可用，则加 sudo
+    if command -v sudo &>/dev/null && [[ $EUID -ne 0 ]]; then
+        compose_cmd=(sudo "${compose_cmd[@]}")
+    fi
+
+    # 记录为全局字符串，供其他函数日志使用
+    DOCKER_COMPOSE_CMD="${compose_cmd[*]}"
+
+    # 验证命令可执行
     info "测试Docker Compose命令..."
-    if ! eval "$DOCKER_COMPOSE_CMD --version" &>/dev/null; then
+    if ! "${compose_cmd[@]}" --version &>/dev/null; then
         error "所选Docker Compose命令无法执行: $DOCKER_COMPOSE_CMD"
         if grep -q Microsoft /proc/version 2>/dev/null; then
             info "在WSL环境中，请在Docker Desktop设置中启用WSL集成"
@@ -1231,7 +1277,7 @@ setup_docker_compose_command() {
         fi
         exit 1
     fi
-    
+
     info "将使用命令: $DOCKER_COMPOSE_CMD"
 }
 
@@ -1773,19 +1819,6 @@ confirm_setup() {
   echo "管理员邮箱: $EMAIL"
   echo "默认启用HTTPS"
   echo ""
-  
-  echo -n "是否确认以上设置? [Y/n]（默认Y）: "
-  read CONFIRM
-  
-  if [ -z "$CONFIRM" ]; then
-    CONFIRM="Y"
-    info "使用默认设置: $CONFIRM"
-  fi
-  
-  if [[ "$CONFIRM" =~ ^[Nn] ]]; then
-    echo "已取消部署"
-    exit 0
-  fi
 }
 
 # 检查依赖
@@ -2310,6 +2343,16 @@ check_and_install_bc() {
         return 1
       fi
       ;;
+    "opensuse")
+      # openSUSE系统
+      info "使用zypper安装bc..."
+      if sudo zypper install -y bc; then
+        success "bc安装成功"
+      else
+        error "bc安装失败，请手动安装: sudo zypper install bc"
+        return 1
+      fi
+      ;;
     *)
       error "不支持的操作系统类型: $os_type，请手动安装bc"
       echo "常见安装命令："
@@ -2544,101 +2587,32 @@ fix_dockerfile_line_endings() {
 
 # 安全地运行Docker Compose命令，确保参数正确传递
 run_docker_compose() {
-    # 验证Docker Compose命令是否可用
-    if [ -z "$DOCKER_COMPOSE_CMD" ]; then
-        error "Docker Compose命令未设置，无法执行命令"
-        return 1
-    fi
-    
-    info "执行Docker Compose命令: $DOCKER_COMPOSE_CMD $*"
-    
-    # 根据命令是docker-compose还是docker compose分别处理
-    if [ "$DOCKER_COMPOSE_CMD" = "docker-compose" ]; then
-        # 使用docker-compose命令
-        docker-compose "$@"
-    elif [ "$DOCKER_COMPOSE_CMD" = "docker compose" ]; then
-        # 使用docker compose命令
-        docker compose "$@"
+    # 构建compose命令数组，自动探测版本，并根据需要加sudo
+    local compose_cmd=()
+
+    # 探测compose版本
+    if docker compose version &>/dev/null; then
+      compose_cmd+=(docker compose)
+    elif command -v docker-compose &>/dev/null; then
+      compose_cmd+=(docker-compose)
     else
-        # 使用eval作为后备方案
-        eval "$DOCKER_COMPOSE_CMD $*"
+      error "❌ 未找到 docker compose / docker-compose，可执行文件！请提交issue"
+      exit 1
     fi
-    
+
+    # 如当前用户非 root 且 sudo 可用，追加 sudo
+    if command -v sudo &>/dev/null && [[ $EUID -ne 0 ]]; then
+      compose_cmd=(sudo "${compose_cmd[@]}")
+    fi
+
+    info "执行Docker Compose命令: ${compose_cmd[*]} $*"
+
+    # shellcheck disable=SC2068
+    "${compose_cmd[@]}" "$@"
+
     return $?
 }
 
-# 设置Docker Compose命令
-setup_docker_compose_command() {
-    # 检查是否在WSL环境中
-    if grep -q Microsoft /proc/version 2>/dev/null; then
-        info "检测到WSL环境"
-        
-        # 检查Docker Desktop是否在WSL中可用
-        if ! docker info &>/dev/null; then
-            error "Docker在WSL中不可用"
-            echo ""
-            echo -e "${BLUE}=== 在WSL中使用Docker推荐方法 ===${NC}"
-            echo "1. 确保已安装Docker Desktop for Windows"
-            echo "2. 确保Docker Desktop正在运行"
-            echo "3. 在Docker Desktop设置中:"
-            echo "   - 勾选 'Use the WSL 2 based engine'"
-            echo "   - 在 'Resources > WSL Integration' 中启用当前WSL发行版"
-            echo ""
-            
-            read -p "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " -n 1 -r
-            echo ""
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-              if ! install_docker; then
-                error "Docker安装失败，无法继续部署"
-                exit 1
-              fi
-            elif [[ $REPLY =~ ^[Ss]$ ]]; then
-              warning "跳过Docker安装，尝试继续部署"
-              warning "某些功能可能无法正常工作"
-            else
-              error "已取消部署"
-              exit 1
-            fi
-        fi
-        
-        # 优先检查新版docker compose命令
-        if docker compose version &>/dev/null; then
-            info "将使用新版 'docker compose' 命令"
-            DOCKER_COMPOSE_CMD="docker compose"
-        elif command -v docker-compose &>/dev/null && docker-compose --version &>/dev/null; then
-            info "将使用旧版 'docker-compose' 命令"
-            DOCKER_COMPOSE_CMD="docker-compose"
-        else
-            warning "Docker Compose未启用，尝试使用docker compose子命令"
-            DOCKER_COMPOSE_CMD="docker compose"
-        fi
-    else
-        # 非WSL环境，优先检查新版docker compose命令
-        if command -v docker &>/dev/null && docker compose version &>/dev/null; then
-            info "检测到新版docker compose命令可用"
-            DOCKER_COMPOSE_CMD="docker compose"
-        elif command -v docker-compose &>/dev/null && docker-compose --version &>/dev/null; then
-            info "检测到旧版docker-compose命令可用"
-            DOCKER_COMPOSE_CMD="docker-compose"
-        else
-            error "无法找到可用的Docker Compose命令"
-            exit 1
-        fi
-    fi
-    
-    # 最终验证所选命令
-    info "测试Docker Compose命令..."
-    if ! eval "$DOCKER_COMPOSE_CMD --version" &>/dev/null; then
-        error "所选Docker Compose命令无法执行: $DOCKER_COMPOSE_CMD"
-        if grep -q Microsoft /proc/version 2>/dev/null; then
-            info "在WSL环境中，请在Docker Desktop设置中启用WSL集成"
-            info "参考: https://docs.docker.com/desktop/wsl/"
-        fi
-        exit 1
-    fi
-    
-    info "将使用命令: $DOCKER_COMPOSE_CMD"
-}
 
 # 清理Docker构建缓存
 clean_docker_build_cache() {
@@ -2956,6 +2930,16 @@ install_git() {
         return 1
       fi
       ;;
+    "opensuse")
+      # openSUSE系统
+      info "使用zypper安装Git..."
+      if sudo zypper install -y git; then
+        success "Git安装成功"
+      else
+        error "Git安装失败，请手动安装: sudo zypper install git"
+        return 1
+      fi
+      ;;
     *)
       error "不支持的操作系统类型: $os_type，请手动安装Git"
       echo "常见安装命令："
@@ -3075,6 +3059,14 @@ update_system_packages() {
       ;;
     alpine)
       update_alpine_based
+      ;;
+    opensuse)
+      info "使用zypper更新系统包列表..."
+      if sudo zypper update; then
+        success "系统包列表更新成功"
+      else
+        warning "zypper update 失败，但不影响部署继续"
+      fi
       ;;
     unknown)
       warning "未识别的操作系统，跳过系统包更新"
@@ -3243,21 +3235,27 @@ deb-src http://mirrors.163.com/debian/ $codename-backports main non-free contrib
 deb-src http://mirrors.163.com/debian-security/ $codename/updates main non-free contrib
 EOF
     else
-      error "不支持的Debian版本: $codename，请升级到debian9或以上版本"
-      exit 1
+      warning "不支持的Debian版本: $codename，请升级到debian9或以上版本，跳过换源"
     fi
   else
-    error "Debian $codename 源列表不存在，请检查是否为Debian $codename系统"
-    exit 1
+    warning "Debian $codename 源列表不存在，请检查是否为Debian $codename系统，跳过换源"
   fi
 }
 
 update_ubuntu_base_source() {
+  # 检测 ID 与 ID_LIKE，确保是 Ubuntu 血统
+  . /etc/os-release
+  [[ "$ID" != "ubuntu" && "$ID_LIKE" != *ubuntu* ]] && {
+    info "非 Ubuntu 血统系统，跳过 Ubuntu 源配置"
+    return 0
+  }
+
   # 提取 Ubuntu 版本号
   local version_id
   version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
   local codename
   codename=$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2)
+
   # 判断版本号
   # 只支持 16.04 及以上
   if [ -z "$version_id" ]; then
@@ -3301,8 +3299,7 @@ update_centos7_base_source() {
       sudo curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo
     fi
   else
-    error "CentOS 7 源列表不存在，请检查是否为CentOS 7系统"
-    exit 1
+    warning "CentOS 7 源列表不存在，请检查是否为CentOS 7系统，跳过换源"
   fi
 }
 
@@ -3316,8 +3313,7 @@ update_centos8_base_source() {
       sudo curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-vault-8.5.2111.repo
     fi
   else
-    error "CentOS 8 源列表不存在，请检查是否为CentOS 8系统"
-    exit 1
+    warning "CentOS 8 源列表不存在，请检查是否为CentOS 8系统，跳过换源"
   fi
 }
 
@@ -3329,8 +3325,7 @@ update_arch_base_source() {
 Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch
 ' /etc/pacman.d/mirrorlist
   else
-    error "Arch Linux 源列表不存在，请检查是否为Arch Linux系统"
-    exit 1
+    warning "Arch Linux 源列表不存在，请检查是否为Arch Linux系统，跳过换源"
   fi
 }
 
@@ -3365,8 +3360,7 @@ update_alpine_base_source() {
       sudo sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
     fi
   else
-    error "Alpine Linux 源列表不存在，请检查是否为Alpine Linux系统"
-    exit 1
+    warning "Alpine Linux 源列表不存在，请检查是否为Alpine Linux系统，跳过换源"
   fi
 }
 
@@ -3385,8 +3379,7 @@ update_anolis_base_source() {
       /etc/yum.repos.d/AnolisOS-*.repo
     fi
   else
-    error "Anolis OS 源列表不存在，请检查是否为Anolis OS系统"
-    exit 1
+    warning "Anolis OS 源列表不存在，请检查是否为Anolis OS系统，跳过换源"
   fi
 }
 
@@ -3421,6 +3414,9 @@ update_base_source() {
     "anolis")
         update_anolis_base_source
         ;;
+    "opensuse")
+        info "openSUSE系统不支持更换源,跳过换源"
+        ;;
     *)
     error "不支持的操作系统类型: $os_type，请提交issue，https://github.com/LeapYa/Awesome-poetize-open/issues"
     exit 1
@@ -3429,6 +3425,72 @@ update_base_source() {
 }
 
 
+patch_dockerfile_slim_mirror() {
+  local df=$1
+  # 检查是否存在Dockerfile文件
+  if [ -f "$df" ]; then    
+    # 镜像源
+    sed_i "4i\\
+# ===== 国内镜像加速 begin =====\\
+RUN set -eux; \\\\
+version_id=\$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '\"'); \\\\
+codename=\$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2); \\\\
+if [ \"\$version_id\" -ge 12 ]; then \\\\
+    mirror='https://mirrors.tuna.tsinghua.edu.cn/debian'; \\\\
+    security_mirror='https://mirrors.tuna.tsinghua.edu.cn/debian-security'; \\\\
+else \\\\
+    mirror='http://mirrors.163.com/debian'; \\\\
+    security_mirror='http://mirrors.163.com/debian-security'; \\\\
+fi; \\\\
+echo \"deb \${mirror}/ \${codename} main contrib non-free non-free-firmware\"        >  /etc/apt/sources.list; \\\\
+echo \"deb \${mirror}/ \${codename}-updates main contrib non-free non-free-firmware\" >> /etc/apt/sources.list; \\\\
+echo \"deb \${mirror}/ \${codename}-backports main contrib non-free non-free-firmware\" >> /etc/apt/sources.list; \\\\
+echo \"deb \${security_mirror}/ \${codename}-security main contrib non-free non-free-firmware\" >> /etc/apt/sources.list\\
+# ===== 国内镜像加速 end =====" "$df"
+  fi
+}
+
+patch_dockerfile_alpine_mirror() {
+  local df=$1
+  local num=$2
+  if [ -f "$df" ]; then    
+  sed_i "$num i\\
+# ===== 国内镜像加速 begin =====\\
+RUN sed -i 's#https\\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories\\
+# ===== 国内镜像加速 end =====" "$df"
+
+  fi
+}
+
+patch_dockerfile_mirror() {
+  if [ -f "docker/java/Dockerfile" ] && [ -f "docker/python/Dockerfile" ]; then
+    patch_dockerfile_slim_mirror "docker/java/Dockerfile"
+    patch_dockerfile_slim_mirror "docker/python/Dockerfile"
+  fi
+  if [ -f "docker/node-base/Dockerfile" ]; then
+    patch_dockerfile_alpine_mirror "docker/node-base/Dockerfile" 2
+    patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 3
+    patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 83
+    patch_dockerfile_alpine_mirror "docker/translation-model/Dockerfile" 5
+  fi
+}
+
+require_root_or_sudo() {
+  # $EUID == 0 说明当前就是 root
+  if [ "$EUID" -eq 0 ]; then
+    return 0        # OK
+  fi
+
+  # 尝试寻找 sudo
+  if command -v sudo >/dev/null 2>&1; then
+    return 0        # 有 sudo 也算 OK
+  fi
+
+  # 两者都没有 则报错并退出
+  error "当前用户既不是 root，系统也未安装 sudo，无法继续执行需要特权的操作"
+  echo "请用 root 账户重新运行脚本，或先安装 sudo 并赋予当前用户相应权限。"
+  exit 1
+}
 
 # 主函数
 main() {
@@ -3459,6 +3521,17 @@ main() {
   echo -e "${YELLOW}✨ 正在初始化部署环境...${NC}"
   sleep 3
 
+  # 检查是否需要特权
+  require_root_or_sudo
+
+  # 如果未设置域名和邮箱，则提示用户输入
+  if [ -z "$PRIMARY_DOMAIN" ] && [ -z "$EMAIL" ]; then
+    # 输入域名
+    prompt_for_domains
+    # 输入邮箱
+    prompt_for_email
+  fi
+
   check_write_permission
   status=$?
   if [ $status -eq 0 ]; then
@@ -3467,10 +3540,22 @@ main() {
     exit 1
   fi
   
-  # 更换国内源
+  # 检测并询问是否切换国内软件源
   if is_china_environment; then
-    info "检测到国内环境，开始更换国内源..."
-    update_base_source
+    info "检测到国内网络环境"
+    echo -n "是否自动更换系统软件源为国内镜像？[Y/n]（5 秒后默认 Y）: "
+
+    # -t 5   → 等待 5 秒超时
+    # -n 1   → 只读 1 个字符
+    read -t 5 -n 1 REPLY
+    echo                 # 换行
+
+    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
+      info "开始更换国内源..."
+      update_base_source
+    else
+      info "已跳过更换国内源"
+    fi
   fi
 
   update_system_packages
@@ -3497,9 +3582,23 @@ main() {
     error "bc安装失败，无法继续部署,请切换到root用户再试..."
     exit 1
   fi
-
+  # 处理环境状态，如果没有源码，则克隆源码到本地并进入目录
   handle_environment_status
-  
+  # 处理Dockerfile国内镜像加速
+  if is_china_environment; then
+    info "检测到国内网络环境"
+    echo -n "是否为 Dockerfile 注入国内镜像加速指令？[Y/n]（5 秒后默认 Y）: "
+
+    read -t 5 -n 1 REPLY      # 5 秒超时读取 1 个字符
+    echo                       # 换行
+
+    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
+      info "开始处理 Dockerfile 国内镜像加速..."
+      patch_dockerfile_mirror
+    else
+      info "已跳过 Dockerfile 加速处理"
+    fi
+  fi
   # 解析命令行参数
   parse_arguments "$@"
   

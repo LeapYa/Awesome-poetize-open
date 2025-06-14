@@ -2,6 +2,7 @@ FROM openjdk:21-jdk-slim
 
 WORKDIR /app
 
+
 # 安装健康检查所需工具
 RUN apt-get update && \
     apt-get install -y netcat-openbsd curl && \
