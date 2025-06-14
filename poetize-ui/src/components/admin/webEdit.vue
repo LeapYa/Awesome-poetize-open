@@ -23,11 +23,25 @@
         </el-form-item>
 
         <el-form-item label="状态" prop="status">
-          <el-switch @change="changeWebStatus" v-model="webInfo.status"></el-switch>
+          <div style="display: flex; align-items: center;">
+            <el-switch @change="changeWebStatus" v-model="webInfo.status"></el-switch>
+            <span style="margin-left: 10px; color: #909399; font-size: 12px;">
+              {{ webInfo.status ? '已开启' : '已关闭' }}
+            </span>
+          </div>
         </el-form-item>
 
         <el-form-item label="看板娘" prop="enableWaifu">
-          <el-switch @change="handleWaifuChange" v-model="webInfo.enableWaifu"></el-switch>
+          <div style="display: flex; align-items: center;">
+            <el-switch @change="handleWaifuChange" v-model="webInfo.enableWaifu"></el-switch>
+            <span :style="{
+                marginLeft: '10px',
+                fontSize: '12px',
+                color: webInfo.enableWaifu ? '#67c23a' : '#f56c6c'
+              }">
+              {{ webInfo.enableWaifu ? '已开启' : '已关闭' }}
+            </span>
+          </div>
         </el-form-item>
 
         <!-- 导航栏配置 -->
@@ -97,13 +111,27 @@
                          :maxSize="2"
                          :maxNumber="1"></uploadPicture>
         </el-form-item>
-
-        <el-form-item label="页脚" prop="footer">
-          <el-input v-model="webInfo.footer" placeholder="页脚信息（可选）"></el-input>
+        
+        <!-- 极简页脚开关 -->
+        <el-form-item label="极简页脚" prop="minimalFooter">
+          <div style="display: flex; align-items: center;">
+            <el-switch v-model="webInfo.minimalFooter"></el-switch>
+            <span :style="{
+                marginLeft: '10px',
+                fontSize: '12px',
+                color: webInfo.minimalFooter ? '#67c23a' : '#f56c6c'
+              }">
+              {{ webInfo.minimalFooter ? '已开启' : '已关闭' }}
+            </span>
+          </div>
         </el-form-item>
 
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="webInfo.email" placeholder="联系邮箱（用于隐私政策和侵权联系）"></el-input>
+        <el-form-item label="页脚文案" prop="footer">
+          <el-input 
+            v-model="webInfo.footer" 
+            placeholder="页脚文案（极简页脚开启时不显示）"
+            :disabled="webInfo.minimalFooter">
+          </el-input>
         </el-form-item>
 
         <el-form-item label="页脚背景" prop="footerBackgroundImage">
@@ -210,11 +238,8 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="提示" prop="waifuJson">
-          <div style="display: flex">
-            <el-input :disabled="disabled" :rows="6" type="textarea" v-model="webInfo.waifuJson"></el-input>
-            <i class="el-icon-edit my-icon" @click="disabled = !disabled"></i>
-          </div>
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="webInfo.email" placeholder="联系邮箱（用于隐私政策和侵权联系）"></el-input>
         </el-form-item>
       </el-form>
       <div class="myCenter" style="margin-bottom: 22px">
@@ -1589,7 +1614,8 @@ X-API-KEY: {{apiConfig.apiKey}}
           navConfig: "",
           footerBackgroundImage: "",
           footerBackgroundConfig: "",
-          email: ""
+          email: "",
+          minimalFooter: false
         },
         notices: [],
         randomAvatar: [],

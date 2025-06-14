@@ -59,6 +59,7 @@ export default new Vuex.Store({
       "footer": "", 
       "backgroundImage": "", 
       "avatar": "",
+      "minimalFooter": false,
       "navConfig": "[]"  // 初始为空数组字符串
     }),
     visitCounts: {},

@@ -31,6 +31,7 @@ from cryptography.fernet import Fernet
 import threading
 from datetime import datetime
 from auth_decorator import admin_required  # 导入管理员权限装饰器
+from fnmatch import fnmatch
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -71,7 +72,9 @@ User-agent: Bingbot
 Allow: /
 
 # 爬取延迟
-Crawl-delay: 1'''
+Crawl-delay: 1''',
+    # 站点地图排除列表，逗号分隔
+    'sitemap_exclude': '/love'
 }
 
 # 服务就绪检查
@@ -453,6 +456,9 @@ async def generate_sitemap():
         sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n'
         sitemap += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         
+        # 初始化去重集合
+        url_set = set()
+        
         # 添加首页
         sitemap += f'  <url>\n'
         sitemap += f'    <loc>{site_url}/</loc>\n'
@@ -461,19 +467,102 @@ async def generate_sitemap():
         sitemap += f'    <priority>1.0</priority>\n'
         sitemap += f'  </url>\n'
         
-        # 添加一些常见页面
-        common_pages = [
-            "/about",
-            "/links",
-            "/message",
-            "/archive",
-            "/category",
-            "/tag"
-        ]
+        # 将首页加入去重集合（统一去掉末尾'/')
+        url_set.add(f"{site_url}".rstrip('/'))
         
-        for page in common_pages:
+        """ 
+        根据后台 webInfo.navConfig 生成通用页面列表，避免硬编码带来无效路径。
+        navConfig 示例：
+        [
+          {"name":"首页","link":"/"},
+          {"name":"记录","link":"#","type":"dropdown"},
+          {"name":"百宝箱","link":"/favorite"}
+        ]
+        规则：
+          1. 取 link 字段，如未提供则根据 name 转换成已知 path；
+          2. 外链、锚点(#) 或空链接不加入 sitemap；
+        """
+
+        # 读取排除路径列表
+        exclude_raw = seo_config.get('sitemap_exclude', '')
+        EXCLUDED_PAGES = {p.strip() for p in exclude_raw.split(',') if p.strip()}
+
+        common_pages: list[str] = []
+
+        try:
+            async with httpx.AsyncClient() as client:
+                web_resp = await client.get(f"{JAVA_BACKEND_URL}/webInfo/getWebInfo", timeout=5)
+            if web_resp.status_code == 200:
+                nav_config_raw = web_resp.json().get('data', {}).get('navConfig', '[]')
+                nav_items = json.loads(nav_config_raw) if nav_config_raw else []
+
+                # 内置映射，当 link 为空时使用
+                name_to_path = {
+                    "首页": "/",
+                    "记录": "/sort",
+                    "百宝箱": "/favorite",
+                    "留言": "/message",
+                    "联系我": "/user"
+                }
+
+                for item in nav_items:
+                    raw_link = (item.get('link') or '').strip()
+                    if not raw_link or raw_link == "#":
+                        raw_link = name_to_path.get(item.get('name', ''), '')
+
+                    # 过滤外链及空值
+                    if not raw_link or raw_link.startswith('http') or raw_link.startswith('mailto'):
+                        continue
+
+                    # 确保以 / 开头
+                    if not raw_link.startswith('/'):
+                        raw_link = f"/{raw_link}"
+
+                    # 排除不需要的路径
+                    if raw_link not in EXCLUDED_PAGES:
+                        common_pages.append(raw_link)
+
+        except Exception as e:
+            logger.warning(f"动态获取导航配置失败，回退到默认页面列表: {e}")
+            common_pages = [
+                "/about",
+                "/message",
+                "/favorite",
+                "/privacy"
+            ]
+
+        # 去重保持顺序
+        seen = set()
+        filtered_pages = []
+        for p in common_pages:
+            if p not in seen:
+                seen.add(p)
+                filtered_pages.append(p)
+
+        for page in filtered_pages:
+            # 避免出现重复的 //
+            full_url = f"{site_url}{page}".replace("//", "/")
+            if full_url.startswith("http:/") and not full_url.startswith("http://"):
+                full_url = full_url.replace("http:/", "http://")
+            if full_url.startswith("https:/") and not full_url.startswith("https://"):
+                full_url = full_url.replace("https:/", "https://")
+
+            # 去掉末尾'/'用于集合比较
+            normalized = full_url.rstrip('/')
+
+            # 解析路径并使用通配符匹配排除列表
+            path_only = urlparse(normalized).path or '/'
+
+            # 若 EXCLUDED_PAGES 为空，则不过滤；支持如 "/admin/*"、"/love"、"*.html" 等通配符
+            if EXCLUDED_PAGES and any(fnmatch(path_only, pattern.strip()) for pattern in EXCLUDED_PAGES):
+                continue
+
+            if normalized in url_set:
+                continue  # 忽略重复
+            url_set.add(normalized)
+
             sitemap += f'  <url>\n'
-            sitemap += f'    <loc>{site_url}{page}</loc>\n'
+            sitemap += f'    <loc>{full_url}</loc>\n'
             sitemap += f'    <lastmod>{time.strftime("%Y-%m-%d")}</lastmod>\n'
             sitemap += f'    <changefreq>weekly</changefreq>\n'
             sitemap += f'    <priority>0.8</priority>\n'
@@ -509,7 +598,12 @@ async def generate_sitemap():
                 for sort in sort_data:
                     sort_id = sort.get('id')
                     if sort_id:
-                        sort_url = f"{site_url}/{seo_config.get('category_url_format', 'category/{id}')}".replace('{id}', str(sort_id))
+                        sort_url_format = seo_config.get('category_url_format', 'sort?sortId={id}')
+                        sort_url = f"{site_url}/{sort_url_format}".replace('{id}', str(sort_id))
+                        sort_url = sort_url.replace("//", "/")
+                        if sort_url.rstrip('/') in url_set:
+                            continue
+                        url_set.add(sort_url.rstrip('/'))
                         sitemap += f'  <url>\n'
                         sitemap += f'    <loc>{sort_url}</loc>\n'
                         sitemap += f'    <changefreq>{seo_config.get("sitemap_change_frequency", "weekly")}</changefreq>\n'
@@ -539,7 +633,12 @@ async def generate_sitemap():
                     for sort in alt_data:
                         sort_id = sort.get('id')
                         if sort_id:
-                            sort_url = f"{site_url}/{seo_config.get('category_url_format', 'category/{id}')}".replace('{id}', str(sort_id))
+                            sort_url_format = seo_config.get('category_url_format', 'sort?sortId={id}')
+                            sort_url = f"{site_url}/{sort_url_format}".replace('{id}', str(sort_id))
+                            sort_url = sort_url.replace("//", "/")
+                            if sort_url.rstrip('/') in url_set:
+                                continue
+                            url_set.add(sort_url.rstrip('/'))
                             sitemap += f'  <url>\n'
                             sitemap += f'    <loc>{sort_url}</loc>\n'
                             sitemap += f'    <changefreq>{seo_config.get("sitemap_change_frequency", "weekly")}</changefreq>\n'
@@ -586,6 +685,9 @@ async def generate_sitemap():
                     # 只添加公开的文章
                     if article_id and view_status:
                         article_url = f"{site_url}/{seo_config.get('article_url_format', 'article/{id}')}".replace('{id}', str(article_id))
+                        if article_url.rstrip('/') in url_set:
+                            continue
+                        url_set.add(article_url.rstrip('/'))
                         sitemap += f'  <url>\n'
                         sitemap += f'    <loc>{article_url}</loc>\n'
                         sitemap += f'    <lastmod>{update_time}</lastmod>\n'
@@ -622,6 +724,9 @@ async def generate_sitemap():
                         # 只添加公开的文章
                         if article_id and view_status:
                             article_url = f"{site_url}/{seo_config.get('article_url_format', 'article/{id}')}".replace('{id}', str(article_id))
+                            if article_url.rstrip('/') in url_set:
+                                continue
+                            url_set.add(article_url.rstrip('/'))
                             sitemap += f'  <url>\n'
                             sitemap += f'    <loc>{article_url}</loc>\n'
                             sitemap += f'    <lastmod>{update_time}</lastmod>\n'
@@ -1681,6 +1786,12 @@ def register_seo_api(app: FastAPI):
             else:
                 logger.info("神马搜索推送未启用或token未配置，已跳过")
             
+            # 推送完成后，异步刷新站点地图（不阻塞发布流程）
+            try:
+                asyncio.create_task(generate_sitemap())
+            except Exception as _e:
+                logger.error(f"异步刷新网站地图失败: {_e}")
+
             # 判断整体是否成功 - 只要有一个成功就算成功
             is_success = False
             if push_results:

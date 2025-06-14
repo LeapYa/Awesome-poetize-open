@@ -56,5 +56,6 @@
   "shenma_site_verification": "",
   "yahoo_site_verification": "",
   "duckduckgo_site_verification": "",
-  "baidu_push_token": ""
+  "baidu_push_token": "",
+  "sitemap_exclude": "/love"
 }

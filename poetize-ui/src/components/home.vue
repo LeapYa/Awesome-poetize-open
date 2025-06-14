@@ -6,7 +6,7 @@
       <div v-show="toolbar.visible || ($common.mobile() || mobile)"
            @mouseenter="hoverEnter = true"
            @mouseleave="hoverEnter = false"
-           :class="[{ enter: toolbar.enter }, { hoverEnter: (hoverEnter || this.$route.path === '/favorite' || this.$route.path === '/travel') && !toolbar.enter }]"
+           :class="[{ enter: toolbar.enter }, { hoverEnter: (hoverEnter || this.$route.path === '/favorite' || this.$route.path === '/travel' || this.$route.path === '/privacy') && !toolbar.enter }]"
            class="toolbar-content myBetween">
         <!-- 网站名称 -->
         <div class="toolbar-title">

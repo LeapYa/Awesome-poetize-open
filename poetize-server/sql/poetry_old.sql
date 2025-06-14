@@ -152,6 +152,8 @@ CREATE TABLE `poetize`.`web_info` (
   `footer_background_image` varchar(256) DEFAULT NULL COMMENT '页脚背景图片',
   `footer_background_config` text DEFAULT NULL COMMENT '页脚背景图片位置配置(JSON格式)',
   `email` varchar(255) DEFAULT NULL COMMENT '联系邮箱',
+  `minimal_footer` tinyint(1) DEFAULT 0 COMMENT '极简页脚开关[0:否，1:是]',
+
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='网站信息表';
 
@@ -330,17 +332,13 @@ CREATE TABLE `poetize`.`article_translation` (
   KEY `idx_article_id` (`article_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章翻译内容表';
 
--- 创建索引提高查询性能
-CREATE INDEX IF NOT EXISTS `idx_last_updated` ON `qwen_session_memory` (`last_updated`);
-CREATE INDEX IF NOT EXISTS `idx_create_time` ON `qwen_session_memory` (`create_time`); 
-
 INSERT INTO `poetize`.`user`(`id`, `username`, `password`, `phone_number`, `email`, `user_status`, `gender`, `open_id`, `admire`, `subscribe`, `avatar`, `introduction`, `user_type`, `update_by`, `deleted`) VALUES (1, 'Sara', '47bce5c74f589f4867dbd57e9ca9f808', '', '', 1, 1, '', '', '', '', '', 0, 'Sara', 0);
 
-INSERT INTO `poetize`.`web_info`(`id`, `web_name`, `web_title`, `notices`, `footer`, `background_image`, `avatar`, `random_avatar`, `random_name`, `random_cover`, `waifu_json`, `status`, `api_enabled`, `api_key`, `nav_config`) VALUES (1, 'Sara', 'POETIZE', '[]', '云想衣裳花想容， 春风拂槛露华浓。', '', '', '[]', '[]', '["/static/assets/backgroundPicture.jpg"]', '{
+INSERT INTO `poetize`.`web_info`(`id`, `web_name`, `web_title`, `notices`, `footer`, `background_image`, `avatar`, `random_avatar`, `random_name`, `random_cover`, `waifu_json`, `status`, `api_enabled`, `api_key`, `nav_config`, `minimal_footer`) VALUES (1, 'Sara', 'POETIZE', '[]', '云想衣裳花想容， 春风拂槛露华浓。', '', '', '[]', '[]', '["/static/assets/backgroundPicture.jpg"]', '{
     "waifuPath": "/static/live2d-widget/waifu-tips.json",
     "cdnPath": "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/",
     "tools": ["hitokoto", "asteroids", "switch-model", "switch-texture", "photo", "info", "quit"]
-}', 1, 0, NULL, '{}');
+}', 1, 0, NULL, '{}', 0);
 
 INSERT INTO `poetize`.`family` (`id`, `user_id`, `bg_cover`, `man_cover`, `woman_cover`, `man_name`, `woman_name`, `timing`, `countdown_title`, `countdown_time`, `status`, `family_info`, `like_count`, `create_time`, `update_time`) VALUES (1, 1, '背景封面', '男生头像', '女生头像', 'Sara', 'Abby', '2000-01-01 00:00:00', '春节倒计时', '2025-01-29 00:00:00', 1, '', 0, '2000-01-01 00:00:00', '2000-01-01 00:00:00');
 
@@ -364,3 +362,41 @@ INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_v
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (14, '备案号', 'beian', '', '2');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (15, '前端静态资源路径前缀', 'webStaticResourcePrefix', '/static/', '2');
 
+-- ========== 导入静态资源到resource表 ==========
+-- 将public/assets目录下的静态文件录入到数据库，使其在后台资源管理中可见
+
+-- 图片资源
+INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
+(1, 'assets', '/static/assets/admireImage.jpg', 8192, 'admireImage.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/backgroundPicture.jpg', 915456, 'backgroundPicture.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/cloud.png', 82944, 'cloud.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/love.jpg', 222208, 'love.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/loveMessage.jpg', 112640, 'loveMessage.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/lovePhoto.jpg', 99328, 'lovePhoto.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/loveWeiYan.jpg', 109568, 'loveWeiYan.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/friendLetterMiddle.jpg', 116736, 'friendLetterMiddle.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/toolbar.jpg', 292864, 'toolbar.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/bannerWave1.png', 5120, 'bannerWave1.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/bannerWave2.png', 4915, 'bannerWave2.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/commentURL.png', 73728, 'commentURL.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/friendLetterBiLi.png', 13312, 'friendLetterBiLi.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/friendLetterBottom.png', 158720, 'friendLetterBottom.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/friendLetterTop.png', 63488, 'friendLetterTop.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/springBg.png', 122880, 'springBg.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/toTop.png', 8192, 'toTop.png', 'image/png', 1, 'local', NOW());
+
+-- SVG文件
+INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
+(1, 'assets', '/static/assets/loveLike.svg', 8601, 'loveLike.svg', 'image/svg+xml', 1, 'local', NOW());
+
+-- 视频文件
+INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
+(1, 'assets', '/static/assets/backgroundVideo.mp4', 3355443, 'backgroundVideo.mp4', 'video/mp4', 1, 'local', NOW());
+
+-- 字体文件
+INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
+(1, 'assets', '/static/assets/font.woff2', 18432, 'font.woff2', 'font/woff2', 1, 'local', NOW());
+
+-- 其他文件
+INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
+(1, 'assets', '/static/assets/test.txt', 22, 'test.txt', 'text/plain', 1, 'local', NOW());

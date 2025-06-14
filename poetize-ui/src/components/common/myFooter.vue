@@ -1,11 +1,11 @@
 <template>
   <div class="myFooter-wrap" v-show="showFooter">
-    <div class="myFooter" :class="{ 'has-bg-image': hasBgImage }" :style="footerStyle">
-      <div class="footer-title font" :style="textStyle">{{$store.state.webInfo.footer}}</div>
+    <div class="myFooter" :class="{ 'has-bg-image': hasBgImage, 'minimal': isMinimalFooter }" :style="footerStyle">
+      <div class="footer-title font" :style="textStyle" v-if="!isMinimalFooter">{{$store.state.webInfo.footer}}</div>
       <div class="icp font" :style="textStyle">让每一次访问都更美好 <a href="http://beian.miit.gov.cn/" target="_blank">{{ $store.state.sysConfig.beian }}</a></div>
       <div class="copyright font" :style="textStyle">© 2025 {{ $store.state.webInfo.webTitle }} | 保留所有权利 | <a href="/privacy" class="policy-link">隐私政策</a></div>
-      <div class="extra-info font" :style="textStyle">用心创作，用爱传递，让文字的力量激发心灵共鸣</div>
-      <div class="contact font" :style="textStyle">本站内容均为原创或合法转载，如有侵权请通过邮箱：{{ $store.state.webInfo.email || 'admin@poetize.cn' }} 与我们联系，确认后将立即删除</div>
+      <div class="extra-info font" :style="textStyle" v-if="!isMinimalFooter">用心创作，用爱传递，让文字的力量激发心灵共鸣</div>
+      <div class="contact font" :style="textStyle" v-if="!isMinimalFooter">本站内容均为原创或合法转载，如有侵权请通过邮箱：{{ $store.state.webInfo.email || 'admin@poetize.cn' }} 与我们联系，确认后将立即删除</div>
     </div>
   </div>
 </template>
@@ -19,39 +19,60 @@
       }
     },
     data() {
-      return {}
+      return {
+        // 当前视口宽度，用于判断是否移动端
+        viewportWidth: typeof window !== 'undefined' ? window.innerWidth : 1920
+      };
     },
     computed: {
       hasBgImage() {
-        return Boolean(this.$store.state.webInfo.footerBackgroundImage);
+        const img = this.$store.state.webInfo.footerBackgroundImage;
+        if (!img) return false;
+        const val = String(img).trim().toLowerCase();
+        return val !== '' && val !== 'null' && val !== 'undefined';
+      },
+      isMinimalFooter() {
+        const flag = this.$store.state.webInfo && this.$store.state.webInfo.minimalFooter;
+        if (flag === true) return true;
+        if (typeof flag === 'string') {
+          return flag.toLowerCase() === 'true';
+        }
+        return false;
       },
       footerStyle() {
         const webInfo = this.$store.state.webInfo;
-        let style = {
+        // 基础公共样式
+        const baseStyle = {
           borderRadius: '1.5rem 1.5rem 0 0',
           textAlign: 'center',
           color: 'var(--white)',
-          backgroundSize: '300% 300%',
-          animation: 'gradientBG 10s ease infinite'
+          // 根据设备宽度动态调整高度：移动端更紧凑
+          minHeight: (() => {
+            const isMobile = this.viewportWidth <= 768;
+            if (this.isMinimalFooter) {
+              return isMobile ? '80px' : '100px';
+            }
+            return isMobile ? '130px' : '180px';
+          })()
         };
 
-        // 如果有页脚背景图片，使用图片背景
+        // 1. 存在背景图 → 关闭渐变动画，使用伪元素展示图片
         if (webInfo.footerBackgroundImage) {
-          // 完全移除原来的背景和动画
-          style.background = 'transparent';
-          style.animation = 'none';
-          
-          // 添加一个标识，用于CSS选择器
-          style['--footer-bg-image'] = `url(${webInfo.footerBackgroundImage})`;
-          
-          // 解析页脚背景配置
+          const style = {
+            ...baseStyle,
+            background: 'transparent',
+            animation: 'none',
+            // 供 ::after / ::before 使用的变量
+            '--footer-bg-image': `url(${webInfo.footerBackgroundImage})`
+          };
+
+          // 解析后台配置
           let bgConfig = {
             backgroundSize: 'cover',
             backgroundPosition: 'center center',
             backgroundRepeat: 'no-repeat',
             opacity: 100
           };
-
           if (webInfo.footerBackgroundConfig) {
             try {
               bgConfig = { ...bgConfig, ...JSON.parse(webInfo.footerBackgroundConfig) };
@@ -60,25 +81,27 @@
             }
           }
 
-          // 将背景配置设置为CSS变量，供伪元素使用
-          style['--footer-bg-size'] = bgConfig.backgroundSize || 'cover';
-          style['--footer-bg-position'] = bgConfig.backgroundPosition || 'center center';
-          style['--footer-bg-repeat'] = bgConfig.backgroundRepeat || 'no-repeat';
-          
-          // 如果设置了自定义遮罩颜色，使用自定义颜色；否则使用透明度控制的黑色遮罩
+          style['--footer-bg-size'] = bgConfig.backgroundSize;
+          style['--footer-bg-position'] = bgConfig.backgroundPosition;
+          style['--footer-bg-repeat'] = bgConfig.backgroundRepeat;
+
+          // 遮罩颜色
           if (bgConfig.maskColor) {
             style['--footer-mask-color'] = bgConfig.maskColor;
           } else {
-            // 透明度用于控制遮罩层，透明度越高遮罩越浅
             const maskOpacity = (100 - (bgConfig.opacity || 50)) / 100;
             style['--footer-mask-color'] = `rgba(0, 0, 0, ${maskOpacity})`;
           }
-        } else {
-          // 使用原来的渐变背景
-          style.background = 'var(--gradientBG)';
+          return style;
         }
 
-        return style;
+        // 2. 无背景图 → 使用渐变动画
+        return {
+          ...baseStyle,
+          background: 'var(--gradientBG)',
+          backgroundSize: '300% 300%',
+          animation: 'gradientBG 10s ease infinite'
+        };
       },
       textStyle() {
         const webInfo = this.$store.state.webInfo;
@@ -114,6 +137,16 @@
       }
     },
     created() {
+    },
+    mounted() {
+      // 监听窗口尺寸变化以实时更新页脚高度
+      this._resizeHandler = () => {
+        this.viewportWidth = window.innerWidth;
+      };
+      window.addEventListener('resize', this._resizeHandler);
+    },
+    beforeDestroy() {
+      window.removeEventListener('resize', this._resizeHandler);
     }
   }
 </script>
@@ -121,7 +154,7 @@
 <style scoped>
   .myFooter-wrap {
     user-select: none;
-    animation: hideToShow 2s;
+    animation: hideToShow 2s both;
   }
 
   .myFooter {
@@ -218,18 +251,21 @@
   }
 
   .myFooter[style*="--footer-bg-image"] .copyright a {
-    color: #ffffff !important; /* 隐私政策链接保持白色 */
+    color: var(--white) !important; /* 隐私政策链接保持白色 */
     font-weight: 400;
   }
 
+  /* 隐私政策默认白色，悬停/激活时才变金色 */
   .myFooter[style*="--footer-bg-image"] .policy-link {
-    color: #ffd700 !important; /* 隐私政策链接使用金色 */
+    color: var(--white);
     text-decoration: underline;
     font-weight: 500;
+    padding: 0 2px;
+    transition: color 0.3s;
   }
 
   .myFooter[style*="--footer-bg-image"] .policy-link:hover {
-    color: #ffed4a !important; /* 悬停时稍微亮一点的金色 */
+    color: var(--themeBackground);
   }
 
   .icp {
@@ -247,10 +283,15 @@
   }
 
   .policy-link {
-    color: var(--themeBackground);
+    color: var(--white);
     text-decoration: underline;
     font-weight: 500;
     padding: 0 2px;
+    transition: color 0.3s;
+  }
+
+  .policy-link:hover {
+    color: var(--themeBackground);
   }
 
   .copyright, .contact, .extra-info {
@@ -266,7 +307,7 @@
   .myFooter[style*="--footer-bg-image"] .copyright,
   .myFooter[style*="--footer-bg-image"] .contact,
   .myFooter[style*="--footer-bg-image"] .extra-info {
-    color: #ffffff !important; /* 版权和联系信息保持白色 */
+    color: var(--white) !important; /* 版权和联系信息保持白色 */
     font-weight: 400;
   }
 
@@ -275,6 +316,11 @@
     .myFooter {
       border-radius: 0;
       min-height: 130px;
+    }
+    
+    /* 极简模式下进一步减小高度 */
+    .myFooter.minimal {
+      min-height: 80px;
     }
     
     .footer-title {
@@ -287,6 +333,10 @@
       padding-top: 8px;
       padding-bottom: 8px;
     }
+  }
+
+  .myFooter.minimal {
+    min-height: 100px;
   }
 
 </style>

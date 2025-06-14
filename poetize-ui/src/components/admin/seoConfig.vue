@@ -370,6 +370,11 @@
           </el-select>
         </el-form-item>
         
+        <el-form-item label="排除路径列表">
+          <el-input v-model="seoConfig.sitemap_exclude" placeholder="/love,/admin/*,/*.html"></el-input>
+          <span class="tip">支持通配符 * ，多个路径用英文逗号分隔，如：/love,/admin/*,/*.html；留空表示不排除任何页面</span>
+        </el-form-item>
+        
         <el-form-item label="自动生成META标签">
           <el-switch v-model="seoConfig.auto_generate_meta_tags"></el-switch>
           <span class="tip">自动为每篇文章生成META标签</span>
@@ -899,6 +904,8 @@ export default {
         generate_sitemap: true,
         sitemap_change_frequency: "weekly",
         sitemap_priority: "0.7",
+        // 新增: 站点地图排除列表，逗号分隔路径
+        sitemap_exclude: "/love",
         auto_generate_meta_tags: true,
         custom_head_code: ""
       },

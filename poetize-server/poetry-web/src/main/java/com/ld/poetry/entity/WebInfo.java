@@ -143,4 +143,10 @@ public class WebInfo implements Serializable {
      */
     @TableField(value = "email", exist = true)
     private String email;
+
+    /**
+     * 极简页脚开关 [0:关闭,1:开启]
+     */
+    @TableField(value = "minimal_footer", exist = true)
+    private Boolean minimalFooter;
 }
