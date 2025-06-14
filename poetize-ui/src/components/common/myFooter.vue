@@ -1,6 +1,6 @@
 <template>
   <div class="myFooter-wrap" v-show="showFooter">
-    <div class="myFooter" :style="footerStyle">
+    <div class="myFooter" :class="{ 'has-bg-image': hasBgImage }" :style="footerStyle">
       <div class="footer-title font" :style="textStyle">{{$store.state.webInfo.footer}}</div>
       <div class="icp font" :style="textStyle">让每一次访问都更美好 <a href="http://beian.miit.gov.cn/" target="_blank">{{ $store.state.sysConfig.beian }}</a></div>
       <div class="copyright font" :style="textStyle">© 2025 {{ $store.state.webInfo.webTitle }} | 保留所有权利 | <a href="/privacy" class="policy-link">隐私政策</a></div>
@@ -22,6 +22,9 @@
       return {}
     },
     computed: {
+      hasBgImage() {
+        return Boolean(this.$store.state.webInfo.footerBackgroundImage);
+      },
       footerStyle() {
         const webInfo = this.$store.state.webInfo;
         let style = {
@@ -136,12 +139,18 @@
     justify-content: center;
   }
 
+  /* 当有背景图片时，通过类统一移除渐变动画和背景 */
+  .myFooter.has-bg-image {
+    background: transparent !important;
+    animation: none !important;
+  }
+
   /* 当有背景图片时，确保文字在合适的位置 */
-  .myFooter[style*="background-image"] {
+  .myFooter.has-bg-image {
     background-attachment: fixed;
   }
 
-  /* 当有背景图片时，完全移除默认背景和动画 */
+  /* 兼容旧逻辑，如果项目其他地方仍依赖 style 查询，也保留选择器 */
   .myFooter[style*="--footer-bg-image"] {
     background: transparent !important;
     animation: none !important;
