@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-06-13
+## 修改时间: 2025-06-14
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.2
+## 版本: 1.0.3
 
 # 定义颜色
 RED='\033[0;31m'
@@ -1040,66 +1040,6 @@ install_docker() {
       error "Docker安装失败"
       return 1
   fi
-}
-
-
-# 设置Docker Compose别名
-setup_docker_compose_alias() {
-    info "创建docker-compose别名以兼容旧脚本"
-    
-    # 创建别名脚本内容 - 确保所有参数正确传递
-    SCRIPT_CONTENT='#!/bin/bash
-# 将所有参数传递给docker compose命令
-docker compose "$@"'
-    
-    # 创建别名脚本
-    if command -v sudo &>/dev/null; then
-        # 使用临时文件方式创建脚本
-        echo -e "$SCRIPT_CONTENT" > ./docker-compose.tmp
-        sudo mv ./docker-compose.tmp /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        
-        # 验证权限
-        if ! sudo test -x /usr/local/bin/docker-compose; then
-            warning "无法设置docker-compose别名的正确执行权限"
-            return 1
-        fi
-    else
-        mkdir -p "$HOME/bin"
-        # 直接创建文件
-        echo -e "$SCRIPT_CONTENT" > "$HOME/bin/docker-compose"
-        chmod +x "$HOME/bin/docker-compose"
-        
-        # 验证权限
-        if ! test -x "$HOME/bin/docker-compose"; then
-            warning "无法设置docker-compose别名的正确执行权限"
-            return 1
-        fi
-        
-        # 确保PATH中包含~/bin
-        export PATH="$HOME/bin:$PATH"
-        # 确保路径添加到bashrc
-        if ! grep -q "PATH=\"\$HOME/bin:\$PATH\"" "$HOME/.bashrc"; then
-            echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
-        fi
-    fi
-    
-    # 验证别名脚本是否可用
-    if command -v docker-compose &>/dev/null; then
-        info "测试docker-compose别名..."
-        if docker-compose --version &>/dev/null; then
-            success "Docker Compose别名设置成功"
-            return 0
-        else
-            warning "docker-compose命令找到但不可执行"
-        fi
-    else
-        warning "docker-compose命令不可用，但可以使用docker compose命令代替"
-        info "请尝试运行: docker compose --version"
-    fi
-    
-    # 返回0让脚本继续执行
-    return 0
 }
 
 # 创建并启用swap空间
@@ -3251,6 +3191,245 @@ update_alpine_based() {
   fi
 }
 
+
+# 更换国内源
+update_debian12_base_source() {
+  # 备份原始源列表
+  if [ -f /etc/apt/sources.list ]; then
+    sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+    cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
+
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware
+
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main contrib non-free non-free-firmware
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main contrib non-free non-free-firmware
+
+deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware
+EOF
+  else
+    error "Debian 12 源列表不存在，请检查是否为Debian 12系统"
+    exit 1
+  fi
+}
+
+update_debian_base_source() {
+  local codename=$1
+  # 备份原始源列表
+  if [ -f /etc/apt/sources.list ]; then
+    sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+    # debian11选择清华源
+    if [ "$codename" -eq "bullseye" ]; then
+    cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-updates main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-backports main contrib non-free
+deb https://security.debian.org/debian-security $codename-security main contrib non-free
+EOF
+    # debian10、9选择网易源
+    elif [ "$codename" -eq "bookworm" ] && [ "$codename" -eq "buster" ]; then
+      cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
+deb http://mirrors.163.com/debian/ $codename main non-free contrib
+deb http://mirrors.163.com/debian/ $codename-updates main non-free contrib
+deb http://mirrors.163.com/debian/ $codename-backports main non-free contrib
+deb http://mirrors.163.com/debian-security/ $codename/updates main non-free contrib
+
+deb-src http://mirrors.163.com/debian/ $codename main non-free contrib
+deb-src http://mirrors.163.com/debian/ $codename-updates main non-free contrib
+deb-src http://mirrors.163.com/debian/ $codename-backports main non-free contrib
+deb-src http://mirrors.163.com/debian-security/ $codename/updates main non-free contrib
+EOF
+    else
+      error "不支持的Debian版本: $codename，请升级到debian9或以上版本"
+      exit 1
+    fi
+  else
+    error "Debian $codename 源列表不存在，请检查是否为Debian $codename系统"
+    exit 1
+  fi
+}
+
+update_ubuntu_base_source() {
+  # 提取 Ubuntu 版本号
+  local version_id
+  version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
+  local codename
+  codename=$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2)
+  # 判断版本号
+  # 只支持 16.04 及以上
+  if [ -z "$version_id" ]; then
+    error "无法检测到 Ubuntu 版本号"
+    exit 1
+  fi
+
+  # 取主版本和次版本
+  local major minor
+  major=${version_id%%.*}
+  minor=${version_id#*.}
+
+  # 16.04 以下报错
+  if [ "$major" -lt 16 ] || { [ "$major" -eq 16 ] && [ "$minor" -lt 4 ]; }; then
+    error "不支持 Ubuntu $version_id，必须为 16.04 及以上版本"
+    exit 1
+  fi
+
+
+  if [ -f /etc/apt/sources.list ]; then
+    sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+    cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $codename main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $codename-updates main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $codename-backports main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $codename-security main restricted universe multiverse
+EOF
+  else
+    error "未找到 /etc/apt/sources.list"
+    exit 1
+  fi
+}
+
+update_centos7_base_source() {
+  # 备份原始源列表
+  if [ -f /etc/yum.repos.d/CentOS-Base.repo ]; then
+    sudo cp /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak
+    if command -v wget &>/dev/null; then
+      sudo wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo
+    else
+      sudo curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo
+    fi
+  else
+    error "CentOS 7 源列表不存在，请检查是否为CentOS 7系统"
+    exit 1
+  fi
+}
+
+update_centos8_base_source() {
+  # 备份原始源列表
+  if [ -f /etc/yum.repos.d/CentOS-Base.repo ]; then
+    sudo cp /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak
+    if command -v wget &>/dev/null; then
+      sudo wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-vault-8.5.2111.repo
+    else
+      sudo curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-vault-8.5.2111.repo
+    fi
+  else
+    error "CentOS 8 源列表不存在，请检查是否为CentOS 8系统"
+    exit 1
+  fi
+}
+
+update_arch_base_source() {
+  # 备份原始源列表
+  if [ -f /etc/pacman.d/mirrorlist ]; then
+    sudo cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
+    sudo sed -i '1i\\
+Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch
+' /etc/pacman.d/mirrorlist
+  else
+    error "Arch Linux 源列表不存在，请检查是否为Arch Linux系统"
+    exit 1
+  fi
+}
+
+install_sed() {
+  # 安装sed
+  if ! command -v sed &>/dev/null; then
+    info "系统缺少 sed，正在安装..."
+
+    if command -v yum &>/dev/null; then
+      sudo yum install -y sed
+    elif command -v dnf &>/dev/null; then
+      sudo dnf install -y sed
+    elif command -v apk &>/dev/null; then
+      sudo apk add sed
+    elif command -v apt-get &>/dev/null; then
+      sudo apt-get update -y && sudo apt-get install -y sed
+    else
+      error "找不到可用的包管理器，请手动安装 sed"
+      exit 1
+    fi
+  fi
+}
+
+update_alpine_base_source() {
+  # 备份原始源列表
+  if [ -f /etc/apk/repositories ]; then
+    sudo cp /etc/apk/repositories /etc/apk/repositories.bak
+    if command -v sed &>/dev/null; then
+      sudo sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
+    else
+      install_sed
+      sudo sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories
+    fi
+  else
+    error "Alpine Linux 源列表不存在，请检查是否为Alpine Linux系统"
+    exit 1
+  fi
+}
+
+update_anolis_base_source() {
+  # 备份原始源列表
+  if [ -f /etc/yum.repos.d/AnolisOS-Base.repo ]; then
+    sudo cp /etc/yum.repos.d/AnolisOS-Base.repo /etc/yum.repos.d/AnolisOS-Base.repo.bak
+    if command -v sed &>/dev/null; then
+      sudo sed -e 's|mirrors.openanolis.cn|mirrors.zju.edu.cn|g' \
+      -i.bak \
+      /etc/yum.repos.d/AnolisOS-*.repo
+    else
+      install_sed
+      sudo sed -e 's|mirrors.openanolis.cn|mirrors.zju.edu.cn|g' \
+      -i.bak \
+      /etc/yum.repos.d/AnolisOS-*.repo
+    fi
+  else
+    error "Anolis OS 源列表不存在，请检查是否为Anolis OS系统"
+    exit 1
+  fi
+}
+
+# 更换国内源
+update_base_source() {
+  # 检测操作系统类型
+  local os_type=$(detect_os_type)
+  case "$os_type" in
+    "debian")
+        if [ -f /etc/os-release ] && grep -q "bookworm" /etc/os-release; then
+            update_debian12_base_source
+        else
+            codename=$(grep '^VERSION=' /etc/os-release | grep -o '(.*)' | tr -d '()')
+            update_debian_base_source $codename
+        fi
+        ;;
+    "ubuntu")
+        update_ubuntu_base_source
+        ;;
+    "centos7")
+        update_centos7_base_source
+        ;;
+    "centos8")
+        update_centos8_base_source
+        ;;
+    "arch")
+        update_arch_base_source
+        ;;
+    "alpine")
+        update_alpine_base_source
+        ;;
+    "anolis")
+        update_anolis_base_source
+        ;;
+    *)
+    error "不支持的操作系统类型: $os_type，请提交issue，https://github.com/LeapYa/Awesome-poetize-open/issues"
+    exit 1
+    ;;
+  esac
+}
+
+
+
 # 主函数
 main() {
   # 显示横幅
@@ -3279,7 +3458,6 @@ main() {
   
   echo -e "${YELLOW}✨ 正在初始化部署环境...${NC}"
   sleep 3
-  echo ""
 
   check_write_permission
   status=$?
@@ -3288,12 +3466,22 @@ main() {
   else
     exit 1
   fi
+  
+  # 更换国内源
+  if is_china_environment; then
+    info "检测到国内环境，开始更换国内源..."
+    update_base_source
+  fi
 
   update_system_packages
 
   # 检查并安装curl
   check_and_install_curl
 
+  # 检查并安装sed
+  install_sed
+  
+  # 检查并安装git
   if ! command -v git &> /dev/null; then
     warning "Git未安装，正在尝试安装..."
     if ! install_git; then

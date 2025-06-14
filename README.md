@@ -83,7 +83,7 @@ Poetize是一个将博客系统与即时通讯巧妙融合的内容平台，为�
 
 ```bash
 # 你只需要输入域名邮箱即可
-wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz && sudo tar -zxvf Awesome-poetize-open.tar.gz && cd Awesome-poetize-open && sudo chmod +x ./deploy.sh && sudo ./deploy.sh
+bash <(curl -sL install.leapya.com)
 ```
 
 无需手动配置Docker、编译代码或设置环境变量，脚本会自动处理所有细节，包括:
@@ -142,7 +142,11 @@ wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awes
 1. **拉取仓库**
 
 ```bash
-wget https://github.com/LeapYa/Awesome-poetize-open/releases/download/1.0.0/Awesome-poetize-open.tar.gz && sudo tar -zxvf Awesome-poetize-open.tar.gz && cd Awesome-poetize-open
+# 主源：
+bash <(curl -sL install.leapya.com)
+
+# 如因一些网络问题，请使用备用源：
+bash <(curl -sL install.leapya.online)
 ```
 
 1. **启动脚本**
