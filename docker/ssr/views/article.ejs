@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %></title>
+
+  <% if (meta) { Object.keys(meta).forEach(function(key){ %>
+    <% if (key === 'title') { return; } %>
+    <% if (key === 'description' || key === 'keywords' || key === 'author') { %>
+      <meta name="<%= key %>" content="<%= meta[key] %>">
+    <% } else if (key === 'canonical') { %>
+      <link rel="canonical" href="<%= meta[key] %>">
+    <% } else if (key.startsWith('hreflang')) { %>
+      <%- meta[key] %>
+    <% } else { %>
+      <meta property="<%= key %>" content="<%= meta[key] %>">
+    <% } %>
+  <% }); } %>
+
+  <!-- 引入现有静态资源，保持与 SPA 一致 -->
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <div id="app">
+    <main class="article-detail">
+      <%- content %>
+    </main>
+  </div>
+
+  <!-- 加载现有前端脚本，确保客户端可继续交互 -->
+  <script src="/static/js/app.js" defer></script>
+</body>
+</html> 

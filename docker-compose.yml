@@ -17,6 +17,7 @@ services:
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - web-root:/usr/share/nginx/html
+      - ./docker/nginx/lua:/etc/nginx/lua
     ports:
       - "80:80/tcp"
       - "443:443/tcp"
@@ -31,6 +32,8 @@ services:
       java-backend:
         condition: service_healthy
       python-backend:
+        condition: service_healthy
+      article-ssr:
         condition: service_healthy
     restart: always
     command: ["/bin/sh", "-c", "cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf && exec openresty -g 'daemon off;'"]
@@ -275,6 +278,29 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # 文章页 SSR 服务（Node）
+  article-ssr:
+    build:
+      context: ./docker/ssr
+      dockerfile: Dockerfile
+    container_name: poetize-article-ssr
+    environment:
+      - PORT=3000
+      - JAVA_BACKEND_URL=http://poetize-java:8081
+      - PYTHON_BACKEND_URL=http://poetize-python:5000
+    networks:
+      - poetize-network
+    depends_on:
+      java-backend:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 networks:
   poetize-network:
