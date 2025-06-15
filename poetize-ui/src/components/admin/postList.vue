@@ -238,12 +238,19 @@
         }).then(() => {
           this.$http.get(this.$constant.baseURL + "/article/deleteArticle", {id: item.id}, true)
             .then((res) => {
+              // 刷新文章列表
               this.pagination.current = 1;
               this.getArticles();
-              this.$message({
-                message: "删除成功！",
-                type: "success"
-              });
+
+              // 调用 Python SEO API 增量移除 sitemap URL
+              const seoUrl = this.$constant.pythonBaseURL + '/seo/removeArticleFromSitemap';
+              this.$http.post(seoUrl, { id: item.id }, true)
+                .then(() => {
+                  this.$message({ message: "删除成功，sitemap 已更新！", type: "success" });
+                })
+                .catch(() => {
+                  this.$message({ message: "文章已删，但 sitemap 更新失败，请稍后重试", type: "warning" });
+                });
             })
             .catch((error) => {
               this.$message({

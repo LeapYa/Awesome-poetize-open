@@ -32,6 +32,7 @@ import threading
 from datetime import datetime
 from auth_decorator import admin_required  # 导入管理员权限装饰器
 from fnmatch import fnmatch
+import xml.etree.ElementTree as ET
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -1021,7 +1022,6 @@ async def shenma_push_url(url):
         return False, error_msg
 
 # 注册SEO API路由
-
 def register_seo_api(app: FastAPI):
     # 创建异步任务生成网站地图和robots.txt
     asyncio.create_task(generate_sitemap())
@@ -1786,9 +1786,9 @@ def register_seo_api(app: FastAPI):
             else:
                 logger.info("神马搜索推送未启用或token未配置，已跳过")
             
-            # 推送完成后，异步刷新站点地图（不阻塞发布流程）
+            # 推送完成后，异步刷新站点地图
             try:
-                asyncio.create_task(generate_sitemap())
+                asyncio.create_task(add_or_update_sitemap_url(article_url, time.strftime('%Y-%m-%d')))
             except Exception as _e:
                 logger.error(f"异步刷新网站地图失败: {_e}")
 
@@ -2448,6 +2448,28 @@ def register_seo_api(app: FastAPI):
                 "status": "error",
                 "message": f"获取分类页元数据异常: {str(e)}"
             })
+
+    @app.post('/seo/removeArticleFromSitemap')
+    async def remove_article_from_sitemap(request: Request, _: bool = Depends(admin_required)):
+        """接收 {"url": "http://site/article/123"} 或 {"id":123} 移除 sitemap 条目"""
+        try:
+            data = await request.json()
+            if not data:
+                return JSONResponse({"code":400,"message":"参数为空"})
+            seo_config = await get_seo_config()
+            site_url = seo_config.get('site_address', FRONTEND_URL)
+            if 'url' in data and data['url']:
+                target_url = data['url']
+            elif 'id' in data:
+                target_url = f"{site_url}/{seo_config.get('article_url_format','article/{id}').replace('{id}', str(data['id']))}"
+            else:
+                return JSONResponse({"code":400,"message":"缺少 url 或 id"})
+
+            asyncio.create_task(remove_sitemap_url(target_url))
+            return JSONResponse({"code":200,"message":"已提交删除任务","data":target_url})
+        except Exception as e:
+            logger.error(f"删除 sitemap URL API 失败: {e}")
+            return JSONResponse({"code":500,"message":str(e)})
 
 # 获取AI API配置
 def get_ai_api_config():
@@ -3494,3 +3516,83 @@ async def yahoo_push_url(url):
     except Exception as e:
         logger.error(f"Yahoo推送出错: {str(e)}")
         return False, str(e)
+
+# 增量更新Sitemap工具
+
+def _load_or_init_sitemap(site_url: str):
+    """加载现有 sitemap.xml，如不存在则生成并加载"""
+    sitemap_path = os.path.join(DATA_DIR, 'sitemap.xml')
+    if not os.path.exists(sitemap_path):
+        # 同步生成完整站点地图
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.run_until_complete(generate_sitemap())
+        else:
+            asyncio.run(generate_sitemap())
+
+    tree = ET.parse(sitemap_path)
+    root = tree.getroot()
+    return tree, root, sitemap_path
+
+async def add_or_update_sitemap_url(url: str, lastmod: str = None, changefreq: str = 'weekly', priority: str = '0.7'):
+    """在 sitemap.xml 中新增或更新单条 <url> 节点"""
+    try:
+        seo_config = await get_seo_config()
+        site_url = seo_config.get('site_address', FRONTEND_URL)
+        tree, root, sitemap_path = _load_or_init_sitemap(site_url)
+
+        # 去重比较使用去掉末尾 /
+        target = url.rstrip('/')
+
+        # 查找已存在节点
+        found = None
+        for url_elem in root.findall('{http://www.sitemaps.org/schemas/sitemap/0.9}url'):
+            loc_elem = url_elem.find('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')
+            if loc_elem is not None and loc_elem.text.rstrip('/') == target:
+                found = url_elem
+                break
+
+        if not lastmod:
+            lastmod = time.strftime('%Y-%m-%d')
+
+        ns = {'sm': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+
+        if found is None:
+            # 创建新节点
+            new_url = ET.SubElement(root, '{http://www.sitemaps.org/schemas/sitemap/0.9}url')
+            ET.SubElement(new_url, '{http://www.sitemaps.org/schemas/sitemap/0.9}loc').text = url
+            ET.SubElement(new_url, '{http://www.sitemaps.org/schemas/sitemap/0.9}lastmod').text = lastmod
+            ET.SubElement(new_url, '{http://www.sitemaps.org/schemas/sitemap/0.9}changefreq').text = changefreq
+            ET.SubElement(new_url, '{http://www.sitemaps.org/schemas/sitemap/0.9}priority').text = priority
+        else:
+            # 更新 lastmod
+            lm_elem = found.find('sm:lastmod', ns)
+            if lm_elem is not None:
+                lm_elem.text = lastmod
+
+        tree.write(sitemap_path, encoding='utf-8', xml_declaration=True)
+        logger.info(f"增量更新 sitemap 成功: {url}")
+    except Exception as e:
+        logger.error(f"增量更新 sitemap 失败: {e}")
+
+async def remove_sitemap_url(url: str):
+    """将指定 URL 从 sitemap.xml 中移除"""
+    try:
+        seo_config = await get_seo_config()
+        site_url = seo_config.get('site_address', FRONTEND_URL)
+        tree, root, sitemap_path = _load_or_init_sitemap(site_url)
+
+        target = url.rstrip('/')
+        removed = False
+        for url_elem in list(root):
+            loc_elem = url_elem.find('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')
+            if loc_elem is not None and loc_elem.text.rstrip('/') == target:
+                root.remove(url_elem)
+                removed = True
+                break
+
+        if removed:
+            tree.write(sitemap_path, encoding='utf-8', xml_declaration=True)
+            logger.info(f"已从 sitemap 移除 URL: {url}")
+    except Exception as e:
+        logger.error(f"移除 sitemap URL 失败: {e}")
