@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="<%= lang || 'zh' %>">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,7 +19,9 @@
   <% }); } %>
 
   <!-- 引入现有静态资源，保持与 SPA 一致 -->
-  <link rel="stylesheet" href="/static/css/app.css">
+  <% if (assets && assets.css) { %>
+    <link rel="stylesheet" href="<%= assets.css %>">
+  <% } %>
 </head>
 <body>
   <div id="app">
@@ -29,6 +31,8 @@
   </div>
 
   <!-- 加载现有前端脚本，确保客户端可继续交互 -->
-  <script src="/static/js/app.js" defer></script>
+  <% if (assets && assets.js) { %>
+    <script src="<%= assets.js %>" defer></script>
+  <% } %>
 </body>
 </html> 
