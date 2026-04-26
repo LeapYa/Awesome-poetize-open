@@ -1,24 +1,94 @@
 <template>
   <div>
-    <el-tag effect="dark" class="my-tag">
-      <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -3px;">
-        <path d="M0 0h1024v1024H0V0z" fill="#202425" opacity=".01"></path>
-        <path
-          d="M682.666667 204.8h238.933333a34.133333 34.133333 0 0 1 34.133333 34.133333v648.533334a68.266667 68.266667 0 0 1-68.266666 68.266666h-204.8V204.8z"
-          fill="#FFAA44"></path>
-        <path
-          d="M68.266667 921.6a34.133333 34.133333 0 0 0 34.133333 34.133333h785.066667a68.266667 68.266667 0 0 1-68.266667-68.266666V102.4a34.133333 34.133333 0 0 0-34.133333-34.133333H102.4a34.133333 34.133333 0 0 0-34.133333 34.133333v819.2z"
-          fill="#11AA66"></path>
-        <path
-          d="M238.933333 307.2a34.133333 34.133333 0 0 0 0 68.266667h136.533334a34.133333 34.133333 0 1 0 0-68.266667H238.933333z m0 204.8a34.133333 34.133333 0 1 0 0 68.266667h409.6a34.133333 34.133333 0 1 0 0-68.266667H238.933333z m0 204.8a34.133333 34.133333 0 1 0 0 68.266667h204.8a34.133333 34.133333 0 1 0 0-68.266667H238.933333z"
-          fill="#FFFFFF"></path>
-      </svg>
-      文章信息
-    </el-tag>
+    <div class="section-header">
+      <el-tag effect="dark" class="my-tag draft-inline-tag">
+        <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -3px;">
+          <path d="M0 0h1024v1024H0V0z" fill="#202425" opacity=".01"></path>
+          <path
+            d="M682.666667 204.8h238.933333a34.133333 34.133333 0 0 1 34.133333 34.133333v648.533334a68.266667 68.266667 0 0 1-68.266666 68.266666h-204.8V204.8z"
+            fill="#FFAA44"></path>
+          <path
+            d="M68.266667 921.6a34.133333 34.133333 0 0 0 34.133333 34.133333h785.066667a68.266667 68.266667 0 0 1-68.266667-68.266666V102.4a34.133333 34.133333 0 0 0-34.133333-34.133333H102.4a34.133333 34.133333 0 0 0-34.133333 34.133333v819.2z"
+            fill="#11AA66"></path>
+          <path
+            d="M238.933333 307.2a34.133333 34.133333 0 0 0 0 68.266667h136.533334a34.133333 34.133333 0 1 0 0-68.266667H238.933333z m0 204.8a34.133333 34.133333 0 1 0 0 68.266667h409.6a34.133333 34.133333 0 1 0 0-68.266667H238.933333z m0 204.8a34.133333 34.133333 0 1 0 0 68.266667h204.8a34.133333 34.133333 0 1 0 0-68.266667H238.933333z"
+            fill="#FFFFFF"></path>
+        </svg>
+        文章信息
+        <template v-if="isDraftMode">
+          <span class="draft-inline-spacer"></span>
+          <span class="draft-inline-divider"></span>
+          <span class="draft-inline-chip" :data-type="draftStatusType">{{ compactDraftStatusText }}</span>
+          <span v-if="draftId || draftLastSyncedAt" class="draft-inline-divider"></span>
+          <span v-if="draftId" class="draft-inline-meta">草稿ID：{{ shortDraftId }}</span>
+          <span v-if="draftLastSyncedAt" class="draft-inline-meta">{{ draftLastSyncedAt }}</span>
+          <span class="draft-inline-divider"></span>
+          <el-popover
+            placement="bottom-end"
+            width="260"
+            trigger="click"
+            popper-class="draft-collaborator-popper"
+          >
+            <div class="draft-collaborator-panel">
+              <div class="draft-collaborator-title">协作者</div>
+              <div v-if="draftOnlineUsers.length" class="draft-online-users">
+                在线：{{ draftOnlineUsers.map(item => item.username).join('、') }}
+              </div>
+              <div v-if="draftEditingUsersText.length" class="draft-editing-users">
+                正在编辑：{{ draftEditingUsersText.join('、') }}
+              </div>
+              <div v-if="canManageCurrentDraft" class="draft-invite-actions">
+                <el-button
+                  size="mini"
+                  type="text"
+                  class="draft-invite-link-button"
+                  @click="copyDraftInviteLink"
+                >
+                  复制邀请链接
+                </el-button>
+                <el-button
+                  size="mini"
+                  type="text"
+                  class="draft-invite-link-button"
+                  @click="revokeDraftInviteLink"
+                >
+                  撤销链接
+                </el-button>
+              </div>
+              <div class="draft-invite-tip">
+                {{ canManageCurrentDraft ? '邀请链接 24 小时内有效，重新生成会覆盖旧链接' : '仅作者或站长可管理协作者与邀请链接' }}
+              </div>
+              <el-select
+                v-if="canManageCurrentDraft"
+                v-model="draftCollaboratorIds"
+                multiple
+                collapse-tags
+                filterable
+                placeholder="选择协作者"
+                size="mini"
+                class="draft-collaborator-select"
+                :no-data-text="draftCollaboratorEmptyText"
+                @change="saveDraftCollaborators"
+              >
+                <el-option
+                  v-for="item in filteredDraftCollaboratorOptions"
+                  :key="item.userId"
+                  :label="item.username"
+                  :value="item.userId"
+                ></el-option>
+              </el-select>
+            </div>
+            <el-button slot="reference" size="mini" plain class="draft-collaborator-button draft-collaborator-inline-button">
+              协作者{{ draftCollaboratorIds.length ? ` ${draftCollaboratorIds.length}` : '' }}
+            </el-button>
+          </el-popover>
+        </template>
+      </el-tag>
+    </div>
     <el-form :model="article" :rules="rules" ref="ruleForm" label-width="120px"
              class="demo-ruleForm mobile-responsive-form">
       <el-form-item label="标题" prop="articleTitle">
-        <el-input v-model="article.articleTitle" maxlength="500" show-word-limit></el-input>
+        <el-input v-model="article.articleTitle" maxlength="500" show-word-limit @focus.native="updateDraftEditingField('title', true)" @blur.native="updateDraftEditingField('title', false)" @keydown.native.capture="handleDraftTextShortcut('title', $event)"></el-input>
       </el-form-item>
 
       <el-form-item label="视频链接" prop="videoUrl">
@@ -47,6 +117,9 @@
           @image-add="imgAdd"
           @change="handleEditorChange"
           @ready="onMainEditorReady"
+          @focus="updateDraftEditingField('content', true)"
+          @blur="updateDraftEditingField('content', false)"
+          @shortcut="handleDraftEditorShortcut('content', $event)"
         />
       </el-form-item>
 
@@ -248,13 +321,20 @@
       </div>
     </el-form>
     <div class="myCenter" style="margin-bottom: 22px">
-      <el-button type="primary" @click="submitForm('ruleForm')">保存并等待</el-button>
-      <el-button type="success" @click="submitFormAsync('ruleForm')" :loading="asyncSaveLoading">
-        <i class="el-icon-loading" v-if="asyncSaveLoading"></i>
-        <i class="el-icon-check" v-else></i>
-        保存并离开
-      </el-button>
-      <el-button type="danger" @click="resetForm('ruleForm')">重置所有修改</el-button>
+      <template v-if="!isDraftMode || canManageCurrentDraft">
+        <el-button type="primary" @click="submitForm('ruleForm')">{{ submitWaitText }}</el-button>
+        <el-button type="success" @click="submitFormAsync('ruleForm')" :loading="asyncSaveLoading">
+          <i class="el-icon-loading" v-if="asyncSaveLoading"></i>
+          <i class="el-icon-check" v-else></i>
+          {{ submitAsyncText }}
+        </el-button>
+        <el-button v-if="isDraftMode" type="danger" @click="deleteCurrentDraft">{{ draftDeleteButtonText }}</el-button>
+        <el-button v-else type="danger" @click="resetForm('ruleForm')">重置所有修改</el-button>
+      </template>
+    </div>
+    <div v-if="isDraftMode && !canManageCurrentDraft" class="tip-text" style="margin: -8px 0 20px; text-align: center;">
+      <i class="el-icon-info"></i>
+      协作者只能编辑和自动保存，发布、邀请和删除仅作者或站长可操作。
     </div>
 
     <!-- 新建分类对话框 -->
@@ -342,6 +422,9 @@
             v-model="translationForm.translatedTitle"
             maxlength="500"
             show-word-limit
+            @focus.native="updateDraftEditingField('translationTitle', true)"
+            @blur.native="updateDraftEditingField('translationTitle', false)"
+            @keydown.native.capture="handleDraftTextShortcut('translationTitle', $event)"
             placeholder="请输入翻译后的文章标题">
           </el-input>
         </el-form-item>
@@ -366,6 +449,9 @@
             mode="ir"
             placeholder="请输入翻译后的文章内容"
             @change="handleTranslationEditorChange"
+            @focus="updateDraftEditingField('translationContent', true)"
+            @blur="updateDraftEditingField('translationContent', false)"
+            @shortcut="handleDraftEditorShortcut('translation', $event)"
           />
         </el-form-item>
       </el-form>
@@ -382,6 +468,9 @@
 
 <script>
     import { useMainStore } from '@/stores/main';
+    import * as Y from 'yjs';
+    import { IndexeddbPersistence } from 'y-indexeddb';
+    import { DRAFT_META_FIELDS, applyTextDiff, base64ToUint8Array, buildDraftWebSocketUrl, uint8ArrayToBase64 } from '@/utils/articleDraftCrdt';
 
 const uploadPicture = () => import("../common/uploadPicture");
   const ArticleEditor = () => import('@/components/ArticleEditor.vue');
@@ -413,6 +502,7 @@ const uploadPicture = () => import("../common/uploadPicture");
     data() {
       return {
         id: this.$route.query.id ? parseInt(this.$route.query.id) : null,
+        draftId: this.$route.query.draftId || null,
         loading: null,
         asyncSaveLoading: false,
         currentTaskId: null,
@@ -491,6 +581,37 @@ const uploadPicture = () => import("../common/uploadPicture");
         },
         // 响应式布局相关
         resizeTimer: null,
+        draftStatusText: '草稿初始化中',
+        draftStatusType: 'info',
+        draftLastSyncedAt: '',
+        draftOnlineCount: 1,
+        draftOnlineUsers: [],
+        draftEditingUsers: {},
+        draftCollaboratorIds: [],
+        draftCollaboratorOptions: [],
+        draftInviteAccepting: false,
+        draftReady: false,
+        draftSnapshotDirty: false,
+        suppressNextDraftRouteReload: false,
+        suppressNextIdRouteReload: false,
+        skipDraftSync: false,
+        draftSnapshotTimer: null,
+        draftPageHideHandler: null,
+        draftType: null,
+        draftOwnerUserId: null,
+        sourceArticleId: null,
+        sourceArticleTitle: '',
+        ydoc: null,
+        yPersistence: null,
+        draftWs: null,
+        draftMetaMap: null,
+        draftTitleText: null,
+        draftContentText: null,
+        draftTranslationTitleText: null,
+        draftTranslationContentText: null,
+        draftOrigins: null,
+        draftUndoManager: null,
+        draftTranslationUndoManager: null,
         rules: {
           articleTitle: [
             {required: true, message: '请输入标题', trigger: 'change'},
@@ -521,15 +642,102 @@ const uploadPicture = () => import("../common/uploadPicture");
       };
     },
 
-    computed: {
+      computed: {
       mainStore() {
         return useMainStore();
       },
       searchPushSwitchDisabled() {
         return this.searchPushConfigLoading || this.searchPushConfiguredEngines.length === 0;
       },
+      isDraftMode() {
+        return !!this.draftId || this.$common.isEmpty(this.id);
+      },
+      isRevisionDraft() {
+        return this.draftType === 'REVISION';
+      },
+      effectiveArticleId() {
+        return this.isRevisionDraft ? this.sourceArticleId : this.id;
+      },
+      canManageCurrentDraft() {
+        if (!this.isDraftMode || !this.draftId) {
+          return true;
+        }
+        const currentAdmin = this.mainStore && this.mainStore.currentAdmin ? this.mainStore.currentAdmin : {};
+        if (currentAdmin.isBoss) {
+          return true;
+        }
+        return this.draftOwnerUserId !== null && String(currentAdmin.id) === String(this.draftOwnerUserId);
+      },
+      submitWaitText() {
+        if (this.isRevisionDraft) {
+          return '发布修订并等待';
+        }
+        return this.isDraftMode ? '发布并等待' : '保存并等待';
+      },
+      submitAsyncText() {
+        if (this.isRevisionDraft) {
+          return '发布修订并离开';
+        }
+        return this.isDraftMode ? '发布并离开' : '保存并离开';
+      },
+      draftDeleteButtonText() {
+        return this.isRevisionDraft ? '放弃修订' : '删除草稿';
+      },
+      compactDraftStatusText() {
+        if (this.draftStatusText === '协同连接已建立') {
+          return '协同中';
+        }
+        if (this.draftStatusText === '草稿已保存') {
+          return '已保存';
+        }
+        if (this.draftStatusText === '同步中') {
+          return '同步中';
+        }
+        if (this.draftStatusText === '协同连接已断开，仍会保存在本地') {
+          return '已断开';
+        }
+        if (this.draftStatusText === '协同连接失败，仍会保存在本地') {
+          return '连接失败';
+        }
+        if (this.draftStatusText === '草稿已加载') {
+          return '草稿中';
+        }
+        return this.draftStatusText;
+      },
+      shortDraftId() {
+        if (!this.draftId) {
+          return '';
+        }
+        return this.draftId.slice(0, 10);
+      },
+      filteredDraftCollaboratorOptions() {
+        const excludedIds = this.getExcludedCollaboratorIds();
+        if (excludedIds.length === 0) {
+          return this.draftCollaboratorOptions;
+        }
+        return this.draftCollaboratorOptions.filter(item => !excludedIds.includes(String(item.userId)));
+      },
+      draftCollaboratorEmptyText() {
+        return '暂无其他可选协作者';
+      },
+      draftMetaSyncKey() {
+        const metaState = {};
+        DRAFT_META_FIELDS.forEach((field) => {
+          if (field === 'skipAiTranslation') {
+            metaState[field] = this.skipAiTranslation;
+          } else if (field === 'translationLanguage') {
+            metaState[field] = this.translationForm.targetLanguage || 'en';
+          } else {
+            metaState[field] = this.article[field];
+          }
+        });
+        return JSON.stringify(metaState);
+      },
       configuredSearchPushEnginesText() {
         return this.searchPushConfiguredEngines.join('、');
+      },
+      draftEditingUsersText() {
+        return Object.values(this.draftEditingUsers || {}).map(item => `${item.username}(${this.getDraftFieldLabel(item.field)})`);
       },
       // 检查是否有暂存的翻译数据
       hasPendingTranslation() {
@@ -555,7 +763,56 @@ const uploadPicture = () => import("../common/uploadPicture");
           return;
         }
         this.id = newId ? parseInt(newId) : null;
+        if (this.suppressNextIdRouteReload) {
+          this.suppressNextIdRouteReload = false;
+          return;
+        }
         this.initializePageData();
+      },
+      '$route.query.draftId'(newDraftId, oldDraftId) {
+        if (newDraftId === oldDraftId) {
+          return;
+        }
+        this.draftId = newDraftId || null;
+        if (this.suppressNextDraftRouteReload && newDraftId === this.draftId) {
+          this.suppressNextDraftRouteReload = false;
+          return;
+        }
+        if (this.isDraftMode) {
+          this.initializePageData();
+        }
+      },
+      '$route.query.inviteToken'(newToken, oldToken) {
+        if (newToken === oldToken) {
+          return;
+        }
+        if (this.isDraftMode && this.draftId) {
+          this.initializePageData();
+        }
+      },
+      'article.articleTitle'() {
+        this.syncDraftTextField('title');
+      },
+      'article.articleContent'() {
+        this.syncDraftTextField('content');
+      },
+      'translationForm.translatedTitle'() {
+        this.syncDraftTextField('translationTitle');
+        this.syncPendingTranslationFromForm();
+      },
+      'translationForm.translatedContent'() {
+        this.syncDraftTextField('translationContent');
+        this.syncPendingTranslationFromForm();
+      },
+      'translationForm.targetLanguage'() {
+        this.syncDraftMetaFields();
+        this.syncPendingTranslationFromForm();
+      },
+      skipAiTranslation() {
+        this.syncDraftMetaFields();
+      },
+      draftMetaSyncKey() {
+        this.syncDraftMetaFields();
       }
     },
 
@@ -571,6 +828,10 @@ const uploadPicture = () => import("../common/uploadPicture");
       
       // 监听窗口大小变化
       window.addEventListener('resize', this.handleWindowResize);
+      this.draftPageHideHandler = () => {
+        this.persistDraftSnapshot(true);
+      };
+      window.addEventListener('pagehide', this.draftPageHideHandler);
     },
     
     mounted() {
@@ -584,11 +845,19 @@ const uploadPicture = () => import("../common/uploadPicture");
       // 移除窗口大小变化监听
       window.removeEventListener('resize', this.handleWindowResize);
       this.clearDeferredTasks();
+      window.removeEventListener('pagehide', this.draftPageHideHandler);
+      this.destroyDraftSession();
     },
 
 
 
     methods: {
+      resetDraftContext() {
+        this.draftType = null;
+        this.draftOwnerUserId = null;
+        this.sourceArticleId = null;
+        this.sourceArticleTitle = '';
+      },
       syncMainEditorContent() {
         const editor = this.mainEditor || this.$refs.md
         if (editor && typeof editor.getValue === 'function') {
@@ -600,14 +869,19 @@ const uploadPicture = () => import("../common/uploadPicture");
         this.editorReady = false;
         this.shouldRenderEditor = false;
         this.mainEditor = null;
+        this.resetDraftContext();
         this.clearDeferredTasks();
         this.searchPushConfigLoading = true;
         try {
           const tasks = [this.getSortAndLabel(false)];
-          if (!this.$common.isEmpty(this.id)) {
-            tasks.push(this.getArticleById({ checkTranslationStatus: false }));
-          } else {
+          if (this.draftId) {
+            tasks.push(this.ensureDraftSessionCreated());
+          } else if (this.$common.isEmpty(this.id)) {
             this.article = createDefaultArticle();
+            tasks.push(this.ensureDraftSessionCreated());
+          } else {
+            this.destroyDraftSession();
+            tasks.push(this.ensureRevisionDraftSessionCreated());
           }
           tasks.push(this.loadSearchPushAvailability());
 
@@ -678,11 +952,648 @@ const uploadPicture = () => import("../common/uploadPicture");
           this.checkPaymentPlugin();
         }, 400);
 
-        if (!this.$common.isEmpty(this.id)) {
+        if (!this.$common.isEmpty(this.effectiveArticleId)) {
           this.scheduleDeferredTask(() => {
             this.checkAndSetTranslationMode();
           }, 900);
         }
+      },
+      async ensureDraftSessionCreated() {
+        let detail = null;
+        if (this.draftId) {
+          await this.acceptDraftInviteIfNeeded();
+          const res = await this.$http.get(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}`, {}, true);
+          if (res.code !== 200 || !res.data) {
+            throw new Error(res.message || '加载草稿失败');
+          }
+          detail = res.data;
+        } else {
+          const res = await this.$http.post(this.$constant.baseURL + '/admin/articleDraft/create', {}, true);
+          if (res.code !== 200 || !res.data) {
+            throw new Error(res.message || '创建草稿失败');
+          }
+          detail = res.data;
+          this.draftId = detail.id;
+          this.suppressNextDraftRouteReload = true;
+          this.$router.replace({ path: '/postEdit', query: { draftId: detail.id } });
+        }
+        await this.initializeDraftSession(detail);
+      },
+      async ensureRevisionDraftSessionCreated() {
+        const res = await this.$http.post(this.$constant.baseURL + `/admin/articleDraft/revision/${this.id}`, {}, true);
+        if (res.code !== 200 || !res.data) {
+          throw new Error(res.message || '创建修订草稿失败');
+        }
+        const detail = res.data;
+        this.draftId = detail.id;
+        this.suppressNextIdRouteReload = true;
+        this.suppressNextDraftRouteReload = true;
+        this.$router.replace({ path: '/postEdit', query: { draftId: detail.id } });
+        await this.initializeDraftSession(detail);
+      },
+      async acceptDraftInviteIfNeeded() {
+        const inviteToken = this.$route.query.inviteToken;
+        if (!this.draftId || !inviteToken || this.draftInviteAccepting) {
+          return;
+        }
+        this.draftInviteAccepting = true;
+        try {
+          const res = await this.$http.post(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/acceptInvite`, {
+            inviteToken
+          }, true);
+          if (res.code !== 200) {
+            throw new Error(res.message || '接受邀请失败');
+          }
+          if (res.data && res.data.joined) {
+            this.$message.success('已加入草稿协作');
+          }
+          const nextQuery = { ...this.$route.query };
+          delete nextQuery.inviteToken;
+          this.$router.replace({ path: this.$route.path, query: nextQuery });
+        } finally {
+          this.draftInviteAccepting = false;
+        }
+      },
+      async initializeDraftSession(detail) {
+        this.destroyDraftSession();
+        this.draftId = detail.id;
+        this.draftType = detail.draftType || 'CREATE';
+        this.draftOwnerUserId = detail.ownerUserId !== undefined && detail.ownerUserId !== null ? detail.ownerUserId : null;
+        this.sourceArticleId = detail.articleId || null;
+        this.sourceArticleTitle = detail.sourceArticleTitle || '';
+        this.draftCollaboratorIds = (detail.collaborators || []).map(item => item.userId);
+        this.article = detail.sourceArticle ? {
+          ...createDefaultArticle(),
+          ...detail.sourceArticle
+        } : createDefaultArticle();
+        this.skipAiTranslation = false;
+        this.resetTranslationForm();
+        this.clearPendingTranslation();
+        await this.loadDraftCollaboratorOptions();
+        this.draftStatusText = '草稿已加载';
+        this.draftStatusType = 'info';
+        this.draftOnlineCount = 1;
+        this.ydoc = new Y.Doc();
+        this.yPersistence = new IndexeddbPersistence(`poetize-article-draft-${this.draftId}`, this.ydoc);
+        this.bindDraftDoc();
+
+        if (detail.crdtSnapshotBase64) {
+          Y.applyUpdate(this.ydoc, base64ToUint8Array(detail.crdtSnapshotBase64), 'remote');
+        }
+
+        await this.yPersistence.whenSynced;
+        if (this.isDraftDocEmpty()) {
+          this.syncDraftDocFromForm();
+        } else {
+          this.applyDraftDocToForm();
+        }
+        this.draftSnapshotTimer = window.setInterval(() => {
+          this.persistDraftSnapshot(false);
+        }, 5000);
+        this.openDraftWebSocket();
+        this.draftReady = true;
+      },
+      bindDraftDoc() {
+        this.draftOrigins = {
+          title: { key: 'title' },
+          content: { key: 'content' },
+          translationTitle: { key: 'translationTitle' },
+          translationContent: { key: 'translationContent' },
+          meta: { key: 'meta' }
+        };
+        this.draftMetaMap = this.ydoc.getMap('articleMeta');
+        this.draftTitleText = this.ydoc.getText('articleTitle');
+        this.draftContentText = this.ydoc.getText('articleContent');
+        this.draftTranslationTitleText = this.ydoc.getText('translationTitle');
+        this.draftTranslationContentText = this.ydoc.getText('translationContent');
+        this.draftUndoManager = new Y.UndoManager([this.draftTitleText, this.draftContentText], {
+          trackedOrigins: new Set([this.draftOrigins.title, this.draftOrigins.content])
+        });
+        this.draftTranslationUndoManager = new Y.UndoManager([this.draftTranslationTitleText, this.draftTranslationContentText], {
+          trackedOrigins: new Set([this.draftOrigins.translationTitle, this.draftOrigins.translationContent])
+        });
+        this.ydoc.on('update', this.handleDraftDocUpdate);
+        this.draftTitleText.observe(this.handleDraftTitleTextChange);
+        this.draftContentText.observe(this.handleDraftContentTextChange);
+        this.draftTranslationTitleText.observe(this.handleDraftTranslationTitleTextChange);
+        this.draftTranslationContentText.observe(this.handleDraftTranslationContentTextChange);
+        this.draftMetaMap.observe(this.handleDraftMetaMapChange);
+      },
+      destroyDraftSession() {
+        this.draftReady = false;
+        this.draftEditingUsers = {};
+        if (this.draftSnapshotTimer) {
+          clearInterval(this.draftSnapshotTimer);
+          this.draftSnapshotTimer = null;
+        }
+        if (this.ydoc) {
+          this.ydoc.off('update', this.handleDraftDocUpdate);
+        }
+        if (this.draftTitleText) {
+          this.draftTitleText.unobserve(this.handleDraftTitleTextChange);
+        }
+        if (this.draftContentText) {
+          this.draftContentText.unobserve(this.handleDraftContentTextChange);
+        }
+        if (this.draftTranslationTitleText) {
+          this.draftTranslationTitleText.unobserve(this.handleDraftTranslationTitleTextChange);
+        }
+        if (this.draftTranslationContentText) {
+          this.draftTranslationContentText.unobserve(this.handleDraftTranslationContentTextChange);
+        }
+        if (this.draftMetaMap) {
+          this.draftMetaMap.unobserve(this.handleDraftMetaMapChange);
+        }
+        if (this.draftUndoManager) {
+          this.draftUndoManager.destroy();
+        }
+        if (this.draftTranslationUndoManager) {
+          this.draftTranslationUndoManager.destroy();
+        }
+        if (this.draftWs) {
+          this.draftWs.close();
+          this.draftWs = null;
+        }
+        if (this.yPersistence && typeof this.yPersistence.destroy === 'function') {
+          this.yPersistence.destroy();
+        }
+        if (this.ydoc) {
+          this.ydoc.destroy();
+        }
+        this.yPersistence = null;
+        this.ydoc = null;
+        this.draftMetaMap = null;
+        this.draftTitleText = null;
+        this.draftContentText = null;
+        this.draftTranslationTitleText = null;
+        this.draftTranslationContentText = null;
+        this.draftOrigins = null;
+        this.draftUndoManager = null;
+        this.draftTranslationUndoManager = null;
+      },
+      isDraftDocEmpty() {
+        return this.draftTitleText.length === 0 &&
+          this.draftContentText.length === 0 &&
+          this.draftTranslationTitleText.length === 0 &&
+          this.draftTranslationContentText.length === 0 &&
+          this.draftMetaMap.size === 0;
+      },
+      syncDraftDocFromForm() {
+        if (!this.isDraftMode || !this.draftMetaMap || this.skipDraftSync) {
+          return;
+        }
+        this.syncDraftTextField('title');
+        this.syncDraftTextField('content');
+        this.syncDraftTextField('translationTitle');
+        this.syncDraftTextField('translationContent');
+        this.syncDraftMetaFields();
+      },
+      applyDraftDocToForm() {
+        if (!this.isDraftMode || !this.draftMetaMap) {
+          return;
+        }
+        this.skipDraftSync = true;
+        const nextArticle = {
+          ...this.article,
+          articleTitle: this.draftTitleText.toString(),
+          articleContent: this.draftContentText.toString()
+        };
+        DRAFT_META_FIELDS.forEach((field) => {
+          const value = this.draftMetaMap.get(field);
+          if (field === 'skipAiTranslation') {
+            this.skipAiTranslation = value === null || value === undefined ? false : value;
+            return;
+          }
+          if (field === 'translationLanguage') {
+            this.translationForm.targetLanguage = value || 'en';
+            return;
+          }
+          if (value !== undefined) {
+            nextArticle[field] = value;
+          }
+        });
+        this.article = nextArticle;
+        this.translationForm.translatedTitle = this.draftTranslationTitleText.toString();
+        this.translationForm.translatedContent = this.draftTranslationContentText.toString();
+        this.pendingTranslation = {
+          title: this.translationForm.translatedTitle || '',
+          content: this.translationForm.translatedContent || '',
+          language: this.translationForm.targetLanguage || 'en'
+        };
+        this.$nextTick(() => {
+          this.skipDraftSync = false;
+        });
+      },
+      replaceYText(target, value) {
+        applyTextDiff(target, value || '');
+      },
+      syncDraftTextField(field) {
+        if (!this.isDraftMode || !this.draftReady || this.skipDraftSync) {
+          return;
+        }
+        if (field === 'title') {
+          applyTextDiff(this.draftTitleText, this.article.articleTitle || '', this.draftOrigins && this.draftOrigins.title);
+          return;
+        }
+        if (field === 'content') {
+          applyTextDiff(this.draftContentText, this.article.articleContent || '', this.draftOrigins && this.draftOrigins.content);
+          return;
+        }
+        if (field === 'translationTitle') {
+          applyTextDiff(this.draftTranslationTitleText, this.translationForm.translatedTitle || '', this.draftOrigins && this.draftOrigins.translationTitle);
+          return;
+        }
+        if (field === 'translationContent') {
+          applyTextDiff(this.draftTranslationContentText, this.translationForm.translatedContent || '', this.draftOrigins && this.draftOrigins.translationContent);
+        }
+      },
+      syncDraftMetaFields() {
+        if (!this.isDraftMode || !this.draftReady || !this.draftMetaMap || this.skipDraftSync) {
+          return;
+        }
+        this.ydoc.transact(() => {
+          DRAFT_META_FIELDS.forEach((field) => {
+            let value = null;
+            if (field === 'skipAiTranslation') {
+              value = this.skipAiTranslation;
+            } else if (field === 'translationLanguage') {
+              value = this.translationForm.targetLanguage || 'en';
+            } else {
+              value = this.article[field];
+            }
+            this.draftMetaMap.set(field, value === undefined ? null : value);
+          });
+        }, this.draftOrigins && this.draftOrigins.meta);
+      },
+      syncPendingTranslationFromForm() {
+        if (!this.isDraftMode || !this.draftReady || this.skipDraftSync) {
+          return;
+        }
+        this.pendingTranslation = {
+          title: this.translationForm.translatedTitle || '',
+          content: this.translationForm.translatedContent || '',
+          language: this.translationForm.targetLanguage || 'en'
+        };
+      },
+      applyDraftTextField(field, value) {
+        this.skipDraftSync = true;
+        if (field === 'title' && this.article.articleTitle !== value) {
+          this.article.articleTitle = value;
+        }
+        if (field === 'content' && this.article.articleContent !== value) {
+          this.article.articleContent = value;
+        }
+        if (field === 'translationTitle' && this.translationForm.translatedTitle !== value) {
+          this.translationForm.translatedTitle = value;
+        }
+        if (field === 'translationContent' && this.translationForm.translatedContent !== value) {
+          this.translationForm.translatedContent = value;
+        }
+        this.$nextTick(() => {
+          this.skipDraftSync = false;
+        });
+      },
+      handleDraftTitleTextChange() {
+        this.applyDraftTextField('title', this.draftTitleText.toString());
+      },
+      handleDraftContentTextChange() {
+        this.applyDraftTextField('content', this.draftContentText.toString());
+      },
+      handleDraftTranslationTitleTextChange() {
+        this.applyDraftTextField('translationTitle', this.draftTranslationTitleText.toString());
+        this.syncPendingTranslationFromForm();
+      },
+      handleDraftTranslationContentTextChange() {
+        this.applyDraftTextField('translationContent', this.draftTranslationContentText.toString());
+        this.syncPendingTranslationFromForm();
+      },
+      handleDraftMetaMapChange() {
+        if (!this.isDraftMode || !this.draftMetaMap) {
+          return;
+        }
+        this.skipDraftSync = true;
+        DRAFT_META_FIELDS.forEach((field) => {
+          const value = this.draftMetaMap.get(field);
+          if (field === 'skipAiTranslation') {
+            this.skipAiTranslation = value === null || value === undefined ? false : value;
+            return;
+          }
+          if (field === 'translationLanguage') {
+            this.translationForm.targetLanguage = value || 'en';
+            return;
+          }
+          if (value !== undefined && this.article[field] !== value) {
+            this.article[field] = value;
+          }
+        });
+        this.$nextTick(() => {
+          this.skipDraftSync = false;
+        });
+      },
+      handleDraftEditorShortcut(target, event) {
+        if (!this.isDraftMode || !event || !event.originalEvent) {
+          return;
+        }
+        const isUndo = event.key === 'z' && !event.shiftKey;
+        const isRedo = event.key === 'y' || (event.key === 'z' && event.shiftKey);
+        if (!isUndo && !isRedo) {
+          return;
+        }
+        const manager = target === 'translation' ? this.draftTranslationUndoManager : this.draftUndoManager;
+        if (!manager) {
+          return;
+        }
+        event.originalEvent.preventDefault();
+        event.originalEvent.stopPropagation();
+        if (isUndo) {
+          manager.undo();
+        } else {
+          manager.redo();
+        }
+      },
+      handleDraftTextShortcut(target, event) {
+        if (!this.isDraftMode || !event) {
+          return;
+        }
+        const key = String(event.key || '').toLowerCase();
+        const isMetaPressed = event.ctrlKey || event.metaKey;
+        if (!isMetaPressed || (key !== 'z' && key !== 'y')) {
+          return;
+        }
+        const isUndo = key === 'z' && !event.shiftKey;
+        const isRedo = key === 'y' || (key === 'z' && event.shiftKey);
+        if (!isUndo && !isRedo) {
+          return;
+        }
+        const manager = target === 'translationTitle' ? this.draftTranslationUndoManager : this.draftUndoManager;
+        if (!manager) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (isUndo) {
+          manager.undo();
+        } else {
+          manager.redo();
+        }
+      },
+      handleDraftDocUpdate(update, origin) {
+        this.draftSnapshotDirty = true;
+        if (origin !== 'remote' && this.draftWs && this.draftWs.readyState === WebSocket.OPEN) {
+          this.draftWs.send(JSON.stringify({
+            type: 'state_update',
+            payload: uint8ArrayToBase64(update),
+            draftId: this.draftId
+          }));
+        }
+        if (origin !== 'remote') {
+          this.draftStatusText = '同步中';
+          this.draftStatusType = 'warning';
+        }
+      },
+      async openDraftWebSocket() {
+        try {
+          const tokenRes = await this.$http.get(this.$constant.baseURL + '/im/getWsToken', {}, true);
+          if (tokenRes.code !== 200 || !tokenRes.data) {
+            throw new Error(tokenRes.message || '获取协同连接令牌失败');
+          }
+          const socketUrl = buildDraftWebSocketUrl(this.$constant.baseURL, this.draftId, tokenRes.data);
+          this.draftWs = new WebSocket(socketUrl);
+          this.draftWs.onmessage = this.handleDraftWsMessage;
+          this.draftWs.onopen = () => {
+            this.draftStatusText = '协同连接已建立';
+            this.draftStatusType = 'success';
+          };
+          this.draftWs.onclose = () => {
+            this.draftStatusText = '协同连接已断开，仍会保存在本地';
+            this.draftStatusType = 'warning';
+          };
+        } catch (error) {
+          this.draftStatusText = '协同连接失败，仍会保存在本地';
+          this.draftStatusType = 'warning';
+        }
+      },
+      handleDraftWsMessage(event) {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'state_update' && payload.payload) {
+            Y.applyUpdate(this.ydoc, base64ToUint8Array(payload.payload), 'remote');
+            return;
+          }
+          if (payload.type === 'awareness') {
+            if (payload.mode === 'editing') {
+              this.applyDraftEditingAwareness(payload);
+              return;
+            }
+            this.draftOnlineCount = payload.onlineCount || 1;
+            this.draftOnlineUsers = Array.isArray(payload.onlineUsers) ? payload.onlineUsers : [];
+            this.pruneDraftEditingUsers();
+          }
+        } catch (error) {
+        }
+      },
+      updateDraftEditingField(field, active) {
+        if (!this.isDraftMode || !this.draftWs || this.draftWs.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        this.draftWs.send(JSON.stringify({
+          type: 'awareness',
+          mode: 'editing',
+          field,
+          active
+        }));
+      },
+      applyDraftEditingAwareness(payload) {
+        if (!payload || !payload.userId) {
+          return;
+        }
+        const userId = String(payload.userId);
+        if (payload.active) {
+          this.$set(this.draftEditingUsers, userId, {
+            userId,
+            username: payload.username || '未知用户',
+            field: payload.field || 'content'
+          });
+          return;
+        }
+        this.$delete(this.draftEditingUsers, userId);
+      },
+      pruneDraftEditingUsers() {
+        const onlineUserIds = new Set((this.draftOnlineUsers || []).map(item => String(item.userId)));
+        Object.keys(this.draftEditingUsers || {}).forEach((userId) => {
+          if (!onlineUserIds.has(userId)) {
+            this.$delete(this.draftEditingUsers, userId);
+          }
+        });
+      },
+      getDraftFieldLabel(field) {
+        const fieldMap = {
+          title: '标题',
+          content: '正文',
+          translationTitle: '翻译标题',
+          translationContent: '翻译正文'
+        };
+        return fieldMap[field] || '正文';
+      },
+      async persistDraftSnapshot(force = false) {
+        if (!this.isDraftMode || !this.draftId || !this.ydoc || (!force && !this.draftSnapshotDirty)) {
+          return;
+        }
+        try {
+          const snapshotBase64 = uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
+          const res = await this.$http.post(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/snapshot`, {
+            titleCache: this.article.articleTitle || '未命名草稿',
+            snapshotBase64
+          }, true);
+          if (res.code === 200) {
+            this.draftSnapshotDirty = false;
+            this.draftLastSyncedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            this.draftStatusText = '草稿已保存';
+            this.draftStatusType = 'success';
+          }
+        } catch (error) {
+          this.draftStatusText = '草稿保存失败，仅保留本地副本';
+          this.draftStatusType = 'danger';
+        }
+      },
+      async loadDraftCollaboratorOptions() {
+        if (!this.isDraftMode) {
+          return;
+        }
+        try {
+          const res = await this.$http.get(this.$constant.baseURL + '/admin/articleDraft/collaborators/options', {}, true);
+          if (res.code === 200 && Array.isArray(res.data)) {
+            const excludedIds = this.getExcludedCollaboratorIds();
+            this.draftCollaboratorOptions = res.data.filter(item => !excludedIds.includes(String(item.userId)));
+          }
+        } catch (error) {
+        }
+      },
+      getExcludedCollaboratorIds() {
+        const ids = [];
+        const currentAdminId = this.mainStore && this.mainStore.currentAdmin && this.mainStore.currentAdmin.id;
+        const currentUserId = this.mainStore && this.mainStore.currentUser && this.mainStore.currentUser.id;
+        if (this.draftOwnerUserId !== undefined && this.draftOwnerUserId !== null && this.draftOwnerUserId !== '') {
+          ids.push(String(this.draftOwnerUserId));
+        }
+        if (currentAdminId !== undefined && currentAdminId !== null && currentAdminId !== '') {
+          ids.push(String(currentAdminId));
+        }
+        if (currentUserId !== undefined && currentUserId !== null && currentUserId !== '') {
+          ids.push(String(currentUserId));
+        }
+        return Array.from(new Set(ids));
+      },
+      async saveDraftCollaborators() {
+        if (!this.isDraftMode || !this.draftId || !this.canManageCurrentDraft) {
+          return;
+        }
+        try {
+          const res = await this.$http.put(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/collaborators`, {
+            collaboratorIds: this.draftCollaboratorIds
+          }, true);
+          if (res.code === 200 && Array.isArray(res.data)) {
+            this.draftCollaboratorIds = res.data.map(item => item.userId);
+          }
+        } catch (error) {
+          this.showError('保存协作者失败', error);
+        }
+      },
+      async copyDraftInviteLink() {
+        if (!this.draftId) {
+          this.$message.warning('请先等待草稿创建完成');
+          return;
+        }
+        if (!this.canManageCurrentDraft) {
+          this.$message.warning('仅作者或站长可管理邀请链接');
+          return;
+        }
+        try {
+          const res = await this.$http.post(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/invite`, {}, true);
+          if (res.code !== 200 || !res.data || !res.data.inviteToken) {
+            throw new Error(res.message || '生成邀请链接失败');
+          }
+          const inviteUrl = `${window.location.origin}/admin/postEdit?draftId=${this.draftId}&inviteToken=${res.data.inviteToken}`;
+          await this.copyText(inviteUrl);
+          this.$message.success('邀请链接已复制');
+        } catch (error) {
+          this.showError('复制邀请链接失败', error);
+        }
+      },
+      async revokeDraftInviteLink() {
+        if (!this.draftId || !this.canManageCurrentDraft) {
+          return;
+        }
+        try {
+          const res = await this.$http.delete(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/invite`, {}, true);
+          if (res.code !== 200) {
+            throw new Error(res.message || '撤销邀请链接失败');
+          }
+          this.$message.success('邀请链接已撤销');
+        } catch (error) {
+          this.showError('撤销邀请链接失败', error);
+        }
+      },
+      async copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (!success) {
+          throw new Error('浏览器不支持自动复制');
+        }
+      },
+      async deleteCurrentDraft() {
+        if (!this.draftId || !this.canManageCurrentDraft) {
+          return;
+        }
+        const confirmTitle = this.isRevisionDraft ? '放弃修订' : '删除草稿';
+        const confirmMessage = this.isRevisionDraft
+          ? '放弃后修订草稿内容和协作关系都会被清空，原文章不会受影响，确认继续？'
+          : '删除后草稿内容和协作关系都会被清空，确认继续？';
+        this.$confirm(confirmMessage, confirmTitle, {
+          confirmButtonText: this.isRevisionDraft ? '放弃修订' : '删除',
+          cancelButtonText: '取消',
+          type: 'warning',
+          center: true
+        }).then(async () => {
+          await this.persistDraftSnapshot(true);
+          const res = await this.$http.delete(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}`, {}, true);
+          if (res.code === 200) {
+            this.destroyDraftSession();
+            this.$message.success(this.isRevisionDraft ? '修订草稿已放弃' : '草稿已删除');
+            this.$router.push({ path: '/postList' });
+          }
+        }).catch(() => {});
+      },
+      async publishDraftAndWait(article) {
+        if (!this.canManageCurrentDraft) {
+          throw new Error('仅作者或站长可发布当前草稿');
+        }
+        await this.persistDraftSnapshot(true);
+        const payload = {
+          article: this.buildArticleRequestPayload(article)
+        };
+        return this.$http.post(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/publish`, payload, true);
+      },
+      async publishDraftAsyncRequest(article) {
+        if (!this.canManageCurrentDraft) {
+          throw new Error('仅作者或站长可发布当前草稿');
+        }
+        await this.persistDraftSnapshot(true);
+        const payload = {
+          article: this.buildArticleRequestPayload(article)
+        };
+        return this.$http.post(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/publishAsync`, payload, true);
       },
 
       async loadSearchPushAvailability() {
@@ -806,9 +1717,9 @@ const uploadPicture = () => import("../common/uploadPicture");
 
           if (!this.restorePendingTranslation()) {
             // 只有在文章已保存（有ID）时才加载已有翻译
-            if (!this.$common.isEmpty(this.id)) {
+            if (!this.$common.isEmpty(this.effectiveArticleId)) {
               await this.loadExistingTranslation();
-            } else {
+            } else if (!this.isDraftMode) {
               // 新文章，以空白状态打开
               this.resetTranslationForm();
             }
@@ -842,15 +1753,16 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
 
       async loadExistingTranslation() {
+        const articleId = this.effectiveArticleId;
         // 确保有文章ID才执行数据库查询
-        if (this.$common.isEmpty(this.id)) {
+        if (this.$common.isEmpty(articleId)) {
           this.resetTranslationForm();
           return;
         }
 
         try {
           const response = await this.$http.get(this.$constant.baseURL + "/article/getTranslation", {
-            id: this.id,
+            id: articleId,
             language: this.translationForm.targetLanguage
           });
 
@@ -877,7 +1789,7 @@ const uploadPicture = () => import("../common/uploadPicture");
           }
 
           // 只有在文章已保存（有ID）时才加载翻译内容
-          if (!this.$common.isEmpty(this.id)) {
+          if (!this.$common.isEmpty(this.effectiveArticleId)) {
             await this.loadExistingTranslation();
           } else {
             // 新文章或无ID，清空翻译表单
@@ -947,7 +1859,9 @@ const uploadPicture = () => import("../common/uploadPicture");
       closeTranslationDialog() {
         this.translationDialogVisible = false;
         this.shouldRenderTranslationEditor = false;
-        this.resetTranslationForm();
+        if (!this.isDraftMode) {
+          this.resetTranslationForm();
+        }
       },
 
       // 清空暂存的翻译数据
@@ -1044,8 +1958,12 @@ const uploadPicture = () => import("../common/uploadPicture");
       
       // 检查并设置翻译模式
       checkAndSetTranslationMode() {
+        const articleId = this.effectiveArticleId;
+        if (this.$common.isEmpty(articleId)) {
+          return;
+        }
         // 检查文章是否有可用的翻译语言
-        this.$http.get(this.$constant.baseURL + "/article/getAvailableLanguages", {id: this.id})
+        this.$http.get(this.$constant.baseURL + "/article/getAvailableLanguages", {id: articleId})
           .then((res) => {
             if (res.code === 200 && res.data && res.data.length > 0) {
               // 如果文章有翻译，自动开启跳过AI翻译
@@ -1095,19 +2013,23 @@ const uploadPicture = () => import("../common/uploadPicture");
       
       // 同步保存文章
       saveArticle(article, url) {
-        this.$confirm('确认保存文章？', '提示', {
+        const actionText = this.isRevisionDraft ? '发布修订' : this.isDraftMode ? '发布' : '保存';
+        const successText = this.isRevisionDraft ? '修订发布' : `文章${actionText}`;
+        this.$confirm(`确认${actionText}文章？`, '提示', {
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'success',
           center: true
         }).then(() => {
           // 显示加载中
-          this.startLoading("保存文章中...");
+          this.startLoading(`${actionText}文章中...`);
           const payload = this.buildArticleRequestPayload(article);
 
           // 发送保存请求
-          this.$http.post(this.$constant.baseURL + url, payload, true)
-            .then(res => {
+          const publishRequest = this.isDraftMode
+            ? this.publishDraftAndWait(article)
+            : this.$http.post(this.$constant.baseURL + url, payload, true)
+          publishRequest.then(async res => {
               this.stopLoading();
               
               // 记录完整响应用于调试
@@ -1116,7 +2038,7 @@ const uploadPicture = () => import("../common/uploadPicture");
               if (res.code === 200 || res.data === true) {
                 // 显示成功通知
                 this.$message({
-                  message: '文章保存成功，翻译将在后台自动完成',
+                  message: `${successText}成功，翻译将在后台自动完成`,
                   type: 'success',
                   duration: 3000,
                   offset: 20
@@ -1128,7 +2050,7 @@ const uploadPicture = () => import("../common/uploadPicture");
                 // SEO推送提示（现在由后端异步处理）
                 if (article.viewStatus && article.submitToSearchEngine) {
                   this.$message({
-                    message: '文章保存成功，搜索引擎推送将在后台自动处理',
+                    message: `${successText}成功，搜索引擎推送将在后台自动处理`,
                     type: 'info',
                     duration: 3000,
                     offset: 80
@@ -1153,8 +2075,8 @@ const uploadPicture = () => import("../common/uploadPicture");
             })
             .catch(error => {
               this.stopLoading();
-              console.error('保存文章网络请求失败:', error);
-              this.showError("保存失败", error.message || "网络请求错误");
+              console.error(`${actionText}文章网络请求失败:`, error);
+              this.showError(`${actionText}失败`, error.message || "网络请求错误");
             });
         }).catch(() => {
           // 用户取消保存，无需任何操作
@@ -1163,14 +2085,22 @@ const uploadPicture = () => import("../common/uploadPicture");
       
       // 保存文章并等待完成（使用同步接口）
       saveArticleAndWait(article) {
-        this.$confirm('文章将被保存，请等待所有处理完成后再进行其他操作。', '确认保存并等待', {
-          confirmButtonText: '保存',
+        const actionText = this.isRevisionDraft ? '发布修订' : this.isDraftMode ? '发布' : '保存';
+        const actionAndWaitText = this.isRevisionDraft ? '发布修订并等待' : this.isDraftMode ? '发布并等待' : '保存并等待';
+        const successText = this.isRevisionDraft ? '修订发布' : `文章${actionText}`;
+        const confirmMessage = this.isRevisionDraft
+          ? '修订草稿将发布并覆盖正式文章，请等待所有处理完成后再进行其他操作。'
+          : this.isDraftMode
+            ? '草稿将被发布为文章，请等待所有处理完成后再进行其他操作。'
+            : '文章将被保存，请等待所有处理完成后再进行其他操作。';
+        this.$confirm(confirmMessage, `确认${actionAndWaitText}`, {
+          confirmButtonText: actionText,
           cancelButtonText: '取消',
           type: 'info',
           center: true
         }).then(() => {
           // 显示加载状态
-          this.startLoading("正在保存文章...");
+          this.startLoading(`正在${actionText}文章...`);
           
           // 记录保存请求数据
           
@@ -1181,8 +2111,11 @@ const uploadPicture = () => import("../common/uploadPicture");
           const payload = this.buildArticleRequestPayload(article);
 
           // 发送同步保存请求
-          this.$http.post(this.$constant.baseURL + url, payload, true)
-            .then(res => {
+          const publishRequest = this.isDraftMode
+            ? this.publishDraftAndWait(article)
+            : this.$http.post(this.$constant.baseURL + url, payload, true);
+          publishRequest
+            .then(async res => {
               // 记录响应
               
               // 检查保存是否成功
@@ -1191,7 +2124,7 @@ const uploadPicture = () => import("../common/uploadPicture");
                 
                 // 显示成功通知
                 this.$message({
-                  message: '文章保存成功！所有任务已完成（翻译、摘要生成等）',
+                  message: `${successText}成功！所有任务已完成（翻译、摘要生成等）`,
                   type: 'success',
                   duration: 3000,
                   offset: 20
@@ -1203,6 +2136,10 @@ const uploadPicture = () => import("../common/uploadPicture");
                 // 清空暂存翻译数据
                 this.clearPendingTranslation();
 
+                if (this.isDraftMode) {
+                  this.destroyDraftSession();
+                }
+
                 // 延迟跳转到文章列表，给用户时间看到成功提示
                 setTimeout(() => {
                   this.$router.push({path: "/postList"});
@@ -1210,14 +2147,14 @@ const uploadPicture = () => import("../common/uploadPicture");
               } else {
                 this.stopLoading();
                 // 处理保存失败的情况
-                console.error('保存失败:', res);
-                this.handleSaveError(res);
+                console.error(`${actionText}失败:`, res);
+                this.handleSaveError(res, `${actionText}失败`);
               }
             })
             .catch(error => {
               this.stopLoading();
-              console.error('保存请求失败:', error);
-              this.showError("保存失败", error.message || "网络请求错误");
+              console.error(`${actionText}请求失败:`, error);
+              this.showError(`${actionText}失败`, error.message || "网络请求错误");
             });
         }).catch(() => {
           // 用户取消
@@ -1232,10 +2169,13 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       
       // 显示 loading
-      startLoading(text) {
+      startLoading(text = '加载中...') {
+        if (this.loading) {
+          this.loading.close();
+        }
         this.loading = this.$loading({
           lock: true,
-          text: text || '加载中...',
+          text,
           spinner: 'el-icon-loading',
           background: 'rgba(0, 0, 0, 0.7)'
         });
@@ -1250,28 +2190,47 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       
       // 显示错误消息
-      showError(title, message) {
+      showError(title, error) {
+        const errorMessage = typeof error === 'string'
+          ? error
+          : (error && error.message ? error.message : '未知错误');
+
+        console.error(`${title}:`, error);
+
         this.$message({
-          message: `${title}: ${message}`,
+          message: `${title}: ${errorMessage}`,
           type: 'error',
-          duration: 5000
+          duration: 5000,
+          offset: 50
         });
       },
       
       // 处理保存错误
-      handleSaveError(res) {
-        const errorMessage = res.message || res.msg || '保存失败';
-        this.$message({
-          message: errorMessage,
-          type: 'error',
-          duration: 5000
-        });
+      handleSaveError(res, title = '保存失败') {
+        console.error(`${title}，响应:`, res);
+
+        const errorMessage = res && (res.message || res.msg)
+          ? (res.message || res.msg)
+          : typeof (res && res.data) === 'string'
+            ? res.data
+            : res && res.data && res.data.message
+              ? res.data.message
+              : '服务器返回未知错误';
+
+        this.showError(title, errorMessage);
       },
       
       // 异步保存文章
       saveArticleAsync(article) {
-        this.$confirm('文章将在后台保存，您可以立即返回文章列表，保存状态会显示在右侧通知中。', '确认异步保存', {
-          confirmButtonText: '保存并离开',
+        const actionText = this.isRevisionDraft ? '发布修订' : this.isDraftMode ? '发布' : '保存';
+        const actionAndLeaveText = this.isRevisionDraft ? '发布修订并离开' : this.isDraftMode ? '发布并离开' : '保存并离开';
+        const confirmMessage = this.isRevisionDraft
+          ? '修订草稿将在后台发布并更新正式文章，您可以立即返回文章列表，发布状态会显示在右侧通知中。'
+          : this.isDraftMode
+            ? '草稿将在后台发布为文章，您可以立即返回文章列表，发布状态会显示在右侧通知中。'
+            : '文章将在后台保存，您可以立即返回文章列表，保存状态会显示在右侧通知中。';
+        this.$confirm(confirmMessage, `确认异步${actionText}`, {
+          confirmButtonText: actionAndLeaveText,
           cancelButtonText: '取消',
           type: 'info',
           center: true
@@ -1287,8 +2246,10 @@ const uploadPicture = () => import("../common/uploadPicture");
           const payload = this.buildArticleRequestPayload(article);
 
           // 发送异步保存请求
-          this.$http.post(this.$constant.baseURL + url, payload, true)
-            .then(res => {
+          const publishRequest = this.isDraftMode
+            ? this.publishDraftAsyncRequest(article)
+            : this.$http.post(this.$constant.baseURL + url, payload, true)
+          publishRequest.then(async res => {
               this.asyncSaveLoading = false;
               
               // 记录响应
@@ -1301,24 +2262,28 @@ const uploadPicture = () => import("../common/uploadPicture");
                 this.$root.$emit('articleSaved');
                 
                 // 添加通知（会自动启动轮询）
-                this.$notify.loading('保存文章', '正在保存文章，请稍候...', this.currentTaskId);
+                this.$notify.loading(`${actionText}文章`, `正在${actionText}文章，请稍候...`, this.currentTaskId);
 
                 // 清空暂存翻译数据
                 this.clearPendingTranslation();
+
+                if (this.isDraftMode) {
+                  this.destroyDraftSession();
+                }
 
                 // 延迟跳转，确保全局通知组件已接管轮询
                 setTimeout(() => {
                   this.$router.push({path: "/postList"});
                 }, 1000);
               } else {
-                console.error('异步保存失败:', res);
-                this.handleSaveError(res);
+                console.error(`异步${actionText}失败:`, res);
+                this.handleSaveError(res, `${actionText}失败`);
               }
             })
             .catch(error => {
               this.asyncSaveLoading = false;
-              console.error('异步保存请求失败:', error);
-              this.showError("启动异步保存失败", error.message || "网络请求错误");
+              console.error(`异步${actionText}请求失败:`, error);
+              this.showError(`启动异步${actionText}失败`, error.message || "网络请求错误");
             });
         }).catch(() => {
           // 用户取消
@@ -1626,47 +2591,11 @@ const uploadPicture = () => import("../common/uploadPicture");
         });
       },
       
-      // 辅助方法：显示加载中
-      startLoading(text = "加载中...") {
-        if (this.loading) {
-          this.loading.close();
-        }
-        this.loading = this.$loading({
-          lock: true,
-          text: text,
-          spinner: 'el-icon-loading',
-          background: 'rgba(0, 0, 0, 0.7)'
-        });
-      },
-      
-      // 辅助方法：停止加载
-      stopLoading() {
-        if (this.loading) {
-          this.loading.close();
-          this.loading = null;
-        }
-      },
-      
       // 辅助方法：显示成功通知
       showSuccess(title, message) {
         this.$message({
           message: message,
           type: 'success',
-          offset: 50
-        });
-      },
-      
-      // 显示错误信息
-      showError(title, error) {
-        let errorMessage = typeof error === 'string' 
-          ? error 
-          : (error && error.message ? error.message : '未知错误');
-        
-        console.error(title + ':', errorMessage);
-        
-        this.$message({
-          message: errorMessage,
-          type: 'error',
           offset: 50
         });
       },
@@ -1753,35 +2682,191 @@ const uploadPicture = () => import("../common/uploadPicture");
         };
       },
       
-      // 获取当前选中分类的名称
-      getCurrentSortName() {
-        if (!this.article.sortId) return '';
-        const sort = this.sorts.find(s => s.id === this.article.sortId);
-        return sort ? sort.sortName : '';
-      },
       
-      // 统一的保存错误处理
-      handleSaveError(res) {
-        // 详细记录错误
-        console.error('保存文章失败，响应:', JSON.stringify(res, null, 2));
-        
-        // 提取错误消息
-        let errorMsg = '服务器返回未知错误';
-        if (res.message) {
-          errorMsg = res.message;
-        } else if (typeof res.data === 'string') {
-          errorMsg = res.data;
-        } else if (res.data && res.data.message) {
-          errorMsg = res.data.message;
-        }
-        
-        this.showError("保存失败", errorMsg);
-      }
     }
   }
 </script>
 
 <style scoped>
+.section-header {
+  display: flex;
+  align-items: center;
+  margin: 12px 0 18px;
+}
+
+.draft-inline-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  max-width: 100%;
+}
+
+:deep(.draft-inline-tag.el-tag) {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: auto;
+  min-height: 40px;
+  line-height: 1.5;
+  overflow: visible;
+  white-space: normal;
+}
+
+.draft-inline-spacer {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+
+@media (max-width: 768px) {
+  :deep(.draft-inline-tag.el-tag) {
+    min-height: 36px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .draft-inline-tag {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.6;
+  }
+
+  .draft-inline-spacer {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+    height: 0;
+  }
+
+  .draft-inline-divider:first-of-type {
+    display: none;
+  }
+
+  .draft-inline-chip,
+  .draft-inline-meta,
+  :deep(.draft-collaborator-inline-button.el-button--mini.is-plain) {
+    margin-left: 0;
+  }
+
+  .draft-inline-meta {
+    max-width: 100%;
+    word-break: break-all;
+  }
+}
+
+@media (max-width: 480px) {
+  :deep(.draft-inline-tag.el-tag) {
+    min-height: 32px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+}
+
+.draft-inline-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.draft-inline-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--black);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.draft-inline-chip[data-type='success'] {
+  background: rgba(103, 194, 58, 0.18);
+}
+
+.draft-inline-chip[data-type='warning'] {
+  background: rgba(230, 162, 60, 0.2);
+}
+
+.draft-inline-chip[data-type='danger'] {
+  background: rgba(245, 108, 108, 0.18);
+}
+
+.draft-inline-chip[data-type='info'] {
+  background: rgba(144, 147, 153, 0.18);
+}
+
+.draft-inline-meta {
+  color: rgba(0, 0, 0, 0.72);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.draft-collaborator-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.draft-collaborator-title {
+  font-size: 12px;
+  color: #606266;
+}
+
+.draft-online-users {
+  font-size: 12px;
+  color: #67c23a;
+  line-height: 1.4;
+}
+
+.draft-editing-users {
+  font-size: 12px;
+  color: #e6a23c;
+  line-height: 1.4;
+}
+
+.draft-invite-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.draft-invite-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+
+.draft-collaborator-select {
+  width: 100%;
+}
+
+.draft-collaborator-button {
+  padding: 5px 10px;
+}
+
+:deep(.draft-collaborator-inline-button.el-button--mini.is-plain) {
+  height: 22px;
+  padding: 0 8px;
+  border-color: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--black);
+}
+
+:deep(.draft-collaborator-inline-button.el-button--mini.is-plain:hover),
+:deep(.draft-collaborator-inline-button.el-button--mini.is-plain:focus) {
+  border-color: rgba(0, 0, 0, 0.28);
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--black);
+}
+
+:deep(.draft-collaborator-inline-button.el-button--mini.is-plain:active) {
+  border-color: rgba(0, 0, 0, 0.32);
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--black);
+}
+
 .tip-text-warning {
   color: #e6a23c;
 }

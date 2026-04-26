@@ -1,5 +1,5 @@
 <template>
-  <div class="article-editor">
+  <div class="article-editor" @keydown.capture="handleKeydownCapture">
     <component
       v-if="currentComponent"
       :is="currentComponent"
@@ -227,6 +227,22 @@ export default {
     },
     forwardSave() {
       this.$emit('save')
+    },
+    handleKeydownCapture(event) {
+      const key = String(event.key || '').toLowerCase()
+      if (!(event.ctrlKey || event.metaKey)) {
+        return
+      }
+      if (key !== 'z' && key !== 'y') {
+        return
+      }
+      this.$emit('shortcut', {
+        key,
+        shiftKey: event.shiftKey,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        originalEvent: event,
+      })
     },
     /**
      * 切换编辑器类型

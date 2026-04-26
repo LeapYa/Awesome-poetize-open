@@ -110,6 +110,8 @@
           class="editor-textarea"
           :value="internalContent"
           :placeholder="placeholder"
+          @focus="$emit('focus')"
+          @blur="$emit('blur')"
           @input="handleInput"
           @compositionstart="handleCompositionStart"
           @compositionend="handleCompositionEnd"

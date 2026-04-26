@@ -40,7 +40,6 @@ public class SecurityFilter extends OncePerRequestFilter {
     private static final Set<String> INTERNAL_SERVICES = Set.of(
             "poetize-python",
             "poetize-java",
-            "poetize-prerender",
             "poetize-nginx");
 
     // 明确的恶意扫描路径黑名单

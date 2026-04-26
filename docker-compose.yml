@@ -158,6 +158,7 @@ services:
         max-file: "3"
     volumes:
       - poetize_uploads:/app/static
+      - poetize_web_dist:/app/web-dist
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
@@ -175,8 +176,8 @@ services:
       - SERVER_PORT=8081
       # AES加密密钥，需与前端一致
       - POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
-      - PRERENDER_URL=http://poetize-prerender:4000/render
-      - PRERENDER_PAGES_URL=http://poetize-prerender:4000/render/pages
+      - PRERENDER_TEMPLATE_PATH=/app/web-dist/index.html
+      - PRERENDER_OUTPUT_ROOT=/app/web-dist/prerender
       - SITE_URL=${SITE_URL:-http://localhost}
       # 容器网络网段，用于判断请求是否为内网服务的请求
       - DOCKER_SUBNET=${DOCKER_SUBNET:-172.28.147.0/28}
@@ -287,46 +288,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-
-  prerender-worker:
-    build:
-      context: ./docker/prerender
-      dockerfile: Dockerfile
-    container_name: poetize-prerender
-    mem_limit: ${PRERENDER_MEMORY_LIMIT:-256m}
-    mem_reservation: ${PRERENDER_MEMORY_RESERVATION:-128m}
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
-    environment:
-      - TZ=Asia/Shanghai
-      - PORT=4000
-      - LOG_LEVEL=info
-      - PRERENDER_BASE_URL=http://nginx
-      - PRERENDER_OUTPUT=/app/dist/prerender
-      - JAVA_BACKEND_URL=http://poetize-java:8081
-      - SITE_URL=${SITE_URL:-http://localhost}
-      - NODE_ENV=production
-    volumes:
-      # 从 volume 读取前端构建产物，写入预渲染结果
-      - poetize_web_dist:/app/dist
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    networks:
-      poetize-network:
-        ipv4_address: ${IP_PRERENDER:-172.28.147.9}
-    depends_on:
-      nginx:
-        condition: service_started
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
 
 networks:
   poetize-network:

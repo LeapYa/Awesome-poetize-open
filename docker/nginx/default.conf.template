@@ -28,16 +28,6 @@ map $request_uri $article_id {
     default "";
 }
 
-map $request_uri $category_id {
-    ~^/category/([0-9]+)$ $1;
-    default "";
-}
-
-map $request_uri $tag_id {
-    ~^/tag/([0-9]+)$ $1;
-    default "";
-}
-
 # 解析sort页面的参数 - 从URL路径中提取分类ID
 map $uri $sort_id {
     ~^/sort/([0-9]+) $1;
@@ -56,7 +46,7 @@ map $request_uri $is_im_page {
     default 0;
 }
 
-# 添加map解析 lang 参数 - 支持完整的8种语言
+# 添加map解析 lang 参数 - 支持完整的14种语言
 map $arg_lang $lang_suffix {
     default "";
     zh "";           # 中文（默认）
@@ -68,6 +58,11 @@ map $arg_lang $lang_suffix {
     de "-de";        # 德文
     es "-es";        # 西班牙文
     ru "-ru";        # 俄文
+    pt "-pt";        # 葡萄牙文
+    it "-it";        # 意大利文
+    ar "-ar";        # 阿拉伯文
+    th "-th";        # 泰文
+    vi "-vi";        # 越南文
 }
 
 # 添加语言验证map，确保只处理支持的语言
@@ -82,6 +77,11 @@ map $arg_lang $is_supported_lang {
     de 1;
     es 1;
     ru 1;
+    pt 1;
+    it 1;
+    ar 1;
+    th 1;
+    vi 1;
 }
 
 # 智能404处理：识别API请求类型
@@ -389,26 +389,6 @@ server {
         try_files /prerender/article/$1/index$lang_suffix.html /prerender/article/$1/index.html @spa_article;
     }
     location @spa_article {
-        root /usr/share/nginx/html/poetize;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # 分类页面静态预渲染
-    location ~ ^/category/([0-9]+)(\?.*)?$ {
-        root /usr/share/nginx/html/poetize;
-        try_files /prerender/category/$1/index$lang_suffix.html /prerender/category/$1/index.html @spa_category;
-    }
-    location @spa_category {
-        root /usr/share/nginx/html/poetize;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # 标签页面静态预渲染
-    location ~ ^/tag/([0-9]+)(\?.*)?$ {
-        root /usr/share/nginx/html/poetize;
-        try_files /prerender/tag/$1/index$lang_suffix.html /prerender/tag/$1/index.html @spa_tag;
-    }
-    location @spa_tag {
         root /usr/share/nginx/html/poetize;
         try_files $uri $uri/ /index.html;
     }

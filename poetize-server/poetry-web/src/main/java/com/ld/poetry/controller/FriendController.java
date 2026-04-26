@@ -7,8 +7,8 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
 import com.ld.poetry.entity.ResourcePath;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.utils.PoetryUtil;
-import com.ld.poetry.utils.PrerenderClient;
 import com.ld.poetry.utils.XssFilterUtil;
 import com.ld.poetry.vo.ResourcePathVO;
 import org.springframework.beans.BeanUtils;
@@ -38,7 +38,7 @@ public class FriendController {
     private ResourcePathMapper resourcePathMapper;
 
     @Autowired
-    private PrerenderClient prerenderClient;
+    private PrerenderFacade prerenderFacade;
 
     /**
      * 保存友链
@@ -71,7 +71,7 @@ public class FriendController {
         
         // 重新渲染友人帐页面（无论审核状态如何都渲染，因为页面会显示申请表单）
         try {
-            prerenderClient.renderFriendsPage();
+            prerenderFacade.refreshFriendsPage();
         } catch (Exception e) {
             // 预渲染失败不影响主流程
         }

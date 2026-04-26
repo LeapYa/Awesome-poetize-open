@@ -1716,16 +1716,6 @@ export default {
           this.$message.error('保存AI API配置失败: ' + (error.message || '网络连接问题'));
         });
     },
-    handleAiCommand(command) {
-      if (command === 'analyze') {
-        this.aiAnalyze();
-      } else if (command === 'config') {
-        this.showApiConfigDialog = true;
-      } else if (command === 'help') {
-        this.showHelpDialog = true;
-      }
-    },
-    
     // 关闭AI菜单
     closeAiMenu() {
       this.showAiMenu = false;

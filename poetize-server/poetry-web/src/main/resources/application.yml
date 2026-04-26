@@ -8,28 +8,27 @@ server:
     max-http-form-post-size: 120MB
     connection-timeout: 60000
 
+logback:
+  rootDir: ${LOGBACK_ROOT_DIR:${user.home}/.poetize/logs}
+
 # IM WebSocket 功能开关
 im:
   enable: true
 
 # 预渲染配置
 prerender:
+  template-path: ${PRERENDER_TEMPLATE_PATH:/app/web-dist/index.html}
+  output-root: ${PRERENDER_OUTPUT_ROOT:/app/web-dist/prerender}
   startup:
     # 是否在应用启动时自动执行预渲染
     enabled: true
     # 启动后延迟多少秒开始预渲染（确保应用完全启动）
     delay: 10
-    # 健康检查配置
-    health-check:
-      # 最大重试次数
-      max-retries: 5
-      # 基础延迟时间（秒），第1次失败等待60秒，第2次等待180秒，第3次等待300秒...
-      base-delay: 60
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
-#  configuration:
-#    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
     db-config:
       logic-delete-value: 1
@@ -103,11 +102,11 @@ spring:
             # enable: true
 
   datasource:
-    username: root
-    password: 123456
-    url: jdbc:mariadb://localhost:3306/poetize?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/poetize?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai}
     type: com.alibaba.druid.pool.DruidDataSource
-    driver-class-name: org.mariadb.jdbc.Driver
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.mariadb.jdbc.Driver}
     
     # Druid 连接池配置
     druid:

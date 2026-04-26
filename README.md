@@ -44,7 +44,7 @@
 - [项目简介](#-项目简介)
 - [快速开始](#-快速开始)
 - [部署文档](#-部署文档)
-- [OpenClaw 博客自动化（beta）](#-openclaw-博客自动化beta)
+- [OpenClaw 博客自动化](#-openclaw-博客自动化)
 - [贡献与许可](#-贡献与许可)
 - [开发指南](#-开发指南)
 - [排障指南](#-排障指南)
@@ -178,6 +178,8 @@ bash <(curl -sL install.leapya.com)
 
 ### 2.运行一键安装脚本
 
+先通过 SSH 登录到你的服务器，在服务器终端（Shell/命令行，也就是黑框框）里运行下面的命令。
+
 以下方式任选其一即可，如果不想让安装脚本直接操作宿主机环境，支持在挂载了 Docker Socket 的容器内运行，详见[容器内隔离部署](#在-docker-容器内部署防污染-vps-环境)
 
 ```bash
@@ -195,6 +197,15 @@ git clone https://github.com/LeapYa/awesome-poetize-open.git && cd awesome-poeti
 ```
 
 > 部署脚本已经做好了错误处理和重试机制，如果仍然部署失败，请查看[常见问题](#6常见问题)
+
+#### 其他部署方式（beta）
+
+| 部署方式 | 适用场景 | 文档 |
+|---------|---------|------|
+| Docker 一键脚本 | 有自己的服务器，最省心（上面的方式）| 本页 |
+| 裸机部署（不用 Docker） | 有服务器但不想用 Docker，手动安装 | [裸机部署教程](docs/裸机部署教程.md) |
+| 宝塔面板部署（不用 Docker） | 已安装宝塔面板，使用 Web 界面部署 | [宝塔部署教程](docs/宝塔部署教程.md) |
+| 免费部署（零成本） | 无服务器，利用 Render + Vercel 等免费平台 | [免费部署教程](docs/免费部署教程.md) |
 
 ### 3.访问方式
 
@@ -411,7 +422,7 @@ bash <(curl -sL install.leapya.com)
 | 容器＋--privileged（DinD） | ⚠️ 可尝试 | 不如挂 Socket 稳定，有安全风险 |
 | 普通容器（无 Socket，无特权） | ❌ 不可行 | Docker 守护进程无法启动 |
 
-## 🤖 OpenClaw 博客自动化（beta）
+## 🤖 OpenClaw 博客自动化
 
 项目在 `awesome-poetize-open v4.0.0` 中引入了面向 OpenClaw 的博客自动化能力。你可以通过仓库内置的 skill，让 OpenClaw 直接调用站点 API 来完成文章发布、异步更新、隐藏文章、分类标签安全维护、主题切换、SEO状态查询，以及部分受控 SEO 运维动作。
 

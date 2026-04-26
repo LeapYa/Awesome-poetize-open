@@ -42,7 +42,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import com.ld.poetry.utils.PrerenderClient;
 import com.ld.poetry.utils.SmartSummaryGenerator;
 import com.ld.poetry.service.SummaryService;
 import java.util.concurrent.ConcurrentHashMap;
@@ -86,9 +85,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Autowired
     private LabelMapper labelMapper;
-
-    @Autowired
-    private PrerenderClient prerenderClient;
 
     @Autowired
     private TranslationService translationService;
@@ -214,8 +210,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 if (eventPublisher == null) {
                     log.error("eventPublisher为空，无法发布事件");
                 } else {
-                    eventPublisher.publishEvent(new ArticleSavedEvent(savedArticleId, articleVO.getSortId(), null,
-                            articleVO.getViewStatus(), "CREATE",
+                    eventPublisher.publishEvent(new ArticleSavedEvent(savedArticleId, articleVO.getSortId(), articleVO.getLabelId(),
+                            null, null, null, articleVO.getViewStatus(), "CREATE",
                             articleVO.getSubmitToSearchEngine()));
                     log.info("已发布文章保存事件，文章ID: {}, 可见: {}", savedArticleId, articleVO.getViewStatus());
                 }
@@ -255,19 +251,28 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Override
     public PoetryResult<String> saveArticleAsync(ArticleVO articleVO, boolean skipAiTranslation,
             Map<String, String> pendingTranslation) {
+        return saveArticleAsync(articleVO, skipAiTranslation, pendingTranslation, null, null, null, null);
+    }
+
+    @Override
+    public PoetryResult<String> saveArticleAsync(ArticleVO articleVO, boolean skipAiTranslation,
+            Map<String, String> pendingTranslation, Integer actorUserId, String actorUsername,
+            Consumer<Integer> successCallback, Consumer<Integer> failureCallback) {
         // 基础验证
         if (articleVO.getViewStatus() != null && !articleVO.getViewStatus()
                 && !StringUtils.hasText(articleVO.getPassword())) {
             return PoetryResult.fail("请设置文章密码！");
         }
 
-        Integer userId = resolveAsyncActorUserId(articleVO);
+        Integer userId = actorUserId != null ? actorUserId : resolveAsyncActorUserId(articleVO);
         if (userId == null) {
             return PoetryResult.fail("无法确定文章作者，请重新登录后再试");
         }
 
         // 在主线程中获取用户信息，避免异步线程中无法访问RequestContext
-        String currentUsername = resolveAsyncActorUsername(articleVO);
+        String currentUsername = StringUtils.hasText(actorUsername)
+                ? actorUsername
+                : resolveAsyncActorUsername(articleVO);
         final String finalUsername = currentUsername;
         String newTaskId = generateAsyncTaskId("article_save");
         String taskId = registerOrReuseAsyncTask(
@@ -288,6 +293,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         // 使用虚拟线程异步执行保存
         Thread.ofVirtual().name("article-save-" + taskId).start(() -> {
+            Integer savedArticleId = null;
             try {
 
                 // 设置用户ID（虚拟线程中无法访问RequestContext）
@@ -299,10 +305,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 updateTranslationStage(taskId, "db_saved", "pending", "正在保存到数据库...", 0, false);
 
                 // ========== 步骤1：使用短事务方法保存文章 ==========
-                Integer savedArticleId = saveArticleInTransaction(articleVO);
+                savedArticleId = saveArticleInTransaction(articleVO);
                 if (savedArticleId == null) {
                     log.error("数据库保存失败，任务ID: {}", taskId);
                     updateSaveStatus(taskId, "failed", "数据库保存失败");
+                    notifyAsyncSaveFailure(failureCallback, null);
                     return;
                 }
                 log.info("文章保存成功，任务ID: {}, 文章ID: {}，短事务已提交", taskId, savedArticleId);
@@ -357,8 +364,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     if (eventPublisher == null) {
                         log.error("eventPublisher为空，无法发布事件，任务ID: {}", taskId);
                     } else {
-                        eventPublisher.publishEvent(new ArticleSavedEvent(savedArticleId, articleVO.getSortId(), taskId,
-                                articleVO.getViewStatus(), "CREATE",
+                        eventPublisher.publishEvent(new ArticleSavedEvent(savedArticleId, articleVO.getSortId(), articleVO.getLabelId(),
+                                null, null, taskId, articleVO.getViewStatus(), "CREATE",
                                 articleVO.getSubmitToSearchEngine()));
                         log.info("已发布文章保存事件，任务ID: {}, 文章ID: {}, 可见: {}", taskId, savedArticleId,
                                 articleVO.getViewStatus());
@@ -386,6 +393,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         initialStatus.getSeoPushStatus(),
                         initialStatus.getSeoPushMessage()));
                 log.info("异步文章保存流程全部完成，任务ID: {}, 文章ID: {}", taskId, savedArticleId);
+                notifyAsyncSaveSuccess(successCallback, savedArticleId);
 
             } catch (Exception e) {
                 log.error("文章保存失败，任务ID: {}", taskId, e);
@@ -395,6 +403,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         "status", "failed",
                         "message", "保存失败：" + e.getMessage(),
                         "retryable", false));
+                notifyAsyncSaveFailure(failureCallback, savedArticleId);
             } finally {
                 releaseAsyncTaskGuard(taskId);
             }
@@ -1407,7 +1416,17 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Override
     public PoetryResult updateArticle(ArticleVO articleVO, boolean skipAiTranslation,
             Map<String, String> pendingTranslation) {
+        return updateArticle(articleVO, skipAiTranslation, pendingTranslation, null);
+    }
+
+    @Override
+    public PoetryResult updateArticle(ArticleVO articleVO, boolean skipAiTranslation,
+            Map<String, String> pendingTranslation, Integer actorUserId) {
         log.info("开始更新文章，ID: {}", articleVO.getId());
+
+        if (articleVO.getId() == null) {
+            return PoetryResult.fail("文章ID不能为空");
+        }
 
         // 验证数据合法性
         if (StringUtils.hasText(articleVO.getArticleTitle()) && articleVO.getArticleTitle().trim().isEmpty()) {
@@ -1420,7 +1439,16 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return PoetryResult.fail("请设置文章密码！");
         }
 
-        Integer userId = PoetryUtil.getUserId();
+        Integer userId = actorUserId != null ? actorUserId : PoetryUtil.getUserId();
+        if (userId == null) {
+            return PoetryResult.fail("无法确定文章作者，请重新登录后再试");
+        }
+        Article existingArticle = getById(articleVO.getId());
+        Integer previousSortId = existingArticle == null ? null : existingArticle.getSortId();
+        Integer previousLabelId = existingArticle == null ? null : existingArticle.getLabelId();
+        String updateBy = resolveAsyncActorUsername(articleVO);
+        articleVO.setUserId(userId);
+        articleVO.setUpdateBy(updateBy);
         final Integer updatedArticleId = articleVO.getId();
         final String updatedContent = articleVO.getArticleContent();
 
@@ -1431,7 +1459,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 .set(Article::getLabelId, articleVO.getLabelId())
                 .set(Article::getSortId, articleVO.getSortId())
                 .set(Article::getArticleTitle, articleVO.getArticleTitle())
-                .set(Article::getUpdateBy, PoetryUtil.getUsername())
+                .set(Article::getUpdateBy, updateBy)
                 .set(Article::getUpdateTime, LocalDateTime.now())
                 .set(Article::getVideoUrl,
                         StringUtils.hasText(articleVO.getVideoUrl()) ? articleVO.getVideoUrl() : null)
@@ -1517,8 +1545,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
             // ========== 步骤5：发布文章更新事件 ==========
             try {
-                eventPublisher.publishEvent(new ArticleSavedEvent(updatedArticleId, articleVO.getSortId(), null,
-                        articleVO.getViewStatus(), "UPDATE",
+                eventPublisher.publishEvent(new ArticleSavedEvent(updatedArticleId, articleVO.getSortId(), articleVO.getLabelId(),
+                        previousSortId, previousLabelId, null, articleVO.getViewStatus(), "UPDATE",
                         articleVO.getSubmitToSearchEngine()));
             } catch (Exception e) {
                 log.error("发布文章更新事件失败: {}", e.getMessage(), e);
@@ -2453,6 +2481,13 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Override
     public PoetryResult<String> updateArticleAsync(ArticleVO articleVO, boolean skipAiTranslation,
             Map<String, String> pendingTranslation) {
+        return updateArticleAsync(articleVO, skipAiTranslation, pendingTranslation, null, null, null, null);
+    }
+
+    @Override
+    public PoetryResult<String> updateArticleAsync(ArticleVO articleVO, boolean skipAiTranslation,
+            Map<String, String> pendingTranslation, Integer actorUserId, String actorUsername,
+            Consumer<Integer> successCallback, Consumer<Integer> failureCallback) {
         // 基础验证
         if (articleVO.getId() == null) {
             return PoetryResult.fail("文章ID不能为空！");
@@ -2462,13 +2497,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return PoetryResult.fail("请设置文章密码！");
         }
 
-        Integer userId = resolveAsyncActorUserId(articleVO);
+        Integer userId = actorUserId != null ? actorUserId : resolveAsyncActorUserId(articleVO);
         if (userId == null) {
             return PoetryResult.fail("无法确定文章作者，请重新登录后再试");
         }
+        Article existingArticle = getById(articleVO.getId());
+        Integer previousSortId = existingArticle == null ? null : existingArticle.getSortId();
+        Integer previousLabelId = existingArticle == null ? null : existingArticle.getLabelId();
 
         // 在主线程中获取用户信息，避免异步线程中无法访问RequestContext
-        String currentUsername = resolveAsyncActorUsername(articleVO);
+        String currentUsername = StringUtils.hasText(actorUsername)
+                ? actorUsername
+                : resolveAsyncActorUsername(articleVO);
         final String finalUsername = currentUsername;
         String newTaskId = generateAsyncTaskId("article_update");
         String taskId = registerOrReuseAsyncTask(
@@ -2489,6 +2529,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         // 使用虚拟线程异步执行更新
         Thread.ofVirtual().name("article-update-" + taskId).start(() -> {
+            Integer updatedArticleId = null;
             try {
                 articleVO.setUserId(userId);
                 articleVO.setUpdateBy(finalUsername);
@@ -2540,8 +2581,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 if (!updateResult) {
                     log.error("数据库更新失败，任务ID: {}", taskId);
                     updateSaveStatus(taskId, "failed", "数据库更新失败");
+                    notifyAsyncSaveFailure(failureCallback, null);
                     return;
                 }
+                updatedArticleId = articleVO.getId();
                 log.info("文章更新成功，任务ID: {}, 文章ID: {}，短事务已提交", taskId, articleVO.getId());
                 String articleReadyMessage = "文章已更新";
                 updateSaveStatus(taskId, "processing", articleReadyMessage + "，正在准备后续任务...", articleVO.getId());
@@ -2578,8 +2621,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
                 // ========== 步骤5：发布文章更新事件 ==========
                 try {
-                    eventPublisher.publishEvent(new ArticleSavedEvent(articleVO.getId(), articleVO.getSortId(), taskId,
-                            articleVO.getViewStatus(), "UPDATE",
+                    eventPublisher.publishEvent(new ArticleSavedEvent(articleVO.getId(), articleVO.getSortId(), articleVO.getLabelId(),
+                            previousSortId, previousLabelId, taskId, articleVO.getViewStatus(), "UPDATE",
                             articleVO.getSubmitToSearchEngine()));
                 } catch (Exception e) {
                     log.error("发布文章更新事件失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
@@ -2604,6 +2647,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         initialStatus.getSeoPushStatus(),
                         initialStatus.getSeoPushMessage()));
                 log.info("异步文章更新流程全部完成，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
+                notifyAsyncSaveSuccess(successCallback, articleVO.getId());
 
             } catch (Exception e) {
                 log.error("文章更新失败，任务ID: {}, 文章ID: {}, 错误: {}", taskId, articleVO.getId(), e.getMessage(), e);
@@ -2613,6 +2657,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         "status", "failed",
                         "message", "更新失败：" + e.getMessage(),
                         "retryable", false));
+                notifyAsyncSaveFailure(failureCallback, updatedArticleId);
             } finally {
                 releaseAsyncTaskGuard(taskId);
             }
@@ -2627,6 +2672,25 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return userId;
         }
         return articleVO != null ? articleVO.getUserId() : null;
+    }
+
+    private void notifyAsyncSaveSuccess(Consumer<Integer> callback, Integer articleId) {
+        notifyAsyncSaveCallback(callback, articleId, "成功");
+    }
+
+    private void notifyAsyncSaveFailure(Consumer<Integer> callback, Integer articleId) {
+        notifyAsyncSaveCallback(callback, articleId, "失败");
+    }
+
+    private void notifyAsyncSaveCallback(Consumer<Integer> callback, Integer articleId, String statusText) {
+        if (callback == null) {
+            return;
+        }
+        try {
+            callback.accept(articleId);
+        } catch (Exception e) {
+            log.error("异步文章保存{}回调执行失败，文章ID: {}", statusText, articleId, e);
+        }
     }
 
     private String resolveAsyncActorUsername(ArticleVO articleVO) {

@@ -40,7 +40,9 @@
     "turndown-plugin-gfm": "^1.0.2",
     "vditor": "^3.11.2",
     "vue": "^2.7.16",
-    "vue-router": "^3.6.5"
+    "vue-router": "^3.6.5",
+    "y-indexeddb": "^9.0.12",
+    "yjs": "^13.6.27"
   },
   "devDependencies": {
     "@babel/eslint-parser": "^7.22.20",

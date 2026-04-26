@@ -29,6 +29,7 @@
       <el-button type="primary" icon="el-icon-search" @click="searchArticles()">搜索</el-button>
       <el-button type="danger" @click="clearSearch()">清除参数</el-button>
       <el-button type="primary" @click="$router.push({path: '/postEdit'})">新增文章</el-button>
+      <el-button type="info" @click="$router.push({path: '/draftList'})">草稿箱</el-button>
       <el-button type="success" icon="el-icon-upload2" @click="openImportDialog">导入文章</el-button>
       <el-button type="warning" icon="el-icon-download" @click="exportAllArticles" :loading="exportAllLoading">导出所有文章</el-button>
     </div>

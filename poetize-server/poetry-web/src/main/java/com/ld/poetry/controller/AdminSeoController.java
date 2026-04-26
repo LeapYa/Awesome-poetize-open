@@ -10,7 +10,7 @@ import com.ld.poetry.service.SearchEnginePushService;
 import com.ld.poetry.service.SitemapService;
 import com.ld.poetry.service.ai.rag.RagSyncService;
 import com.ld.poetry.service.CacheService;
-import com.ld.poetry.utils.PrerenderClient;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,16 +68,13 @@ public class AdminSeoController {
     private CacheService cacheService;
 
     @Autowired
-    private PrerenderClient prerenderClient;
-
-    @Autowired
     private RestTemplate restTemplate;
 
     @Autowired
     private com.ld.poetry.service.RobotsService robotsService;
 
     @Autowired
-    private com.ld.poetry.config.PrerenderStartupRunner prerenderStartupRunner;
+    private PrerenderFacade prerenderFacade;
 
     @Autowired
     private FileSecurityValidator fileSecurityValidator;
@@ -160,7 +157,7 @@ public class AdminSeoController {
                         try {
                             // 等待2秒确保缓存完全生效并可被预渲染服务读取
                             Thread.sleep(2000);
-                            prerenderStartupRunner.executeFullPrerender();
+                            prerenderFacade.rebuildSite();
                         } catch (Exception e) {
                             log.warn("异步预渲染失败", e);
                         }

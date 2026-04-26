@@ -27,6 +27,9 @@ export class MouseHandler {
     // 自动滚动
     this.autoScrollTimer = null;
     this.autoScrollSpeed = 0;
+
+    this.handleGlobalMouseMove = this.handleGlobalMouseMove.bind(this);
+    this.handleGlobalMouseUp = this.handleGlobalMouseUp.bind(this);
   }
 
   /**
@@ -122,7 +125,7 @@ export class MouseHandler {
    * 处理全局鼠标移动（用于拖出容器时的选择）
    * @param {MouseEvent} e 
    */
-  handleGlobalMouseMove = (e) => {
+  handleGlobalMouseMove(e) {
     if (!this.isMouseDown) return;
     
     this.isDragging = true;
@@ -155,7 +158,7 @@ export class MouseHandler {
    * 处理全局鼠标释放
    * @param {MouseEvent} e 
    */
-  handleGlobalMouseUp = (e) => {
+  handleGlobalMouseUp(e) {
     this.isMouseDown = false;
     this.isDragging = false;
     this.stopAutoScroll();

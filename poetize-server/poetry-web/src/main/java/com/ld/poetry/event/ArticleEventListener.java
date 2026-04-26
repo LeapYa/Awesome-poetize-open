@@ -1,11 +1,9 @@
 package com.ld.poetry.event;
 
 import com.ld.poetry.service.SitemapService;
-import com.ld.poetry.service.TranslationService;
-import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.SeoService;
 import com.ld.poetry.service.ArticleService;
-import com.ld.poetry.utils.PrerenderClient;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
@@ -13,12 +11,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import java.util.*;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 文章事件监听器
@@ -27,18 +25,14 @@ import java.util.concurrent.StructuredTaskScope;
 @Component
 @Slf4j
 public class ArticleEventListener {
+
+    private static final long DEDUP_WINDOW_MILLIS = 200L;
     
     @Autowired
-    private PrerenderClient prerenderClient;
+    private PrerenderFacade prerenderFacade;
     
     @Autowired
     private SitemapService sitemapService;
-    
-    @Autowired
-    private TranslationService translationService;
-    
-    @Autowired
-    private SysAiConfigService sysAiConfigService;
     
     @Autowired
     private SeoService seoService;
@@ -70,43 +64,28 @@ public class ArticleEventListener {
             switch (event.getOperationType()) {
                 case "CREATE":
                     if (Boolean.TRUE.equals(event.getViewStatus())) {
-                        // 新建可见文章，使用延迟去重机制进行预渲染
-                        scheduleRenderWithDeduplication(event.getArticleId(), event.getSortId(), "CREATE", 
-                                event.getSubmitToSearchEngine(), event.getViewStatus(), event.getTaskId());
+                        scheduleRenderWithDeduplication(event);
                         log.info("已安排新文章预渲染任务: ID={}", event.getArticleId());
-                        
-                        // 文章创建后更新sitemap
                         updateSitemapAsync(event.getArticleId(), "CREATE");
                     } else {
-                        // 新建不可见文章，不需要预渲染
                         log.info("新建文章不可见，跳过预渲染: ID={}", event.getArticleId());
                     }
                     break;
                     
                 case "UPDATE":
                     if (Boolean.TRUE.equals(event.getViewStatus())) {
-                        // 文章可见，使用延迟去重机制进行预渲染
-                        scheduleRenderWithDeduplication(event.getArticleId(), event.getSortId(), "RENDER", 
-                                event.getSubmitToSearchEngine(), event.getViewStatus(), event.getTaskId());
+                        scheduleRenderWithDeduplication(event);
                         log.info("已安排文章更新预渲染任务: ID={}", event.getArticleId());
                     } else {
-                        // 文章不可见，删除预渲染文件
-                        scheduleRenderWithDeduplication(event.getArticleId(), event.getSortId(), "DELETE", 
-                                null, null, event.getTaskId());
+                        scheduleRenderWithDeduplication(event);
                         log.info("已安排文章预渲染删除任务: ID={}", event.getArticleId());
                     }
-                    
-                    // 文章更新后更新sitemap
                     updateSitemapAsync(event.getArticleId(), "UPDATE");
                     break;
                     
                 case "DELETE":
-                    // 删除操作立即执行，不需要去重
-                    scheduleRenderWithDeduplication(event.getArticleId(), event.getSortId(), "DELETE", 
-                            null, null, event.getTaskId());
+                    scheduleRenderWithDeduplication(event);
                     log.info("已安排文章删除预渲染任务: ID={}, 分类ID={}", event.getArticleId(), event.getSortId());
-                    
-                    // 文章删除后更新sitemap
                     updateSitemapAsync(event.getArticleId(), "DELETE");
                     break;
                     
@@ -123,82 +102,30 @@ public class ArticleEventListener {
      * 去重调度预渲染任务
      * 如果短时间内同一文章有多次渲染请求，只执行最后一次
      */
-    private void scheduleRenderWithDeduplication(Integer articleId, Integer sortId, String action, Boolean submitToSearchEngine, Boolean viewStatus, String taskId) {
+    private void scheduleRenderWithDeduplication(ArticleSavedEvent event) {
+        Integer articleId = event.getArticleId();
+        AtomicReference<Runnable> taskReference = new AtomicReference<>();
         Runnable renderTask = () -> {
+            Runnable latestTask = pendingRenderTasks.get(articleId);
+            if (latestTask != taskReference.get()) {
+                log.info("跳过过期的文章预渲染任务: ID={}", articleId);
+                return;
+            }
+
+            pendingRenderTasks.remove(articleId, taskReference.get());
+
             try {
-                // 从待处理任务中移除
-                pendingRenderTasks.remove(articleId);
-                
-                if ("CREATE".equals(action)) {
-                    // 新建文章的预渲染处理
-                    // 先清理预渲染缓存，确保新文章能正常访问
-                    prerenderClient.clearPrerenderCache();
-                    
-                    // 使用并行预渲染，提升速度
-                    executeParallelPrerender(articleId, sortId, "CREATE");
-                    
-                    
-                    // 预渲染完成后，如果需要推送到搜索引擎，则执行SEO推送
-                    if (Boolean.TRUE.equals(submitToSearchEngine) && Boolean.TRUE.equals(viewStatus)) {
-                        performSeoSubmission(articleId, "CREATE", taskId);
-                    }
-                    
-                } else if ("RENDER".equals(action)) {
-                    // 更新文章的预渲染处理
-                    // 使用并行预渲染，提升速度
-                    executeParallelPrerender(articleId, sortId, "UPDATE");
-                    
-                    
-                    // 预渲染完成后，如果需要推送到搜索引擎，则执行SEO推送
-                    if (Boolean.TRUE.equals(submitToSearchEngine) && Boolean.TRUE.equals(viewStatus)) {
-                        performSeoSubmission(articleId, "UPDATE", taskId);
-                    }
-                    
-                } else if ("DELETE".equals(action)) {
-                    // 执行删除
-                    prerenderClient.deleteArticle(articleId);
-                    prerenderClient.clearPrerenderCache();
-                    
-                    // 并行重新渲染相关页面
-                    try (var scope = StructuredTaskScope.open()) {
-                        log.info("开始并行预渲染（删除后），文章ID={}", articleId);
-                        
-                        // Fork 首页预渲染
-                        scope.fork(() -> {
-                            prerenderClient.renderHomePage();
-                            return "home-done";
-                        });
-                        
-                        // Fork 分类索引页预渲染
-                        scope.fork(() -> {
-                            prerenderClient.renderSortIndexPage();
-                            return "sortIndex-done";
-                        });
-                        
-                        // Fork 分类页预渲染（如果有分类ID）
-                        if (sortId != null) {
-                            scope.fork(() -> {
-                                prerenderClient.renderCategoryPage(sortId);
-                                return "category-done";
-                            });
-                        }
-                        
-                        // 等待所有任务完成
-                        scope.join();
-                        
-                        
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        log.error("删除后并行预渲染被中断: 文章ID={}", articleId, e);
-                    } catch (Exception e) {
-                        log.error("删除后并行预渲染失败: 文章ID={}", articleId, e);
-                    }
+                prerenderFacade.handleArticleEvent(event);
+
+                if (shouldSubmitSeo(event)) {
+                    performSeoSubmission(articleId, event.getOperationType(), event.getTaskId());
                 }
             } catch (Exception e) {
                 log.warn("预渲染执行失败: ID={}, 操作={}, 错误={}", 
-                         articleId, action, e.getMessage());
+                         articleId, event.getOperationType(), e.getMessage());
             }
         };
+        taskReference.set(renderTask);
         
         // 如果已经有待处理的任务，先取消之前的任务
         Runnable previousTask = pendingRenderTasks.put(articleId, renderTask);
@@ -206,8 +133,15 @@ public class ArticleEventListener {
             log.info("发现重复预渲染任务，已取消前一个任务: ID={}", articleId);
         }
         
-        // 立即执行预渲染（不延迟），因为翻译在发布事件前就已经保存完成
-        scheduler.schedule(renderTask, 0, TimeUnit.SECONDS);
+        // 给极短时间内的连续保存一个合并窗口，只执行最后一次任务。
+        scheduler.schedule(renderTask, DEDUP_WINDOW_MILLIS, TimeUnit.MILLISECONDS);
+    }
+
+    private boolean shouldSubmitSeo(ArticleSavedEvent event) {
+        return event != null
+                && Boolean.TRUE.equals(event.getSubmitToSearchEngine())
+                && Boolean.TRUE.equals(event.getViewStatus())
+                && ("CREATE".equals(event.getOperationType()) || "UPDATE".equals(event.getOperationType()));
     }
     
     /**
@@ -224,45 +158,6 @@ public class ArticleEventListener {
             log.warn("清除sitemap缓存失败: ID={}, 操作={}, 错误={}", 
                      articleId, operation, e.getMessage());
         }
-    }
-    
-    /**
-     * 获取文章的所有可用语言（源语言 + 翻译语言）
-     * 
-     * @param articleId 文章ID
-     * @return 所有可用语言列表
-     */
-    private List<String> getAllAvailableLanguages(Integer articleId) {
-        List<String> allLanguages = new ArrayList<>();
-        
-        try {
-            // 1. 获取源语言（默认中文）
-            Map<String, Object> defaultLangs = sysAiConfigService.getDefaultLanguages();
-            String sourceLanguage = defaultLangs != null ? 
-                (String) defaultLangs.getOrDefault("default_source_lang", "zh") : "zh";
-            
-            if (sourceLanguage != null && !sourceLanguage.trim().isEmpty()) {
-                allLanguages.add(sourceLanguage);
-            }
-            
-            // 2. 获取所有翻译语言
-            List<String> translationLanguages = translationService.getArticleAvailableLanguages(articleId);
-            if (translationLanguages != null && !translationLanguages.isEmpty()) {
-                allLanguages.addAll(translationLanguages);
-            }
-            
-            log.info("文章ID {} 的可用语言: 源语言={}, 翻译语言={}, 完整列表={}", 
-                    articleId, sourceLanguage, translationLanguages, allLanguages);
-            
-        } catch (Exception e) {
-            log.warn("获取文章可用语言失败，使用默认中文，文章ID: {}, 错误: {}", articleId, e.getMessage());
-            // 如果获取失败，至少保证有中文
-            if (allLanguages.isEmpty()) {
-                allLanguages.add("zh");
-            }
-        }
-        
-        return allLanguages;
     }
     
     /**
@@ -323,65 +218,4 @@ public class ArticleEventListener {
         }
     }
     
-    /**
-     * 并行执行预渲染任务，大幅提升速度
-     * 
-     * @param articleId 文章ID
-     * @param sortId 分类ID
-     * @param operation 操作类型
-     */
-    private void executeParallelPrerender(Integer articleId, Integer sortId, String operation) {
-        try {
-            // 获取文章的所有可用语言
-            List<String> allLanguages = getAllAvailableLanguages(articleId);
-            
-            // 使用StructuredTaskScope并行执行所有预渲染任务
-            try (var scope = StructuredTaskScope.open()) {
-                log.info("开始并行预渲染，文章ID={}, 操作={}", articleId, operation);
-                
-                // Fork 文章页多语言预渲染
-                scope.fork(() -> {
-                    prerenderClient.renderArticleWithLanguages(articleId, allLanguages);
-                    return "article-done";
-                });
-                
-                // Fork 首页预渲染
-                scope.fork(() -> {
-                    prerenderClient.renderHomePage();
-                    return "home-done";
-                });
-                
-                // Fork 分类索引页预渲染
-                scope.fork(() -> {
-                    prerenderClient.renderSortIndexPage();
-                    return "sortIndex-done";
-                });
-                
-                // Fork 分类页预渲染（如果有分类ID）
-                if (sortId != null) {
-                    scope.fork(() -> {
-                        prerenderClient.renderCategoryPage(sortId);
-                        return "category-done";
-                    });
-                }
-                
-                // 等待所有任务完成
-                scope.join();
-                
-                log.info("所有预渲染任务并行完成: 文章ID={}, 操作={}", articleId, operation);
-                
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("并行预渲染被中断: 文章ID={}, 操作={}", articleId, operation, e);
-                throw new RuntimeException("预渲染被中断", e);
-            } catch (Exception e) {
-                log.error("并行预渲染失败: 文章ID={}, 操作={}", articleId, operation, e);
-                throw new RuntimeException("预渲染失败", e);
-            }
-            
-        } catch (Exception e) {
-            log.error("执行并行预渲染失败: 文章ID={}, 操作={}", articleId, operation, e);
-            throw e;
-        }
-    }
-} 
+}

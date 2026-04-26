@@ -326,6 +326,8 @@ public class ApiController {
                 articleVO.setUserId(article.getUserId());
             }
 
+            Integer previousSortId = article.getSortId();
+            Integer previousLabelId = article.getLabelId();
             mergeArticleUpdate(article, articleVO, adminUser);
             article.setUpdateTime(LocalDateTime.now());
             article.setUpdateBy(adminUser.getUsername());
@@ -335,7 +337,7 @@ public class ApiController {
                 return PoetryResult.fail("文章更新失败");
             }
 
-            processPostUpdate(article, articleVO);
+            processPostUpdate(article, articleVO, previousSortId, previousLabelId);
 
             return PoetryResult.success(buildArticleResponseData(article.getId(), articleVO, webInfo, request));
         } catch (PoetryRuntimeException e) {
@@ -377,7 +379,11 @@ public class ApiController {
             PoetryResult<String> result = articleService.updateArticleAsync(
                     articleVO,
                     Boolean.TRUE.equals(articleVO.getSkipAiTranslation()),
-                    buildPendingTranslation(articleVO));
+                    buildPendingTranslation(articleVO),
+                    article.getUserId(),
+                    adminUser.getUsername(),
+                    null,
+                    null);
             if (result.getCode() == 200 && StringUtils.hasText(result.getData())) {
                 return PoetryResult.success(buildTaskCreatedResponseData(result.getData(), webInfo, request));
             }
@@ -1277,7 +1283,7 @@ public class ApiController {
         }
     }
 
-    private void processPostUpdate(Article article, ArticleVO articleVO) {
+    private void processPostUpdate(Article article, ArticleVO articleVO, Integer previousSortId, Integer previousLabelId) {
         cacheService.evictSortArticleList();
 
         Map<String, String> pendingTranslation = buildPendingTranslation(articleVO);
@@ -1303,6 +1309,9 @@ public class ApiController {
             eventPublisher.publishEvent(new ArticleSavedEvent(
                     article.getId(),
                     article.getSortId(),
+                    article.getLabelId(),
+                    previousSortId,
+                    previousLabelId,
                     null,
                     article.getViewStatus(),
                     "UPDATE",

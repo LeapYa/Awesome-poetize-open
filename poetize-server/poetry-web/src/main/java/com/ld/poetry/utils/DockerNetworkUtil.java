@@ -18,7 +18,7 @@ public class DockerNetworkUtil {
     private String dockerSubnet;
     
     // 受信任的内部服务名称
-    private static final String[] TRUSTED_SERVICES = {"poetize-python", "poetize-prerender", "poetize-nginx"};
+    private static final String[] TRUSTED_SERVICES = {"poetize-python", "poetize-java", "poetize-nginx"};
     
     // 存储从环境变量获取的Docker子网
     private static String DOCKER_SUBNET;
@@ -72,4 +72,4 @@ public class DockerNetworkUtil {
         
         return false;
     }
-} 
+}

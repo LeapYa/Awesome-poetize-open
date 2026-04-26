@@ -7,6 +7,7 @@ import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.service.ArticleService;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.utils.PoetryUtil;
+import com.ld.poetry.entity.Article;
 import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +33,6 @@ import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import com.ld.poetry.service.impl.ArticleServiceImpl;
-import com.ld.poetry.utils.PrerenderClient;
 import org.springframework.web.client.RestTemplate;
 import com.ld.poetry.event.ArticleSavedEvent;
 import org.springframework.context.ApplicationEventPublisher;
@@ -72,9 +72,6 @@ public class ArticleController {
 
     @Autowired
     private TranslationService translationService;
-
-    @Autowired
-    private PrerenderClient prerenderClient;
 
     @Autowired
     private SeoService seoService;
@@ -368,14 +365,16 @@ public class ArticleController {
     public PoetryResult deleteArticle(@RequestParam("id") Integer id) {
         // 在删除前先获取文章信息，以便获取分类ID用于预渲染
         Integer sortId = null;
+        Integer labelId = null;
         try {
-            PoetryResult<ArticleVO> articleResult = articleService.getArticleById(id, null);
-            if (articleResult.getCode() == 200 && articleResult.getData() != null) {
-                sortId = articleResult.getData().getSortId();
-                log.info("删除文章前获取分类ID: 文章ID={}, 分类ID={}", id, sortId);
+            Article article = articleService.getById(id);
+            if (article != null) {
+                sortId = article.getSortId();
+                labelId = article.getLabelId();
+                log.info("删除文章前获取分类和标签ID: 文章ID={}, 分类ID={}, 标签ID={}", id, sortId, labelId);
             }
         } catch (Exception e) {
-            log.warn("删除文章前获取分类ID失败，将影响分类页面预渲染: 文章ID={}, 错误={}", id, e.getMessage());
+            log.warn("删除文章前获取分类/标签ID失败，将影响分类页面预渲染: 文章ID={}, 错误={}", id, e.getMessage());
         }
         
         // 使用Redis缓存清理替换PoetryCache
@@ -399,7 +398,7 @@ public class ArticleController {
         if (result.getCode() == 200) {
             // 发布文章删除事件，触发预渲染清理（在事务提交后执行）
             // 传递正确的分类ID，确保分类页面也会被重新渲染
-            eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, null, false, "DELETE", null));
+            eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, labelId, sortId, labelId, null, false, "DELETE", null));
             
             // 清除文章二维码缓存
             qrCodeService.evictArticleQRCode(id);
@@ -435,9 +434,10 @@ public class ArticleController {
         boolean resolvedSkipAiTranslation = resolveSkipAiTranslation(articleVO, skipAiTranslation);
         Map<String, String> pendingTranslation = buildPendingTranslation(articleVO,
                 pendingTranslationTitle, pendingTranslationContent, pendingTranslationLanguage);
+        Integer currentUserId = PoetryUtil.getUserId();
         
         // 更新文章（传递skipAiTranslation和pendingTranslation参数）
-        PoetryResult result = articleService.updateArticle(articleVO, resolvedSkipAiTranslation, pendingTranslation);
+        PoetryResult result = articleService.updateArticle(articleVO, resolvedSkipAiTranslation, pendingTranslation, currentUserId);
         
         // 更新文章成功后执行后续任务
         if (result.getCode() == 200 && articleVO.getId() != null) {
@@ -805,13 +805,21 @@ public class ArticleController {
             boolean resolvedSkipAiTranslation = resolveSkipAiTranslation(articleVO, skipAiTranslation);
             Map<String, String> pendingTranslation = buildPendingTranslation(articleVO,
                     pendingTranslationTitle, pendingTranslationContent, pendingTranslationLanguage);
+            Integer currentUserId = PoetryUtil.getUserId();
+            String currentUsername = PoetryUtil.getUsername();
 
             // 调用异步更新服务
-            PoetryResult<String> result = articleService.updateArticleAsync(articleVO, resolvedSkipAiTranslation, pendingTranslation);
+            PoetryResult<String> result = articleService.updateArticleAsync(articleVO,
+                    resolvedSkipAiTranslation,
+                    pendingTranslation,
+                    currentUserId,
+                    currentUsername,
+                    null,
+                    null);
             
             // 使用Redis缓存清理替换PoetryCache
-            if (articleVO.getUserId() != null) {
-                String userArticleKey = CacheConstants.buildUserArticleListKey(articleVO.getUserId());
+            if (currentUserId != null) {
+                String userArticleKey = CacheConstants.buildUserArticleListKey(currentUserId);
                 cacheService.deleteKey(userArticleKey);
             }
             // 清理文章相关缓存

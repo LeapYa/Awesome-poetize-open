@@ -109,6 +109,11 @@ export default {
           title: "文章管理",
           requiredUserType: 1  // 管理员及以上可访问
         }, {
+          icon: "el-icon-document",
+          index: "/draftList",
+          title: "草稿箱",
+          requiredUserType: 1
+        }, {
           icon: "el-icon-s-unfold",
           index: "/translationModel",
           title: "文章AI助手",

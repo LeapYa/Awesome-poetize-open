@@ -10,7 +10,7 @@ import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
 import com.ld.poetry.entity.ResourcePath;
 import com.ld.poetry.utils.PoetryUtil;
-import com.ld.poetry.utils.PrerenderClient;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.utils.XssFilterUtil;
 import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.ResourcePathVO;
@@ -44,7 +44,7 @@ public class ResourceAggregationController {
     private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
     @Autowired
-    private PrerenderClient prerenderClient;
+    private PrerenderFacade prerenderFacade;
 
     /**
      * 保存
@@ -140,10 +140,10 @@ public class ResourceAggregationController {
         // 如果是收藏夹类型、本站信息类型或友链类型的资源，重新渲染相关页面
         try {
             if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType())) {
-                prerenderClient.renderFavoritesPage();
+                prerenderFacade.refreshFavoritesPage();
             } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) || 
                        CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
-                prerenderClient.renderFriendsPage();
+                prerenderFacade.refreshFriendsPage();
             }
         } catch (Exception e) {
             // 预渲染失败不影响主流程
@@ -167,10 +167,10 @@ public class ResourceAggregationController {
         if (resourcePath != null) {
             try {
                 if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePath.getType())) {
-                    prerenderClient.renderFavoritesPage();
+                    prerenderFacade.refreshFavoritesPage();
                 } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePath.getType()) || 
                            CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePath.getType())) {
-                    prerenderClient.renderFriendsPage();
+                    prerenderFacade.refreshFriendsPage();
                 }
             } catch (Exception e) {
                 // 预渲染失败不影响主流程
@@ -266,10 +266,10 @@ public class ResourceAggregationController {
         // 如果是收藏夹类型、本站信息类型或友链类型的资源，重新渲染相关页面
         try {
             if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType())) {
-                prerenderClient.renderFavoritesPage();
+                prerenderFacade.refreshFavoritesPage();
             } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) || 
                        CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
-                prerenderClient.renderFriendsPage();
+                prerenderFacade.refreshFriendsPage();
             }
         } catch (Exception e) {
             // 预渲染失败不影响主流程

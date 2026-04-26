@@ -56,6 +56,10 @@ const routes = [
       name: 'postEdit',
       component: () => import('../components/admin/postEdit')
     }, {
+      path: 'draftList',
+      name: 'draftList',
+      component: () => import('../components/admin/draftList')
+    }, {
       path: 'sortList',
       name: 'sortList',
       component: () => import('../components/admin/sortList')

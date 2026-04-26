@@ -286,12 +286,10 @@
     import { useMainStore } from '@/stores/main';
 
 const uploadPicture = () => import( "../common/uploadPicture");
-  const ApiTestTool = () => import( "./ApiTestTool");
 
   export default {
     components: {
-      uploadPicture,
-      ApiTestTool
+      uploadPicture
     },
     data() {
       return {

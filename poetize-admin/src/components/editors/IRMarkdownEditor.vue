@@ -107,6 +107,8 @@
       <textarea
         ref="hiddenInput"
         class="hidden-input"
+        @focus="handleEditorFocus"
+        @blur="handleEditorBlur"
         @keydown="handleKeydown"
         @input="handleInput"
         @compositionstart="handleCompositionStart"
@@ -145,7 +147,7 @@
               :key="'l-' + seg.lineIndex"
               class="editor-line"
               :class="{ 
-                'cursor-line': seg.lineIndex === cursorLine || isLineInSelection(seg.lineIndex),
+                'cursor-line': isFocused && (seg.lineIndex === cursorLine || isLineInSelection(seg.lineIndex)),
                 'has-selection': isLineInSelection(seg.lineIndex)
               }"
               :style="getLineInteractionStyle(seg.lineIndex)"
@@ -154,20 +156,20 @@
               <!-- 光标行、选中行、或正在编辑的块内的行：显示源码 -->
               <template v-if="shouldShowSource(seg.lineIndex) || seg.inEditingBlock">
                 <span class="line-content source-mode">
-                  <span
-                    v-for="(char, charIndex) in getLineChars(seg.lineIndex)"
-                    :key="charIndex"
-                    class="char"
-                    :class="{
-                      'selected': isCharSelected(seg.lineIndex, charIndex),
-                      'cursor-before': seg.lineIndex === cursorLine && charIndex === cursorColumn && !isComposing
-                    }"
-                  >{{ char === '' ? '\u200B' : char }}</span>
-                  <!-- 行尾光标 -->
-                  <span
-                    v-if="seg.lineIndex === cursorLine && cursorColumn >= getLineLength(seg.lineIndex) && !isComposing"
-                    class="cursor-end"
-                  ></span>
+                    <span
+                      v-for="(char, charIndex) in getLineChars(seg.lineIndex)"
+                      :key="charIndex"
+                      class="char"
+                      :class="{
+                        'selected': isCharSelected(seg.lineIndex, charIndex),
+                        'cursor-before': seg.lineIndex === cursorLine && charIndex === cursorColumn && isFocused && !isComposing
+                      }"
+                    >{{ char === '' ? '\u200B' : char }}</span>
+                    <!-- 行尾光标 -->
+                    <span
+                      v-if="seg.lineIndex === cursorLine && cursorColumn >= getLineLength(seg.lineIndex) && isFocused && !isComposing"
+                      class="cursor-end"
+                    ></span>
                   <!-- 输入法组合文本 -->
                   <span v-if="seg.lineIndex === cursorLine && isComposing && compositionText" class="composition-text">
                     {{ compositionText }}
@@ -991,8 +993,8 @@ export default {
       const rendered = {};
       for (const seg of this.segments) {
         if (seg.kind === 'line') {
-          if (seg.lineIndex === this.cursorLine) continue;
-          
+          if (this.isFocused && seg.lineIndex === this.cursorLine) continue;
+
           // 正在编辑的多行块内的行：整个块都显示源码，不渲染 HTML
           // 这样代码块在编辑时不会每行都产生 highlight-wrap
           if (seg.inEditingBlock) continue;
@@ -1050,6 +1052,7 @@ export default {
      * 检查字符是否被选中
      */
     isCharSelected(lineIndex, charIndex) {
+      if (!this.isFocused) return false;
       if (!this.selectionStart || !this.selectionEnd) return false;
       
       const pos = new Position(lineIndex, charIndex);
@@ -1068,11 +1071,13 @@ export default {
      * 检查行是否在选区内
      */
     isLineInSelection(lineIndex) {
+      if (!this.isFocused) return false;
       if (!this.selectionStart || !this.selectionEnd) return false;
       return lineIndex >= this.selectionStart.line && lineIndex <= this.selectionEnd.line;
     },
 
     isBlockInSelection(startLine, endLine) {
+      if (!this.isFocused) return false;
       if (!this.selectionStart || !this.selectionEnd) return false;
       return !(this.selectionEnd.line < startLine || this.selectionStart.line > endLine);
     },
@@ -1137,6 +1142,9 @@ export default {
      * 2. 在当前选区范围内
      */
     shouldShowSource(lineIndex) {
+      if (!this.isFocused) {
+        return false;
+      }
       // 拖拽选区过程中，已经进入选区的单行内容直接切到源码态，
       // 这样字符级“文本选中”能立刻出现，不必等 mouseup。
       // 配合上面的重渲染冻结，可避免之前那种来回闪烁。
@@ -1218,7 +1226,6 @@ export default {
      */
     focus() {
       this.$refs.hiddenInput?.focus();
-      this.isFocused = true;
     },
 
     /**
@@ -1226,7 +1233,18 @@ export default {
      */
     blur() {
       this.$refs.hiddenInput?.blur();
+    },
+
+    handleEditorFocus() {
+      this.isFocused = true;
+      this.$emit('focus');
+      this.scheduleSegmentRender({ delay: 0 });
+    },
+
+    handleEditorBlur() {
       this.isFocused = false;
+      this.$emit('blur');
+      this.scheduleSegmentRender({ delay: 0 });
     },
 
     /**
@@ -2767,6 +2785,8 @@ export default {
 /* 字符 */
 .char {
   position: relative;
+  display: inline-block;
+  min-height: 1em;
 }
 
 .char.selected {

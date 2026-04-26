@@ -9,6 +9,7 @@ import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.dao.*;
 import com.ld.poetry.entity.*;
 import com.ld.poetry.service.CacheService;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.service.WebInfoService;
 import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import com.ld.poetry.dao.WebInfoMapper;
@@ -80,9 +81,6 @@ public class WebInfoController {
     private FamilyMapper familyMapper;
 
     @Autowired
-    private PrerenderClient prerenderClient;
-
-    @Autowired
     private RestTemplate restTemplate;
 
     @Autowired
@@ -98,7 +96,7 @@ public class WebInfoController {
     private com.ld.poetry.service.SitemapService sitemapService;
 
     @Autowired
-    private com.ld.poetry.config.PrerenderStartupRunner prerenderStartupRunner;
+    private PrerenderFacade prerenderFacade;
 
     @Autowired
     private com.ld.poetry.service.SysPluginService sysPluginService;
@@ -224,7 +222,7 @@ public class WebInfoController {
                             Thread.sleep(1000);
 
                             log.info("开始触发预渲染");
-                            prerenderStartupRunner.executeFullPrerender();
+                            prerenderFacade.rebuildSite();
                             log.info("网站信息更新后成功触发页面预渲染");
                         } catch (Exception e) {
                             log.warn("异步任务执行失败", e);
@@ -882,56 +880,6 @@ public class WebInfoController {
         cacheService.cacheWebInfo(webInfo);
 
         return PoetryResult.success(newApiKey);
-    }
-
-    /**
-     * 获取分类信息 - 用于预渲染服务
-     * 此接口专门为prerender-worker提供分类列表数据
-     */
-    @GetMapping("/listSortForPrerender")
-    public PoetryResult<List<Sort>> listSortForPrerender() {
-        try {
-            // 获取所有分类信息，包含标签
-            List<Sort> sortList = new LambdaQueryChainWrapper<>(sortMapper)
-                    .orderByAsc(Sort::getSortType)
-                    .orderByAsc(Sort::getPriority)
-                    .list();
-
-            return PoetryResult.success(sortList);
-        } catch (Exception e) {
-            log.error("获取预渲染分类列表失败", e);
-            return PoetryResult.fail("获取分类列表失败");
-        }
-    }
-
-    /**
-     * 获取分类详细信息 - 用于预渲染服务
-     * 
-     * @param sortId 分类ID
-     */
-    @GetMapping("/getSortDetailForPrerender")
-    public PoetryResult<Sort> getSortDetailForPrerender(@RequestParam Integer sortId) {
-        if (sortId == null) {
-            return PoetryResult.fail("分类ID不能为空");
-        }
-
-        try {
-            // 获取分类基本信息
-            Sort sort = sortMapper.selectById(sortId);
-            if (sort == null) {
-                return PoetryResult.fail("分类不存在");
-            }
-
-            // 获取该分类下的标签信息
-            LambdaQueryChainWrapper<Label> labelWrapper = new LambdaQueryChainWrapper<>(labelMapper);
-            List<Label> labels = labelWrapper.eq(Label::getSortId, sortId).list();
-            sort.setLabels(labels);
-
-            return PoetryResult.success(sort);
-        } catch (Exception e) {
-            log.error("获取预渲染分类详情失败，分类ID: {}", sortId, e);
-            return PoetryResult.fail("获取分类详情失败");
-        }
     }
 
     /**

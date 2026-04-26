@@ -8,8 +8,8 @@ import com.ld.poetry.dao.LabelMapper;
 import com.ld.poetry.dao.SortMapper;
 import com.ld.poetry.entity.Label;
 import com.ld.poetry.entity.Sort;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.utils.CommonQuery;
-import com.ld.poetry.utils.PrerenderClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
@@ -42,7 +42,7 @@ public class SortLabelController {
     private CommonQuery commonQuery;
 
     @Autowired
-    private PrerenderClient prerenderClient;
+    private PrerenderFacade prerenderFacade;
 
     @Autowired
     private com.ld.poetry.service.ai.rag.RagSyncService ragSyncService;
@@ -103,8 +103,7 @@ public class SortLabelController {
             }
             
             // 2. 重新渲染页面
-            prerenderClient.renderHomePage();
-            prerenderClient.renderSortIndexPage();
+            prerenderFacade.refreshSortHierarchy(sort.getId());
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("分类新增后sitemap更新和页面预渲染失败", e);
@@ -133,9 +132,7 @@ public class SortLabelController {
             }
             
             // 2. 删除预渲染文件并重新渲染页面
-            prerenderClient.deleteCategoryPage(id);
-            prerenderClient.renderHomePage();
-            prerenderClient.renderSortIndexPage();
+            prerenderFacade.deleteSortHierarchy(id);
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("分类删除后sitemap更新和页面预渲染失败", e);
@@ -188,11 +185,7 @@ public class SortLabelController {
             }
             
             // 2. 重新渲染页面
-            if (sort.getId() != null) {
-                prerenderClient.renderCategoryPage(sort.getId());
-            }
-            prerenderClient.renderHomePage();
-            prerenderClient.renderSortIndexPage();
+            prerenderFacade.refreshSortHierarchy(sort.getId());
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("分类更新后sitemap更新和页面预渲染失败", e);
@@ -250,7 +243,7 @@ public class SortLabelController {
             }
             
             // 2. 重新渲染页面
-            prerenderClient.renderCategoryPage(label.getSortId());
+            prerenderFacade.refreshLabelHierarchy(label.getSortId(), label.getId(), null);
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("标签新增后sitemap更新和页面预渲染失败", e);
@@ -283,7 +276,7 @@ public class SortLabelController {
                 }
                 
                 // 2. 重新渲染页面
-                prerenderClient.renderCategoryPage(label.getSortId());
+                prerenderFacade.deleteLabelHierarchy(label.getSortId(), label.getId());
             } catch (Exception e) {
                 // 预渲染失败不影响主流程
                 log.warn("标签删除后sitemap更新和页面预渲染失败", e);
@@ -301,6 +294,8 @@ public class SortLabelController {
     @PostMapping("/updateLabel")
     @LoginCheck(0)
     public PoetryResult updateLabel(@RequestBody Label label) {
+        Label existingLabelRecord = labelMapper.selectById(label.getId());
+
         // XSS过滤处理
         String filteredLabelName = StringUtils.hasText(label.getLabelName()) ? XssFilterUtil.clean(label.getLabelName()) : null;
         String filteredLabelDescription = StringUtils.hasText(label.getLabelDescription()) ? XssFilterUtil.clean(label.getLabelDescription()) : null;
@@ -334,9 +329,8 @@ public class SortLabelController {
             }
             
             // 2. 重新渲染页面
-            if (label.getSortId() != null) {
-                prerenderClient.renderCategoryPage(label.getSortId());
-            }
+            prerenderFacade.refreshLabelHierarchy(label.getSortId(), label.getId(),
+                    existingLabelRecord == null ? null : existingLabelRecord.getSortId());
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("标签更新后sitemap更新和页面预渲染失败", e);

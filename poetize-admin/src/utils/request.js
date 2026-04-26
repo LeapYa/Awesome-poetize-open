@@ -437,6 +437,42 @@ export default {
     });
   },
 
+  put(url, params = {}, isAdmin = false, json = true) {
+    if (params === null || typeof params !== 'object') {
+      params = {}
+    }
+    const config = {
+      isAdmin,
+      headers: {}
+    }
+    if (json) {
+      config.headers['Content-Type'] = 'application/json;charset=UTF-8'
+    }
+    const data = json ? params : new URLSearchParams(params)
+    return new Promise((resolve, reject) => {
+      axios
+        .put(url, data, config)
+        .then(res => resolve(res.data))
+        .catch(err => reject(err))
+    })
+  },
+
+  delete(url, params = {}, isAdmin = false) {
+    if (params === null || typeof params !== 'object') {
+      params = {}
+    }
+    return new Promise((resolve, reject) => {
+      axios
+        .delete(url, {
+          params,
+          isAdmin,
+          headers: {}
+        })
+        .then(res => resolve(res.data))
+        .catch(err => reject(err))
+    })
+  },
+
   upload(url, param, isAdmin = false, option) {
     let config = {
       isAdmin: isAdmin,

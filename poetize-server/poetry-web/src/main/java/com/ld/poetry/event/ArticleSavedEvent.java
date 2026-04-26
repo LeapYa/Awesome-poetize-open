@@ -19,6 +19,21 @@ public class ArticleSavedEvent {
      * 分类ID
      */
     private Integer sortId;
+
+    /**
+     * 标签ID
+     */
+    private Integer labelId;
+
+    /**
+     * 变更前分类ID
+     */
+    private Integer previousSortId;
+
+    /**
+     * 变更前标签ID
+     */
+    private Integer previousLabelId;
     
     /**
      * 异步任务ID（用于状态回传）
@@ -39,4 +54,4 @@ public class ArticleSavedEvent {
      * 是否提交到搜索引擎
      */
     private Boolean submitToSearchEngine;
-} 
+}

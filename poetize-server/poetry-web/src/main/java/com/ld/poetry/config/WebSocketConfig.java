@@ -2,8 +2,9 @@ package com.ld.poetry.config;
 
 import com.ld.poetry.im.websocket.ImWebSocketHandler;
 import com.ld.poetry.im.websocket.ImWebSocketInterceptor;
+import com.ld.poetry.websocket.article.ArticleDraftWebSocketHandler;
+import com.ld.poetry.websocket.article.ArticleDraftWebSocketInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
@@ -15,21 +16,30 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
  */
 @Configuration
 @EnableWebSocket
-@ConditionalOnProperty(name = "im.enable", havingValue = "true")
 public class WebSocketConfig implements WebSocketConfigurer {
 
-    @Autowired
+    @Autowired(required = false)
     private ImWebSocketHandler imWebSocketHandler;
 
-    @Autowired
+    @Autowired(required = false)
     private ImWebSocketInterceptor imWebSocketInterceptor;
+
+    @Autowired
+    private ArticleDraftWebSocketHandler articleDraftWebSocketHandler;
+
+    @Autowired
+    private ArticleDraftWebSocketInterceptor articleDraftWebSocketInterceptor;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        // 注册 WebSocket 处理器，路径 /ws/im
-        // 同时支持原生 WebSocket 和 SockJS 回退
-        registry.addHandler(imWebSocketHandler, "/ws/im")
-                .addInterceptors(imWebSocketInterceptor)
+        if (imWebSocketHandler != null && imWebSocketInterceptor != null) {
+            registry.addHandler(imWebSocketHandler, "/ws/im")
+                    .addInterceptors(imWebSocketInterceptor)
+                    .setAllowedOrigins("*");
+        }
+
+        registry.addHandler(articleDraftWebSocketHandler, "/ws/article-draft")
+                .addInterceptors(articleDraftWebSocketInterceptor)
                 .setAllowedOrigins("*");
     }
 }

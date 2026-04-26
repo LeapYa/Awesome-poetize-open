@@ -58,7 +58,7 @@
 2. 右键 → 查看页面源代码
 3. 确认文章正文内容已存在于 HTML 中
 
-如果只看到 `<div id="app"></div>`，说明预渲染服务未正常工作，请检查 `poetize-prerender` 容器状态。
+如果只看到 `<div id="app"></div>`，说明预渲染结果未正常生成，请检查 `poetize-java` 日志，并确认 `poetize_web_dist` 卷下的 `prerender/` 目录里已经写入对应 HTML 文件。
 
 ---
 

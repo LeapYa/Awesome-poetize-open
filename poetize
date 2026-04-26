@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-03-27
+## 修改时间: 2026-04-26
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.11.10
+## 版本: 1.11.11
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.11.10"
+POETIZE_VERSION="1.11.11"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -3514,7 +3514,6 @@ restore_compose_to_v2() {
     cond["mysql"] = "service_healthy"
     cond["nginx"] = "service_started"
     cond["certbot"] = "service_started"
-    cond["prerender-worker"] = "service_started"
     
     # 默认条件
     default_cond = "service_started"
@@ -5611,7 +5610,7 @@ wait_for_services_ready() {
   info "智能等待服务启动就绪..."
   
   # 定义需要检查的服务及其健康检查超时时间
-  local services=("poetize-mariadb:60" "poetize-java:90" "poetize-prerender:40")
+  local services=("poetize-mariadb:60" "poetize-java:90")
   if project_requires_python_backend; then
     services+=("poetize-python:80")
   fi
@@ -8478,7 +8477,6 @@ modify_docker_compose_for_multi_instance() {
   sed_i "s/container_name: poetize-java/container_name: poetize-java$suffix/g" docker-compose.yml
   sed_i "s/container_name: poetize-mariadb/container_name: poetize-mariadb$suffix/g" docker-compose.yml
   sed_i "s/container_name: poetize-redis/container_name: poetize-redis$suffix/g" docker-compose.yml
-  sed_i "s/container_name: poetize-prerender/container_name: poetize-prerender$suffix/g" docker-compose.yml
   
   # 修改网络名称
   sed_i "s/poetize-network/poetize-network$suffix/g" docker-compose.yml
@@ -8505,7 +8503,6 @@ modify_docker_compose_for_multi_instance() {
     sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker-compose.yml
   fi
   sed_i "s/poetize-mariadb:3306/poetize-mariadb$suffix:3306/g" docker-compose.yml
-  sed_i "s/poetize-prerender:4000/poetize-prerender$suffix:4000/g" docker-compose.yml
   
   # 修改数据库相关配置
   sed_i "s/MYSQL_HOST=poetize-mariadb/MYSQL_HOST=poetize-mariadb$suffix/g" docker-compose.yml
@@ -8513,7 +8510,6 @@ modify_docker_compose_for_multi_instance() {
   if project_requires_python_backend; then
     sed_i "s/PYTHON_BACKEND_HOST=poetize-python/PYTHON_BACKEND_HOST=poetize-python$suffix/g" docker-compose.yml
   fi
-  sed_i "s/PRERENDER_HOST=poetize-prerender/PRERENDER_HOST=poetize-prerender$suffix/g" docker-compose.yml
   
   # 修改nginx配置
   sed_i "s/poetize-java/poetize-java$suffix/g" docker/nginx/default.conf
@@ -10606,7 +10602,6 @@ main() {
   NGINX_RUNNING=$(sudo docker ps --filter "name=poetize-nginx" --format "{{.Status}}" | grep -c "Up")
   JAVA_RUNNING=$(sudo docker ps --filter "name=poetize-java" --format "{{.Status}}" | grep -c "Up")
   MYSQL_RUNNING=$(sudo docker ps --filter "name=poetize-mariadb" --format "{{.Status}}" | grep -c "Up")
-  PRERENDER_RUNNING=$(sudo docker ps --filter "name=poetize-prerender" --format "{{.Status}}" | grep -c "Up")
   if project_requires_python_backend; then
     python_required=1
     PYTHON_RUNNING=$(sudo docker ps --filter "name=poetize-python" --format "{{.Status}}" | grep -c "Up")
@@ -10619,7 +10614,6 @@ main() {
   [ "$JAVA_RUNNING" -eq 1 ] || _failed_services+=("poetize-java")
   [ "$PYTHON_RUNNING" -eq 1 ] || _failed_services+=("poetize-python")
   [ "$MYSQL_RUNNING" -eq 1 ] || _failed_services+=("poetize-mariadb")
-  [ "$PRERENDER_RUNNING" -eq 1 ] || _failed_services+=("poetize-prerender")
 
   if [ ${#_failed_services[@]} -eq 0 ]; then
     success "所有服务已成功启动！"
@@ -10633,7 +10627,7 @@ main() {
       echo "- Python后端状态: 当前版本无需独立服务（已并入 Java）"
     fi
     echo "- MariaDB状态: $([ "$MYSQL_RUNNING" -eq 1 ] && echo '运行中' || echo '未运行')"
-    echo "- Prerender状态: $([ "$PRERENDER_RUNNING" -eq 1 ] && echo '运行中' || echo '未运行')"
+    echo "- 预渲染状态: 已并入 Java 后端"
   fi
   
   # 设置HTTPS（如果需要）
@@ -12890,7 +12884,7 @@ show_status() {
     info "正在检查POETIZE服务状态..."
     printf "\n"
 
-    local core_services=("poetize-nginx" "poetize-java" "poetize-prerender")
+    local core_services=("poetize-nginx" "poetize-java")
     local optional_services=("poetize-mariadb" "poetize-redis")
     local ephemeral_services=("poetize-web" "poetize-admin")
     local instances=""
@@ -13388,7 +13382,6 @@ get_project_info() {
                 fi
                 
                 containers=(
-                poetize-prerender
                 poetize-certbot
                 poetize-nginx
                 poetize-java
@@ -14646,9 +14639,9 @@ perform_restore_operations() {
     info "开始从 $backup_dir 恢复数据..."
 
     # 在恢复前暂停会持续写入缓存的运行时服务，避免新安装默认数据覆盖恢复结果
-    local runtime_service_names=("nginx" "java-backend" "prerender-worker" "redis")
+    local runtime_service_names=("nginx" "java-backend" "redis")
     if project_requires_python_backend; then
-        runtime_service_names=("nginx" "java-backend" "python-backend" "prerender-worker" "redis")
+        runtime_service_names=("nginx" "java-backend" "python-backend" "redis")
     fi
 
     for service_name in "${runtime_service_names[@]}"; do
@@ -14803,9 +14796,9 @@ perform_restore_operations() {
         fi
     fi
 
-    local app_service_names=("java-backend" "nginx" "prerender-worker")
+    local app_service_names=("java-backend" "nginx")
     if project_requires_python_backend; then
-        app_service_names=("java-backend" "python-backend" "nginx" "prerender-worker")
+        app_service_names=("java-backend" "python-backend" "nginx")
     fi
 
     for service_name in "${app_service_names[@]}"; do

@@ -11,6 +11,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * <p>
@@ -31,6 +32,11 @@ public interface ArticleService extends IService<Article> {
     PoetryResult updateArticle(ArticleVO articleVO);
     
     PoetryResult updateArticle(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation);
+
+    PoetryResult updateArticle(ArticleVO articleVO,
+                               boolean skipAiTranslation,
+                               Map<String, String> pendingTranslation,
+                               Integer actorUserId);
 
     PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO);
 
@@ -74,6 +80,25 @@ public interface ArticleService extends IService<Article> {
     PoetryResult<String> saveArticleAsync(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation);
 
     /**
+     * 异步保存文章（快速响应版本，支持指定异步执行人和任务终态回调）
+     * @param articleVO 文章信息
+     * @param skipAiTranslation 是否跳过AI翻译
+     * @param pendingTranslation 暂存的翻译数据
+     * @param actorUserId 异步任务执行用户ID
+     * @param actorUsername 异步任务执行用户名
+     * @param successCallback 任务成功或部分成功后的回调，参数为文章ID
+     * @param failureCallback 任务失败后的回调，参数为已创建的文章ID；数据库保存失败时为空
+     * @return 任务ID
+     */
+    PoetryResult<String> saveArticleAsync(ArticleVO articleVO,
+                                          boolean skipAiTranslation,
+                                          Map<String, String> pendingTranslation,
+                                          Integer actorUserId,
+                                          String actorUsername,
+                                          Consumer<Integer> successCallback,
+                                          Consumer<Integer> failureCallback);
+
+    /**
      * 异步更新文章（快速响应版本）
      * @param articleVO 文章信息
      * @return 任务ID
@@ -88,6 +113,14 @@ public interface ArticleService extends IService<Article> {
      * @return 任务ID
      */
     PoetryResult<String> updateArticleAsync(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation);
+
+    PoetryResult<String> updateArticleAsync(ArticleVO articleVO,
+                                            boolean skipAiTranslation,
+                                            Map<String, String> pendingTranslation,
+                                            Integer actorUserId,
+                                            String actorUsername,
+                                            Consumer<Integer> successCallback,
+                                            Consumer<Integer> failureCallback);
 
     /**
      * 查询文章保存状态

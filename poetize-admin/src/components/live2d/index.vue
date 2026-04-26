@@ -1,10 +1,10 @@
 <template>
   <div>
     <!-- Live2D看板娘模式 -->
-    <Live2DWidgetAsync v-if="mode === 'live2d'" />
+    <Live2DWidgetAsync v-if="displayMode === 'live2d'" />
     
     <!-- 简单按钮模式 -->
-    <AIChatButtonAsync v-else-if="mode === 'button'" />
+    <AIChatButtonAsync v-else-if="displayMode === 'button'" />
     
     <!-- AI聊天面板（懒加载） -->
     <AIChatPanelAsync v-if="showChat" />
@@ -44,7 +44,7 @@ export default {
     const showChat = computed(() => store.showChat)
     
     // 实际显示模式
-    const mode = computed(() => {
+    const displayMode = computed(() => {
       // 检查看板娘总开关是否启用
       const waifuEnabled = mainStore.webInfo?.enableWaifu !== false
       
@@ -67,7 +67,7 @@ export default {
     
     return {
       showChat,
-      mode
+      displayMode
     }
   }
 }
