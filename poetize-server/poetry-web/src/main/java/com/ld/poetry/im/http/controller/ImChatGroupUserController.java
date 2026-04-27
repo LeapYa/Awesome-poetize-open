@@ -94,7 +94,7 @@ public class ImChatGroupUserController {
         boolean isSuccess = imChatGroupUserService.save(imChatGroupUser);
         if (isSuccess && chatGroup.getInType() == ImConfigConst.IN_TYPE_FALSE) {
             // 注：群组绑定由前端重新建立WebSocket连接时自动处理
-            sendGroupSystemMessage(id, commonQuery.getUser(userId).getUsername() + " 加入了群聊");
+            sendGroupSystemMessage(id, getDisplayUsername(userId) + " 加入了群聊");
         }
         return PoetryResult.success();
     }
@@ -151,12 +151,12 @@ public class ImChatGroupUserController {
         }
         if (isSuccess && userStatus == ImConfigConst.GROUP_USER_STATUS_PASS) {
             // 注：群组绑定由前端重新建立WebSocket连接时自动处理
-            sendGroupSystemMessage(groupId, commonQuery.getUser(userId).getUsername() + " 加入了群聊");
+            sendGroupSystemMessage(groupId, getDisplayUsername(userId) + " 加入了群聊");
         } else if (isSuccess && userStatus.intValue() == ImConfigConst.GROUP_USER_STATUS_BAN &&
                 (oldUserStatus.intValue() == ImConfigConst.GROUP_USER_STATUS_PASS ||
                         oldUserStatus.intValue() == ImConfigConst.GROUP_USER_STATUS_SILENCE)) {
             // 注：群组解绑由前端重新建立WebSocket连接时自动处理
-            sendGroupSystemMessage(groupId, commonQuery.getUser(userId).getUsername() + " 退出了群聊");
+            sendGroupSystemMessage(groupId, getDisplayUsername(userId) + " 退出了群聊");
         }
 
         if (isSuccess) {
@@ -245,7 +245,7 @@ public class ImChatGroupUserController {
         boolean isSuccess = lambdaUpdate.remove();
         if (isSuccess) {
             // 注：群组解绑由前端重新建立WebSocket连接时自动处理
-            sendGroupSystemMessage(id, commonQuery.getUser(userId).getUsername() + " 退出了群聊");
+            sendGroupSystemMessage(id, getDisplayUsername(userId) + " 退出了群聊");
         }
         return PoetryResult.success();
     }
@@ -318,7 +318,7 @@ public class ImChatGroupUserController {
                 GroupUserVO groupUserVO = new GroupUserVO();
                 BeanUtils.copyProperties(g, groupUserVO);
                 groupUserVO.setGroupName(groupName);
-                User user = commonQuery.getUser(groupUserVO.getUserId());
+                User user = commonQuery.getUserForDisplay(groupUserVO.getUserId());
                 if (user != null) {
                     groupUserVO.setUsername(user.getUsername());
                     groupUserVO.setAvatar(user.getAvatar());
@@ -378,7 +378,7 @@ public class ImChatGroupUserController {
             GroupUserVO groupUserVO = new GroupUserVO();
             BeanUtils.copyProperties(g, groupUserVO);
             groupUserVO.setGroupName(chatGroup.getGroupName());
-            User user = commonQuery.getUser(groupUserVO.getUserId());
+            User user = commonQuery.getUserForDisplay(groupUserVO.getUserId());
             if (user != null) {
                 groupUserVO.setUsername(user.getUsername());
                 groupUserVO.setAvatar(user.getAvatar());
@@ -405,5 +405,10 @@ public class ImChatGroupUserController {
 
             imSessionManager.sendToGroup(String.valueOf(groupId), imMessage.toJsonString());
         }
+    }
+
+    private String getDisplayUsername(Integer userId) {
+        User user = commonQuery.getUserForDisplay(userId);
+        return user != null && StringUtils.hasText(user.getUsername()) ? user.getUsername() : "用户已注销";
     }
 }

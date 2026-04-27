@@ -23,6 +23,8 @@ import java.util.regex.PatternSyntaxException;
 @Slf4j
 @Component
 public class CommonQuery {
+    private static final String DELETED_USER_NAME = "用户已注销";
+
     @Autowired
     private CommentMapper commentMapper;
 
@@ -201,6 +203,9 @@ public class CommonQuery {
     }
 
     public User getUser(Integer userId) {
+        if (userId == null) {
+            return null;
+        }
         // 使用Redis缓存替换PoetryCache
         User user = cacheService.getCachedUser(userId);
         if (user != null) {
@@ -212,6 +217,21 @@ public class CommonQuery {
             return u;
         }
         return null;
+    }
+
+    public User getUserForDisplay(Integer userId) {
+        User user = getUser(userId);
+        if (user != null) {
+            return user;
+        }
+
+        User deletedUser = new User();
+        deletedUser.setId(userId);
+        deletedUser.setUsername(DELETED_USER_NAME);
+        deletedUser.setAvatar(PoetryUtil.getRandomAvatar(userId == null ? null : userId.toString()));
+        deletedUser.setUserStatus(false);
+        deletedUser.setDeleted(true);
+        return deletedUser;
     }
 
     public List<User> getAdmire() {

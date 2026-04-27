@@ -207,7 +207,7 @@ public class ImWebSocketHandler extends TextWebSocketHandler {
                     imMessage.setToId(userMessage.getToId());
                     imMessage.setMessageType(ImEnum.MESSAGE_TYPE_MSG_SINGLE.getCode());
 
-                    User friend = commonQuery.getUser(userMessage.getFromId());
+                    User friend = commonQuery.getUserForDisplay(userMessage.getFromId());
                     if (friend != null) {
                         imMessage.setAvatar(friend.getAvatar());
                     }

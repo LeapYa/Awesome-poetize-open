@@ -155,7 +155,7 @@ public class ImChatUserMessageController {
                 userMessageVO.setMessageStatus(message.getMessageStatus());
                 userMessageVO.setId(message.getId());
                 userMessageVO.setCreateTime(message.getCreateTime());
-                User from = commonQuery.getUser(message.getFromId());
+                User from = commonQuery.getUserForDisplay(message.getFromId());
                 if (from != null) {
                     userMessageVO.setAvatar(from.getAvatar());
                 }

@@ -116,12 +116,53 @@ public class AdminUserController {
         return PoetryResult.success();
     }
 
+    /**
+     * 软删除用户
+     */
+    @GetMapping("/user/deleteUser")
+    @LoginCheck(0)
+    public PoetryResult deleteUser(@RequestParam("userId") Integer userId) {
+        if (userId == null) {
+            return PoetryResult.fail(CodeMsg.PARAMETER_ERROR);
+        }
+
+        User adminUser = PoetryUtil.getAdminUser();
+        if (adminUser != null && userId.intValue() == adminUser.getId().intValue()) {
+            return PoetryResult.fail("站长不能删除！");
+        }
+
+        Integer currentUserId = PoetryUtil.getUserId();
+        if (currentUserId != null && userId.intValue() == currentUserId.intValue()) {
+            return PoetryResult.fail("不能删除当前登录账号！");
+        }
+
+        User user = userService.getById(userId);
+        if (user == null) {
+            return PoetryResult.fail("用户不存在或已删除！");
+        }
+
+        boolean success = userService.removeById(userId);
+        if (!success) {
+            return PoetryResult.fail("删除失败！");
+        }
+
+        logout(userId);
+        try {
+            cacheService.deleteKey(CacheConstants.ADMIRE_LIST_KEY);
+        } catch (Exception e) {
+            log.error("删除用户后清理点赞缓存失败: userId={}", userId, e);
+        }
+        log.info("管理员软删除用户: userId={}, username={}", userId, user.getUsername());
+        return PoetryResult.success();
+    }
+
     private void logout(Integer userId) {
         try {
             log.info("管理员强制用户下线: userId={}", userId);
 
             // 使用CacheService统一清理所有用户token相关缓存
             cacheService.evictAllUserTokens(userId);
+            cacheService.evictUser(userId);
 
             // 断开WebSocket连接
             if (imSessionManager != null) {

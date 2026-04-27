@@ -99,7 +99,7 @@ public class ImChatUserGroupMessageController {
                 groupMessageVO.setGroupId(message.getGroupId());
                 groupMessageVO.setCreateTime(message.getCreateTime());
                 Integer messageUserId = message.getFromId();
-                User user = commonQuery.getUser(messageUserId);
+                User user = commonQuery.getUserForDisplay(messageUserId);
                 if (user != null) {
                     groupMessageVO.setUsername(user.getUsername());
                     groupMessageVO.setAvatar(user.getAvatar());

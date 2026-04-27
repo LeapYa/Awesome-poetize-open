@@ -84,7 +84,7 @@ public class ImChatUserFriendController {
         List<ImChatUserFriend> userFriends = wrapper.orderByDesc(ImChatUserFriend::getCreateTime).list();
         List<UserFriendVO> userFriendVOS = new ArrayList<>(userFriends.size());
         userFriends.forEach(userFriend -> {
-            User friend = commonQuery.getUser(userFriend.getFriendId());
+            User friend = commonQuery.getUserForDisplay(userFriend.getFriendId());
             if (friend != null) {
                 UserFriendVO userFriendVO = new UserFriendVO();
                 userFriendVO.setId(userFriend.getId());

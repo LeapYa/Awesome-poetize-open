@@ -100,6 +100,17 @@
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="注册时间" align="center"></el-table-column>
+        <el-table-column label="操作" width="100" align="center" fixed="right">
+          <template slot-scope="scope">
+            <el-button v-if="canDeleteUser(scope.row)"
+                       type="text"
+                       icon="el-icon-delete"
+                       style="color: var(--orangeRed)"
+                       @click="deleteUser(scope.row)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
       <div class="pagination">
         <el-pagination background layout="total, prev, pager, next"
@@ -452,6 +463,50 @@ export default {
               type: "error"
             });
           });
+      },
+      canDeleteUser(user) {
+        const currentAdmin = this.mainStore.currentAdmin;
+        if (!user || user.userType === 0) {
+          return false;
+        }
+        return !currentAdmin || user.id !== currentAdmin.id;
+      },
+      deleteUser(user) {
+        if (!this.canDeleteUser(user)) {
+          return;
+        }
+
+        this.$confirm('删除后该用户将无法登录，历史评论和聊天记录会显示为“用户已注销”。确认删除？', '删除用户', {
+          confirmButtonText: '删除',
+          cancelButtonText: '取消',
+          type: 'warning',
+          center: true
+        }).then(() => {
+          this.$http.get(this.$constant.baseURL + "/admin/user/deleteUser", {
+            userId: user.id
+          }, true)
+            .then(() => {
+              this.$message({
+                message: "删除成功！",
+                type: "success"
+              });
+              if (this.users.length === 1 && this.pagination.current > 1) {
+                this.pagination.current--;
+              }
+              this.getUsers();
+            })
+            .catch((error) => {
+              this.$message({
+                message: error.message,
+                type: "error"
+              });
+            });
+        }).catch(() => {
+          this.$message({
+            type: 'success',
+            message: '已取消删除!'
+          });
+        });
       },
       openProfileDialog() {
         const u = this.mainStore.currentUser;

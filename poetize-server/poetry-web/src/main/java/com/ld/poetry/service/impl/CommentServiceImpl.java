@@ -337,11 +337,11 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         // 并行获取用户信息和父用户信息
         try (var scope = StructuredTaskScope.open()) {
             // Fork 当前用户信息查询
-            Subtask<User> userTask = scope.fork(() -> commonQuery.getUser(commentVO.getUserId()));
+            Subtask<User> userTask = scope.fork(() -> commonQuery.getUserForDisplay(commentVO.getUserId()));
 
             // Fork 父用户信息查询（如果存在）
             Subtask<User> parentUserTask = (commentVO.getParentUserId() != null)
-                    ? scope.fork(() -> commonQuery.getUser(commentVO.getParentUserId()))
+                    ? scope.fork(() -> commonQuery.getUserForDisplay(commentVO.getParentUserId()))
                     : null;
 
             // 等待查询完成
@@ -487,7 +487,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             // 降级处理：逐个查询
             userMap.clear();
             for (Integer userId : userIds) {
-                User user = commonQuery.getUser(userId);
+                User user = commonQuery.getUserForDisplay(userId);
                 if (user != null) {
                     userMap.put(userId, user);
                 }
@@ -520,6 +520,9 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
         // 从预查询的用户Map中获取用户信息
         User user = userMap.get(comment.getUserId());
+        if (user == null) {
+            user = commonQuery.getUserForDisplay(comment.getUserId());
+        }
         if (user != null) {
             commentVO.setAvatar(user.getAvatar());
             commentVO.setUsername(user.getUsername());
@@ -532,6 +535,9 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         // 处理父用户信息
         if (comment.getParentUserId() != null) {
             User parentUser = userMap.get(comment.getParentUserId());
+            if (parentUser == null) {
+                parentUser = commonQuery.getUserForDisplay(comment.getParentUserId());
+            }
             if (parentUser != null) {
                 commentVO.setParentUsername(parentUser.getUsername());
             }
