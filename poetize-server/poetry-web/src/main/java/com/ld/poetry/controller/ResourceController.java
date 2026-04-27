@@ -110,6 +110,7 @@ public class ResourceController {
         re.setSize(resource.getSize());
         re.setOriginalName(resource.getOriginalName());
         re.setMimeType(resource.getMimeType());
+        re.setResourceHash(resource.getResourceHash());
         re.setStoreType(resource.getStoreType());
         re.setUserId(PoetryUtil.getUserId());
         
@@ -125,6 +126,7 @@ public class ResourceController {
                 existingResource.setSize(resource.getSize());
                 existingResource.setOriginalName(resource.getOriginalName());
                 existingResource.setMimeType(resource.getMimeType());
+                existingResource.setResourceHash(resource.getResourceHash());
                 existingResource.setStoreType(resource.getStoreType());
                 existingResource.setUserId(PoetryUtil.getUserId());
                 resourceService.updateById(existingResource);
@@ -253,6 +255,9 @@ public class ResourceController {
             fileVO.setFile(processedFile);
             StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
             FileVO result = storeService.saveFile(fileVO);
+            if (Boolean.TRUE.equals(result.getReuseExistingResource())) {
+                return PoetryResult.success(result.getVisitPath());
+            }
             // log.info("文件上传成功 - 路径: {}", result.getVisitPath());
 
             Resource re = new Resource();
@@ -260,7 +265,8 @@ public class ResourceController {
             re.setType(fileVO.getType());
             re.setSize(Integer.valueOf(Long.toString(fileSize)));
             re.setMimeType(processedFile.getContentType());
-            re.setStoreType(fileVO.getStoreType());
+            re.setResourceHash(result.getResourceHash());
+            re.setStoreType(result.getStoreType());
             re.setOriginalName(fileVO.getOriginalName());
             re.setUserId(PoetryUtil.getUserId());
             // 读取图片宽高并写入资源记录
@@ -281,7 +287,8 @@ public class ResourceController {
                 existingResource.setSize(Integer.valueOf(Long.toString(fileSize)));
                 existingResource.setOriginalName(fileVO.getOriginalName());
                 existingResource.setMimeType(processedFile.getContentType());
-                existingResource.setStoreType(fileVO.getStoreType());
+                existingResource.setResourceHash(result.getResourceHash());
+                existingResource.setStoreType(result.getStoreType());
                 existingResource.setUserId(PoetryUtil.getUserId());
                 if (dims != null) {
                     existingResource.setWidth(dims[0]);
@@ -365,12 +372,24 @@ public class ResourceController {
             StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
             FileVO result = storeService.saveFile(fileVO);
 
+            if (Boolean.TRUE.equals(result.getReuseExistingResource())) {
+                return PoetryResult.success(new Object() {
+                    public final String visitPath = result.getVisitPath();
+                    public final long originalSize = compressResult.getOriginalSize();
+                    public final long compressedSize = compressResult.getCompressedSize();
+                    public final double compressionRatio = compressResult.getCompressionRatio();
+                    public final String contentType = compressResult.getContentType();
+                    public final boolean reused = true;
+                });
+            }
+
             Resource re = new Resource();
             re.setPath(result.getVisitPath());
             re.setType(fileVO.getType());
             re.setSize(Integer.valueOf(Long.toString(fileSize)));
             re.setMimeType(compressedFile.getContentType());
-            re.setStoreType(fileVO.getStoreType());
+            re.setResourceHash(result.getResourceHash());
+            re.setStoreType(result.getStoreType());
             re.setOriginalName(fileVO.getOriginalName());
             re.setUserId(PoetryUtil.getUserId());
             
@@ -385,7 +404,8 @@ public class ResourceController {
                 existingResource.setSize(Integer.valueOf(Long.toString(fileSize)));
                 existingResource.setOriginalName(fileVO.getOriginalName());
                 existingResource.setMimeType(compressedFile.getContentType());
-                existingResource.setStoreType(fileVO.getStoreType());
+                existingResource.setResourceHash(result.getResourceHash());
+                existingResource.setStoreType(result.getStoreType());
                 existingResource.setUserId(PoetryUtil.getUserId());
                 resourceService.updateById(existingResource);
             } else {

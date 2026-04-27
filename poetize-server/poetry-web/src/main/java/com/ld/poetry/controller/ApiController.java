@@ -895,7 +895,9 @@ public class ApiController {
 
             StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
             FileVO saved = storeService.saveFile(fileVO);
-            saveUploadedResource(saved, fileVO, file, adminUser);
+            if (!Boolean.TRUE.equals(saved.getReuseExistingResource())) {
+                saveUploadedResource(saved, fileVO, file, adminUser);
+            }
 
             Map<String, Object> data = new HashMap<>();
             data.put("url", saved.getVisitPath());
@@ -904,6 +906,7 @@ public class ApiController {
             data.put("originalName", file.getOriginalFilename());
             data.put("size", file.getSize());
             data.put("mimeType", file.getContentType());
+            data.put("reused", Boolean.TRUE.equals(saved.getReuseExistingResource()));
             return PoetryResult.success(data);
         } catch (PoetryRuntimeException e) {
             log.error("API上传资源失败：{}", e.getMessage());
@@ -1511,6 +1514,7 @@ public class ApiController {
         resource.setSize((int) Math.min(file.getSize(), Integer.MAX_VALUE));
         resource.setMimeType(file.getContentType());
         resource.setStoreType(saved.getStoreType());
+        resource.setResourceHash(saved.getResourceHash());
         resource.setOriginalName(file.getOriginalFilename());
         resource.setUserId(adminUser.getId());
 
@@ -1522,6 +1526,7 @@ public class ApiController {
             existing.setSize(resource.getSize());
             existing.setMimeType(resource.getMimeType());
             existing.setStoreType(resource.getStoreType());
+            existing.setResourceHash(resource.getResourceHash());
             existing.setOriginalName(resource.getOriginalName());
             existing.setUserId(resource.getUserId());
             resourceService.updateById(existing);

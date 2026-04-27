@@ -19,4 +19,8 @@ public class FileVO {
     private MultipartFile file;
 
     private String originalName;
+
+    private String resourceHash;
+
+    private Boolean reuseExistingResource = false;
 }

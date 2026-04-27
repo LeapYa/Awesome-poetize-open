@@ -7,15 +7,24 @@ import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.utils.StringUtil;
 import com.ld.poetry.vo.FileVO;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 
 @Slf4j
@@ -79,12 +88,14 @@ public class LocalUtil implements StoreService {
                 throw new PoetryRuntimeException("文件路径不合法！");
             }
         }
+
         // 统一使用File.separator处理路径分隔符，确保Windows兼容
         String absolutePath = (uploadUrl + path).replace("/", File.separator);
         log.info("计算出的绝对路径: {}", absolutePath);
         if (FileUtil.exist(absolutePath)) {
             throw new PoetryRuntimeException("文件已存在！");
         }
+        File tempFile = null;
         try {
             // 手动创建文件，确保更可靠
             File newFile = new File(absolutePath);
@@ -118,39 +129,172 @@ public class LocalUtil implements StoreService {
                     }
                 }
             }
-            
-            // 创建文件
-            log.info("准备创建文件: {}", newFile.getAbsolutePath());
-            log.info("文件名: {}", newFile.getName());
-            log.info("文件父目录: {}", newFile.getParent());
-            
-            if (!newFile.exists()) {
-                try {
-                    boolean fileCreated = newFile.createNewFile();
-                    log.info("创建文件结果: {}", fileCreated);
-                } catch (IOException e) {
-                    log.error("创建文件失败，详细错误: {}", e.getMessage());
-                    log.error("尝试的完整路径: {}", newFile.getAbsolutePath());
-                    log.error("父目录是否真实存在: {}", newFile.getParentFile().exists());
-                    log.error("父目录是否为目录: {}", newFile.getParentFile().isDirectory());
-                    throw e;
-                }
-            } else {
-                log.info("文件已存在，直接写入");
+
+            tempFile = File.createTempFile(newFile.getName() + ".", ".uploading", parentDir);
+            String resourceHash = writeTempFileAndCalculateHash(fileVO.getFile(), tempFile);
+            fileVO.setResourceHash(resourceHash);
+
+            Resource existingResource = findReusableResource(resourceHash);
+            if (existingResource == null && StringUtils.hasText(resourceHash)) {
+                existingResource = findAndBackfillReusableResource(resourceHash, fileVO.getFile().getSize());
             }
-            
-            // 写入文件内容
-            fileVO.getFile().transferTo(newFile);
+            if (existingResource != null) {
+                FileUtil.del(tempFile);
+                FileVO result = new FileVO();
+                result.setAbsolutePath(existingResource.getPath().replace(downloadUrl, uploadUrl)
+                        .replace("/", File.separator));
+                result.setVisitPath(existingResource.getPath());
+                result.setStoreType(StoreEnum.LOCAL.getCode());
+                result.setResourceHash(resourceHash);
+                result.setReuseExistingResource(true);
+                log.info("LocalUtil.saveFile 命中相同哈希资源，复用已有路径: {}", result.getVisitPath());
+                return result;
+            }
+
+            log.info("准备保存文件: {}", newFile.getAbsolutePath());
+            moveTempFile(tempFile, newFile);
+            tempFile = null;
             log.info("文件内容写入成功，文件大小: {} bytes", newFile.length());
             FileVO result = new FileVO();
             result.setAbsolutePath(absolutePath);
             result.setVisitPath(downloadUrl + path);
+            result.setStoreType(StoreEnum.LOCAL.getCode());
+            result.setResourceHash(resourceHash);
             log.info("LocalUtil.saveFile 完成 - VisitPath: {}", result.getVisitPath());
             return result;
         } catch (IOException e) {
             log.error("文件上传失败：", e);
             FileUtil.del(absolutePath);
             throw new PoetryRuntimeException("文件上传失败！");
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                FileUtil.del(tempFile);
+            }
+        }
+    }
+
+    private String writeTempFileAndCalculateHash(MultipartFile file, File tempFile) throws IOException {
+        if (file == null || file.isEmpty()) {
+            return null;
+        }
+
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream inputStream = new DigestInputStream(file.getInputStream(), digest);
+                 OutputStream outputStream = new FileOutputStream(tempFile)) {
+                inputStream.transferTo(outputStream);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("当前JDK不支持SHA-256算法", e);
+        }
+    }
+
+    private void moveTempFile(File tempFile, File newFile) throws IOException {
+        try {
+            java.nio.file.Files.move(
+                    tempFile.toPath(),
+                    newFile.toPath(),
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE
+            );
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            java.nio.file.Files.move(tempFile.toPath(), newFile.toPath());
+        }
+    }
+
+    private Resource findReusableResource(String resourceHash) {
+        if (!StringUtils.hasText(resourceHash)) {
+            return null;
+        }
+
+        List<Resource> resources = resourceService.lambdaQuery()
+                .select(Resource::getPath, Resource::getResourceHash, Resource::getStoreType)
+                .eq(Resource::getResourceHash, resourceHash)
+                .and(wrapper -> wrapper.eq(Resource::getStoreType, StoreEnum.LOCAL.getCode())
+                        .or()
+                        .isNull(Resource::getStoreType))
+                .isNotNull(Resource::getPath)
+                .list();
+
+        if (CollectionUtils.isEmpty(resources)) {
+            return null;
+        }
+
+        for (Resource resource : resources) {
+            String path = resource.getPath();
+            if (!StringUtils.hasText(path)) {
+                continue;
+            }
+            File file = new File(path.replace(downloadUrl, uploadUrl));
+            if (file.exists() && file.isFile()) {
+                return resource;
+            }
+            log.warn("资源哈希匹配但本地文件不存在，跳过复用: {}", path);
+        }
+        return null;
+    }
+
+    private Resource findAndBackfillReusableResource(String resourceHash, long fileSize) {
+        if (!StringUtils.hasText(resourceHash) || fileSize > Integer.MAX_VALUE) {
+            return null;
+        }
+
+        List<Resource> resources = resourceService.lambdaQuery()
+                .select(Resource::getId, Resource::getPath, Resource::getSize, Resource::getStoreType)
+                .isNull(Resource::getResourceHash)
+                .eq(Resource::getSize, Integer.valueOf(Long.toString(fileSize)))
+                .and(wrapper -> wrapper.eq(Resource::getStoreType, StoreEnum.LOCAL.getCode())
+                        .or()
+                        .isNull(Resource::getStoreType))
+                .isNotNull(Resource::getPath)
+                .list();
+
+        if (CollectionUtils.isEmpty(resources)) {
+            return null;
+        }
+
+        for (Resource resource : resources) {
+            String path = resource.getPath();
+            if (!StringUtils.hasText(path)) {
+                continue;
+            }
+
+            File file = new File(path.replace(downloadUrl, uploadUrl));
+            if (!file.exists() || !file.isFile()) {
+                log.warn("待回填哈希的本地资源文件不存在，跳过: {}", path);
+                continue;
+            }
+
+            String existingHash = calculateFileHash(file);
+            if (!StringUtils.hasText(existingHash)) {
+                continue;
+            }
+
+            Resource update = new Resource();
+            update.setId(resource.getId());
+            update.setResourceHash(existingHash);
+            if (!StringUtils.hasText(resource.getStoreType())) {
+                update.setStoreType(StoreEnum.LOCAL.getCode());
+                resource.setStoreType(StoreEnum.LOCAL.getCode());
+            }
+            resourceService.updateById(update);
+            resource.setResourceHash(existingHash);
+
+            if (resourceHash.equals(existingHash)) {
+                log.info("LocalUtil.saveFile 回填旧资源哈希后命中复用路径: {}", path);
+                return resource;
+            }
+        }
+
+        return null;
+    }
+
+    private String calculateFileHash(File file) {
+        try (InputStream inputStream = new java.io.FileInputStream(file)) {
+            return DigestUtils.sha256Hex(inputStream);
+        } catch (IOException e) {
+            log.warn("计算已有本地资源哈希失败: {}, err={}", file.getAbsolutePath(), e.getMessage());
+            return null;
         }
     }
 

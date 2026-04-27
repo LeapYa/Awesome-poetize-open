@@ -74,6 +74,12 @@ public class Resource implements Serializable {
     private String mimeType;
 
     /**
+     * 资源内容哈希（SHA-256）
+     */
+    @TableField("resource_hash")
+    private String resourceHash;
+
+    /**
      * 文件名称
      */
     @TableField("original_name")

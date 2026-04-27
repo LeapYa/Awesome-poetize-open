@@ -218,6 +218,7 @@ CREATE TABLE `poetize`.`resource` (
   `size` int DEFAULT NULL COMMENT '资源内容的大小，单位：字节',
   `original_name` varchar(512) DEFAULT NULL COMMENT '文件名称',
   `mime_type` varchar(256) DEFAULT NULL COMMENT '资源的 MIME 类型',
+  `resource_hash` varchar(64) DEFAULT NULL COMMENT '资源内容哈希（SHA-256）',
   `width` int DEFAULT NULL COMMENT '图片宽度（像素）',
   `height` int DEFAULT NULL COMMENT '图片高度（像素）',
   `status` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用[0:否，1:是]',
@@ -1246,6 +1247,8 @@ ALTER TABLE `poetize`.`wei_yan` ADD INDEX `idx_public_create` (`is_public`, `cre
 -- 优化 `resource` 表
 -- 为 `user_id` 和 `type` 添加复合索引，加速查询某个用户的特定类型资源
 ALTER TABLE `poetize`.`resource` ADD INDEX `idx_user_type` (`user_id`, `type`);
+-- 为本地资源内容哈希添加复合索引，加速上传前复用检测
+ALTER TABLE `poetize`.`resource` ADD INDEX `idx_store_hash` (`store_type`, `resource_hash`);
 
 -- RAG 知识文档元数据表（兼容初始化；MySQL 场景默认关闭向量检索）
 CREATE TABLE IF NOT EXISTS `poetize`.`ai_knowledge_document` (
