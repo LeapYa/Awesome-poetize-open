@@ -6,6 +6,7 @@
 
 <script>
 import { downgradeMarkdownHeadings, upgradeMarkdownHeadings } from '@/utils/markdownHeadingUtils'
+import { transformAttachmentLinksInElement } from '@/utils/attachmentCard'
 import { parseEChartsOption } from '@/utils/echartsOptionParser'
 import { initEditorTheme } from '@/utils/useEditorTheme'
 // 导入公共编辑器标题样式
@@ -223,6 +224,22 @@ export default {
         'insert-before',
         'insert-after',
         '|',
+        {
+          name: 'upload-file',
+          tip: '上传文件',
+          icon: '<svg viewBox="0 0 1024 1024"><path d="M682.667 170.667H170.667A85.333 85.333 0 0 0 85.333 256v512a85.333 85.333 0 0 0 85.334 85.333h682.666A85.333 85.333 0 0 0 938.667 768V341.333A85.333 85.333 0 0 0 853.333 256H525.355l-72.021-72.021a45.269 45.269 0 0 0-32-13.312H170.667zM149.333 256a21.333 21.333 0 0 1 21.334-21.333h242.602L499.2 320h354.133a21.333 21.333 0 0 1 21.334 21.333V768a21.333 21.333 0 0 1-21.334 21.333H170.667A21.333 21.333 0 0 1 149.333 768V256z"></path><path d="M512 704a32 32 0 0 1-32-32V448a32 32 0 1 1 64 0v224a32 32 0 0 1-32 32z"></path><path d="M416 576a32 32 0 0 1-22.613-54.613l96-96a32 32 0 0 1 45.226 0l96 96a32 32 0 1 1-45.226 45.226L512 493.227l-73.387 73.386A31.872 31.872 0 0 1 416 576z"></path></svg>',
+          click: () => {
+            this.triggerFileUpload(false)
+          }
+        },
+        {
+          name: 'upload-private-file',
+          tip: '上传私有附件',
+          icon: '<svg viewBox="0 0 1024 1024"><path d="M768 384h-42.667v-85.333C725.333 180.736 629.931 85.333 512 85.333S298.667 180.736 298.667 298.667V384H256a85.333 85.333 0 0 0-85.333 85.333v384A85.333 85.333 0 0 0 256 938.667h512a85.333 85.333 0 0 0 85.333-85.334v-384A85.333 85.333 0 0 0 768 384zM384 298.667A128 128 0 0 1 512 170.667a128 128 0 0 1 128 128V384H384v-85.333zM768 853.333H256v-384h512v384z"></path><path d="M512 746.667a42.667 42.667 0 0 1-42.667-42.667v-85.333a42.667 42.667 0 1 1 85.334 0V704A42.667 42.667 0 0 1 512 746.667z"></path></svg>',
+          click: () => {
+            this.triggerFileUpload(true)
+          }
+        },
         'upload',
         {
           name: 'insert-image-link',
@@ -265,10 +282,14 @@ export default {
       ]
 
       const uploadConfig = this.upload || {
-        accept: 'image/*',
+        accept: '*/*',
         handler: (files) => {
           // 触发自定义上传事件
-          this.$emit('image-add', files[0])
+          this.$emit('image-add', {
+            file: files[0],
+            privateAttachment: false,
+            forceAttachment: false
+          })
           return null
         }
       }
@@ -345,7 +366,8 @@ export default {
             const displayValue = upgradeMarkdownHeadings(this.value)
             this.editor.setValue(displayValue)
           }
-          // 渲染 ECharts 图表（预览区域）
+          // 渲染附件卡片和 ECharts 图表（预览区域）
+          this.renderAttachmentCardsInPreview()
           this.renderEChartsInPreview()
           this.$emit('ready', this.editor)
           
@@ -359,6 +381,7 @@ export default {
               // 使用防抖避免频繁渲染
               clearTimeout(this._echartsRenderTimer)
               this._echartsRenderTimer = setTimeout(() => {
+                this.renderAttachmentCardsInPreview()
                 this.renderEChartsInPreview()
               }, 300)
             })
@@ -410,6 +433,27 @@ export default {
       if (this.editor) {
         this.editor.insertValue(value)
       }
+    },
+    triggerFileUpload(privateAttachment = false) {
+      if (typeof document === 'undefined') {
+        return
+      }
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.style.display = 'none'
+      input.addEventListener('change', () => {
+        const file = input.files && input.files[0]
+        if (file) {
+          this.$emit('image-add', {
+            file,
+            privateAttachment: !!privateAttachment,
+            forceAttachment: true
+          })
+        }
+        input.remove()
+      })
+      document.body.appendChild(input)
+      input.click()
     },
     focus() {
       if (this.editor) {
@@ -465,6 +509,16 @@ export default {
         }
       }
       window.addEventListener('storage', this._storageListener)
+    },
+    renderAttachmentCardsInPreview() {
+      const previewElement = this.$refs.vditorContainer?.querySelector('.vditor-preview') ||
+                            this.$refs.vditorContainer?.querySelector('.vditor-ir__preview') ||
+                            this.$refs.vditorContainer?.querySelector('.vditor-wysiwyg__preview') ||
+                            this.$refs.vditorContainer?.querySelector('.vditor-wysiwyg')
+
+      if (previewElement) {
+        transformAttachmentLinksInElement(previewElement)
+      }
     },
     // 渲染 ECharts 图表（预览区域）
     async renderEChartsInPreview() {

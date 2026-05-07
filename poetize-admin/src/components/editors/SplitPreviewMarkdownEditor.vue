@@ -46,6 +46,12 @@
         <el-tooltip content="图片 (Ctrl+G / 粘贴)" placement="top" :enterable="false">
           <div class="toolbar-item" @click="insertFormat('image')"><i class="el-icon-picture-outline"></i></div>
         </el-tooltip>
+        <el-tooltip content="文件 (粘贴)" placement="top" :enterable="false">
+          <div class="toolbar-item" @click="triggerFileUpload"><i class="el-icon-folder-add"></i></div>
+        </el-tooltip>
+        <el-tooltip content="私有附件" placement="top" :enterable="false">
+          <div class="toolbar-item" @click="triggerPrivateFileUpload"><i class="el-icon-lock"></i></div>
+        </el-tooltip>
         <el-tooltip content="代码块 (Ctrl+K)" placement="top" :enterable="false">
           <div class="toolbar-item" @click="insertFormat('code')"><i class="fa fa-file-code-o"></i></div>
         </el-tooltip>
@@ -137,7 +143,6 @@
       type="file" 
       ref="fileInput" 
       style="display: none" 
-      accept="image/*" 
       @change="handleFileChange"
     >
 
@@ -176,6 +181,8 @@
         <ul class="help-list">
           <li><strong>Markdown 兼容</strong>：支持直接粘贴 Markdown 文本。</li>
           <li><strong>图片上传</strong>：支持截图直接粘贴。</li>
+          <li><strong>文件上传</strong>：支持粘贴上传文件。</li>
+          <li><strong>登录附件</strong>：私有附件使用前端登录拦截；知道真实静态地址仍可直接访问，适合轻量提示场景。</li>
         </ul>
         <h3>📊 图表支持</h3>
         <ul class="help-list">
@@ -271,6 +278,8 @@ export default {
       // 标记是否是内部更新，防止循环
       isInternalUpdate: false,
       queuedImageUploads: [],
+      pendingForceAttachmentUpload: false,
+      pendingPrivateAttachmentUpload: false,
       history: null,
       historySuspend: false,
       historyNextMode: null,
@@ -402,10 +411,10 @@ export default {
         textarea.setSelectionRange(selectionStart, selectionEnd);
       });
     },
-    queueOrStartImageUpload(file) {
+    queueOrStartImageUpload(file, options = {}) {
       if (!file) return null;
       if (this.isComposing) {
-        this.queuedImageUploads.push(file);
+        this.queuedImageUploads.push({ file, options });
         return null;
       }
 
@@ -417,14 +426,17 @@ export default {
       this.replaceRangeValue(textarea.selectionStart, textarea.selectionEnd, token, {
         historyMode: 'push'
       });
-      this.uploadFile(file, uploadId);
+      this.uploadFile(file, uploadId, options);
       return uploadId;
     },
     flushQueuedImageUploads() {
       if (this.isComposing || !this.queuedImageUploads.length) return;
-      const files = this.queuedImageUploads.slice();
+      const queuedUploads = this.queuedImageUploads.slice();
       this.queuedImageUploads = [];
-      files.forEach((file) => this.queueOrStartImageUpload(file));
+      queuedUploads.forEach((item) => {
+        const upload = item && item.file ? item : { file: item, options: {} };
+        this.queueOrStartImageUpload(upload.file, upload.options || {});
+      });
     },
     replaceImageUploadToken(uploadId, replacement) {
       const token = this.createImageUploadToken(uploadId);
@@ -1051,7 +1063,7 @@ export default {
     // 粘贴处理（支持图片上传 + HTML转Markdown）
     handlePaste(e) {
       handlePasteUtil(e, {
-        onImage: (file) => {
+        onFile: (file) => {
           this.queueOrStartImageUpload(file);
         },
         onText: (text) => {
@@ -1193,18 +1205,41 @@ export default {
     // 文件选择处理
     handleFileChange(e) {
       const file = e.target.files[0];
+      const uploadOptions = {
+        forceAttachment: this.pendingForceAttachmentUpload,
+        privateAttachment: this.pendingPrivateAttachmentUpload
+      };
+      this.pendingForceAttachmentUpload = false;
+      this.pendingPrivateAttachmentUpload = false;
       if (file) {
-        this.queueOrStartImageUpload(file);
+        this.queueOrStartImageUpload(file, uploadOptions);
       }
       // 清空 input 允许重复选择同一文件
       e.target.value = '';
     },
 
+    triggerFileUpload() {
+      this.pendingForceAttachmentUpload = true;
+      this.pendingPrivateAttachmentUpload = false;
+      this.$refs.fileInput?.click();
+    },
+
+    triggerPrivateFileUpload() {
+      this.pendingForceAttachmentUpload = true;
+      this.pendingPrivateAttachmentUpload = true;
+      this.$refs.fileInput?.click();
+    },
+
     // 上传文件逻辑
-    uploadFile(file, uploadId = null) {
+    uploadFile(file, uploadId = null, options = {}) {
       // 触发父组件的上传逻辑，保持与 Vditor 接口一致
       // 父组件通常监听 @image-add(file)
-      this.$emit('image-add', uploadId ? { file, uploadId } : file);
+      this.$emit('image-add', uploadId ? {
+        file,
+        uploadId,
+        privateAttachment: !!options.privateAttachment,
+        forceAttachment: !!options.forceAttachment
+      } : file);
     },
 
     // 供父组件调用的方法：插入内容（通常是图片上传后的回调）

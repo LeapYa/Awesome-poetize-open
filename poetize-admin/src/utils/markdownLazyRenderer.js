@@ -3,6 +3,8 @@
  * @description 封装 MarkdownIt 及其插件的动态导入，通过代码分割减少首页 Bundle 体积。
  */
 
+import { transformAttachmentLinks } from './attachmentCard';
+
 let mdInstance = null;
 
 /**
@@ -138,7 +140,7 @@ export async function renderMarkdown(content) {
         }
     }
 
-    return mdInstance.render(content || '');
+    return transformAttachmentLinks(mdInstance.render(content || ''));
 }
 
 /**

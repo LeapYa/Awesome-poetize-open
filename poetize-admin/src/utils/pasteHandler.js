@@ -7,15 +7,16 @@ import { Message } from 'element-ui-ce';
  * @param {ClipboardEvent} event - 粘贴事件对象
  * @param {Object} callbacks - 回调函数集合
  * @param {Function} callbacks.onImage - 处理图片上传 (file) => void
+ * @param {Function} callbacks.onFile - 处理文件上传 (file) => void
  * @param {Function} callbacks.onText - 处理文本插入 (text) => void
  * @returns {Promise<void>}
  */
-export async function handlePaste(event, { onImage, onText }) {
+export async function handlePaste(event, { onImage, onFile, onText }) {
   const clipboardData = event.clipboardData || window.clipboardData;
   if (!clipboardData) return;
 
-  // 1. 优先处理文件 (图片)
-  // 注意：剪贴板可能包含多个项目，我们优先寻找图片
+  // 1. 优先处理文件
+  // 注意：剪贴板可能包含多个项目，我们优先寻找文件
   const items = clipboardData.items;
   let hasFile = false;
   
@@ -24,23 +25,23 @@ export async function handlePaste(event, { onImage, onText }) {
       const item = items[i];
       if (item.kind === 'file') {
         hasFile = true;
-        // 检查是否是图片
-        if (item.type.indexOf('image') !== -1) {
-          event.preventDefault(); // 拦截默认行为
-          const file = item.getAsFile();
-          if (file && onImage) {
-            onImage(file);
-          }
-          return; // 处理完第一张图片后停止 (通常粘贴只需处理一个主要内容)
+        const file = item.getAsFile();
+        if (!file) {
+          continue;
+        }
+
+        event.preventDefault();
+        if (onFile) {
+          onFile(file);
+          return;
+        }
+        if (file.type.indexOf('image') !== -1 && onImage) {
+          onImage(file);
+          return;
         }
       }
     }
   }
-
-  // 如果包含文件但没有一个是图片，且没有文本内容，提示用户
-  // 注意：有些文件复制也会带有文件名作为 text/plain，所以需要综合判断
-  // 这里策略是：如果是文件但非图片，我们不处理文件，继续尝试处理文本
-  // 如果最终也没有有效的文本，再提示
 
   // 2. 检测自定义 Markdown 格式 (编辑器内部复制)
   const poetizeMarkdown = clipboardData.getData('text/x-poetize-markdown');
@@ -64,9 +65,8 @@ export async function handlePaste(event, { onImage, onText }) {
 
   if (!html && !plainText) {
     if (hasFile) {
-      // 有文件但不是图片，且没有文本 -> 不支持的文件类型
       event.preventDefault();
-      Message.warning('目前仅支持粘贴图片文件或文本内容');
+      Message.warning('当前浏览器没有提供可读取的文件内容');
     }
     return;
   }

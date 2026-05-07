@@ -7,34 +7,15 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * 文件安全验证工具类
- * 通过魔数检测和扩展名验证，确保上传文件的安全性
- * 支持图片、视频、音频等多种文件类型
+ * 通过基础文件名检查和图片、视频、音频魔数检测，确保上传文件的安全性。
+ * 其他文件类型允许作为附件上传，服务端只保存并提供下载，不执行文件。
  */
 @Slf4j
 @Component
 public class FileSecurityValidator {
-
-    // 危险文件扩展名黑名单
-    private static final Set<String> DANGEROUS_EXTENSIONS = new HashSet<>(Arrays.asList(
-            "php", "php3", "php4", "php5", "phtml", "phar",
-            "jsp", "jspx", "jsf", "jspa", "jhtml",
-            "asp", "aspx", "asa", "asax", "ascx", "ashx", "asmx",
-            "py", "pyc", "pyw",
-            "sh", "bash", "zsh",
-            "pl", "perl",
-            "exe", "dll", "bat", "cmd", "com",
-            "jar", "class",
-            "scr", "vbs", "vbe", "js", "jse",
-            "wsf", "wsh",
-            "go", "rust", "c", "cpp", "cc", "cxx",
-            "rb", "rhtml",
-            "htaccess", "htpasswd", "conf"
-    ));
 
     // 文件类型枚举
     public enum FileType {
@@ -201,13 +182,7 @@ public class FileSecurityValidator {
                 return ValidationResult.fail("文件必须包含扩展名");
             }
 
-            // 4. 检查是否为危险文件扩展名
-            if (DANGEROUS_EXTENSIONS.contains(extension)) {
-                log.warn("检测到危险文件扩展名: {}, 原始文件名: {}", extension, originalFilename);
-                return ValidationResult.fail("不支持的文件类型: " + extension);
-            }
-
-            // 5. 自动识别文件类型并验证
+            // 4. 自动识别文件类型并验证
             FileType detectedType = detectFileType(contentType);
             if (detectedType != null) {
                 // 已知文件类型 - 执行严格验证
@@ -229,11 +204,9 @@ public class FileSecurityValidator {
                 log.info("文件验证通过: {}, 类型: {}, 大小: {} bytes",
                         originalFilename, detectedType.typeName, file.getSize());
             } else {
-                // 未知文件类型 - 仅执行基础安全检查
-                if (!isKnownSafeFileType(contentType)) {
-                    log.warn("未知的文件类型: {}, 文件名: {}", contentType, originalFilename);
-                    return ValidationResult.fail("不支持的文件类型: " + contentType);
-                }
+                // 未知或通用文件类型允许作为附件上传，下载侧统一控制是否强制下载。
+                log.info("文件基础验证通过: {}, Content-Type: {}, 大小: {} bytes",
+                        originalFilename, contentType, file.getSize());
             }
 
             return ValidationResult.success(extension);
@@ -288,23 +261,6 @@ public class FileSecurityValidator {
             if (contentType.startsWith("audio/flac")) return extension.equals("flac");
         }
         return true; // 未知类型默认通过
-    }
-
-    /**
-     * 检查是否为已知安全文件类型
-     */
-    private boolean isKnownSafeFileType(String contentType) {
-        if (contentType == null) {
-            return false;
-        }
-        // 允许 image/*, video/*, audio/*, application/pdf, text/* 等常见安全类型
-        return contentType.startsWith("image/") ||
-               contentType.startsWith("video/") ||
-               contentType.startsWith("audio/") ||
-               contentType.startsWith("application/pdf") ||
-               contentType.startsWith("text/") ||
-               contentType.startsWith("application/json") ||
-               contentType.startsWith("application/xml");
     }
 
     /**

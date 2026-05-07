@@ -471,6 +471,7 @@
     import * as Y from 'yjs';
     import { IndexeddbPersistence } from 'y-indexeddb';
     import { DRAFT_META_FIELDS, applyTextDiff, base64ToUint8Array, buildDraftWebSocketUrl, uint8ArrayToBase64 } from '@/utils/articleDraftCrdt';
+    import { createAttachmentMarkdown } from '@/utils/attachmentCard';
 
 const uploadPicture = () => import("../common/uploadPicture");
   const ArticleEditor = () => import('@/components/ArticleEditor.vue');
@@ -2290,20 +2291,23 @@ const uploadPicture = () => import("../common/uploadPicture");
         });
       },
       
-      // 图片上传处理（适配 Vditor）
+      // 文件上传处理（适配 Vditor 和自研编辑器）
       imgAdd(payload) {
         try {
           const uploadPayload = payload && payload.file ? payload : { file: payload, uploadId: null };
           const file = uploadPayload.file;
           const uploadId = uploadPayload.uploadId || null;
+          const privateAttachment = !!uploadPayload.privateAttachment;
+          const forceAttachment = !!uploadPayload.forceAttachment || privateAttachment;
           if (!file) {
-            this.showError("图片上传准备失败", "未获取到上传文件");
+            this.showError("文件上传准备失败", "未获取到上传文件");
             return;
           }
 
+          const isImage = !forceAttachment && this.isImageFile(file);
           // 显示上传中提示
           const loadingMessage = this.$message({
-            message: '正在上传图片...',
+            message: privateAttachment ? '正在上传私有附件...' : (isImage ? '正在上传图片...' : '正在上传文件...'),
             type: 'info',
             iconClass: 'el-icon-loading',
             duration: 0, // 不自动关闭
@@ -2311,63 +2315,76 @@ const uploadPicture = () => import("../common/uploadPicture");
           });
 
           let suffix = file.name.lastIndexOf('.') !== -1 ? file.name.substring(file.name.lastIndexOf('.')) : "";
-          let key = "articlePicture" + "/" + this.mainStore.currentAdmin.username.replace(/[^a-zA-Z]/g, '') 
+          const resourceType = isImage ? "articlePicture" : "articleFile";
+          let key = resourceType + "/" + this.mainStore.currentAdmin.username.replace(/[^a-zA-Z]/g, '')
                     + this.mainStore.currentAdmin.id + new Date().getTime() 
                     + Math.floor(Math.random() * 1000) + suffix;
 
           // 获取当前存储类型，优先使用更新后的配置
-          let storeType = this.currentStoreType || this.mainStore.sysConfig['store.type'] || "local";
+          // 图床类存储通常只接受图片；文章附件统一走本地存储，私有附件仅通过前端 u/ 标记拦截。
+          let storeType = isImage ? (this.currentStoreType || this.mainStore.sysConfig['store.type'] || "local") : "local";
+          const uploadOptions = {
+            privateAttachment,
+            forceAttachment
+          };
 
           let fd = new FormData();
           fd.append("file", file);
           fd.append("originalName", file.name);
           fd.append("key", key);
           fd.append("relativePath", key);
-          fd.append("type", "articlePicture");
+          fd.append("type", resourceType);
           fd.append("storeType", storeType);
 
           if (storeType === "local") {
-            this.saveLocal(fd, loadingMessage, uploadId);
+            this.saveLocal(fd, loadingMessage, uploadId, uploadOptions);
           } else if (storeType === "qiniu") {
-            this.saveQiniu(fd, loadingMessage, uploadId);
+            this.saveQiniu(fd, loadingMessage, uploadId, uploadOptions);
           } else if (storeType === "lsky") {
-            this.saveLsky(fd, loadingMessage, uploadId);
+            this.saveLsky(fd, loadingMessage, uploadId, uploadOptions);
           } else if (storeType === "easyimage") {
-            this.saveLsky(fd, loadingMessage, uploadId);
+            this.saveLsky(fd, loadingMessage, uploadId, uploadOptions);
           }
         } catch (error) {
-          this.showError("图片上传准备失败", error);
+          this.showError("文件上传准备失败", error);
         }
       },
       
-      // 本地保存图片
-      saveLocal(fd, loadingMessage, uploadId) {
+      // 本地保存文件
+      saveLocal(fd, loadingMessage, uploadId, uploadOptions = {}) {
         this.$http.upload(this.$constant.baseURL + "/resource/upload", fd, true)
           .then((res) => {
             // 关闭上传中提示
             if (loadingMessage) loadingMessage.close();
             
             if (!this.$common.isEmpty(res.data)) {
-              this.insertImage(res.data, fd.get("file").name, uploadId);
-              this.$message.success('图片上传成功');
+              this.insertUploadedFile(res.data, fd.get("file"), uploadId, uploadOptions);
+              const isImage = !uploadOptions.forceAttachment && this.isImageFile(fd.get("file"));
+              this.$message.success(isImage ? '图片上传成功' : '文件上传成功');
             } else {
               this.rejectImageUpload(uploadId);
-              this.showError("图片上传失败", "服务器未返回有效的图片URL");
+              this.showError("文件上传失败", "服务器未返回有效的文件URL");
             }
           })
           .catch((error) => {
             // 关闭上传中提示
             if (loadingMessage) loadingMessage.close();
             this.rejectImageUpload(uploadId);
-            this.showError("图片本地上传失败", error);
+            this.showError("文件本地上传失败", error);
           });
       },
       
-      // 插入图片到编辑器
-      insertImage(url, filename, uploadId = null) {
-        // 智能处理图片URL：开发环境使用完整URL，生产环境使用相对路径
+      isImageFile(file) {
+        if (!file) {
+          return false;
+        }
+        return String(file.type || '').startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp|tiff|tif|psd|svg|ico)$/i.test(file.name || '');
+      },
+
+      createUploadedFileMarkdown(url, file, uploadOptions = {}) {
+        const isImage = !uploadOptions.forceAttachment && this.isImageFile(file);
         let fullUrl = url;
-        if (url.startsWith('/')) {
+        if (isImage && url.startsWith('/')) {
           // 开发环境（非生产模式）：前后端端口不同，需要完整URL
           // 生产环境：前后端同域，使用相对路径由Nginx代理
           if (!import.meta.env.PROD) {
@@ -2376,8 +2393,18 @@ const uploadPicture = () => import("../common/uploadPicture");
         }
         
         // 过滤文件名中的括号，防止破坏Markdown语法
-        const safeFilename = (filename || '图片').replace(/[\[\]\(\)]/g, '');
-        const markdown = `![${safeFilename}](${fullUrl})\n`;
+        const safeFilename = (file && file.name ? file.name : '文件').replace(/[\[\]\(\)]/g, '');
+        if (isImage) {
+          return `![${safeFilename}](${fullUrl})\n`;
+        }
+        return createAttachmentMarkdown(safeFilename, url, {
+          privateAttachment: !!uploadOptions.privateAttachment
+        });
+      },
+
+      // 插入上传结果到编辑器
+      insertUploadedFile(url, file, uploadId = null, uploadOptions = {}) {
+        const markdown = this.createUploadedFileMarkdown(url, file, uploadOptions);
         
         if (this.$refs.md) {
           if (uploadId && typeof this.$refs.md.resolveImageUpload === 'function') {
@@ -2397,7 +2424,7 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       
       // 七牛云保存图片
-      saveQiniu(fd, loadingMessage, uploadId) {
+      saveQiniu(fd, loadingMessage, uploadId, uploadOptions = {}) {
         this.$http.get(this.$constant.baseURL + "/qiniu/getUpToken", {key: fd.get("key")}, true)
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
@@ -2411,12 +2438,14 @@ const uploadPicture = () => import("../common/uploadPicture");
                   if (!this.$common.isEmpty(res.key)) {
                     let url = this.mainStore.sysConfig['qiniu.downloadUrl'] + res.key;
                     let file = fd.get("file");
-                    this.$common.saveResource(this, "articlePicture", url, file.size, file.type, file.name, "qiniu", true);
-                    this.insertImage(url, file.name, uploadId);
-                    this.$message.success('图片上传成功');
+                    let resourceType = fd.get("type") || (this.isImageFile(file) ? "articlePicture" : "articleFile");
+                    this.$common.saveResource(this, resourceType, url, file.size, file.type, file.name, "qiniu", true);
+                    this.insertUploadedFile(url, file, uploadId, uploadOptions);
+                    const isImage = !uploadOptions.forceAttachment && this.isImageFile(file);
+                    this.$message.success(isImage ? '图片上传成功' : '文件上传成功');
                   } else {
                     this.rejectImageUpload(uploadId);
-                    this.showError("七牛云上传失败", "未返回有效的图片密钥");
+                    this.showError("七牛云上传失败", "未返回有效的文件密钥");
                   }
                 })
                 .catch((error) => {
@@ -2441,7 +2470,7 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       
       // 兰空图床保存图片
-      saveLsky(fd, loadingMessage, uploadId) {
+      saveLsky(fd, loadingMessage, uploadId, uploadOptions = {}) {
         this.$http.post(this.$constant.baseURL + "/resource/upload", fd, true)
           .then((res) => {
             // 关闭上传中提示
@@ -2452,12 +2481,14 @@ const uploadPicture = () => import("../common/uploadPicture");
               let url = res.data;
               let file = fd.get("file");
               let storeType = fd.get("storeType") || "lsky";
-              this.$common.saveResource(this, "articlePicture", url, file.size, file.type, file.name, storeType, true);
-              this.insertImage(url, file.name, uploadId);
-              this.$message.success('图片上传成功');
+              let resourceType = fd.get("type") || (this.isImageFile(file) ? "articlePicture" : "articleFile");
+              this.$common.saveResource(this, resourceType, url, file.size, file.type, file.name, storeType, true);
+              this.insertUploadedFile(url, file, uploadId, uploadOptions);
+              const isImage = !uploadOptions.forceAttachment && this.isImageFile(file);
+              this.$message.success(isImage ? '图片上传成功' : '文件上传成功');
             } else {
               this.rejectImageUpload(uploadId);
-              this.showError("图床上传失败", "服务器未返回有效的图片URL");
+              this.showError("图床上传失败", "服务器未返回有效的文件URL");
             }
           })
           .catch((error) => {

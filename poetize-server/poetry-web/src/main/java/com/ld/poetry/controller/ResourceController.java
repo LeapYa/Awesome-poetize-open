@@ -11,19 +11,28 @@ import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.utils.storage.StoreService;
 import com.ld.poetry.utils.*;
 import com.ld.poetry.utils.storage.FileStorageService;
+import com.ld.poetry.utils.storage.StoreEnum;
 import com.ld.poetry.utils.image.ImageCompressUtil;
 import com.ld.poetry.utils.image.IcoConvertUtil;
+import com.ld.poetry.utils.security.FileDownloadUtil;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.FileVO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -37,6 +46,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ConcurrentHashMap;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -87,6 +97,12 @@ public class ResourceController {
 
     @Autowired
     private FileSecurityValidator fileSecurityValidator;
+
+    @Value("${local.uploadUrl:/app/static/}")
+    private String localUploadUrl;
+
+    @Value("${local.downloadUrl:/static/}")
+    private String localDownloadUrl;
 
     /**
      * 保存
@@ -164,6 +180,11 @@ public class ResourceController {
             }
 
             log.info("文件安全验证通过: {}, Content-Type: {}", file.getOriginalFilename(), file.getContentType());
+            if (FileDownloadUtil.shouldForceDownload(fileVO.getRelativePath())
+                    && !CommonConst.PATH_TYPE_ARTICLE_FILE.equals(fileVO.getType())) {
+                return PoetryResult.fail("该文件类型只能作为文章附件上传");
+            }
+
             MultipartFile processedFile = file;
             String originalFileName = file.getOriginalFilename();
             long originalSize = file.getSize();
@@ -250,6 +271,10 @@ public class ResourceController {
             if (fileSize > Integer.MAX_VALUE) {
                 log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
                 return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
+            if (CommonConst.PATH_TYPE_ARTICLE_FILE.equals(fileVO.getType())) {
+                fileVO.setStoreType(StoreEnum.LOCAL.getCode());
             }
 
             fileVO.setFile(processedFile);
@@ -496,6 +521,48 @@ public class ResourceController {
     }
 
     /**
+     * 已登记资源的强制下载入口。
+     */
+    @GetMapping("/download")
+    public void download(@RequestParam("path") String path,
+                         @RequestParam(value = "filename", required = false) String filename,
+                         HttpServletResponse response) throws IOException {
+        downloadRegisteredResource(path, filename, response);
+    }
+
+    private void downloadRegisteredResource(String path, String filename, HttpServletResponse response) throws IOException {
+        if (FileDownloadUtil.hasUnsafeDownloadPath(path)
+                || isRemoteResource(path)
+                || !isLocalArticleFilePath(path)) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        Resource resource = resourceService.lambdaQuery()
+                .eq(Resource::getPath, path)
+                .last("limit 1")
+                .one();
+        if (resource == null) {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+
+        String downloadName = FileDownloadUtil.sanitizeFileName(filename);
+        if (!StringUtils.hasText(downloadName)) {
+            downloadName = FileDownloadUtil.sanitizeFileName(resource.getOriginalName());
+        }
+        if (!StringUtils.hasText(downloadName)) {
+            downloadName = FileDownloadUtil.fileNameFromPath(path);
+        }
+
+        response.setHeader("Content-Disposition", FileDownloadUtil.contentDispositionAttachment(downloadName));
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+
+        streamLocalResource(path, response);
+    }
+
+    /**
      * 查询表情包
      */
     @GetMapping("/getImageList")
@@ -534,6 +601,65 @@ public class ResourceController {
     public PoetryResult changeResourceStatus(@RequestParam("id") Integer id, @RequestParam("flag") Boolean flag) {
         resourceService.lambdaUpdate().eq(Resource::getId, id).set(Resource::getStatus, flag).update();
         return PoetryResult.success();
+    }
+
+    private void streamLocalResource(String resourcePath, HttpServletResponse response) throws IOException {
+        Path basePath = Paths.get(normalizeLocalUploadUrl()).toAbsolutePath().normalize();
+        String relativePath = resourcePath.replace('\\', '/');
+        if (StringUtils.hasText(localDownloadUrl) && relativePath.startsWith(localDownloadUrl)) {
+            relativePath = relativePath.substring(localDownloadUrl.length());
+        } else if (relativePath.startsWith("/static/")) {
+            relativePath = relativePath.substring("/static/".length());
+        }
+        while (relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+
+        Path filePath = basePath.resolve(relativePath.replace("/", File.separator)).normalize();
+        if (!filePath.startsWith(basePath) || !Files.isRegularFile(filePath)) {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+
+        response.setContentLengthLong(Files.size(filePath));
+        try (InputStream inputStream = Files.newInputStream(filePath)) {
+            inputStream.transferTo(response.getOutputStream());
+        }
+    }
+
+    private boolean isRemoteResource(String resourcePath) {
+        if (!StringUtils.hasText(resourcePath)) {
+            return false;
+        }
+        String lowerPath = resourcePath.toLowerCase();
+        return lowerPath.startsWith("http://") || lowerPath.startsWith("https://");
+    }
+
+    private boolean isLocalArticleFilePath(String resourcePath) {
+        if (!StringUtils.hasText(resourcePath)) {
+            return false;
+        }
+        String normalized = resourcePath.replace('\\', '/');
+        if (normalized.startsWith("/static/articleFile/")) {
+            return true;
+        }
+
+        if (!StringUtils.hasText(localDownloadUrl)) {
+            return false;
+        }
+        String localPrefix = localDownloadUrl.replace('\\', '/');
+        if (!localPrefix.endsWith("/")) {
+            localPrefix += "/";
+        }
+        return localPrefix.startsWith("/") && normalized.startsWith(localPrefix + "articleFile/");
+    }
+
+    private String normalizeLocalUploadUrl() {
+        String uploadPath = localUploadUrl;
+        if (uploadPath.startsWith("file:")) {
+            uploadPath = uploadPath.substring("file:".length());
+        }
+        return uploadPath;
     }
 
     /**

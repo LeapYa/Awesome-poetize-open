@@ -1,13 +1,21 @@
 package com.ld.poetry.config;
 
+import com.ld.poetry.utils.security.FileDownloadUtil;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.io.IOException;
 
 @Slf4j
 @Configuration
@@ -45,6 +53,34 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registration.addUrlPatterns("/*");
         registration.setName("poetryFilter");
         registration.setOrder(2); // 设置在SecurityFilter之后执行
+        return registration;
+    }
+
+    /**
+     * Spring 静态资源兜底：可执行/脚本类文章附件即使被直接访问，也强制下载。
+     */
+    @Bean
+    public FilterRegistrationBean<OncePerRequestFilter> executableAttachmentHeaderFilterRegistration() {
+        FilterRegistrationBean<OncePerRequestFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new OncePerRequestFilter() {
+            @Override
+            protected void doFilterInternal(HttpServletRequest request,
+                                            HttpServletResponse response,
+                                            FilterChain filterChain) throws ServletException, IOException {
+                if (request.getRequestURI() != null
+                        && request.getRequestURI().startsWith("/static/articleFile/")) {
+                    if (FileDownloadUtil.shouldForceDownload(request.getRequestURI())) {
+                        response.setHeader("Content-Disposition",
+                                FileDownloadUtil.contentDispositionAttachment(FileDownloadUtil.fileNameFromPath(request.getRequestURI())));
+                        response.setHeader("X-Content-Type-Options", "nosniff");
+                    }
+                }
+                filterChain.doFilter(request, response);
+            }
+        });
+        registration.addUrlPatterns("/static/*");
+        registration.setName("executableAttachmentHeaderFilter");
+        registration.setOrder(3);
         return registration;
     }
 

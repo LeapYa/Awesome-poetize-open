@@ -203,6 +203,8 @@ public class CommonConst {
 
     public static final String PATH_TYPE_ARTICLE_PICTURE = "articlePicture";
 
+    public static final String PATH_TYPE_ARTICLE_FILE = "articleFile";
+
     public static final String PATH_TYPE_USER_AVATAR = "userAvatar";
 
     public static final String PATH_TYPE_ARTICLE_COVER = "articleCover";

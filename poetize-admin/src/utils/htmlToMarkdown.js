@@ -208,6 +208,46 @@ function getTurndownService() {
   });
 
   // 自定义规则：处理链接（清理追踪参数等）
+  turndownInstance.addRule('attachmentCard', {
+    filter: function (node) {
+      return (
+        node.classList &&
+        node.classList.contains('poetize-attachment-card') &&
+        node.getAttribute('data-poetize-attachment') === 'true'
+      ) || (
+        node.nodeName === 'A' &&
+        node.classList &&
+        node.classList.contains('poetize-attachment-card') &&
+        node.getAttribute('href')
+      );
+    },
+    replacement: function (content, node) {
+      let href =
+        node.getAttribute('data-poetize-attachment-href') ||
+        node.getAttribute('href') ||
+        '';
+      const nameNode = node.querySelector('.poetize-attachment-name');
+      const name = (nameNode ? nameNode.textContent : content || '附件').trim();
+      const isPrivate = node.getAttribute('data-poetize-private-attachment') === 'true';
+
+      if (!href) {
+        const previewLink = node.querySelector('.poetize-attachment-action-link[data-poetize-attachment-action="preview"]');
+        const downloadLink = node.querySelector('.poetize-attachment-action-link[data-poetize-attachment-action="download"]');
+        href = (previewLink && previewLink.getAttribute('href')) ||
+          (downloadLink && downloadLink.getAttribute('data-poetize-attachment-href')) ||
+          (downloadLink && downloadLink.getAttribute('href')) ||
+          '';
+      }
+
+      if (isPrivate && href && !href.startsWith('u/')) {
+        href = 'u/' + href.replace(/^\/+/, '');
+      }
+
+      return '[' + name.replace(/[\[\]\(\)]/g, '') + '](' + href + ' "poetize-attachment")';
+    }
+  });
+
+  // 自定义规则：处理链接（清理追踪参数等）
   turndownInstance.addRule('link', {
     filter: function (node, options) {
       return (

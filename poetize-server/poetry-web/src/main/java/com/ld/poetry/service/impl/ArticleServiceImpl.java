@@ -268,7 +268,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (userId == null) {
             return PoetryResult.fail("无法确定文章作者，请重新登录后再试");
         }
-
         // 在主线程中获取用户信息，避免异步线程中无法访问RequestContext
         String currentUsername = StringUtils.hasText(actorUsername)
                 ? actorUsername

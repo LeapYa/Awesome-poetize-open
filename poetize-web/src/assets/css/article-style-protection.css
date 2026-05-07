@@ -840,3 +840,127 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
   text-decoration: line-through;
   opacity: 0.85;
 }
+
+/* ========== 附件卡片 ========== */
+.entry-content .poetize-attachment-card {
+  display: inline-flex !important;
+  align-items: center !important;
+  width: min(100%, 460px) !important;
+  min-height: 64px !important;
+  margin: 8px 0 !important;
+  padding: 10px 12px !important;
+  gap: 12px !important;
+  color: #303133 !important;
+  background: #ffffff !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+  vertical-align: top !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease !important;
+}
+
+.entry-content .poetize-attachment-card:hover {
+  color: #303133 !important;
+  border-color: #409eff !important;
+  box-shadow: 0 6px 18px rgba(64, 158, 255, 0.12) !important;
+  transform: translateY(-1px) !important;
+}
+
+.entry-content .poetize-attachment-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  background: #409eff !important;
+  border-radius: 6px !important;
+  letter-spacing: 0 !important;
+}
+
+.entry-content .poetize-attachment-body {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+.entry-content .poetize-attachment-name {
+  overflow: hidden !important;
+  color: #303133 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.entry-content .poetize-attachment-meta {
+  color: #909399 !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.entry-content .poetize-attachment-action {
+  flex: 0 0 auto !important;
+  color: #409eff !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+.entry-content .poetize-attachment-actions {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.entry-content .poetize-attachment-action-link {
+  color: #409eff !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  text-decoration: none !important;
+  white-space: nowrap !important;
+}
+
+.entry-content .poetize-attachment-action-link:hover {
+  color: #337ecc !important;
+  text-decoration: underline !important;
+}
+
+body.dark-mode .entry-content .poetize-attachment-card,
+.dark-mode .entry-content .poetize-attachment-card {
+  color: #e5eaf3 !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+body.dark-mode .entry-content .poetize-attachment-card:hover,
+.dark-mode .entry-content .poetize-attachment-card:hover {
+  color: #e5eaf3 !important;
+  border-color: #79bbff !important;
+  box-shadow: 0 6px 18px rgba(121, 187, 255, 0.12) !important;
+}
+
+body.dark-mode .entry-content .poetize-attachment-name,
+.dark-mode .entry-content .poetize-attachment-name {
+  color: #e5eaf3 !important;
+}
+
+body.dark-mode .entry-content .poetize-attachment-meta,
+.dark-mode .entry-content .poetize-attachment-meta {
+  color: #a3a6ad !important;
+}
+
+body.dark-mode .entry-content .poetize-attachment-action,
+.dark-mode .entry-content .poetize-attachment-action,
+body.dark-mode .entry-content .poetize-attachment-action-link,
+.dark-mode .entry-content .poetize-attachment-action-link {
+  color: #79bbff !important;
+}

@@ -762,6 +762,16 @@ server {
         try_files $uri @handle_404;
     }
 
+
+    # 编辑器附件兜底：可执行/脚本类文件即使被直接访问，也强制下载
+    location ~* ^/static/articleFile/(.*\.(exe|dll|bat|cmd|com|msi|jar|class|scr|vbs|vbe|js|jse|wsf|wsh|ps1|sh|bash|zsh|py|pyc|pyw|pl|perl|rb|go|rs|rust|c|cpp|cc|cxx|php|php3|php4|php5|phtml|phar|jsp|jspx|jsf|jspa|jhtml|asp|aspx|asa|asax|ascx|ashx|asmx|docm|xlsm|pptm))$ {
+        alias /usr/share/nginx/html/uploads/articleFile/$1;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+        add_header Content-Disposition "attachment";
+        add_header X-Content-Type-Options "nosniff";
+    }
+
     # 静态资源 - 优先从uploads目录找上传文件，然后回退到前端静态资源
     location /static {
         # 首先尝试从独立的uploads目录找上传的文件，去掉/static前缀

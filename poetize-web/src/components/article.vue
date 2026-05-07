@@ -204,6 +204,7 @@ import markdownItMultimdTable from 'markdown-it-multimd-table'
 import markdownItTaskLists from 'markdown-it-task-lists'
 // KaTeX 改为按需动态加载，只有文章包含数学公式时才加载
 import { hasMathFormula, loadMarkdownItKatex } from '@/utils/katexLoader'
+import { transformAttachmentLinks } from '@/utils/attachmentCard'
 import { getLanguageMapping } from '@/utils/languageUtils'
 import {
   applyThemeFromArticle,
@@ -756,7 +757,7 @@ export default {
       const safeContent = content || ''
       const md = await this.createMarkdownRenderer(safeContent)
       // 使用 markdown-it 渲染标准 markdown
-      let renderedHtml = md.render(safeContent)
+      let renderedHtml = transformAttachmentLinks(md.render(safeContent))
       
       // 额外处理：很多时候文章里会有直接手写的 HTML <img /> 标签，或者 Vditor 插入的 HTML 图片
       // 这里通过正则确保所有图片都被强行加上 loading="lazy"
@@ -778,6 +779,7 @@ export default {
       await this.$nextTick()
 
       this.processImages()
+      this.bindAttachmentCardActions()
       this.normalizeTaskListCheckboxes()
       this.wrapTables()
       this.highlight()
@@ -791,6 +793,34 @@ export default {
       if (setupCommentObserver) {
         this.setupCommentIntersectionObserver()
       }
+    },
+
+    bindAttachmentCardActions(container) {
+      const root =
+        container ||
+        (this.$el ? this.$el.querySelector('.entry-content') : null) ||
+        document.querySelector('.entry-content')
+      if (!root) return
+
+      const links = root.querySelectorAll(
+        '[data-poetize-private-attachment="true"] .poetize-attachment-action-link'
+      )
+      links.forEach((link) => {
+        if (link.dataset.poetizePrivateBound === 'true') return
+        link.dataset.poetizePrivateBound = 'true'
+        link.addEventListener('click', this.handlePrivateAttachmentClick)
+      })
+    },
+
+    handlePrivateAttachmentClick(event) {
+      const hasUser =
+        !this.$common.isEmpty(this.mainStore.currentUser) ||
+        !this.$common.isEmpty(this.mainStore.currentAdmin)
+      if (hasUser) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      this.$message.warning('请先登录后查看附件')
     },
 
     normalizeTaskListCheckboxes(container) {

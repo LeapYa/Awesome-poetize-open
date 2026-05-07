@@ -81,6 +81,16 @@
             <i class="el-icon-picture-outline"></i>
           </div>
         </el-tooltip>
+        <el-tooltip content="文件 (粘贴)" placement="top" :enterable="false">
+          <div class="toolbar-item" @click="triggerFileUpload">
+            <i class="el-icon-folder-add"></i>
+          </div>
+        </el-tooltip>
+        <el-tooltip content="私有附件" placement="top" :enterable="false">
+          <div class="toolbar-item" @click="triggerPrivateFileUpload">
+            <i class="el-icon-lock"></i>
+          </div>
+        </el-tooltip>
         <el-tooltip content="代码块" placement="top" :enterable="false">
           <div class="toolbar-item" @click="insertCodeBlock">
             <i class="fa fa-file-code-o"></i>
@@ -198,7 +208,6 @@
       type="file" 
       ref="fileInput" 
       style="display: none" 
-      accept="image/*" 
       @change="handleFileChange"
     >
     
@@ -271,6 +280,9 @@
           <li><strong>代码块</strong>：点击左上角语言名称可修改语言类型。</li>
           <li><strong>全屏模式</strong>：按 <code>F11</code> 或点击工具栏图标切换。</li>
           <li><strong>Markdown 兼容</strong>：支持直接粘贴 Markdown 文本。</li>
+          <li><strong>图片上传</strong>：支持截图直接粘贴上传。</li>
+          <li><strong>文件上传</strong>：支持粘贴上传文件。</li>
+          <li><strong>登录附件</strong>：私有附件使用前端登录拦截；知道真实静态地址仍可直接访问，适合轻量提示场景。</li>
         </ul>
 
         <h3>🔄 编辑器对比</h3>
@@ -446,6 +458,8 @@ export default {
       historySuspend: false,
       historyNextMode: null,
       queuedImageUploads: [],
+      pendingForceAttachmentUpload: false,
+      pendingPrivateAttachmentUpload: false,
       isComposing: false,
       isBootstrapped: false,
       bootstrapHandle: null,
@@ -835,7 +849,7 @@ export default {
       span.className = 'image-upload-placeholder';
       span.setAttribute('data-upload-id', uploadId);
       span.setAttribute('contenteditable', 'false');
-      span.textContent = '[图片上传中]';
+      span.textContent = '[文件上传中]';
       return span;
     },
     renderImageUploadPlaceholders(markdown) {
@@ -859,10 +873,10 @@ export default {
     escapeRegExp(value) {
       return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     },
-    queueOrStartImageUpload(file) {
+    queueOrStartImageUpload(file, options = {}) {
       if (!file) return null;
       if (this.isComposing) {
-        this.queuedImageUploads.push(file);
+        this.queuedImageUploads.push({ file, options });
         return null;
       }
 
@@ -872,14 +886,22 @@ export default {
       } else {
         this.insertWysiwygUploadPlaceholder(uploadId);
       }
-      this.$emit('image-add', { file, uploadId });
+      this.$emit('image-add', {
+        file,
+        uploadId,
+        privateAttachment: !!options.privateAttachment,
+        forceAttachment: !!options.forceAttachment
+      });
       return uploadId;
     },
     flushQueuedImageUploads() {
       if (this.isComposing || !this.queuedImageUploads.length) return;
-      const files = this.queuedImageUploads.slice();
+      const queuedUploads = this.queuedImageUploads.slice();
       this.queuedImageUploads = [];
-      files.forEach((file) => this.queueOrStartImageUpload(file));
+      queuedUploads.forEach((item) => {
+        const upload = item && item.file ? item : { file: item, options: {} };
+        this.queueOrStartImageUpload(upload.file, upload.options || {});
+      });
     },
     insertSourceUploadPlaceholder(uploadId) {
       const textarea = this.$refs.sourceEditor;
@@ -2679,7 +2701,7 @@ export default {
      */
     handlePaste(e) {
       handlePasteUtil(e, {
-        onImage: (file) => {
+        onFile: (file) => {
           this.queueOrStartImageUpload(file);
         },
         onText: (text) => {
@@ -2916,6 +2938,26 @@ export default {
      * 触发图片上传
      */
     triggerImageUpload() {
+      this.pendingForceAttachmentUpload = false;
+      this.pendingPrivateAttachmentUpload = false;
+      this.$refs.fileInput?.click();
+    },
+
+    /**
+     * 触发文件上传
+     */
+    triggerFileUpload() {
+      this.pendingForceAttachmentUpload = true;
+      this.pendingPrivateAttachmentUpload = false;
+      this.$refs.fileInput?.click();
+    },
+
+    /**
+     * 触发私有附件上传
+     */
+    triggerPrivateFileUpload() {
+      this.pendingForceAttachmentUpload = true;
+      this.pendingPrivateAttachmentUpload = true;
       this.$refs.fileInput?.click();
     },
     
@@ -2924,8 +2966,14 @@ export default {
      */
     handleFileChange(e) {
       const file = e.target.files[0];
+      const uploadOptions = {
+        forceAttachment: this.pendingForceAttachmentUpload,
+        privateAttachment: this.pendingPrivateAttachmentUpload
+      };
+      this.pendingForceAttachmentUpload = false;
+      this.pendingPrivateAttachmentUpload = false;
       if (file) {
-        this.queueOrStartImageUpload(file);
+        this.queueOrStartImageUpload(file, uploadOptions);
       }
       e.target.value = '';
     },
