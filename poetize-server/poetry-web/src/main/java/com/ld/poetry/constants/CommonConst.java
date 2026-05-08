@@ -243,6 +243,10 @@ public class CommonConst {
 
     public static final String PATH_TYPE_ASSETS = "assets";
 
+    public static final String PATH_TYPE_ORPHAN_RESOURCE = "orphanResource";
+
+    public static final String PATH_TYPE_INVALID_RESOURCE = "invalidResource";
+
     /**
      * 资源聚合
      */

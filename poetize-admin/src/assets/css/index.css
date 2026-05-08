@@ -292,6 +292,38 @@ body {
     display: none;
 }
 
+/* Element UI 排序表头：让标题和上下排序箭头保持同一行 */
+.el-table th.table-header.is-sortable > .cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding-right: 3px;
+    padding-left: 3px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.el-table th.table-header.is-sortable > .cell .caret-wrapper {
+    flex: 0 0 10px;
+    width: 10px;
+    height: 22px;
+    margin-left: 4px;
+}
+
+.el-table th.table-header.is-sortable > .cell .sort-caret {
+    left: 1px;
+    border-width: 4px;
+}
+
+.el-table th.table-header.is-sortable > .cell .sort-caret.ascending {
+    top: 1px;
+}
+
+.el-table th.table-header.is-sortable > .cell .sort-caret.descending {
+    bottom: 1px;
+}
+
 /* 选中样式 */
 ::selection {
     background: var(--lightGreen);

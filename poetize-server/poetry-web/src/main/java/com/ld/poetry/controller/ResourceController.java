@@ -1,13 +1,18 @@
 package com.ld.poetry.controller;
 
 
+import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
+import com.ld.poetry.dao.ResourceMapper;
 import com.ld.poetry.entity.Resource;
 import com.ld.poetry.enums.PoetryEnum;
+import com.ld.poetry.service.ResourceAvailabilityService;
+import com.ld.poetry.service.ResourceReplaceService;
 import com.ld.poetry.service.ResourceService;
+import com.ld.poetry.service.ResourceThumbnailService;
 import com.ld.poetry.utils.storage.StoreService;
 import com.ld.poetry.utils.*;
 import com.ld.poetry.utils.storage.FileStorageService;
@@ -89,8 +94,35 @@ public class ResourceController {
             "seositelogo"
     );
 
+    private static final String DEFAULT_RESOURCE_ORDER = "createTime";
+
+    private static final Map<String, String> RESOURCE_ORDER_COLUMNS = Map.of(
+            "id", "id",
+            "originalName", "original_name",
+            "userId", "user_id",
+            "type", "type",
+            "status", "status",
+            "path", "path",
+            "size", "size",
+            "mimeType", "mime_type",
+            "storeType", "store_type",
+            "createTime", "create_time"
+    );
+
     @Autowired
     private ResourceService resourceService;
+
+    @Autowired
+    private ResourceMapper resourceMapper;
+
+    @Autowired
+    private ResourceAvailabilityService resourceAvailabilityService;
+
+    @Autowired
+    private ResourceReplaceService resourceReplaceService;
+
+    @Autowired
+    private ResourceThumbnailService resourceThumbnailService;
 
     @Autowired
     private FileStorageService fileStorageService;
@@ -112,6 +144,9 @@ public class ResourceController {
     public PoetryResult saveResource(@RequestBody Resource resource) {
         if (!StringUtils.hasText(resource.getType()) || !StringUtils.hasText(resource.getPath())) {
             return PoetryResult.fail("资源类型和资源路径不能为空！");
+        }
+        if (isResourceFilterType(resource.getType())) {
+            return PoetryResult.fail(resourceFilterTypeName(resource.getType()) + "是筛选视图，不能作为资源类型保存！");
         }
         
         // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
@@ -167,6 +202,9 @@ public class ResourceController {
     public synchronized PoetryResult<String> upload(@RequestParam("file") MultipartFile file, FileVO fileVO) {
         if (file == null || !StringUtils.hasText(fileVO.getType()) || !StringUtils.hasText(fileVO.getRelativePath())) {
             return PoetryResult.fail("文件和资源类型和资源路径不能为空！");
+        }
+        if (isResourceFilterType(fileVO.getType())) {
+            return PoetryResult.fail(resourceFilterTypeName(fileVO.getType()) + "是筛选视图，不能作为资源类型上传！");
         }
 
         try {
@@ -350,6 +388,9 @@ public class ResourceController {
         if (file == null || !StringUtils.hasText(fileVO.getType()) || !StringUtils.hasText(fileVO.getRelativePath())) {
             return PoetryResult.fail("文件和资源类型和资源路径不能为空！");
         }
+        if (isResourceFilterType(fileVO.getType())) {
+            return PoetryResult.fail(resourceFilterTypeName(fileVO.getType()) + "是筛选视图，不能作为资源类型上传！");
+        }
 
         try {
             // 验证文件安全性
@@ -521,6 +562,45 @@ public class ResourceController {
     }
 
     /**
+     * 原路径替换资源文件。
+     */
+    @PostMapping("/replaceResource")
+    @LoginCheck(0)
+    public PoetryResult<Resource> replaceResource(@RequestParam("id") Integer id,
+                                                  @RequestParam("expectedPath") String expectedPath,
+                                                  @RequestParam("file") MultipartFile file) {
+        return resourceReplaceService.replaceResource(id, expectedPath, file);
+    }
+
+    /**
+     * 生成后台资源列表缩略图。只服务自动预览，原资源 URL 不变。
+     */
+    @GetMapping("/thumbnail")
+    @LoginCheck(0)
+    public void thumbnail(@RequestParam("id") Integer id,
+                          @RequestParam(value = "w", defaultValue = "120") Integer width,
+                          @RequestParam(value = "h", defaultValue = "104") Integer height,
+                          @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
+                          HttpServletResponse response) throws IOException {
+        try {
+            ResourceThumbnailService.Thumbnail thumbnail = resourceThumbnailService.createThumbnail(id, width, height);
+            response.setHeader("Cache-Control", "private, max-age=86400");
+            response.setHeader("ETag", thumbnail.getETag());
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            if (thumbnail.getETag().equals(ifNoneMatch)) {
+                response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+                return;
+            }
+
+            response.setContentType(thumbnail.getContentType());
+            response.setContentLength(thumbnail.getBytes().length);
+            response.getOutputStream().write(thumbnail.getBytes());
+        } catch (ResourceThumbnailService.ThumbnailException e) {
+            response.sendError(e.getStatusCode(), e.getMessage());
+        }
+    }
+
+    /**
      * 已登记资源的强制下载入口。
      */
     @GetMapping("/download")
@@ -585,9 +665,19 @@ public class ResourceController {
     @LoginCheck(0)
     public PoetryResult<Page> listResource(@RequestBody BaseRequestVO baseRequestVO) {
         Page<Resource> page = new Page<>(baseRequestVO.getCurrent(), baseRequestVO.getSize());
-        resourceService.lambdaQuery()
-                .eq(StringUtils.hasText(baseRequestVO.getResourceType()), Resource::getType, baseRequestVO.getResourceType())
-                .orderByDesc(Resource::getCreateTime).page(page);
+        String order = resolveResourceOrder(baseRequestVO.getOrder());
+        String orderColumn = RESOURCE_ORDER_COLUMNS.get(order);
+        boolean asc = !baseRequestVO.isDesc();
+        if (isOrphanResourceFilterType(baseRequestVO.getResourceType())) {
+            page = resourceMapper.selectOrphanResources(page, List.of(CommonConst.PATH_TYPE_ASSETS), orderColumn, asc);
+        } else if (isInvalidResourceFilterType(baseRequestVO.getResourceType())) {
+            page = resourceAvailabilityService.listInvalidResources(page, order, asc);
+        } else {
+            LambdaQueryChainWrapper<Resource> query = resourceService.lambdaQuery()
+                    .eq(StringUtils.hasText(baseRequestVO.getResourceType()), Resource::getType, baseRequestVO.getResourceType());
+            applyResourceOrder(query, order, asc);
+            query.page(page);
+        }
         baseRequestVO.setRecords(page.getRecords());
         baseRequestVO.setTotal(page.getTotal());
         return PoetryResult.success(baseRequestVO);
@@ -625,6 +715,72 @@ public class ResourceController {
         try (InputStream inputStream = Files.newInputStream(filePath)) {
             inputStream.transferTo(response.getOutputStream());
         }
+    }
+
+    private boolean isOrphanResourceFilterType(String resourceType) {
+        return CommonConst.PATH_TYPE_ORPHAN_RESOURCE.equals(resourceType);
+    }
+
+    private boolean isInvalidResourceFilterType(String resourceType) {
+        return CommonConst.PATH_TYPE_INVALID_RESOURCE.equals(resourceType);
+    }
+
+    private boolean isResourceFilterType(String resourceType) {
+        return isOrphanResourceFilterType(resourceType) || isInvalidResourceFilterType(resourceType);
+    }
+
+    private String resolveResourceOrder(String order) {
+        if (!StringUtils.hasText(order)) {
+            return DEFAULT_RESOURCE_ORDER;
+        }
+        String normalizedOrder = order.trim();
+        return RESOURCE_ORDER_COLUMNS.containsKey(normalizedOrder) ? normalizedOrder : DEFAULT_RESOURCE_ORDER;
+    }
+
+    private void applyResourceOrder(LambdaQueryChainWrapper<Resource> query, String order, boolean asc) {
+        switch (order) {
+            case "id":
+                query.orderBy(true, asc, Resource::getId);
+                break;
+            case "originalName":
+                query.orderBy(true, asc, Resource::getOriginalName);
+                break;
+            case "userId":
+                query.orderBy(true, asc, Resource::getUserId);
+                break;
+            case "type":
+                query.orderBy(true, asc, Resource::getType);
+                break;
+            case "status":
+                query.orderBy(true, asc, Resource::getStatus);
+                break;
+            case "path":
+                query.orderBy(true, asc, Resource::getPath);
+                break;
+            case "size":
+                query.orderBy(true, asc, Resource::getSize);
+                break;
+            case "mimeType":
+                query.orderBy(true, asc, Resource::getMimeType);
+                break;
+            case "storeType":
+                query.orderBy(true, asc, Resource::getStoreType);
+                break;
+            case "createTime":
+            default:
+                query.orderBy(true, asc, Resource::getCreateTime);
+                break;
+        }
+        if (!"id".equals(order)) {
+            query.orderBy(true, asc, Resource::getId);
+        }
+    }
+
+    private String resourceFilterTypeName(String resourceType) {
+        if (isInvalidResourceFilterType(resourceType)) {
+            return "无效资源";
+        }
+        return "孤儿资源";
     }
 
     private boolean isRemoteResource(String resourcePath) {

@@ -3,7 +3,7 @@
     <el-upload
       class="upload-demo"
       ref="upload"
-      multiple
+      :multiple="maxNumber > 1"
       drag
       :action="mainStore.sysConfig.qiniuUrl"
       :on-change="handleChange"
@@ -11,10 +11,12 @@
       :on-success="handleSuccess"
       :on-error="handleError"
       :on-remove="handleRemove"
+      :on-exceed="handleExceed"
       :http-request="customUpload"
       :list-type="listType"
       :accept="accept"
       :limit="maxNumber"
+      :disabled="uploading"
       :auto-upload="false">
       <div class="el-upload__text">
         <svg viewBox="0 0 1024 1024" width="40" height="40">
@@ -41,8 +43,8 @@
     </el-upload>
 
     <div style="text-align: center;margin-top: 20px">
-      <el-button type="success" style="font-size: 12px" @click="submitUpload">
-        上传
+      <el-button type="success" style="font-size: 12px" :loading="uploading" :disabled="uploading" @click="submitUpload">
+        {{ uploadButtonText }}
       </el-button>
     </div>
   </div>
@@ -88,7 +90,14 @@ import upload from '../../utils/ajaxUpload';
     data() {
       return {
         // 本地存储类型，当props未提供时使用
-        localStoreType: null
+        localStoreType: null,
+        uploading: false,
+        uploadTotal: 0,
+        uploadSuccess: 0,
+        uploadFail: 0,
+        uploadUrls: [],
+        uploadErrors: [],
+        completedUploadUids: {}
       }
     },
 
@@ -112,6 +121,15 @@ import upload from '../../utils/ajaxUpload';
         return this.mainStore.sysConfig && this.mainStore.sysConfig['store.type'] 
           ? this.mainStore.sysConfig['store.type'] 
           : "local";
+      },
+      isPictureUpload() {
+        return this.listType === "picture";
+      },
+      uploadButtonText() {
+        if (!this.uploading) {
+          return "上传";
+        }
+        return "上传中 " + (this.uploadSuccess + this.uploadFail) + "/" + this.uploadTotal;
       }
     },
 
@@ -138,8 +156,49 @@ import upload from '../../utils/ajaxUpload';
           this.localStoreType = config['store.type'];
         }
       },
+
+      getUploadFiles() {
+        const uploadRef = this.$refs.upload;
+        return uploadRef && Array.isArray(uploadRef.uploadFiles) ? uploadRef.uploadFiles : [];
+      },
+
+      getPendingUploadFiles() {
+        return this.getUploadFiles().filter((file) => file.status === "ready");
+      },
+
+      openFileDialog() {
+        const uploadRef = this.$refs.upload;
+        const uploadInner = uploadRef && uploadRef.$refs ? uploadRef.$refs['upload-inner'] : null;
+        if (uploadInner && typeof uploadInner.handleClick === "function") {
+          uploadInner.handleClick();
+          return;
+        }
+        const input = uploadRef && uploadRef.$el ? uploadRef.$el.querySelector('.el-upload__input') : null;
+        if (input && typeof input.click === "function") {
+          input.value = null;
+          input.click();
+        }
+      },
+
+      resetUploadState(total) {
+        this.uploading = total > 0;
+        this.uploadTotal = total || 0;
+        this.uploadSuccess = 0;
+        this.uploadFail = 0;
+        this.uploadUrls = [];
+        this.uploadErrors = [];
+        this.completedUploadUids = {};
+      },
     
       submitUpload() {
+        const pendingFiles = this.getPendingUploadFiles();
+        if (!pendingFiles.length) {
+          this.openFileDialog();
+          return;
+        }
+
+        this.resetUploadState(pendingFiles.length);
+        this.$emit("uploadStart", { total: this.uploadTotal });
         this.$refs.upload.submit();
       },
 
@@ -197,99 +256,278 @@ import upload from '../../utils/ajaxUpload';
       },
 
       // 文件上传成功时的钩子
-      handleSuccess(response, file, fileList) {
+      async handleSuccess(response, file, fileList) {
         let url;
-        if (this.currentStoreType === "local") {
-          url = response.data;
-        } else if (this.currentStoreType === "qiniu") {
-          url = this.mainStore.sysConfig['qiniu.downloadUrl'] + response.key;
-          this.$common.saveResource(this, this.prefix, url, file.size, file.raw.type, file.name, "qiniu", this.isAdmin);
-        } else if (this.currentStoreType === "lsky" || this.currentStoreType === "easyimage") {
-          url = response.data;
-          this.$common.saveResource(this, this.prefix, url, file.size, file.raw.type, file.name, this.currentStoreType, this.isAdmin);
+        const rawFile = file.raw || file;
+        try {
+          if (this.currentStoreType === "local") {
+            url = response.data;
+          } else if (this.currentStoreType === "qiniu") {
+            url = this.mainStore.sysConfig['qiniu.downloadUrl'] + response.key;
+            await this.$common.saveResource(this, this.prefix, url, rawFile.size, rawFile.type, file.name, "qiniu", this.isAdmin);
+          } else if (this.currentStoreType === "lsky" || this.currentStoreType === "easyimage") {
+            url = response.data;
+            await this.$common.saveResource(this, this.prefix, url, rawFile.size, rawFile.type, file.name, this.currentStoreType, this.isAdmin);
+          }
+          this.$emit("addPicture", url, { file, fileList, storeType: this.currentStoreType });
+          this.finishUploadFile(true, url, file);
+        } catch (error) {
+          this.handleError(error, file, fileList);
         }
-        this.$emit("addPicture", url);
       },
       handleError(err, file, fileList) {
+        const errorInfo = this.buildUploadErrorInfo(err, file);
         this.$message({
-          message: err,
+          message: errorInfo.message,
           type: "error"
         });
+        this.finishUploadFile(false, "", file, errorInfo);
       },
-      // 上传文件之前的钩子，参数为上传的文件，若返回 false 或者返回 Promise 且被 reject，则停止上传
-      beforeUpload(file) {
+      buildUploadErrorInfo(err, file) {
+        return {
+          fileName: this.getFileName(file) || "未知文件",
+          storeType: this.currentStoreType,
+          message: this.getUploadErrorMessage(err),
+          code: this.getUploadErrorCode(err)
+        };
+      },
+      getUploadErrorMessage(err) {
+        if (!err) {
+          return "上传失败";
+        }
+        if (typeof err === "string") {
+          return err;
+        }
+        if (err.responseData && err.responseData.message) {
+          return err.responseData.message;
+        }
+        if (err.response && err.response.data && err.response.data.message) {
+          return err.response.data.message;
+        }
+        if (err.response && err.response.data && err.response.data.error) {
+          return err.response.data.error;
+        }
+        if (err.code === "ECONNABORTED") {
+          return "上传请求超时，请检查文件大小、网络或存储平台配置";
+        }
+        if (err.message === "Network Error") {
+          return "网络异常，无法连接上传服务，请检查服务地址或跨域配置";
+        }
+        if (err.message) {
+          return err.message;
+        }
+        if (err.response && err.response.statusText) {
+          return err.response.statusText;
+        }
+        return "上传失败";
+      },
+      getUploadErrorCode(err) {
+        if (!err) {
+          return "";
+        }
+        if (err.code) {
+          return err.code;
+        }
+        if (err.responseData && err.responseData.code) {
+          return err.responseData.code;
+        }
+        if (err.response && err.response.status) {
+          return err.response.status;
+        }
+        return "";
+      },
+      showValidationMessage(message, type = "error") {
+        this.$message({
+          message,
+          type
+        });
+      },
+      getRawFile(file) {
+        return file && file.raw ? file.raw : file;
+      },
+      getFileName(file) {
+        const rawFile = this.getRawFile(file);
+        return ((rawFile && rawFile.name) || (file && file.name) || "") + "";
+      },
+      isAcceptedByConfig(file) {
+        const accept = (this.accept || "").trim();
+        if (!accept || accept === "*/*") {
+          return true;
+        }
+
+        const rawFile = this.getRawFile(file) || {};
+        const fileType = (rawFile.type || "").toLowerCase();
+        const fileName = this.getFileName(file).toLowerCase();
+
+        return accept.split(",")
+          .map((item) => item.trim().toLowerCase())
+          .filter(Boolean)
+          .some((item) => {
+            if (item === "*/*") {
+              return true;
+            }
+            if (item.endsWith("/*")) {
+              return fileType.startsWith(item.slice(0, -1));
+            }
+            if (item.startsWith(".")) {
+              return fileName.endsWith(item);
+            }
+            return fileType === item;
+          });
+      },
+      validateImageFile(file, showMessage) {
+        const rawFile = this.getRawFile(file) || {};
+        const fileName = this.getFileName(file);
         // 支持的格式：JPEG, PNG, GIF, BMP, WEBP, TIFF, PSD, SVG, ICO
-        const isImage = file.type.startsWith('image/');
+        const isImage = (rawFile.type || "").startsWith('image/');
         const isValidType = [
           'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp',
           'image/tiff', 'image/x-photoshop', 'image/svg+xml', 'image/x-icon',
           'image/vnd.microsoft.icon', 'image/ico', 'application/octet-stream'
-        ].includes(file.type);
-        const isValidExt = /\.(jpg|jpeg|png|gif|bmp|webp|tiff|tif|psd|svg|ico)$/i.test(file.name);
+        ].includes(rawFile.type);
+        const isValidExt = /\.(jpg|jpeg|png|gif|bmp|webp|tiff|tif|psd|svg|ico)$/i.test(fileName);
 
         if (!isImage && !isValidExt) {
-          this.$message({
-            message: '只能上传图片文件！',
-            type: 'error'
-          });
+          if (showMessage) {
+            this.showValidationMessage('只能上传图片文件！');
+          }
           return false;
         }
 
         if (!isValidType && !isValidExt) {
-          this.$message({
-            message: '文件类型不被支持！支持：JPEG, PNG, GIF, BMP, WEBP, TIFF, PSD, SVG, ICO',
-            type: 'error'
-          });
+          if (showMessage) {
+            this.showValidationMessage('文件类型不被支持！支持：JPEG, PNG, GIF, BMP, WEBP, TIFF, PSD, SVG, ICO');
+          }
           return false;
         }
 
         if (!isValidExt) {
-          this.$message({
-            message: '文件扩展名不匹配！',
-            type: 'error'
-          });
+          if (showMessage) {
+            this.showValidationMessage('文件扩展名不匹配！');
+          }
+          return false;
+        }
+
+        return true;
+      },
+      validateSelectedFile(file, showMessage = true) {
+        const rawFile = this.getRawFile(file) || {};
+        const fileName = this.getFileName(file);
+        const fileSize = rawFile.size || 0;
+
+        if (fileSize > this.maxSize * 1024 * 1024) {
+          if (showMessage) {
+            this.showValidationMessage((this.isPictureUpload ? "图片" : "文件") + "最大为" + this.maxSize + "M！", "warning");
+          }
+          return false;
+        }
+
+        if (fileName.lastIndexOf('.') === -1) {
+          if (showMessage) {
+            this.showValidationMessage('文件必须包含扩展名！');
+          }
           return false;
         }
 
         // 防止文件名欺骗：检查文件名是否可疑
         const suspiciousPatterns = /(\.php|\.jsp|\.asp|\.aspx|\.sh|\.py|\.pl|\.exe|\.dll|\.bat|\.cmd|\.jar|\.class)$/i;
-        if (suspiciousPatterns.test(file.name)) {
-          this.$message({
-            message: '检测到危险文件类型，禁止上传！',
-            type: 'error'
-          });
+        if (suspiciousPatterns.test(fileName)) {
+          if (showMessage) {
+            this.showValidationMessage('检测到危险文件类型，禁止上传！');
+          }
+          return false;
+        }
+
+        if (this.isPictureUpload && !this.validateImageFile(file, showMessage)) {
+          return false;
+        }
+
+        if (!this.isPictureUpload && !this.isAcceptedByConfig(file)) {
+          if (showMessage) {
+            this.showValidationMessage('文件类型不在允许范围内！');
+          }
           return false;
         }
 
         // TIFF/PSD/SVG文件可能较大
-        const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-        if (['.tiff', '.tif', '.psd', '.svg'].includes(ext)) {
-          this.$message({
-            message: '注意：专业格式文件可能较大，上传时间可能较长',
-            type: 'warning'
-          });
+        const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+        if (showMessage && ['.tiff', '.tif', '.psd', '.svg'].includes(ext)) {
+          this.showValidationMessage('注意：专业格式文件可能较大，上传时间可能较长', 'warning');
         }
 
         return true;
+      },
+      // 上传文件之前的钩子，参数为上传的文件，若返回 false 或者返回 Promise 且被 reject，则停止上传
+      beforeUpload(file) {
+        const valid = this.validateSelectedFile(file, true);
+        if (!valid && this.uploading) {
+          this.finishUploadFile(false, "", file, {
+            fileName: this.getFileName(file) || "未知文件",
+            storeType: this.currentStoreType,
+            message: "文件未通过上传前校验",
+            code: ""
+          });
+        }
+        return valid;
+      },
+      finishUploadFile(success, url, file, errorInfo) {
+        if (!this.uploading) {
+          return;
+        }
+
+        const uid = file && (file.uid || (file.raw && file.raw.uid));
+        if (uid) {
+          if (this.completedUploadUids[uid]) {
+            return;
+          }
+          this.$set(this.completedUploadUids, uid, true);
+        }
+
+        if (success) {
+          this.uploadSuccess += 1;
+          if (url) {
+            this.uploadUrls.push(url);
+          }
+        } else {
+          this.uploadFail += 1;
+          if (errorInfo) {
+            this.uploadErrors.push(errorInfo);
+          }
+        }
+
+        if (this.uploadSuccess + this.uploadFail >= this.uploadTotal) {
+          const summary = {
+            total: this.uploadTotal,
+            success: this.uploadSuccess,
+            fail: this.uploadFail,
+            urls: this.uploadUrls.slice(),
+            errors: this.uploadErrors.slice()
+          };
+          this.uploading = false;
+          this.$emit("uploadComplete", summary);
+        }
       },
       // 文件列表移除文件时的钩子
       handleRemove(file, fileList) {
       },
       // 添加文件、上传成功和上传失败时都会被调用
       handleChange(file, fileList) {
-        let flag = false;
-
-        if (file.size > this.maxSize * 1024 * 1024) {
-          this.$message({
-            message: "图片最大为" + this.maxSize + "M！",
-            type: "warning"
-          });
-          flag = true;
+        if (!file || file.status !== "ready") {
+          return;
         }
 
-        if (flag) {
-          fileList.splice(fileList.size - 1, 1);
+        if (!this.validateSelectedFile(file, true)) {
+          const index = fileList.findIndex((item) => item.uid === file.uid);
+          if (index !== -1) {
+            fileList.splice(index, 1);
+          }
         }
+      },
+      handleExceed() {
+        this.$message({
+          message: "一次最多选择" + this.maxNumber + (this.isPictureUpload ? "张图片" : "个文件") + "！",
+          type: "warning"
+        });
       }
     }
   }

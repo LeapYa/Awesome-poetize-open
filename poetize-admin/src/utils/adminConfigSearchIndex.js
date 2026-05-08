@@ -676,7 +676,27 @@ export const adminConfigSearchIndex = [
     sectionTitle: '文件资源与媒体管理',
     fieldLabel: '资源管理',
     keywords: ['资源管理', '文件管理', '媒体资源'],
-    aliases: ['resourceList', '公共资源', '文章封面', '文章图片', '网站头像', '背景图片', '表情包', '随机头像', '随机封面', '收藏夹封面']
+    aliases: ['resourceList', '公共资源', '文章封面', '文章图片', '文章附件', '文章视频', '视频文章', '网站头像', '背景图片', '表情包', '随机头像', '随机封面', '收藏夹封面', '孤儿资源', '未引用资源', '无引用资源', '无效资源', '失效资源', '无法加载资源', '加载失败资源']
+  },
+  {
+    id: 'field-resource-orphan-resource',
+    type: 'field',
+    route: { path: '/resourceList', query: { resourceType: 'orphanResource' } },
+    pageTitle: '资源管理',
+    sectionTitle: '孤儿资源',
+    fieldLabel: '孤儿资源',
+    keywords: ['孤儿资源', '未引用资源', '无引用资源'],
+    aliases: ['orphanResource', '未使用资源', '无引用文件']
+  },
+  {
+    id: 'field-resource-invalid-resource',
+    type: 'field',
+    route: { path: '/resourceList', query: { resourceType: 'invalidResource' } },
+    pageTitle: '资源管理',
+    sectionTitle: '无效资源',
+    fieldLabel: '无效资源',
+    keywords: ['无效资源', '失效资源', '无法加载资源', '加载失败资源'],
+    aliases: ['invalidResource', 'brokenResource', '失效文件', '加载失败文件']
   },
   {
     id: 'field-resource-assets',
@@ -737,6 +757,16 @@ export const adminConfigSearchIndex = [
     fieldLabel: '文章图片资源',
     keywords: ['文章图片', '正文图片', '博客配图'],
     aliases: ['articlePicture', '文章配图']
+  },
+  {
+    id: 'field-resource-article-file',
+    type: 'field',
+    route: { path: '/resourceList', query: { resourceType: 'articleFile' } },
+    pageTitle: '资源管理',
+    sectionTitle: '文章附件',
+    fieldLabel: '文章附件资源',
+    keywords: ['文章附件', '附件资源', '下载附件', '正文文件'],
+    aliases: ['articleFile', '文章文件']
   },
   {
     id: 'field-resource-internet-meme',
@@ -843,7 +873,7 @@ export const adminConfigSearchIndex = [
     type: 'field',
     route: { path: '/resourceList', query: { resourceType: 'love/bgCover' } },
     pageTitle: '资源管理',
-    sectionTitle: 'Love.Cover',
+    sectionTitle: '表白墙背景',
     fieldLabel: '表白墙背景资源',
     keywords: ['表白墙背景', 'Love背景', '情侣页背景'],
     aliases: ['love/bgCover', 'Love.Cover']
@@ -853,9 +883,9 @@ export const adminConfigSearchIndex = [
     type: 'field',
     route: { path: '/resourceList', query: { resourceType: 'love/manCover' } },
     pageTitle: '资源管理',
-    sectionTitle: 'Love.Man',
+    sectionTitle: '表白墙男生封面',
     fieldLabel: '男生封面资源',
-    keywords: ['男生封面', 'Love.Man', '表白墙男生封面'],
+    keywords: ['表白墙男生封面', '男生封面', 'Love.Man'],
     aliases: ['love/manCover', '男生图片']
   },
   {
@@ -863,9 +893,9 @@ export const adminConfigSearchIndex = [
     type: 'field',
     route: { path: '/resourceList', query: { resourceType: 'love/womanCover' } },
     pageTitle: '资源管理',
-    sectionTitle: 'Love.Woman',
+    sectionTitle: '表白墙女生封面',
     fieldLabel: '女生封面资源',
-    keywords: ['女生封面', 'Love.Woman', '表白墙女生封面'],
+    keywords: ['表白墙女生封面', '女生封面', 'Love.Woman'],
     aliases: ['love/womanCover', '女生图片']
   },
   {
@@ -883,9 +913,9 @@ export const adminConfigSearchIndex = [
     type: 'field',
     route: { path: '/resourceList', query: { resourceType: 'video/article' } },
     pageTitle: '资源管理',
-    sectionTitle: 'Video.Article',
-    fieldLabel: 'Video.Article资源',
-    keywords: ['Video.Article', '视频文章', '视频资源'],
+    sectionTitle: '文章视频',
+    fieldLabel: '文章视频资源',
+    keywords: ['文章视频', '视频文章', '视频资源', 'Video.Article'],
     aliases: ['video/article', '视频素材']
   },
   {

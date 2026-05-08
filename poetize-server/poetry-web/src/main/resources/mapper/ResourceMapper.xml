@@ -12,6 +12,8 @@
         <result column="resource_hash" property="resourceHash"/>
         <result column="original_name" property="originalName"/>
         <result column="path" property="path"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
         <result column="store_type" property="storeType"/>
         <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
@@ -19,7 +21,114 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, user_id, type, size, mime_type, resource_hash, original_name, path, store_type, status, create_time
+        id, user_id, type, size, mime_type, resource_hash, original_name, path, width, height, store_type, status, create_time
     </sql>
+
+    <sql id="Reference_Column_Selects">
+        SELECT article_cover AS ref_value FROM article
+        UNION ALL SELECT video_url FROM article
+        UNION ALL SELECT article_content FROM article
+        UNION ALL SELECT content FROM article_translation
+        UNION ALL SELECT comment_content FROM comment
+        UNION ALL SELECT content FROM wei_yan
+        UNION ALL SELECT background_image FROM web_info
+        UNION ALL SELECT avatar FROM web_info
+        UNION ALL SELECT random_avatar FROM web_info
+        UNION ALL SELECT random_cover FROM web_info
+        UNION ALL SELECT waifu_json FROM web_info
+        UNION ALL SELECT nav_config FROM web_info
+        UNION ALL SELECT footer_background_image FROM web_info
+        UNION ALL SELECT footer_background_config FROM web_info
+        UNION ALL SELECT mouse_click_effect_config FROM web_info
+        UNION ALL SELECT mobile_drawer_config FROM web_info
+        UNION ALL SELECT cover FROM resource_path
+        UNION ALL SELECT url FROM resource_path
+        UNION ALL SELECT introduction FROM resource_path
+        UNION ALL SELECT remark FROM resource_path
+        UNION ALL SELECT avatar FROM `user`
+        UNION ALL SELECT avatar FROM tree_hole
+        UNION ALL SELECT bg_cover FROM family
+        UNION ALL SELECT man_cover FROM family
+        UNION ALL SELECT woman_cover FROM family
+        UNION ALL SELECT avatar FROM im_chat_group
+        UNION ALL SELECT content FROM im_chat_user_message
+        UNION ALL SELECT content FROM im_chat_user_group_message
+        UNION ALL SELECT site_logo FROM seo_config
+        UNION ALL SELECT site_icon FROM seo_config
+        UNION ALL SELECT site_icon_192 FROM seo_config
+        UNION ALL SELECT site_icon_512 FROM seo_config
+        UNION ALL SELECT apple_touch_icon FROM seo_config
+        UNION ALL SELECT custom_head_code FROM seo_config
+        UNION ALL SELECT og_image FROM seo_social_media
+        UNION ALL SELECT pwa_screenshot_desktop FROM seo_pwa_config
+        UNION ALL SELECT pwa_screenshot_mobile FROM seo_pwa_config
+        UNION ALL SELECT chat_avatar FROM sys_ai_config
+        UNION ALL SELECT config_value FROM sys_config
+    </sql>
+
+    <select id="selectOrphanResources" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM resource r
+        WHERE COALESCE(r.path, '') != ''
+        <if test="excludedTypes != null and excludedTypes.size() &gt; 0">
+            AND r.type NOT IN
+            <foreach collection="excludedTypes" item="excludedType" open="(" separator="," close=")">
+                #{excludedType}
+            </foreach>
+        </if>
+        AND NOT EXISTS (
+            SELECT 1
+            FROM (
+                <include refid="Reference_Column_Selects"/>
+            ) refs
+            WHERE refs.ref_value IS NOT NULL
+            AND refs.ref_value != ''
+            AND (
+                LOCATE(r.path, refs.ref_value) &gt; 0
+                OR (
+                    LEFT(r.path, 8) = '/static/'
+                    AND CHAR_LENGTH(r.path) &gt; 8
+                    AND LOCATE(SUBSTRING(r.path, 8), refs.ref_value) &gt; 0
+                )
+                OR (
+                    LEFT(r.path, 8) = '/static/'
+                    AND CHAR_LENGTH(r.path) &gt; 8
+                    AND LOCATE(SUBSTRING(r.path, 9), refs.ref_value) &gt; 0
+                )
+                OR (
+                    LEFT(r.path, 1) != '/'
+                    AND LEFT(r.path, 2) != '//'
+                    AND LOCATE('://', LOWER(r.path)) = 0
+                    AND LEFT(LOWER(r.path), 5) NOT IN ('data:', 'blob:')
+                    AND LOCATE(CONCAT('/', r.path), refs.ref_value) &gt; 0
+                )
+            )
+        )
+        ORDER BY
+        <choose>
+            <when test="orderColumn == 'id'">r.id</when>
+            <when test="orderColumn == 'original_name'">r.original_name</when>
+            <when test="orderColumn == 'user_id'">r.user_id</when>
+            <when test="orderColumn == 'type'">r.type</when>
+            <when test="orderColumn == 'status'">r.status</when>
+            <when test="orderColumn == 'path'">r.path</when>
+            <when test="orderColumn == 'size'">r.size</when>
+            <when test="orderColumn == 'mime_type'">r.mime_type</when>
+            <when test="orderColumn == 'store_type'">r.store_type</when>
+            <otherwise>r.create_time</otherwise>
+        </choose>
+        <choose>
+            <when test="asc">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        <if test="orderColumn != 'id'">
+            , r.id
+            <choose>
+                <when test="asc">ASC</when>
+                <otherwise>DESC</otherwise>
+            </choose>
+        </if>
+    </select>
 
 </mapper>

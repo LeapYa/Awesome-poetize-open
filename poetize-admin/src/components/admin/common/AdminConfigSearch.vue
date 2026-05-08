@@ -163,12 +163,15 @@ const RESOURCE_PATH_TYPE_TERMS = {
   asideBackground: ['侧边栏背景', '右侧背景', '渐变背景']
 };
 const RESOURCE_TYPE_LABELS = {
-  'video/article': 'Video.Article',
+  orphanResource: '孤儿资源',
+  invalidResource: '无效资源',
+  'video/article': '文章视频',
   assets: '公共资源',
   internetMeme: '表情包',
   userAvatar: '用户头像',
   articleCover: '文章封面',
   articlePicture: '文章图片',
+  articleFile: '文章附件',
   webAvatar: '网站头像',
   webBackgroundImage: '背景图片',
   randomAvatar: '随机头像',
@@ -180,19 +183,22 @@ const RESOURCE_TYPE_LABELS = {
   'im/friendMessage': '朋友聊天图片',
   funnyUrl: '音乐声音',
   funnyCover: '音乐封面',
-  'love/bgCover': 'Love.Cover',
-  'love/manCover': 'Love.Man',
-  'love/womanCover': 'Love.Woman',
+  'love/bgCover': '表白墙背景',
+  'love/manCover': '表白墙男生封面',
+  'love/womanCover': '表白墙女生封面',
   favoritesCover: '收藏夹封面'
 };
 
 const RESOURCE_TYPE_TERMS = {
-  'video/article': ['Video.Article', '视频文章', '视频资源'],
+  orphanResource: ['孤儿资源', '未引用资源', '无引用资源'],
+  invalidResource: ['无效资源', '失效资源', '无法加载资源', '加载失败资源'],
+  'video/article': ['文章视频', '视频文章', '视频资源', 'Video.Article'],
   assets: ['公共资源', '资源管理', '文件资源'],
   internetMeme: ['表情包', '梗图', 'meme'],
   userAvatar: ['用户头像', '头像资源'],
   articleCover: ['文章封面', '封面图片'],
   articlePicture: ['文章图片', '正文图片'],
+  articleFile: ['文章附件', '附件资源', '下载附件', '正文文件'],
   webAvatar: ['网站头像', '站点头像'],
   webBackgroundImage: ['背景图片', '站点背景'],
   randomAvatar: ['随机头像', '头像池'],
@@ -204,9 +210,9 @@ const RESOURCE_TYPE_TERMS = {
   'im/friendMessage': ['朋友聊天图片', '私聊图片'],
   funnyUrl: ['音乐声音', '音频资源', '音乐文件'],
   funnyCover: ['音乐封面', '歌曲封面'],
-  'love/bgCover': ['表白墙背景', 'Love背景'],
-  'love/manCover': ['男生封面', 'Love.Man'],
-  'love/womanCover': ['女生封面', 'Love.Woman'],
+  'love/bgCover': ['表白墙背景', '情侣页背景', 'Love背景'],
+  'love/manCover': ['表白墙男生封面', '男生封面', 'Love.Man'],
+  'love/womanCover': ['表白墙女生封面', '女生封面', 'Love.Woman'],
   favoritesCover: ['收藏夹封面', '收藏封面']
 };
 

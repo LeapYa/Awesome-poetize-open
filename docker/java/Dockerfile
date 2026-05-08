@@ -23,8 +23,8 @@ ARG CN_FONT_SPLIT_GH_HOST=
 ENV CN_FONT_SPLIT_MODULE_PATH=/opt/cn-font-split-runtime/node_modules/cn-font-split/dist/wasm/index.mjs
 ENV CN_FONT_SPLIT_WASM_PATH=/opt/cn-font-split-runtime/node_modules/cn-font-split/dist/libffi-wasm32-wasip1.wasm
 
-# 安装健康检查所需工具、WebP 支持库、Node.js 和 cn-font-split
-RUN apk add --no-cache netcat-openbsd curl libwebp libwebp-tools nodejs npm ca-certificates bash \
+# 安装健康检查所需工具、媒体转换器、WebP 支持库、Node.js 和 cn-font-split
+RUN apk add --no-cache netcat-openbsd curl ffmpeg libwebp libwebp-tools nodejs npm ca-certificates bash \
         && npm config set registry https://registry.npmmirror.com \
         && mkdir -p /opt/cn-font-split-runtime \
         # 1) 从 npm 安装 JS 包装代码（latest）
@@ -56,4 +56,4 @@ RUN echo '#!/bin/sh\nset -e\nif nc -z localhost 8081; then\n  curl -f http://loc
     chmod +x /app/healthcheck.sh
 
 # 启动命令
-CMD ["sh", "-c", "ls -la /app && java --enable-preview $JAVA_OPTS -jar /app/app.jar"] 
+CMD ["sh", "-c", "ls -la /app && java --enable-preview $JAVA_OPTS -jar /app/app.jar"]

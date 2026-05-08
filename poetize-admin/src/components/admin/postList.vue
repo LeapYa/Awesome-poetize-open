@@ -2357,7 +2357,7 @@
   }
 
   .handle-input {
-    width: 160px;
+    width: 150px;
     display: inline-block;
   }
 
