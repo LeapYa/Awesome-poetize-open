@@ -324,7 +324,8 @@ public class LlmTranslationService {
             Map<String, Object> toonData = new LinkedHashMap<>();
             toonData.put("summaries", exampleSummaries);
             String toonExample = ToonFormatter.encode(toonData);
-            String jsonExample = com.alibaba.fastjson.JSON.toJSONString(toonData);
+            String jsonExample = com.alibaba.fastjson.JSON.toJSONString(
+                    exampleSummaries, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
             StringBuilder csvBuilder = new StringBuilder();
             for (Map.Entry<String, Object> e : exampleSummaries.entrySet()) {
                 csvBuilder.append(e.getKey()).append(",").append(e.getValue()).append("\n");
@@ -348,6 +349,7 @@ public class LlmTranslationService {
                         .replace("{source_lang}", getLanguageName(firstLangCode))
                         .replace("{toon_example}", toonExample)
                         .replace("{json_example}", jsonExample)
+                        .replace("{lang_json_example}", jsonExample)
                         .replace("{csv_example}", csvExample);
             } else {
                 // 默认提示词：使用 TOON 格式（与 Python 原版一致）
@@ -457,6 +459,7 @@ public class LlmTranslationService {
     /**
      * 从 JSON 配置字符串创建 ChatModel
      * JSON 格式: {model, api_url, api_key, interface_type, timeout}
+     * OpenAI 兼容模型统一按 Chat Completions 调用。
      */
     private ChatModel createChatModelFromJson(String jsonConfig, String label) {
         try {
@@ -467,12 +470,27 @@ public class LlmTranslationService {
             tempConfig.setModel(json.getString("model"));
             tempConfig.setApiBase(json.getString("api_url"));
             tempConfig.setApiKey(json.getString("api_key"));
+            tempConfig.setMaxTokens(json.getInteger("max_tokens"));
+            tempConfig.setTopP(json.getBigDecimal("top_p"));
+            tempConfig.setFrequencyPenalty(json.getBigDecimal("frequency_penalty"));
+            tempConfig.setPresencePenalty(json.getBigDecimal("presence_penalty"));
+            String reasoningEffort = json.getString("reasoning_effort");
+            if (reasoningEffort != null && !reasoningEffort.isBlank()) {
+                tempConfig.setEnableThinking(true);
+                tempConfig.setReasoningEffort(reasoningEffort);
+            }
+            applyThinkingAdapterConfig(tempConfig, json);
 
             // interface_type 映射到 provider
             String interfaceType = json.getString("interface_type");
             if (interfaceType != null) {
                 tempConfig.setProvider(switch (interfaceType.toLowerCase()) {
-                    case "openai", "openai_compatible" -> "openai";
+                    case "openai", "openai_chat", "openai_compatible", "chat_completions" -> "openai";
+                    case "deepseek" -> "deepseek";
+                    case "siliconflow" -> "siliconflow";
+                    case "openrouter" -> "openrouter";
+                    case "worldrouter" -> "worldrouter";
+                    case "custom" -> "custom";
                     case "anthropic" -> "anthropic";
                     default -> "openai"; // 默认 OpenAI 兼容
                 });
@@ -491,6 +509,21 @@ public class LlmTranslationService {
         } catch (Exception e) {
             log.error("从 JSON 创建 {} ChatModel 失败: {}", label, e.getMessage(), e);
             return null;
+        }
+    }
+
+    private void applyThinkingAdapterConfig(SysAiConfig tempConfig, JSONObject json) {
+        JSONObject extraConfig = new JSONObject();
+        String thinkingProfile = json.getString("thinking_profile");
+        if (thinkingProfile != null && !thinkingProfile.isBlank()) {
+            extraConfig.put("thinkingProfile", thinkingProfile);
+        }
+        Object thinkingExtraBody = json.get("thinking_extra_body");
+        if (thinkingExtraBody != null) {
+            extraConfig.put("thinkingExtraBody", thinkingExtraBody);
+        }
+        if (!extraConfig.isEmpty()) {
+            tempConfig.setExtraConfig(extraConfig.toJSONString());
         }
     }
 
@@ -1005,21 +1038,17 @@ public class LlmTranslationService {
         try {
             Map<String, Object> toonDecoded = ToonFormatter.decode(response);
             if (toonDecoded != null) {
-                // TOON 摘要格式: summaries: { zh: "...", en: "..." }
-                Object summariesObj = toonDecoded.get("summaries");
-                if (summariesObj instanceof Map) {
-                    Map<String, String> result = extractSummaries(
-                            (Map<String, Object>) summariesObj, languageContents, maxLength);
-                    if (result != null) {
-                        log.info("TOON 格式摘要解析成功，包含 {} 个语言", result.size());
-                        return result;
-                    }
+                // TOON 摘要格式: summaries: { zh: "...", en: "..." }，也兼容 result/data 等包装层
+                Map<String, String> nestedResult = extractNestedSummaries(toonDecoded, languageContents, maxLength);
+                if (nestedResult != null) {
+                    log.info("TOON 嵌套格式摘要解析成功，包含 {} 个语言", nestedResult.size());
+                    return nestedResult;
                 }
-                // TOON 解码成功但没有 summaries 字段，可能是扁平结构 {zh: "...", en: "..."}
+                // TOON 解码成功但没有 summaries 字段，可能是语言码到摘要的结构
                 Map<String, String> flatResult = extractSummaries(
                         toonDecoded, languageContents, maxLength);
                 if (flatResult != null) {
-                    log.info("TOON 扁平格式摘要解析成功，包含 {} 个语言", flatResult.size());
+                    log.info("TOON 语言映射格式摘要解析成功，包含 {} 个语言", flatResult.size());
                     return flatResult;
                 }
             }
@@ -1032,21 +1061,17 @@ public class LlmTranslationService {
             String jsonStr = extractJson(response);
             if (jsonStr != null) {
                 Map<String, Object> jsonMap = JSON.parseObject(jsonStr, Map.class);
-                // 检查是否有 summaries 嵌套
-                Object summariesObj = jsonMap.get("summaries");
-                if (summariesObj instanceof Map) {
-                    Map<String, String> result = extractSummaries(
-                            (Map<String, Object>) summariesObj, languageContents, maxLength);
-                    if (result != null) {
-                        log.info("JSON summaries 格式摘要解析成功，包含 {} 个语言", result.size());
-                        return result;
-                    }
+                // 检查是否有 summaries/result/data 等嵌套
+                Map<String, String> nestedResult = extractNestedSummaries(jsonMap, languageContents, maxLength);
+                if (nestedResult != null) {
+                    log.info("JSON 嵌套格式摘要解析成功，包含 {} 个语言", nestedResult.size());
+                    return nestedResult;
                 }
-                // 扁平 JSON: {"zh": "...", "en": "..."}
+                // JSON 语言映射: {"zh": "...", "en": "..."}
                 Map<String, String> flatResult = extractSummaries(
                         jsonMap, languageContents, maxLength);
                 if (flatResult != null) {
-                    log.info("JSON 扁平格式摘要解析成功，包含 {} 个语言", flatResult.size());
+                    log.info("JSON 语言映射格式摘要解析成功，包含 {} 个语言", flatResult.size());
                     return flatResult;
                 }
             }
@@ -1100,6 +1125,34 @@ public class LlmTranslationService {
     /**
      * 从解析后的 Map 中提取摘要，验证语言代码并截取长度
      */
+    @SuppressWarnings("unchecked")
+    private Map<String, String> extractNestedSummaries(
+            Map<String, Object> source, Map<String, Map<String, String>> languageContents, int maxLength) {
+        Object summariesObj = source.get("summaries");
+        if (summariesObj instanceof Map) {
+            Map<String, String> result = extractSummaries(
+                    (Map<String, Object>) summariesObj, languageContents, maxLength);
+            if (result != null) {
+                return result;
+            }
+        }
+
+        for (Object value : source.values()) {
+            if (value instanceof Map) {
+                Map<String, Object> nestedMap = (Map<String, Object>) value;
+                Map<String, String> result = extractNestedSummaries(nestedMap, languageContents, maxLength);
+                if (result != null) {
+                    return result;
+                }
+                result = extractSummaries(nestedMap, languageContents, maxLength);
+                if (result != null) {
+                    return result;
+                }
+            }
+        }
+        return null;
+    }
+
     private Map<String, String> extractSummaries(
             Map<String, Object> source, Map<String, Map<String, String>> languageContents, int maxLength) {
         Map<String, String> result = new LinkedHashMap<>();

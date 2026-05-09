@@ -36,6 +36,7 @@
         <result column="enable_content_filter" property="enableContentFilter"/>
         <result column="custom_instructions" property="customInstructions" jdbcType="VARCHAR"/>
         <result column="enable_thinking" property="enableThinking"/>
+        <result column="reasoning_effort" property="reasoningEffort"/>
         <result column="enable_tools" property="enableTools"/>
         <result column="enable_memory" property="enableMemory"/>
         <result column="mem0_api_key" property="mem0ApiKey"/>
@@ -49,6 +50,7 @@
         <result column="baidu_config" property="baiduConfig"/>
         <result column="custom_config" property="customConfig"/>
         <result column="llm_config" property="llmConfig"/>
+        <result column="translation_llm_config" property="translationLlmConfig"/>
         <result column="summary_config" property="summaryConfig"/>
         <result column="extra_config" property="extraConfig"/>
         <result column="remark" property="remark"/>
@@ -64,10 +66,10 @@
         max_conversation_length, enable_context, enable_typing_indicator, show_timestamp, response_delay,
         enable_quick_actions, enable_chat_history, enable_streaming, rate_limit,
         max_message_length, require_login, enable_content_filter,
-        custom_instructions, enable_thinking, enable_tools,
+        custom_instructions, enable_thinking, reasoning_effort, enable_tools,
         enable_memory, mem0_api_key, memory_auto_save, memory_auto_recall, memory_recall_limit,
         translation_type, default_source_lang, default_target_lang, include_articles,
-        baidu_config, custom_config, llm_config, summary_config, extra_config,
+        baidu_config, custom_config, llm_config, translation_llm_config, summary_config, extra_config,
         remark, create_time, update_time
     </sql>
 

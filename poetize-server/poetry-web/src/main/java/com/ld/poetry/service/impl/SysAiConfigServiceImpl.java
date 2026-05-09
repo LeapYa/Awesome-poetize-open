@@ -10,6 +10,7 @@ import com.ld.poetry.dao.SysAiConfigMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.ai.AiThinkingAdapterRegistry;
 import com.ld.poetry.service.ai.DynamicChatClientFactory;
 import com.ld.poetry.utils.AESCryptoUtil;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ import org.springframework.util.StringUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * AI配置服务实现类
@@ -45,6 +47,7 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
     private final ArticleMapper articleMapper;
     private final AESCryptoUtil aesCryptoUtil;
     private final DynamicChatClientFactory dynamicChatClientFactory;
+    private final AiThinkingAdapterRegistry aiThinkingAdapterRegistry;
     private final ObjectMapper objectMapper;
     private final Environment environment;
     private final JdbcTemplate jdbcTemplate;
@@ -52,6 +55,32 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
     @Autowired
     @Lazy
     private com.ld.poetry.service.ai.LlmTranslationService llmTranslationService;
+
+    private static final String[] API_TRANSLATION_SECRET_FIELDS = {
+            "api_key",
+            "app_secret",
+            "secret_key",
+            "access_key_secret",
+            "token",
+            "subscription_key",
+            "auth_key",
+            "secret_access_key",
+            "session_token",
+            "api_key_or_iam_token"
+    };
+
+    private static final List<String> CUSTOM_CONFIG_API_TRANSLATION_TYPES = List.of(
+            "custom",
+            "youdao",
+            "tencent",
+            "aliyun",
+            "volcengine",
+            "huawei",
+            "google",
+            "azure_translator",
+            "deepl",
+            "aws",
+            "yandex");
 
     // ========== 配置查询方法 ==========
 
@@ -236,7 +265,123 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             }
         }
 
+        if (existingConfig != null) {
+            preserveMissingArticleAiSecrets(config, existingConfig);
+        }
+
         return saveOrUpdateConfig(config);
+    }
+
+    private void preserveMissingArticleAiSecrets(SysAiConfig config, SysAiConfig existingConfig) {
+        try {
+            boolean sameTranslationType = Objects.equals(config.getTranslationType(), existingConfig.getTranslationType());
+
+            if (sameTranslationType && "baidu".equals(config.getTranslationType())) {
+                config.setBaiduConfig(preserveJsonTextFields(
+                        config.getBaiduConfig(), existingConfig.getBaiduConfig(), "app_secret"));
+            }
+
+            if (sameTranslationType && CUSTOM_CONFIG_API_TRANSLATION_TYPES.contains(config.getTranslationType())) {
+                config.setCustomConfig(preserveJsonTextFields(
+                        config.getCustomConfig(), existingConfig.getCustomConfig(), API_TRANSLATION_SECRET_FIELDS));
+            }
+
+            config.setLlmConfig(preserveJsonTextFields(
+                    config.getLlmConfig(), existingConfig.getLlmConfig(), "api_key"));
+            config.setTranslationLlmConfig(preserveJsonTextFields(
+                    config.getTranslationLlmConfig(), existingConfig.getTranslationLlmConfig(), "api_key"));
+            config.setSummaryConfig(preserveSummaryDedicatedLlmSecret(
+                    config.getSummaryConfig(), existingConfig.getSummaryConfig()));
+        } catch (Exception e) {
+            log.warn("保留已有密钥失败，将按本次提交配置保存: {}", e.getMessage());
+        }
+    }
+
+    private String preserveJsonTextFields(String incomingJson, String existingJson, String... keys) throws Exception {
+        if (!StringUtils.hasText(incomingJson) || !StringUtils.hasText(existingJson)) {
+            return incomingJson;
+        }
+
+        JsonNode incomingNode = objectMapper.readTree(incomingJson);
+        JsonNode existingNode = objectMapper.readTree(existingJson);
+        if (!(incomingNode instanceof ObjectNode incomingObject)) {
+            return incomingJson;
+        }
+
+        boolean modified = false;
+        for (String key : keys) {
+            if (isMissingOrBlank(incomingObject, key)
+                    && existingNode.has(key)
+                    && StringUtils.hasText(existingNode.get(key).asText())) {
+                incomingObject.put(key, existingNode.get(key).asText());
+                modified = true;
+            }
+        }
+
+        return modified ? objectMapper.writeValueAsString(incomingObject) : incomingJson;
+    }
+
+    private String preserveSummaryDedicatedLlmSecret(String incomingJson, String existingJson) throws Exception {
+        if (!StringUtils.hasText(incomingJson) || !StringUtils.hasText(existingJson)) {
+            return incomingJson;
+        }
+
+        JsonNode incomingNode = objectMapper.readTree(incomingJson);
+        JsonNode existingNode = objectMapper.readTree(existingJson);
+        if (!(incomingNode instanceof ObjectNode incomingObject)) {
+            return incomingJson;
+        }
+
+        JsonNode incomingDedicated = incomingObject.get("dedicated_llm");
+        JsonNode existingDedicated = existingNode.get("dedicated_llm");
+        if (!(incomingDedicated instanceof ObjectNode incomingDedicatedObject)
+                || existingDedicated == null
+                || !existingDedicated.has("api_key")
+                || !StringUtils.hasText(existingDedicated.get("api_key").asText())
+                || !isMissingOrBlank(incomingDedicatedObject, "api_key")) {
+            return incomingJson;
+        }
+
+        incomingDedicatedObject.put("api_key", existingDedicated.get("api_key").asText());
+        return objectMapper.writeValueAsString(incomingObject);
+    }
+
+    private boolean isMissingOrBlank(ObjectNode node, String key) {
+        return !node.has(key) || !StringUtils.hasText(node.get(key).asText());
+    }
+
+    private boolean encryptJsonSecretFields(ObjectNode node, String... fields) {
+        boolean modified = false;
+        for (String field : fields) {
+            if (!node.has(field)) {
+                continue;
+            }
+            String value = node.get(field).asText();
+            if (StringUtils.hasText(value) && !value.startsWith("ENC(") && !value.contains("*")) {
+                node.put(field, aesCryptoUtil.encrypt(value));
+                modified = true;
+            }
+        }
+        return modified;
+    }
+
+    private boolean decryptJsonSecretFields(ObjectNode node, boolean mask, String... fields) {
+        boolean modified = false;
+        for (String field : fields) {
+            if (!node.has(field)) {
+                continue;
+            }
+            String encrypted = node.get(field).asText();
+            if (!StringUtils.hasText(encrypted)) {
+                continue;
+            }
+            String decrypted = aesCryptoUtil.decrypt(encrypted);
+            if (decrypted != null) {
+                node.put(field, mask ? "***" : decrypted);
+                modified = true;
+            }
+        }
+        return modified;
     }
 
     /**
@@ -469,28 +614,11 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 }
             }
 
-            // 2. 加密自定义API配置中的api_key和app_secret
+            // 2. 加密API翻译扩展配置中的密钥类字段
             if (StringUtils.hasText(config.getCustomConfig())) {
                 JsonNode customNode = objectMapper.readTree(config.getCustomConfig());
-                boolean modified = false;
-
-                if (customNode.has("api_key")) {
-                    String apiKey = customNode.get("api_key").asText();
-                    if (StringUtils.hasText(apiKey) && !apiKey.startsWith("ENC(")) {
-                        ((ObjectNode) customNode).put("api_key", aesCryptoUtil.encrypt(apiKey));
-                        modified = true;
-                    }
-                }
-
-                if (customNode.has("app_secret")) {
-                    String appSecret = customNode.get("app_secret").asText();
-                    if (StringUtils.hasText(appSecret) && !appSecret.startsWith("ENC(")) {
-                        ((ObjectNode) customNode).put("app_secret", aesCryptoUtil.encrypt(appSecret));
-                        modified = true;
-                    }
-                }
-
-                if (modified) {
+                if (customNode instanceof ObjectNode customObject
+                        && encryptJsonSecretFields(customObject, API_TRANSLATION_SECRET_FIELDS)) {
                     config.setCustomConfig(objectMapper.writeValueAsString(customNode));
                 }
             }
@@ -590,34 +718,11 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 }
             }
 
-            // 2. 解密并脱敏自定义API配置
+            // 2. 解密并脱敏API翻译扩展配置
             if (StringUtils.hasText(config.getCustomConfig())) {
                 JsonNode customNode = objectMapper.readTree(config.getCustomConfig());
-                boolean modified = false;
-
-                if (customNode.has("api_key")) {
-                    String encrypted = customNode.get("api_key").asText();
-                    if (StringUtils.hasText(encrypted)) {
-                        String decrypted = aesCryptoUtil.decrypt(encrypted);
-                        if (decrypted != null) {
-                            ((ObjectNode) customNode).put("api_key", "***");
-                            modified = true;
-                        }
-                    }
-                }
-
-                if (customNode.has("app_secret")) {
-                    String encrypted = customNode.get("app_secret").asText();
-                    if (StringUtils.hasText(encrypted)) {
-                        String decrypted = aesCryptoUtil.decrypt(encrypted);
-                        if (decrypted != null) {
-                            ((ObjectNode) customNode).put("app_secret", "***");
-                            modified = true;
-                        }
-                    }
-                }
-
-                if (modified) {
+                if (customNode instanceof ObjectNode customObject
+                        && decryptJsonSecretFields(customObject, true, API_TRANSLATION_SECRET_FIELDS)) {
                     config.setCustomConfig(objectMapper.writeValueAsString(customNode));
                 }
             }
@@ -728,34 +833,11 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 }
             }
 
-            // 2. 解密自定义API配置
+            // 2. 解密API翻译扩展配置
             if (StringUtils.hasText(config.getCustomConfig())) {
                 JsonNode customNode = objectMapper.readTree(config.getCustomConfig());
-                boolean modified = false;
-
-                if (customNode.has("api_key")) {
-                    String encrypted = customNode.get("api_key").asText();
-                    if (StringUtils.hasText(encrypted)) {
-                        String decrypted = aesCryptoUtil.decrypt(encrypted);
-                        if (decrypted != null) {
-                            ((ObjectNode) customNode).put("api_key", decrypted);
-                            modified = true;
-                        }
-                    }
-                }
-
-                if (customNode.has("app_secret")) {
-                    String encrypted = customNode.get("app_secret").asText();
-                    if (StringUtils.hasText(encrypted)) {
-                        String decrypted = aesCryptoUtil.decrypt(encrypted);
-                        if (decrypted != null) {
-                            ((ObjectNode) customNode).put("app_secret", decrypted);
-                            modified = true;
-                        }
-                    }
-                }
-
-                if (modified) {
+                if (customNode instanceof ObjectNode customObject
+                        && decryptJsonSecretFields(customObject, false, API_TRANSLATION_SECRET_FIELDS)) {
                     config.setCustomConfig(objectMapper.writeValueAsString(customNode));
                 }
             }
@@ -836,6 +918,7 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             }
 
             ChatModel chatModel = dynamicChatClientFactory.createChatModel(config);
+            Map<String, Object> thinkingDiagnostics = aiThinkingAdapterRegistry.resolve(config).diagnostics();
             String response = ChatClient.create(chatModel)
                     .prompt()
                     .user("请只回复：ok")
@@ -846,9 +929,15 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 result.put("success", true);
                 result.put("message", "连接成功");
                 result.put("response", response.trim());
+                result.put("thinkingProfile", thinkingDiagnostics.get("profile"));
+                result.put("thinkingProfileName", thinkingDiagnostics.get("profileName"));
+                result.put("thinkingParameters", thinkingDiagnostics);
             } else {
                 result.put("success", false);
                 result.put("message", "连接测试返回空响应");
+                result.put("thinkingProfile", thinkingDiagnostics.get("profile"));
+                result.put("thinkingProfileName", thinkingDiagnostics.get("profileName"));
+                result.put("thinkingParameters", thinkingDiagnostics);
             }
 
         } catch (Exception e) {

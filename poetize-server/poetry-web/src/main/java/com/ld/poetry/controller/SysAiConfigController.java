@@ -223,6 +223,18 @@ public class SysAiConfigController {
             resolvedConfig.setTemperature(savedConfig.getTemperature());
         }
 
+        if (resolvedConfig.getEnableThinking() == null) {
+            resolvedConfig.setEnableThinking(savedConfig.getEnableThinking());
+        }
+
+        if (!StringUtils.hasText(resolvedConfig.getReasoningEffort())) {
+            resolvedConfig.setReasoningEffort(savedConfig.getReasoningEffort());
+        }
+
+        if (!StringUtils.hasText(resolvedConfig.getExtraConfig())) {
+            resolvedConfig.setExtraConfig(savedConfig.getExtraConfig());
+        }
+
         return resolvedConfig;
     }
 

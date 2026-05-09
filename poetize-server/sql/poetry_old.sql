@@ -709,6 +709,7 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   -- ========== AI聊天高级功能 ==========
   `custom_instructions` text DEFAULT NULL COMMENT '自定义指令/系统提示词',
   `enable_thinking` tinyint(1) DEFAULT 0 COMMENT '启用思考模式 (0:否 1:是)',
+  `reasoning_effort` varchar(20) DEFAULT NULL COMMENT '思考程度 (low/medium/high/xhigh)',
   `enable_tools` tinyint(1) DEFAULT 1 COMMENT '启用MCP工具 (0:否 1:是)',
   
   -- ========== 记忆管理功能 ==========
@@ -758,7 +759,7 @@ INSERT INTO `sys_ai_config` (
   `max_conversation_length`, `enable_context`, `enable_typing_indicator`, `show_timestamp`,
   `response_delay`, `enable_quick_actions`, `enable_chat_history`, `enable_streaming`,
   `rate_limit`, `max_message_length`, `require_login`, `enable_content_filter`,
-  `custom_instructions`, `enable_thinking`, `enable_tools`,
+  `custom_instructions`, `enable_thinking`, `reasoning_effort`, `enable_tools`,
   `enable_memory`, `mem0_api_key`, `memory_auto_save`, `memory_auto_recall`, `memory_recall_limit`,
   `remark`
 ) VALUES (
@@ -769,7 +770,7 @@ INSERT INTO `sys_ai_config` (
   20, 1, 1, 1,
   1000, 1, 1, 0,
   20, 500, 1, 1,
-  '', 0, 1,
+  '', 0, NULL, 1,
   0, '', 1, 1, 3,
   'AI聊天默认配置'
 ) ON DUPLICATE KEY UPDATE id=id;

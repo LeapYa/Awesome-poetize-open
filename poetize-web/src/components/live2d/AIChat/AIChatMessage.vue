@@ -31,7 +31,17 @@
     >
       <template v-if="isAssistant">
         <template v-for="segment in assistantSegments" :key="segment.id">
-          <div v-if="segment.type === 'tool'" class="tool-pill-row">
+          <details
+            v-if="segment.type === 'reasoning'"
+            class="reasoning-panel"
+            :open="segment.status === 'thinking'"
+          >
+            <summary class="reasoning-summary">
+              {{ segment.status === 'thinking' ? '正在思考' : '思考过程' }}
+            </summary>
+            <div class="reasoning-content">{{ segment.content }}</div>
+          </details>
+          <div v-else-if="segment.type === 'tool'" class="tool-pill-row">
             <div
               class="tool-pill"
               :class="[`tool-pill-${segment.status || 'completed'}`]"
@@ -559,6 +569,27 @@ export default {
 .tool-pill-text {
   white-space: nowrap;
 }
+.reasoning-panel {
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.08);
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.reasoning-summary {
+  cursor: pointer;
+  color: #4f46e5;
+  font-weight: 600;
+  user-select: none;
+}
+.reasoning-content {
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
 @keyframes toolSpin {
   from {
     transform: rotate(0deg);
@@ -605,6 +636,14 @@ export default {
   background: rgba(127, 29, 29, 0.24);
   border-color: rgba(248, 113, 113, 0.24);
   color: #fca5a5;
+}
+.dark-mode .reasoning-panel {
+  background: rgba(79, 70, 229, 0.18);
+  border-color: rgba(129, 140, 248, 0.28);
+  color: #cbd5e1;
+}
+.dark-mode .reasoning-summary {
+  color: #a5b4fc;
 }
 .dark-mode .message-time {
   color: #8e8ea0;

@@ -6,7 +6,7 @@ import com.ld.poetry.dao.ArticleTranslationMapper;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.ArticleTranslation;
 import com.ld.poetry.service.TranslationService;
-import com.ld.poetry.service.ai.BaiduTranslationProvider;
+import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
 import com.ld.poetry.service.ai.LlmTranslationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,7 +44,7 @@ public class TranslationServiceImpl implements TranslationService {
     private LlmTranslationService llmTranslationService;
 
     @Autowired
-    private BaiduTranslationProvider baiduTranslationProvider;
+    private ApiTranslationProviderRegistry apiTranslationProviderRegistry;
 
     @Override
     public void translateAndSaveArticle(Integer articleId) {
@@ -214,22 +214,19 @@ public class TranslationServiceImpl implements TranslationService {
             String translationType = aiConfig != null ? aiConfig.getTranslationType() : "llm";
             log.info("使用翻译方式: {}", translationType);
 
-            if ("baidu".equals(translationType)) {
-                // 百度翻译：分别翻译标题和内容
-                String translatedTitle = baiduTranslationProvider.translate(title, sourceLanguage, targetLanguage);
-                String translatedContent = baiduTranslationProvider.translate(content, sourceLanguage, targetLanguage);
-
-                if (translatedTitle != null && !translatedTitle.isBlank() &&
-                        translatedContent != null && !translatedContent.isBlank() &&
-                        !translatedTitle.equals(title) && !translatedContent.equals(content)) {
-                    Map<String, String> result = new HashMap<>();
-                    result.put("title", translatedTitle);
-                    result.put("content", translatedContent);
-                    result.put("language", targetLanguage);
-                    log.info("百度翻译成功");
+            if (apiTranslationProviderRegistry.isApiProvider(translationType)) {
+                Map<String, String> result = apiTranslationProviderRegistry.translateArticle(
+                        aiConfig, title, content, sourceLanguage, targetLanguage);
+                if (result != null && !result.isEmpty()) {
+                    log.info("API 文章翻译成功: provider={}", translationType);
                     return result;
                 }
-                log.warn("百度翻译结果无效");
+                log.warn("API 文章翻译失败，不回退到 LLM: provider={}", translationType);
+                return null;
+            }
+
+            if (!"llm".equals(translationType) && !"dedicated_llm".equals(translationType)) {
+                log.warn("未知翻译方式或已禁用: {}", translationType);
                 return null;
             }
 
@@ -530,13 +527,14 @@ public class TranslationServiceImpl implements TranslationService {
             com.ld.poetry.entity.SysAiConfig aiConfig = sysAiConfigService.getArticleAiConfig("default");
             String translationType = aiConfig != null ? aiConfig.getTranslationType() : "llm";
 
-            if ("baidu".equals(translationType)) {
-                String result = baiduTranslationProvider.translate(text, src, tgt);
+            if (apiTranslationProviderRegistry.isApiProvider(translationType)) {
+                String result = apiTranslationProviderRegistry.translateText(aiConfig, text, src, tgt);
                 if (result != null && !result.isBlank() && !result.equals(text)) {
                     return result;
                 }
-            } else if (!"none".equals(translationType)) {
-                // LLM 翻译 (llm / dedicated_llm / custom)
+                log.warn("API 文本翻译失败，不回退到 LLM: provider={}", translationType);
+            } else if ("llm".equals(translationType) || "dedicated_llm".equals(translationType)) {
+                // LLM 翻译 (llm / dedicated_llm)
                 String result = llmTranslationService.translateText(text, src, tgt);
                 if (result != null && !result.isBlank() && !result.equals(text)) {
                     return result;

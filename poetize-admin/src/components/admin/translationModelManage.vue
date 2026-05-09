@@ -31,9 +31,9 @@
             
             <el-form-item id="field-translation-global-llm-type" label="大模型类型">
               <el-select v-model="apiConfig.llmType" @change="onLlmTypeChange" placeholder="请选择大模型类型" class="full-width">
-                <el-option label="OpenAI (GPT)" value="openai">
+                <el-option label="OpenAI / ChatGPT API" value="openai">
               <span class="option-content">
-                    OpenAI (GPT)
+                    OpenAI / ChatGPT API
               </span>
             </el-option>
                 <el-option label="Anthropic (Claude)" value="anthropic">
@@ -49,6 +49,16 @@
                 <el-option label="DeepSeek" value="deepseek">
                   <span class="option-content">
                     DeepSeek
+                  </span>
+                </el-option>
+                <el-option label="OpenRouter" value="openrouter">
+                  <span class="option-content">
+                    OpenRouter
+                  </span>
+                </el-option>
+                <el-option label="WorldRouter" value="worldrouter">
+                  <span class="option-content">
+                    WorldRouter
                   </span>
                 </el-option>
                 <el-option label="Azure OpenAI" value="azure">
@@ -84,9 +94,14 @@
                     自动检测
                   </span>
                 </el-option>
-                <el-option label="OpenAI兼容接口" value="openai">
+                <el-option label="OpenAI兼容接口(/v1/chat/completions)" value="openai">
                   <span class="option-content">
-                    OpenAI兼容接口
+                    OpenAI兼容接口(/v1/chat/completions)
+                  </span>
+                </el-option>
+                <el-option label="OpenAI兼容接口(/v1/completions)" value="openai_completions" disabled>
+                  <span class="option-content">
+                    OpenAI兼容接口(/v1/completions)
                   </span>
                 </el-option>
                 <el-option label="Anthropic兼容接口" value="anthropic">
@@ -94,16 +109,35 @@
                     Anthropic兼容接口
                   </span>
                 </el-option>
-                <el-option label="自定义HTTP接口" value="custom">
+                <el-option label="自定义OpenAI兼容接口" value="custom">
                   <span class="option-content">
-                    自定义HTTP接口
+                    自定义OpenAI兼容接口
                   </span>
                 </el-option>
               </el-select>
+              <div class="form-tip"><i class="el-icon-info"></i>{{ getLlmInterfaceTip(apiConfig.llmInterfaceType) }}</div>
             </el-form-item>
             
             <el-form-item id="field-translation-global-llm-url" label="API接口地址">
               <el-input v-model="apiConfig.llmUrl" placeholder="请输入大模型API接口地址" class="input-field"></el-input>
+            </el-form-item>
+
+            <el-form-item label="接口平台">
+              <el-select v-model="apiConfig.llmThinkingProfile" placeholder="自动识别" class="full-width">
+                <el-option label="自动识别" value="auto"></el-option>
+                <el-option label="OpenRouter" value="openrouter"></el-option>
+                <el-option label="WorldRouter" value="worldrouter"></el-option>
+                <el-option label="硅基流动" value="siliconflow"></el-option>
+                <el-option label="DeepSeek 官方" value="deepseek_official"></el-option>
+                <el-option label="OpenAI" value="openai"></el-option>
+                <el-option label="Anthropic" value="anthropic"></el-option>
+                <el-option label="通用 OpenAI 兼容" value="generic_openai_compatible"></el-option>
+              </el-select>
+              <div class="form-tip"><i class="el-icon-info"></i>按服务商和 API 地址自动识别；不准时可手动选择接口平台。</div>
+            </el-form-item>
+            <el-form-item label="自定义请求参数">
+              <el-input v-model="apiConfig.llmThinkingExtraBodyText" type="textarea" :rows="3" placeholder='例如：{"include_reasoning":true}' class="textarea-field"></el-input>
+              <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。</div>
             </el-form-item>
             
             <el-form-item id="field-translation-global-llm-key" label="API密钥" v-if="needsApiKey">
@@ -132,10 +166,26 @@
             </el-form-item>
 
             <el-form-item label="Max Tokens">
-              <el-input v-model.number="apiConfig.llmMaxTokens" placeholder="最大生成令牌数" class="input-field">
+              <el-input
+                v-model="apiConfig.llmMaxTokens"
+                inputmode="numeric"
+                placeholder="最大生成令牌数"
+                class="input-field"
+                @input="sanitizeMaxTokensField('llmMaxTokens', $event)"
+                @blur="normalizeMaxTokensField('llmMaxTokens')">
                 <template slot="append">tokens</template>
               </el-input>
               <div class="form-tip"><i class="el-icon-info"></i>最大生成令牌数，默认1000（思考模型建议2000+）</div>
+            </el-form-item>
+
+            <el-form-item id="field-translation-global-llm-reasoning" label="思考程度">
+              <el-select v-model="apiConfig.llmReasoningEffort" clearable placeholder="不传入" class="full-width">
+                <el-option label="低" value="low"></el-option>
+                <el-option label="中" value="medium"></el-option>
+                <el-option label="高" value="high"></el-option>
+                <el-option label="超高" value="xhigh"></el-option>
+              </el-select>
+              <div class="form-tip"><i class="el-icon-info"></i>仅对支持 reasoning_effort / thinking 的模型生效，如 GPT 推理模型、DeepSeek V4 Pro。</div>
             </el-form-item>
 
             <el-form-item label="Temperature（可选）">
@@ -223,7 +273,7 @@
                   不使用翻译功能，文章将只保留源语言版本
                 </template>
                 <template v-else-if="apiConfig.mode === 'api'">
-                  使用API翻译服务（如百度翻译、自定义API）
+                  使用传统翻译API服务（国内云厂商、国际服务商或自定义HTTP接口），不走大模型
                 </template>
                 <template v-else-if="apiConfig.mode === 'llm'">
                   使用上方配置的全局AI模型进行翻译
@@ -365,93 +415,135 @@
         <!-- API翻译配置 -->
             <template v-if="apiConfig.mode === 'api'">
           <el-form-item id="field-translation-api-provider" label="翻译引擎">
-              <el-select v-model="apiConfig.provider" placeholder="请选择翻译引擎" class="full-width">
-                <el-option label="百度翻译" value="baidu">
-                  <span class="option-content">
-                    <i class="el-icon-s-platform"></i>
-                    百度翻译
-                  </span>
-                </el-option>
-                <el-option label="自定义API" value="custom">
-                  <span class="option-content">
-                    <i class="el-icon-s-custom"></i>
-                    自定义API
-                  </span>
-                </el-option>
+              <el-select v-model="apiConfig.provider" @change="onApiProviderChange" placeholder="请选择翻译引擎" class="full-width">
+                <el-option-group
+                  v-for="group in apiProviderGroups"
+                  :key="group.label"
+                  :label="group.label">
+                  <el-option
+                    v-for="provider in group.options"
+                    :key="provider.value"
+                    :label="provider.label"
+                    :value="provider.value">
+                    <span class="option-content">
+                      <i :class="provider.icon"></i>
+                      {{ provider.label }}
+                    </span>
+                  </el-option>
+                </el-option-group>
             </el-select>
+              <div class="form-tip"><i class="el-icon-info"></i>{{ getApiProviderDescription() }}</div>
           </el-form-item>
-          
-          <template v-if="apiConfig.provider === 'baidu'">
-            <el-form-item label="APP ID">
-                <el-input v-model="apiConfig.appId" placeholder="请输入百度翻译APP ID" class="input-field"></el-input>
+
+            <el-form-item v-if="isApiFieldVisible('customUrl')" :label="getApiFieldLabel('customUrl')">
+              <el-input v-model="apiConfig.customUrl" :placeholder="getApiFieldPlaceholder('customUrl')" class="input-field"></el-input>
+              <div class="form-tip" v-if="apiConfig.provider === 'custom'">
+                <i class="el-icon-info"></i>这里填写原始HTTP翻译接口的完整URL，系统不会自动补全 /v1 或 /chat/completions。
+              </div>
             </el-form-item>
-            <el-form-item label="密钥">
-                <el-input v-model="apiConfig.appSecret" type="password" show-password placeholder="请输入百度翻译密钥" class="input-field">
+
+            <el-form-item v-if="isApiFieldVisible('providerAuthType')" :label="getApiFieldLabel('providerAuthType')">
+              <el-select v-model="apiConfig.providerAuthType" class="full-width">
+                <el-option label="Token" value="token"></el-option>
+                <el-option label="AK/SK" value="aksk"></el-option>
+              </el-select>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('endpointType')" :label="getApiFieldLabel('endpointType')">
+              <el-select v-model="apiConfig.endpointType" class="full-width">
+                <el-option label="Free API" value="free"></el-option>
+                <el-option label="Pro API" value="pro"></el-option>
+              </el-select>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('appId')" :label="getApiFieldLabel('appId')">
+              <el-input v-model="apiConfig.appId" :placeholder="getApiFieldPlaceholder('appId')" class="input-field"></el-input>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('customApiKey')" :label="getApiFieldLabel('customApiKey')">
+              <el-input v-model="apiConfig.customApiKey" type="password" show-password :placeholder="getApiFieldPlaceholder('customApiKey')" class="input-field">
                 <template slot="prefix">
                   <i class="el-icon-lock"></i>
                 </template>
               </el-input>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  <template v-if="apiConfig.hasExistingBaiduSecret">
-                    已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
-                  </template>
-                  <template v-else>
-                API密钥将自动加密存储，确保您的数据安全
-                  </template>
+              <div class="form-tip">
+                <i class="el-icon-info"></i>
+                <template v-if="hasExistingApiFieldSecret('customApiKey')">
+                  已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
+                </template>
+                <template v-else>
+                  API密钥将自动加密存储，确保您的数据安全
+                </template>
               </div>
             </el-form-item>
-          </template>
-          
-          <template v-if="apiConfig.provider === 'custom'">
-            <el-form-item label="API地址">
-                <el-input v-model="apiConfig.customUrl" placeholder="请输入自定义翻译API地址" class="input-field"></el-input>
-            </el-form-item>
-            <el-form-item label="API密钥">
-                <el-input v-model="apiConfig.customApiKey" type="password" show-password placeholder="请输入自定义API密钥" class="input-field">
+
+            <el-form-item v-if="isApiFieldVisible('appSecret')" :label="getApiFieldLabel('appSecret')">
+              <el-input v-model="apiConfig.appSecret" type="password" show-password :placeholder="getApiFieldPlaceholder('appSecret')" class="input-field">
                 <template slot="prefix">
                   <i class="el-icon-lock"></i>
                 </template>
               </el-input>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  <template v-if="apiConfig.hasExistingCustomSecret">
-                    已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
-                  </template>
-                  <template v-else>
-                API密钥将自动加密存储，确保您的数据安全
-                  </template>
+              <div class="form-tip">
+                <i class="el-icon-info"></i>
+                <template v-if="hasExistingApiFieldSecret('appSecret')">
+                  已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
+                </template>
+                <template v-else>
+                  API密钥将自动加密存储，确保您的数据安全
+                </template>
               </div>
             </el-form-item>
-            <el-form-item label="密钥2(可选)">
-                <el-input v-model="apiConfig.appSecret" type="password" show-password placeholder="某些API需要第二个密钥参数" class="input-field">
+
+            <el-form-item v-if="isApiFieldVisible('providerSessionToken')" :label="getApiFieldLabel('providerSessionToken')">
+              <el-input v-model="apiConfig.providerSessionToken" type="password" show-password :placeholder="getApiFieldPlaceholder('providerSessionToken')" class="input-field">
                 <template slot="prefix">
                   <i class="el-icon-lock"></i>
                 </template>
               </el-input>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  <template v-if="apiConfig.hasExistingBaiduSecret">
-                    已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
-                  </template>
-                  <template v-else>
-                API密钥将自动加密存储，确保您的数据安全
-                  </template>
+              <div class="form-tip">
+                <i class="el-icon-info"></i>
+                <template v-if="hasExistingApiFieldSecret('providerSessionToken')">
+                  已有 Session Token 已加密保存，留空则保持不变
+                </template>
+                <template v-else>
+                  临时凭证可选，长期 AK/SK 可不填
+                </template>
               </div>
             </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('providerRegion')" :label="getApiFieldLabel('providerRegion')">
+              <el-input v-model="apiConfig.providerRegion" :placeholder="getApiFieldPlaceholder('providerRegion')" class="input-field"></el-input>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('providerProjectId')" :label="getApiFieldLabel('providerProjectId')">
+              <el-input v-model="apiConfig.providerProjectId" :placeholder="getApiFieldPlaceholder('providerProjectId')" class="input-field"></el-input>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('providerScene')" :label="getApiFieldLabel('providerScene')">
+              <el-input v-model="apiConfig.providerScene" :placeholder="getApiFieldPlaceholder('providerScene')" class="input-field"></el-input>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('providerFormat')" :label="getApiFieldLabel('providerFormat')">
+              <el-input v-model="apiConfig.providerFormat" :placeholder="getApiFieldPlaceholder('providerFormat')" class="input-field"></el-input>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('providerModel')" :label="getApiFieldLabel('providerModel')">
+              <el-input v-model="apiConfig.providerModel" :placeholder="getApiFieldPlaceholder('providerModel')" class="input-field"></el-input>
+            </el-form-item>
+
+            <el-form-item v-if="isApiFieldVisible('providerCategory')" :label="getApiFieldLabel('providerCategory')">
+              <el-input v-model="apiConfig.providerCategory" :placeholder="getApiFieldPlaceholder('providerCategory')" class="input-field"></el-input>
+            </el-form-item>
+
               <div class="info-panel">
                 <div class="info-header">
                   <i class="el-icon-question"></i>
-                  自定义API使用说明
+                  {{ getApiProviderName() }} 使用说明
                 </div>
                 <div class="info-content">
-                  <div class="info-item">• API地址: 翻译服务的完整URL</div>
-                  <div class="info-item">• API密钥: 用于身份验证的密钥</div>
-                  <div class="info-item">• 密钥2: 某些API（如百度）需要第二个参数</div>
-                  <div class="info-item">• 请确保API支持POST请求和JSON格式数据</div>
+                  <div class="info-item" v-for="item in getApiProviderHelp()" :key="item">• {{ item }}</div>
                 </div>
               </div>
-          </template>
             </template>
             
             <!-- 使用全局AI模型时的配置 -->
@@ -468,7 +560,9 @@
                 <el-input type="textarea" v-model="apiConfig.llmPrompt" :rows="3" placeholder="请输入翻译提示词，用于指导大模型如何进行翻译" class="textarea-field"></el-input>
                 <div class="form-tip">
                   <i class="el-icon-info"></i>
-                  可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（文章翻译使用），{json_data}JSON格式文章数据（文章翻译使用），{csv_data}CSV格式文章数据（文章翻译使用），{format}文本格式（单文本翻译使用）
+                  系统已支持输入输出TOON/JSON格式, 具体格式由提示词指定, 后端会自动解析TOON/JSON; 提示词中可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（token更省），{json_data}JSON格式文章数据（简洁直观），{csv_data}CSV格式文章数据，{format}文本格式（单文本翻译使用）
+                  <a href="javascript:void(0)" @click="showPromptDialog('toon')" style="margin-left: 6px;">TOON格式提示词</a>
+                  <a href="javascript:void(0)" @click="showPromptDialog('json')" style="margin-left: 6px;">JSON格式提示词</a>
                 </div>
               </el-form-item>
             </template>
@@ -485,9 +579,9 @@
               
               <el-form-item label="大模型类型">
                 <el-select v-model="apiConfig.translationLlmType" @change="onTranslationLlmTypeChange" placeholder="请选择大模型类型" class="full-width">
-                  <el-option label="OpenAI (GPT)" value="openai">
+                  <el-option label="OpenAI / ChatGPT API" value="openai">
                     <span class="option-content">
-                      OpenAI (GPT)
+                      OpenAI / ChatGPT API
                     </span>
                   </el-option>
                   <el-option label="Anthropic (Claude)" value="anthropic">
@@ -503,6 +597,16 @@
                   <el-option label="DeepSeek" value="deepseek">
                     <span class="option-content">
                       DeepSeek
+                    </span>
+                  </el-option>
+                  <el-option label="OpenRouter" value="openrouter">
+                    <span class="option-content">
+                      OpenRouter
+                    </span>
+                  </el-option>
+                  <el-option label="WorldRouter" value="worldrouter">
+                    <span class="option-content">
+                      WorldRouter
                     </span>
                   </el-option>
                   <el-option label="Azure OpenAI" value="azure">
@@ -533,9 +637,14 @@
                       自动检测
                     </span>
                   </el-option>
-                  <el-option label="OpenAI兼容接口" value="openai">
+                  <el-option label="OpenAI兼容接口(/v1/chat/completions)" value="openai">
                     <span class="option-content">
-                      OpenAI兼容接口
+                      OpenAI兼容接口(/v1/chat/completions)
+                    </span>
+                  </el-option>
+                  <el-option label="OpenAI兼容接口(/v1/completions)" value="openai_completions" disabled>
+                    <span class="option-content">
+                      OpenAI兼容接口(/v1/completions)
                     </span>
                   </el-option>
                   <el-option label="Anthropic兼容接口" value="anthropic">
@@ -543,16 +652,35 @@
                       Anthropic兼容接口
                     </span>
                   </el-option>
-                  <el-option label="自定义HTTP接口" value="custom">
+                  <el-option label="自定义OpenAI兼容接口" value="custom">
                     <span class="option-content">
-                      自定义HTTP接口
+                      自定义OpenAI兼容接口
                     </span>
                   </el-option>
                 </el-select>
+                <div class="form-tip"><i class="el-icon-info"></i>{{ getLlmInterfaceTip(apiConfig.translationLlmInterfaceType) }}</div>
               </el-form-item>
               
               <el-form-item label="API接口地址">
                 <el-input v-model="apiConfig.translationLlmUrl" placeholder="请输入大模型API接口地址" class="input-field"></el-input>
+              </el-form-item>
+
+              <el-form-item label="接口平台">
+                <el-select v-model="apiConfig.translationLlmThinkingProfile" placeholder="自动识别" class="full-width">
+                  <el-option label="自动识别" value="auto"></el-option>
+                  <el-option label="OpenRouter" value="openrouter"></el-option>
+                  <el-option label="WorldRouter" value="worldrouter"></el-option>
+                  <el-option label="硅基流动" value="siliconflow"></el-option>
+                  <el-option label="DeepSeek 官方" value="deepseek_official"></el-option>
+                  <el-option label="OpenAI" value="openai"></el-option>
+                  <el-option label="Anthropic" value="anthropic"></el-option>
+                  <el-option label="通用 OpenAI 兼容" value="generic_openai_compatible"></el-option>
+                </el-select>
+                <div class="form-tip"><i class="el-icon-info"></i>用于翻译独立模型的接口平台识别。</div>
+              </el-form-item>
+              <el-form-item label="自定义请求参数">
+                <el-input v-model="apiConfig.translationLlmThinkingExtraBodyText" type="textarea" :rows="3" placeholder='例如：{"reasoning":{"enabled":true}}' class="textarea-field"></el-input>
+                <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。</div>
               </el-form-item>
               
               <el-form-item label="API密钥">
@@ -581,10 +709,26 @@
               </el-form-item>
 
               <el-form-item label="Max Tokens">
-                <el-input v-model.number="apiConfig.translationLlmMaxTokens" placeholder="最大生成令牌数" class="input-field">
+                <el-input
+                  v-model="apiConfig.translationLlmMaxTokens"
+                  inputmode="numeric"
+                  placeholder="最大生成令牌数"
+                  class="input-field"
+                  @input="sanitizeMaxTokensField('translationLlmMaxTokens', $event)"
+                  @blur="normalizeMaxTokensField('translationLlmMaxTokens')">
                   <template slot="append">tokens</template>
                 </el-input>
                 <div class="form-tip"><i class="el-icon-info"></i>最大生成令牌数，默认1000</div>
+              </el-form-item>
+
+              <el-form-item label="思考程度">
+                <el-select v-model="apiConfig.translationLlmReasoningEffort" clearable placeholder="不传入" class="full-width">
+                  <el-option label="低" value="low"></el-option>
+                  <el-option label="中" value="medium"></el-option>
+                  <el-option label="高" value="high"></el-option>
+                  <el-option label="超高" value="xhigh"></el-option>
+                </el-select>
+                <div class="form-tip"><i class="el-icon-info"></i>仅在当前独立模型支持思考参数时传入。</div>
               </el-form-item>
 
               <el-form-item label="Temperature（可选）">
@@ -611,7 +755,9 @@
                 <el-input type="textarea" v-model="apiConfig.llmPrompt" :rows="3" placeholder="请输入翻译提示词，用于指导大模型如何进行翻译" class="textarea-field"></el-input>
                 <div class="form-tip">
                   <i class="el-icon-info"></i>
-                  可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（文章翻译使用），{json_data}JSON格式文章数据（文章翻译使用），{csv_data}CSV格式文章数据（文章翻译使用），{format}文本格式（单文本翻译使用）
+                  系统已支持输入输出TOON/JSON格式, 具体格式由提示词指定, 后端会自动解析TOON/JSON; 提示词中可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（token更省），{json_data}JSON格式文章数据（简洁直观），{csv_data}CSV格式文章数据，{format}文本格式（单文本翻译使用）
+                  <a href="javascript:void(0)" @click="showPromptDialog('toon')" style="margin-left: 6px;">TOON格式提示词</a>
+                  <a href="javascript:void(0)" @click="showPromptDialog('json')" style="margin-left: 6px;">JSON格式提示词</a>
                 </div>
               </el-form-item>
             </template>
@@ -702,9 +848,9 @@
                 
           <el-form-item label="大模型类型">
                   <el-select v-model="apiConfig.summaryLlmType" @change="onSummaryLlmTypeChange" placeholder="请选择大模型类型" class="full-width">
-                <el-option label="OpenAI (GPT)" value="openai">
+                <el-option label="OpenAI / ChatGPT API" value="openai">
                   <span class="option-content">
-                    OpenAI (GPT)
+                    OpenAI / ChatGPT API
                   </span>
                 </el-option>
                 <el-option label="Anthropic (Claude)" value="anthropic">
@@ -720,6 +866,16 @@
                 <el-option label="DeepSeek" value="deepseek">
                   <span class="option-content">
                     DeepSeek
+                  </span>
+                </el-option>
+                <el-option label="OpenRouter" value="openrouter">
+                  <span class="option-content">
+                    OpenRouter
+                  </span>
+                </el-option>
+                <el-option label="WorldRouter" value="worldrouter">
+                  <span class="option-content">
+                    WorldRouter
                   </span>
                 </el-option>
                 <el-option label="Azure OpenAI" value="azure">
@@ -750,9 +906,14 @@
                     自动检测
                   </span>
                 </el-option>
-                <el-option label="OpenAI兼容接口" value="openai">
+                <el-option label="OpenAI兼容接口(/v1/chat/completions)" value="openai">
                   <span class="option-content">
-                    OpenAI兼容接口
+                    OpenAI兼容接口(/v1/chat/completions)
+                  </span>
+                </el-option>
+                <el-option label="OpenAI兼容接口(/v1/completions)" value="openai_completions" disabled>
+                  <span class="option-content">
+                    OpenAI兼容接口(/v1/completions)
                   </span>
                 </el-option>
                 <el-option label="Anthropic兼容接口" value="anthropic">
@@ -760,17 +921,36 @@
                     Anthropic兼容接口
                   </span>
                 </el-option>
-                <el-option label="自定义HTTP接口" value="custom">
+                <el-option label="自定义OpenAI兼容接口" value="custom">
                   <span class="option-content">
-                    自定义HTTP接口
+                    自定义OpenAI兼容接口
                   </span>
                 </el-option>
               </el-select>
+              <div class="form-tip"><i class="el-icon-info"></i>{{ getLlmInterfaceTip(apiConfig.summaryLlmInterfaceType) }}</div>
           </el-form-item>
             
             <el-form-item label="API接口地址">
                   <el-input v-model="apiConfig.summaryLlmUrl" placeholder="请输入大模型API接口地址" class="input-field"></el-input>
             </el-form-item>
+
+                <el-form-item label="接口平台">
+                  <el-select v-model="apiConfig.summaryLlmThinkingProfile" placeholder="自动识别" class="full-width">
+                    <el-option label="自动识别" value="auto"></el-option>
+                    <el-option label="OpenRouter" value="openrouter"></el-option>
+                    <el-option label="WorldRouter" value="worldrouter"></el-option>
+                    <el-option label="硅基流动" value="siliconflow"></el-option>
+                    <el-option label="DeepSeek 官方" value="deepseek_official"></el-option>
+                    <el-option label="OpenAI" value="openai"></el-option>
+                    <el-option label="Anthropic" value="anthropic"></el-option>
+                    <el-option label="通用 OpenAI 兼容" value="generic_openai_compatible"></el-option>
+                  </el-select>
+                  <div class="form-tip"><i class="el-icon-info"></i>用于摘要独立模型的接口平台识别。</div>
+                </el-form-item>
+                <el-form-item label="自定义请求参数">
+                  <el-input v-model="apiConfig.summaryLlmThinkingExtraBodyText" type="textarea" :rows="3" placeholder='例如：{"thinking_budget":1024}' class="textarea-field"></el-input>
+                  <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。</div>
+                </el-form-item>
             
                 <el-form-item label="API密钥">
                   <el-input v-model="apiConfig.summaryLlmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field">
@@ -798,11 +978,27 @@
           </el-form-item>
 
           <el-form-item label="Max Tokens">
-            <el-input v-model.number="apiConfig.summaryLlmMaxTokens" placeholder="最大生成令牌数" class="input-field">
+            <el-input
+              v-model="apiConfig.summaryLlmMaxTokens"
+              inputmode="numeric"
+              placeholder="最大生成令牌数"
+              class="input-field"
+              @input="sanitizeMaxTokensField('summaryLlmMaxTokens', $event)"
+              @blur="normalizeMaxTokensField('summaryLlmMaxTokens')">
               <template slot="append">tokens</template>
             </el-input>
             <div class="form-tip"><i class="el-icon-info"></i>最大生成令牌数，默认1000</div>
           </el-form-item>
+
+              <el-form-item label="思考程度">
+                <el-select v-model="apiConfig.summaryLlmReasoningEffort" clearable placeholder="不传入" class="full-width">
+                  <el-option label="低" value="low"></el-option>
+                  <el-option label="中" value="medium"></el-option>
+                  <el-option label="高" value="high"></el-option>
+                  <el-option label="超高" value="xhigh"></el-option>
+                </el-select>
+                <div class="form-tip"><i class="el-icon-info"></i>仅在当前摘要独立模型支持思考参数时传入。</div>
+              </el-form-item>
 
               <el-form-item label="Temperature（可选）">
                 <el-input-number v-model="apiConfig.summaryLlmTemperature" :min="0" :max="2" :step="0.1" :precision="1" class="input-field"></el-input-number>
@@ -871,7 +1067,9 @@
                 </el-input>
                 <div class="form-tip">
                   <i class="el-icon-info"></i>
-                  可使用占位符：{style_desc}风格描述，{max_length}最大长度，{toon_example}TOON格式示例，{json_example}JSON格式示例，{csv_example}CSV格式示例，{source_content}源语言内容，{source_lang}源语言名称，{languages}目标语言列表。AI模式只传源语言内容，让AI翻译生成各语言摘要
+                  系统已支持输入输出TOON/JSON格式, 具体格式由提示词指定, 后端会自动解析; 可使用占位符：{style_desc}风格描述，{max_length}最大长度，{toon_example}TOON格式示例（token更省），{json_example}JSON格式示例（简洁直观），{csv_example}CSV格式示例，{source_content}源语言内容，{source_lang}源语言名称，{languages}目标语言列表。AI模式只传源语言内容，让AI翻译生成各语言摘要
+                  <a href="javascript:void(0)" @click="showPromptDialog('toon', 'summary')" style="margin-left: 6px;">TOON格式提示词</a>
+                  <a href="javascript:void(0)" @click="showPromptDialog('json', 'summary')" style="margin-left: 6px;">JSON格式提示词</a>
                 </div>
               </el-form-item>
             </template>
@@ -915,13 +1113,13 @@
         </div>
       </div>
       
-      <div class="dialog-content">
+      <div class="dialog-content" ref="dialogContent">
         <div class="test-form">
           <el-tabs v-model="testTranslationForm.testType" type="border-card">
-            <el-tab-pane label="文章翻译（TOON格式）" name="toon">
+            <el-tab-pane label="文章翻译（格式自动解析）" name="toon">
               <div class="toon-hint">
                 <i class="el-icon-info"></i>
-                标题和内容将使用TOON格式一次性翻译，相比传统方式节省少量的token消耗
+                标题和内容将使用TOON/JSON格式一次性翻译，TOON格式相比JSON方式节省少量的token消耗，可以自行选择
               </div>
               
               <div class="input-section">
@@ -1016,6 +1214,28 @@
       </div>
       <div slot="footer" class="dialog-footer">
         <el-button @click="testTranslationDialogVisible = false">关闭</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 提示词模板对话框 -->
+    <el-dialog :visible.sync="promptDialogVisible" width="55%" custom-class="test-dialog" :title="(promptDialogFeature === 'summary' ? '摘要' : '翻译') + (promptDialogType === 'toon' ? ' TOON' : ' JSON') + '格式提示词'">
+      <div class="dialog-content">
+        <div class="test-form">
+          <div class="input-section">
+            <label>{{ promptDialogFeature === 'summary' ? '摘要' : '翻译' }} {{ promptDialogType === 'toon' ? 'TOON' : 'JSON' }} 格式提示词模板</label>
+            <el-input
+              type="textarea"
+              v-model="currentPromptTemplate"
+              :rows="12"
+              readonly
+              class="source-input"
+              style="font-family: monospace;">
+            </el-input>
+          </div>
+        </div>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="promptDialogVisible = false">关闭</el-button>
       </div>
     </el-dialog>
 
@@ -1261,6 +1481,15 @@ export default {
         appSecret: '',
         customUrl: '',
         customApiKey: '',
+        providerRegion: '',
+        providerProjectId: '',
+        providerScene: '',
+        providerFormat: '',
+        providerModel: '',
+        providerAuthType: 'token',
+        endpointType: 'free',
+        providerCategory: '',
+        providerSessionToken: '',
         llmType: 'openai',
         llmModel: 'gpt-4o-mini',
         llmUrl: 'https://api.openai.com/v1',  // 默认OpenAI基础URL
@@ -1273,13 +1502,20 @@ export default {
         llmTopP: 1.0,
         llmFrequencyPenalty: 0,
         llmPresencePenalty: 0,
+        llmReasoningEffort: '',
+        llmThinkingProfile: 'auto',
+        llmThinkingExtraBodyText: '',
         // 默认语言配置
         defaultSourceLang: 'zh',
         defaultTargetLang: 'en',
         // 密钥状态标记
         hasExistingBaiduSecret: false,
+        hasExistingYoudaoSecret: false,
         hasExistingCustomKey: false,
-        hasExistingCustomSecret: false,  // 添加自定义API第二密钥状态标记
+        hasExistingCustomSecret: false,  // 添加自定义HTTP接口第二密钥状态标记
+        hasExistingPrimarySecret: false,
+        hasExistingSecondarySecret: false,
+        hasExistingSessionToken: false,
         hasExistingLlmKey: false,
         // 翻译独立AI配置
         translationLlmType: 'openai',
@@ -1293,6 +1529,9 @@ export default {
         translationLlmTopP: 1.0,
         translationLlmFrequencyPenalty: 0,
         translationLlmPresencePenalty: 0,
+        translationLlmReasoningEffort: '',
+        translationLlmThinkingProfile: 'auto',
+        translationLlmThinkingExtraBodyText: '',
         hasExistingTranslationLlmKey: false,
         // 智能摘要配置
         summaryMode: 'global',  // 'global' 使用全局AI | 'dedicated' 使用独立AI | 'textrank' 使用TextRank算法
@@ -1311,8 +1550,40 @@ export default {
         summaryLlmTopP: 1.0,
         summaryLlmFrequencyPenalty: 0,
         summaryLlmPresencePenalty: 0,
+        summaryLlmReasoningEffort: '',
+        summaryLlmThinkingProfile: 'auto',
+        summaryLlmThinkingExtraBodyText: '',
         hasExistingSummaryLlmKey: false
       },
+      apiProviderGroups: [
+        {
+          label: '国内云厂商',
+          options: [
+            { label: '百度翻译', value: 'baidu', icon: 'el-icon-s-platform' },
+            { label: '有道云翻译', value: 'youdao', icon: 'el-icon-s-platform' },
+            { label: '腾讯云 TMT', value: 'tencent', icon: 'el-icon-s-platform' },
+            { label: '阿里云机器翻译', value: 'aliyun', icon: 'el-icon-s-platform' },
+            { label: '火山引擎机器翻译', value: 'volcengine', icon: 'el-icon-s-platform' },
+            { label: '华为云 NLP', value: 'huawei', icon: 'el-icon-s-platform' }
+          ]
+        },
+        {
+          label: '国际服务商',
+          options: [
+            { label: 'Google Cloud Translation', value: 'google', icon: 'el-icon-s-grid' },
+            { label: 'Azure AI Translator', value: 'azure_translator', icon: 'el-icon-s-grid' },
+            { label: 'DeepL', value: 'deepl', icon: 'el-icon-s-grid' },
+            { label: 'Amazon Translate', value: 'aws', icon: 'el-icon-s-grid' },
+            { label: 'Yandex Cloud Translate', value: 'yandex', icon: 'el-icon-s-grid' }
+          ]
+        },
+        {
+          label: '自定义',
+          options: [
+            { label: '自定义HTTP接口', value: 'custom', icon: 'el-icon-s-custom' }
+          ]
+        }
+      ],
       // 保存后端加载的原始配置，用于智能恢复
       savedLlmConfig: null,
       savedTranslationLlmConfig: null,
@@ -1334,6 +1605,13 @@ export default {
         error: null
       },
       testTranslationLoading: false,
+      promptDialogVisible: false,
+      promptDialogType: 'json',
+      promptDialogFeature: 'translate',
+      toonPromptTemplate: '将以下TOON格式数据从{source_lang}翻译为{target_lang}。\n\n规则：\n1. 保持TOON格式结构不变（2个空格缩进）\n2. 翻译title和content的值\n3. 保持Markdown格式\n4. 只返回TOON格式数据，不添加任何解释\n\n输入TOON数据：\n{toon_data}\n\n请返回翻译后的TOON数据，格式如下：\narticle:\n  title: (翻译后的{target_lang}标题)\n  content: (翻译后的{target_lang}内容)',
+      jsonPromptTemplate: '将以下JSON格式数据从{source_lang}翻译为{target_lang}。\n\n规则：\n1. 翻译title和content的值\n2. 保持Markdown格式\n3. 只返回JSON格式数据，不添加任何解释或markdown代码块标记\n\n输入JSON数据：\n{json_data}\n\n请返回翻译后的JSON数据：\n{"title":"翻译后的{target_lang}标题","content":"翻译后的{target_lang}内容"}',
+      summaryToonPromptTemplate: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 保持TOON格式结构不变（2个空格缩进）\n5. 只返回TOON格式数据，不添加任何解释或markdown代码块标记\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请返回TOON格式的摘要，格式如下：\n{toon_example}',
+      summaryJsonPromptTemplate: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：\n{json_example}',
       testSummaryLoading: false,
       testSummaryDialogVisible: false,
       testTextrankDialogVisible: false,
@@ -1401,9 +1679,529 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       // 所有大模型类型都可能需要API密钥
       return true;
     },
+    currentPromptTemplate() {
+      if (this.promptDialogFeature === 'summary') {
+        return this.promptDialogType === 'toon' ? this.summaryToonPromptTemplate : this.summaryJsonPromptTemplate;
+      }
+      return this.promptDialogType === 'toon' ? this.toonPromptTemplate : this.jsonPromptTemplate;
+    },
 
   },
   methods: {
+    sanitizeMaxTokensField(field, value) {
+      const normalized = String(value == null ? '' : value).replace(/[^\d]/g, '');
+      if (value !== normalized) {
+        this.apiConfig[field] = normalized;
+      }
+    },
+
+    normalizeMaxTokensField(field) {
+      this.apiConfig[field] = this.toPositiveInteger(this.apiConfig[field], 1000);
+    },
+
+    toPositiveInteger(value, fallback) {
+      const parsed = parseInt(value, 10);
+      return Number.isNaN(parsed) || parsed <= 0 ? fallback : parsed;
+    },
+
+    getApiProviderName() {
+      return this.getApiProviderMeta().label;
+    },
+
+    getApiProviderMeta(provider = this.apiConfig.provider) {
+      const metas = {
+        baidu: {
+          label: '百度翻译',
+          description: '传统百度翻译 API，配置 APP ID 和密钥。',
+          help: ['APP ID 和密钥来自百度翻译开放平台', '接口固定为百度通用翻译 API，无需填写大模型地址'],
+          fields: {
+            appId: { label: 'APP ID', placeholder: '请输入百度翻译 APP ID', required: true },
+            appSecret: { label: '密钥', placeholder: '请输入百度翻译密钥', required: true, secret: true }
+          }
+        },
+        youdao: {
+          label: '有道云翻译',
+          description: '传统有道智云文本翻译 API，配置 AppKey 和 AppSecret。',
+          help: ['应用ID 使用有道智云控制台的 AppKey', '应用密钥使用 AppSecret', '接口固定为有道官方文本翻译接口，无需填写 /v1 或大模型地址'],
+          fields: {
+            appId: { label: '应用ID / AppKey', placeholder: '请输入有道云应用ID / AppKey', required: true },
+            appSecret: { label: '应用密钥 / AppSecret', placeholder: '请输入有道云应用密钥 / AppSecret', required: true, secret: true }
+          }
+        },
+        tencent: {
+          label: '腾讯云 TMT',
+          description: '腾讯云机器翻译 TMT，使用 SecretId / SecretKey 和 TC3 签名。',
+          help: ['SecretId 和 SecretKey 来自腾讯云访问管理', 'Region 默认 ap-guangzhou，可按资源地域修改', 'ProjectId 可留空，默认 0'],
+          fields: {
+            appId: { label: 'SecretId', placeholder: '请输入腾讯云 SecretId', required: true },
+            appSecret: { label: 'SecretKey', placeholder: '请输入腾讯云 SecretKey', required: true, secret: true },
+            providerRegion: { label: 'Region', placeholder: 'ap-guangzhou', required: true },
+            providerProjectId: { label: 'ProjectId', placeholder: '默认 0' }
+          }
+        },
+        aliyun: {
+          label: '阿里云机器翻译',
+          description: '阿里云机器翻译 TranslateGeneral，使用 AccessKeyId / AccessKeySecret。',
+          help: ['Endpoint 可留空，默认按 Region 生成 mt.{region}.aliyuncs.com', 'Scene 默认 general', '密钥留空保存时只在当前服务商不变时保留旧值'],
+          fields: {
+            appId: { label: 'AccessKey ID', placeholder: '请输入阿里云 AccessKey ID', required: true },
+            appSecret: { label: 'AccessKey Secret', placeholder: '请输入阿里云 AccessKey Secret', required: true, secret: true },
+            providerRegion: { label: 'Region', placeholder: 'cn-hangzhou', required: true },
+            customUrl: { label: 'Endpoint', placeholder: 'mt.cn-hangzhou.aliyuncs.com' },
+            providerScene: { label: 'Scene', placeholder: 'general' }
+          }
+        },
+        volcengine: {
+          label: '火山引擎机器翻译',
+          description: '火山引擎机器翻译 OpenAPI，使用 AK/SK 签名。',
+          help: ['Access Key ID 和 Secret Key 来自火山引擎访问控制', 'Region 默认 cn-north-1', '接口地址固定为火山翻译 OpenAPI'],
+          fields: {
+            appId: { label: 'Access Key ID', placeholder: '请输入火山 Access Key ID', required: true },
+            appSecret: { label: 'Secret Key', placeholder: '请输入火山 Secret Key', required: true, secret: true },
+            providerRegion: { label: 'Region', placeholder: 'cn-north-1', required: true }
+          }
+        },
+        huawei: {
+          label: '华为云 NLP',
+          description: '华为云 NLP 文本翻译，支持 Token 或 AK/SK 鉴权。',
+          help: ['Endpoint 需要填写华为云 NLP 服务地址', 'Project ID 为华为云项目 ID', 'Token 鉴权填写 X-Auth-Token，AK/SK 鉴权填写 Access Key ID 和 Secret'],
+          fields: {
+            customUrl: { label: 'Endpoint', placeholder: 'https://nlp-ext.cn-north-4.myhuaweicloud.com', required: true },
+            providerProjectId: { label: 'Project ID', placeholder: '请输入华为云 Project ID', required: true },
+            providerAuthType: { label: '鉴权方式', required: true },
+            customApiKey: { label: 'Token', placeholder: '请输入 X-Auth-Token', required: true, secret: true },
+            appId: { label: 'Access Key ID', placeholder: '请输入华为云 AK', required: true },
+            appSecret: { label: 'Secret Access Key', placeholder: '请输入华为云 SK', required: true, secret: true }
+          }
+        },
+        google: {
+          label: 'Google Cloud Translation',
+          description: 'Google Cloud Translation v2 REST API，使用 API Key。',
+          help: ['API Key 来自 Google Cloud 控制台', 'Format 默认 text，可填写 html', 'Model 可选，例如 nmt'],
+          fields: {
+            customApiKey: { label: 'API Key', placeholder: '请输入 Google Cloud API Key', required: true, secret: true },
+            providerFormat: { label: 'Format', placeholder: 'text' },
+            providerModel: { label: 'Model', placeholder: '可选，如 nmt' }
+          }
+        },
+        azure_translator: {
+          label: 'Azure AI Translator',
+          description: 'Azure AI Translator REST API，使用订阅密钥和可选区域。',
+          help: ['Endpoint 默认 https://api.cognitive.microsofttranslator.com', '多服务资源通常需要填写 Region', 'Category 可用于自定义翻译模型'],
+          fields: {
+            customUrl: { label: 'Endpoint', placeholder: 'https://api.cognitive.microsofttranslator.com' },
+            customApiKey: { label: 'Subscription Key', placeholder: '请输入 Azure Translator 订阅密钥', required: true, secret: true },
+            providerRegion: { label: 'Region', placeholder: '如 eastasia，可选' },
+            providerCategory: { label: 'Category', placeholder: '自定义分类，可选' }
+          }
+        },
+        deepl: {
+          label: 'DeepL',
+          description: 'DeepL Translate API，按 Free/Pro Endpoint 自动选择地址。',
+          help: ['Auth Key 来自 DeepL 控制台', 'Endpoint Type 选择 Free 或 Pro', '如需特殊地址可后续用自定义 HTTP 覆盖'],
+          fields: {
+            customApiKey: { label: 'Auth Key', placeholder: '请输入 DeepL Auth Key', required: true, secret: true },
+            endpointType: { label: 'Endpoint Type', required: true }
+          }
+        },
+        aws: {
+          label: 'Amazon Translate',
+          description: 'Amazon Translate API，使用 AWS SigV4 签名。',
+          help: ['Access Key ID 和 Secret Access Key 来自 AWS IAM', 'Region 必填，例如 us-east-1', 'Session Token 仅临时凭证需要填写'],
+          fields: {
+            appId: { label: 'Access Key ID', placeholder: '请输入 AWS Access Key ID', required: true },
+            appSecret: { label: 'Secret Access Key', placeholder: '请输入 AWS Secret Access Key', required: true, secret: true },
+            providerRegion: { label: 'Region', placeholder: 'us-east-1', required: true },
+            providerSessionToken: { label: 'Session Token', placeholder: '临时凭证可选', secret: true }
+          }
+        },
+        yandex: {
+          label: 'Yandex Cloud Translate',
+          description: 'Yandex Cloud Translate REST API，使用 API Key 或 IAM Token。',
+          help: ['API Key 或 IAM Token 填一个即可', 'Folder ID 可选但推荐填写', '可直接填写 Bearer / Api-Key 前缀，也可只填原始 token'],
+          fields: {
+            customApiKey: { label: 'API Key / IAM Token', placeholder: '请输入 API Key 或 IAM Token', required: true, secret: true },
+            providerProjectId: { label: 'Folder ID', placeholder: '请输入 Yandex Folder ID' }
+          }
+        },
+        custom: {
+          label: '自定义HTTP接口',
+          description: '自定义传统翻译 HTTP 接口，必须填写完整 URL。',
+          help: ['API地址填写完整URL，例如 https://example.com/translate', '请求方式为 POST JSON，请求体包含 text、source_lang、target_lang、from、to', 'API密钥会作为 Authorization Bearer 和 X-API-Key 发送', '密钥2会作为 X-App-Secret 和 X-API-Secret 发送', '系统不会自动补全 /v1、/chat/completions'],
+          fields: {
+            customUrl: { label: 'API地址', placeholder: 'https://example.com/translate', required: true },
+            customApiKey: { label: 'API密钥', placeholder: '请输入自定义HTTP接口密钥', secret: true },
+            appSecret: { label: '密钥2(可选)', placeholder: '某些API需要第二个密钥参数', secret: true }
+          }
+        }
+      };
+      return metas[provider] || metas.baidu;
+    },
+
+    getApiProviderDescription() {
+      return this.getApiProviderMeta().description;
+    },
+
+    getApiProviderHelp() {
+      return this.getApiProviderMeta().help || [];
+    },
+
+    getApiFieldMeta(field) {
+      return this.getApiProviderMeta().fields[field] || {};
+    },
+
+    isApiFieldVisible(field) {
+      if (this.apiConfig.provider === 'huawei') {
+        if (field === 'customApiKey') {
+          return this.apiConfig.providerAuthType !== 'aksk';
+        }
+        if (field === 'appId' || field === 'appSecret') {
+          return this.apiConfig.providerAuthType === 'aksk';
+        }
+      }
+      return !!this.getApiProviderMeta().fields[field];
+    },
+
+    isApiFieldRequired(field) {
+      return this.isApiFieldVisible(field) && !!this.getApiFieldMeta(field).required;
+    },
+
+    getApiFieldLabel(field) {
+      return this.getApiFieldMeta(field).label || field;
+    },
+
+    getApiFieldPlaceholder(field) {
+      return this.getApiFieldMeta(field).placeholder || '';
+    },
+
+    hasExistingApiFieldSecret(field) {
+      if (field === 'appSecret') {
+        if (this.apiConfig.provider === 'baidu') return this.apiConfig.hasExistingBaiduSecret;
+        if (this.apiConfig.provider === 'youdao') return this.apiConfig.hasExistingYoudaoSecret;
+        if (this.apiConfig.provider === 'custom') return this.apiConfig.hasExistingCustomSecret;
+        return this.apiConfig.hasExistingSecondarySecret;
+      }
+      if (field === 'customApiKey') {
+        if (this.apiConfig.provider === 'custom') return this.apiConfig.hasExistingCustomKey;
+        return this.apiConfig.hasExistingPrimarySecret;
+      }
+      if (field === 'providerSessionToken') {
+        return this.apiConfig.hasExistingSessionToken;
+      }
+      return false;
+    },
+
+    onApiProviderChange() {
+      this.resetApiProviderFields();
+      this.applyApiProviderDefaults(this.apiConfig.provider);
+    },
+
+    resetApiProviderFields() {
+      Object.assign(this.apiConfig, {
+        appId: '',
+        appSecret: '',
+        customUrl: '',
+        customApiKey: '',
+        providerRegion: '',
+        providerProjectId: '',
+        providerScene: '',
+        providerFormat: '',
+        providerModel: '',
+        providerAuthType: 'token',
+        endpointType: 'free',
+        providerCategory: '',
+        providerSessionToken: '',
+        hasExistingBaiduSecret: false,
+        hasExistingYoudaoSecret: false,
+        hasExistingCustomKey: false,
+        hasExistingCustomSecret: false,
+        hasExistingPrimarySecret: false,
+        hasExistingSecondarySecret: false,
+        hasExistingSessionToken: false
+      });
+    },
+
+    applyApiProviderDefaults(provider) {
+      const defaults = {
+        tencent: { providerRegion: 'ap-guangzhou', providerProjectId: '0' },
+        aliyun: { providerRegion: 'cn-hangzhou', providerScene: 'general' },
+        volcengine: { providerRegion: 'cn-north-1' },
+        huawei: { providerAuthType: 'token' },
+        google: { providerFormat: 'text' },
+        azure_translator: { customUrl: 'https://api.cognitive.microsofttranslator.com' },
+        deepl: { endpointType: 'free' },
+        aws: { providerRegion: 'us-east-1' },
+        yandex: { providerFormat: 'PLAIN_TEXT' }
+      };
+      Object.assign(this.apiConfig, defaults[provider] || {});
+    },
+
+    setExistingSecretFlagsFromCustomConfig(customConfig) {
+      this.apiConfig.hasExistingPrimarySecret = !!(
+        customConfig.api_key ||
+        customConfig.token ||
+        customConfig.subscription_key ||
+        customConfig.auth_key ||
+        customConfig.api_key_or_iam_token
+      );
+      this.apiConfig.hasExistingSecondarySecret = !!(
+        customConfig.app_secret ||
+        customConfig.secret_key ||
+        customConfig.access_key_secret ||
+        customConfig.secret_access_key
+      );
+      this.apiConfig.hasExistingSessionToken = !!customConfig.session_token;
+    },
+
+    getApiFieldValue(field) {
+      return this.apiConfig[field];
+    },
+
+    validateApiProviderConfig() {
+      const fields = Object.keys(this.getApiProviderMeta().fields);
+      for (const field of fields) {
+        if (!this.isApiFieldRequired(field)) {
+          continue;
+        }
+        const value = this.getApiFieldValue(field);
+        const fieldMeta = this.getApiFieldMeta(field);
+        const hasExistingSecret = fieldMeta.secret && this.hasExistingApiFieldSecret(field);
+        if ((!value || String(value).trim() === '') && !hasExistingSecret) {
+          this.$message.warning(`请填写${this.getApiFieldLabel(field)}`);
+          return false;
+        }
+      }
+      return true;
+    },
+
+    assignIfText(target, key, value) {
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        target[key] = String(value).trim();
+      }
+    },
+
+    assignSecretIfText(target, key, value) {
+      if (value && String(value).trim() !== '') {
+        target[key] = String(value).trim();
+      }
+    },
+
+    buildApiProviderConfig() {
+      const provider = this.apiConfig.provider;
+      if (provider === 'baidu') {
+        const baiduConfig = {
+          app_id: this.apiConfig.appId
+        };
+        this.assignSecretIfText(baiduConfig, 'app_secret', this.apiConfig.appSecret);
+        return baiduConfig;
+      }
+
+      const config = { provider };
+      switch (provider) {
+        case 'youdao':
+          config.app_key = this.apiConfig.appId;
+          config.api_key = this.apiConfig.appId;
+          this.assignSecretIfText(config, 'app_secret', this.apiConfig.appSecret);
+          break;
+        case 'tencent':
+          config.secret_id = this.apiConfig.appId;
+          this.assignSecretIfText(config, 'secret_key', this.apiConfig.appSecret);
+          this.assignIfText(config, 'region', this.apiConfig.providerRegion);
+          this.assignIfText(config, 'project_id', this.apiConfig.providerProjectId);
+          break;
+        case 'aliyun':
+          config.access_key_id = this.apiConfig.appId;
+          this.assignSecretIfText(config, 'access_key_secret', this.apiConfig.appSecret);
+          this.assignIfText(config, 'region', this.apiConfig.providerRegion);
+          this.assignIfText(config, 'endpoint', this.apiConfig.customUrl);
+          this.assignIfText(config, 'scene', this.apiConfig.providerScene);
+          break;
+        case 'volcengine':
+          config.access_key_id = this.apiConfig.appId;
+          this.assignSecretIfText(config, 'secret_key', this.apiConfig.appSecret);
+          this.assignIfText(config, 'region', this.apiConfig.providerRegion);
+          break;
+        case 'huawei':
+          this.assignIfText(config, 'endpoint', this.apiConfig.customUrl);
+          this.assignIfText(config, 'project_id', this.apiConfig.providerProjectId);
+          config.auth_type = this.apiConfig.providerAuthType || 'token';
+          if (config.auth_type === 'aksk') {
+            config.access_key_id = this.apiConfig.appId;
+            this.assignSecretIfText(config, 'access_key_secret', this.apiConfig.appSecret);
+          } else {
+            this.assignSecretIfText(config, 'token', this.apiConfig.customApiKey);
+          }
+          break;
+        case 'google':
+          this.assignSecretIfText(config, 'api_key', this.apiConfig.customApiKey);
+          this.assignIfText(config, 'format', this.apiConfig.providerFormat);
+          this.assignIfText(config, 'model', this.apiConfig.providerModel);
+          break;
+        case 'azure_translator':
+          this.assignIfText(config, 'endpoint', this.apiConfig.customUrl);
+          this.assignSecretIfText(config, 'subscription_key', this.apiConfig.customApiKey);
+          this.assignIfText(config, 'region', this.apiConfig.providerRegion);
+          this.assignIfText(config, 'category', this.apiConfig.providerCategory);
+          break;
+        case 'deepl':
+          this.assignSecretIfText(config, 'auth_key', this.apiConfig.customApiKey);
+          this.assignIfText(config, 'endpoint_type', this.apiConfig.endpointType);
+          break;
+        case 'aws':
+          config.access_key_id = this.apiConfig.appId;
+          this.assignSecretIfText(config, 'secret_access_key', this.apiConfig.appSecret);
+          this.assignIfText(config, 'region', this.apiConfig.providerRegion);
+          this.assignSecretIfText(config, 'session_token', this.apiConfig.providerSessionToken);
+          break;
+        case 'yandex':
+          this.assignSecretIfText(config, 'api_key_or_iam_token', this.apiConfig.customApiKey);
+          this.assignIfText(config, 'folder_id', this.apiConfig.providerProjectId);
+          break;
+        case 'custom':
+          this.assignIfText(config, 'api_url', this.apiConfig.customUrl);
+          this.assignSecretIfText(config, 'api_key', this.apiConfig.customApiKey);
+          this.assignSecretIfText(config, 'app_secret', this.apiConfig.appSecret);
+          break;
+      }
+      return config;
+    },
+
+    applyLoadedApiProviderConfig(provider, providerConfig) {
+      this.apiConfig.provider = provider;
+      this.resetApiProviderFields();
+      this.apiConfig.provider = provider;
+      this.applyApiProviderDefaults(provider);
+
+      if (provider === 'baidu') {
+        this.apiConfig.appId = providerConfig.app_id || '';
+        this.apiConfig.hasExistingBaiduSecret = !!providerConfig.app_secret;
+        this.apiConfig.appSecret = '';
+        return;
+      }
+
+      this.setExistingSecretFlagsFromCustomConfig(providerConfig);
+      switch (provider) {
+        case 'youdao':
+          this.apiConfig.appId = providerConfig.app_key || providerConfig.api_key || '';
+          this.apiConfig.hasExistingYoudaoSecret = !!providerConfig.app_secret;
+          break;
+        case 'tencent':
+          this.apiConfig.appId = providerConfig.secret_id || '';
+          this.apiConfig.providerRegion = providerConfig.region || this.apiConfig.providerRegion;
+          this.apiConfig.providerProjectId = providerConfig.project_id || this.apiConfig.providerProjectId;
+          break;
+        case 'aliyun':
+          this.apiConfig.appId = providerConfig.access_key_id || '';
+          this.apiConfig.providerRegion = providerConfig.region || this.apiConfig.providerRegion;
+          this.apiConfig.customUrl = providerConfig.endpoint || '';
+          this.apiConfig.providerScene = providerConfig.scene || this.apiConfig.providerScene;
+          break;
+        case 'volcengine':
+          this.apiConfig.appId = providerConfig.access_key_id || '';
+          this.apiConfig.providerRegion = providerConfig.region || this.apiConfig.providerRegion;
+          break;
+        case 'huawei':
+          this.apiConfig.customUrl = providerConfig.endpoint || '';
+          this.apiConfig.providerProjectId = providerConfig.project_id || '';
+          this.apiConfig.providerAuthType = providerConfig.auth_type || 'token';
+          this.apiConfig.appId = providerConfig.access_key_id || '';
+          break;
+        case 'google':
+          this.apiConfig.providerFormat = providerConfig.format || this.apiConfig.providerFormat;
+          this.apiConfig.providerModel = providerConfig.model || '';
+          break;
+        case 'azure_translator':
+          this.apiConfig.customUrl = providerConfig.endpoint || this.apiConfig.customUrl;
+          this.apiConfig.providerRegion = providerConfig.region || '';
+          this.apiConfig.providerCategory = providerConfig.category || '';
+          break;
+        case 'deepl':
+          this.apiConfig.endpointType = providerConfig.endpoint_type || this.apiConfig.endpointType;
+          break;
+        case 'aws':
+          this.apiConfig.appId = providerConfig.access_key_id || '';
+          this.apiConfig.providerRegion = providerConfig.region || this.apiConfig.providerRegion;
+          break;
+        case 'yandex':
+          this.apiConfig.providerProjectId = providerConfig.folder_id || '';
+          break;
+        case 'custom':
+          this.apiConfig.customUrl = providerConfig.api_url || '';
+          this.apiConfig.hasExistingCustomKey = !!providerConfig.api_key;
+          this.apiConfig.hasExistingCustomSecret = !!providerConfig.app_secret;
+          break;
+      }
+      this.apiConfig.customApiKey = '';
+      this.apiConfig.appSecret = '';
+      this.apiConfig.providerSessionToken = '';
+    },
+
+    getLlmInterfaceTip(interfaceType) {
+      if (interfaceType === 'custom') {
+        return '自定义OpenAI兼容接口仍走大模型SDK，API地址填写服务商基础地址即可，通常到 /v1，系统会自动拼接 /chat/completions。';
+      }
+      if (interfaceType === 'openai_completions') {
+        return '当前暂不支持 /v1/completions。';
+      }
+      return 'API地址填写服务商基础地址即可，通常到 /v1，系统会自动拼接具体接口。';
+    },
+
+    formatJsonObject(value) {
+      if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length === 0) {
+        return '';
+      }
+      return JSON.stringify(value, null, 2);
+    },
+
+    parseJsonObjectField(text, label) {
+      if (!text || !String(text).trim()) {
+        return { valid: true, value: {} };
+      }
+      try {
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return { valid: false, value: {}, message: `${label}必须是 JSON 对象` };
+        }
+        return { valid: true, value: parsed };
+      } catch (error) {
+        return { valid: false, value: {}, message: `${label} JSON 格式错误` };
+      }
+    },
+
+    isOpenRouterConfig(config) {
+      const apiUrl = (config && config.api_url ? String(config.api_url) : '').toLowerCase();
+      return apiUrl.includes('openrouter.ai');
+    },
+
+    isWorldRouterConfig(config) {
+      const apiUrl = (config && config.api_url ? String(config.api_url) : '').toLowerCase();
+      return apiUrl.includes('worldrouter.ai');
+    },
+
+    normalizeCustomInterfaceType(interfaceType) {
+      const normalized = String(interfaceType || 'auto').toLowerCase();
+      if (['auto', 'openai', 'anthropic', 'custom'].includes(normalized)) {
+        return normalized;
+      }
+      if (['deepseek', 'siliconflow', 'openrouter', 'worldrouter', 'openai_chat', 'openai_compatible', 'chat_completions'].includes(normalized)) {
+        return 'openai';
+      }
+      return 'auto';
+    },
+
+    profileFromInterfaceType(interfaceType) {
+      const normalized = String(interfaceType || '').toLowerCase();
+      const profileMap = {
+        deepseek: 'deepseek_official',
+        siliconflow: 'siliconflow',
+        openrouter: 'openrouter',
+        worldrouter: 'worldrouter',
+        anthropic: 'anthropic',
+        openai: 'openai'
+      };
+      return profileMap[normalized] || '';
+    },
+
     // API配置相关方法
     async getApiConfig() {
       try {
@@ -1428,36 +2226,22 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           }
           
           
-          // 处理百度翻译配置
-          if (res.data.baiduConfig) {
-            // 如果是JSON字符串，先解析
+          // 处理传统 API 翻译配置
+          if (res.data.translationType === 'baidu' && res.data.baiduConfig) {
             const baiduConfig = typeof res.data.baiduConfig === 'string' 
               ? JSON.parse(res.data.baiduConfig) 
               : res.data.baiduConfig;
-            
-            this.apiConfig.provider = 'baidu';
-            this.apiConfig.appId = baiduConfig.app_id || '';
-            // 检查是否有已配置的密钥（加密密钥会以特定格式返回）
-            this.apiConfig.hasExistingBaiduSecret = !!(baiduConfig.app_secret && baiduConfig.app_secret !== '');
-            this.apiConfig.appSecret = ''; // 不显示已有密钥内容，用户可选择覆盖
+            this.applyLoadedApiProviderConfig('baidu', baiduConfig);
           }
           
-          // 处理自定义API配置
-          if (res.data.customConfig) {
-            // 如果是JSON字符串，先解析
+          if (res.data.translationType !== 'baidu' && res.data.customConfig) {
             const customConfig = typeof res.data.customConfig === 'string' 
               ? JSON.parse(res.data.customConfig) 
               : res.data.customConfig;
-            
-            if (res.data.translationType === 'custom') {
-              this.apiConfig.provider = 'custom';
+            const provider = customConfig.provider || res.data.translationType;
+            if (provider && provider !== 'baidu') {
+              this.applyLoadedApiProviderConfig(provider, customConfig);
             }
-            this.apiConfig.customUrl = customConfig.api_url || '';
-            this.apiConfig.hasExistingCustomKey = !!(customConfig.api_key && customConfig.api_key !== '');
-            this.apiConfig.customApiKey = ''; // 不显示已有密钥内容
-            // 处理自定义API的第二个密钥字段
-            this.apiConfig.hasExistingCustomSecret = !!(customConfig.app_secret && customConfig.app_secret !== '');
-            this.apiConfig.appSecret = ''; // 不显示已有密钥内容
           }
           
           // 处理LLM配置
@@ -1471,7 +2255,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.llmUrl = llmConfig.api_url || '';
             this.apiConfig.hasExistingLlmKey = !!(llmConfig.api_key && llmConfig.api_key !== '' && llmConfig.api_key !== 'null');
             this.apiConfig.llmApiKey = ''; // 不显示已有密钥内容
-            this.apiConfig.llmPrompt = llmConfig.prompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：';
+            this.apiConfig.llmPrompt = llmConfig.prompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：\n\n{toon_data}';
             this.apiConfig.llmInterfaceType = llmConfig.interface_type || 'auto';  // 读取接口类型
             this.apiConfig.llmTimeout = llmConfig.timeout || 30;  // 读取超时时间
             this.apiConfig.llmMaxTokens = llmConfig.max_tokens || 1000;  // 读取max_tokens
@@ -1479,11 +2263,21 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.llmTopP = llmConfig.top_p || 1.0;
             this.apiConfig.llmFrequencyPenalty = llmConfig.frequency_penalty || 0;
             this.apiConfig.llmPresencePenalty = llmConfig.presence_penalty || 0;
+            this.apiConfig.llmReasoningEffort = llmConfig.reasoning_effort || '';
+            this.apiConfig.llmThinkingProfile = llmConfig.thinking_profile || 'auto';
+            this.apiConfig.llmThinkingExtraBodyText = this.formatJsonObject(llmConfig.thinking_extra_body);
             
             // 优先使用original_type（新版本），如果没有则从interface_type推断（兼容旧数据）
             if (llmConfig.original_type) {
               // 新版本：直接使用original_type
               this.apiConfig.llmType = llmConfig.original_type;
+              if (this.apiConfig.llmType === 'custom') {
+                const profileFromInterface = this.profileFromInterfaceType(llmConfig.interface_type);
+                this.apiConfig.llmInterfaceType = this.normalizeCustomInterfaceType(llmConfig.interface_type);
+                if ((!llmConfig.thinking_profile || llmConfig.thinking_profile === 'auto') && profileFromInterface) {
+                  this.apiConfig.llmThinkingProfile = profileFromInterface;
+                }
+              }
             } else {
               // 兼容旧数据：从interface_type推断
               const interfaceType = llmConfig.interface_type;
@@ -1491,13 +2285,17 @@ Vue.js features reactive data binding and a component-based architecture, enabli
                 this.apiConfig.llmType = interfaceType;
               } else {
                 // 兼容旧数据或auto模式：根据模型类型推断LLM类型
-              if (llmConfig.model) {
+              if (this.isOpenRouterConfig(llmConfig)) {
+                this.apiConfig.llmType = 'openrouter';
+              } else if (this.isWorldRouterConfig(llmConfig)) {
+                this.apiConfig.llmType = 'worldrouter';
+              } else if (llmConfig.model) {
                 const model = llmConfig.model.toLowerCase();
                 if (model.includes('gpt') || model.includes('openai')) {
                   this.apiConfig.llmType = 'openai';
                 } else if (model.includes('claude') || model.includes('anthropic')) {
                   this.apiConfig.llmType = 'anthropic';
-                } else if (model.includes('deepseek-chat') || model.includes('deepseek-coder')) {
+                } else if (model.includes('deepseek-v4') || model.includes('deepseek-chat') || model.includes('deepseek-coder') || model.includes('deepseek-reasoner')) {
                   // DeepSeek 官方模型
                   this.apiConfig.llmType = 'deepseek';
                 } else if (model.includes('qwen/') || model.includes('deepseek-ai/') || 
@@ -1519,7 +2317,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
               type: this.apiConfig.llmType,
               model: this.apiConfig.llmModel,
               url: this.apiConfig.llmUrl,
-              interfaceType: this.apiConfig.llmInterfaceType  // 自定义类型需要
+              interfaceType: this.apiConfig.llmInterfaceType,  // 自定义类型需要
+              reasoningEffort: this.apiConfig.llmReasoningEffort,
+              thinkingProfile: this.apiConfig.llmThinkingProfile,
+              thinkingExtraBodyText: this.apiConfig.llmThinkingExtraBodyText
             };
           }
           
@@ -1538,18 +2339,28 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.translationLlmTopP = translationLlm.top_p || 1.0;
             this.apiConfig.translationLlmFrequencyPenalty = translationLlm.frequency_penalty || 0;
             this.apiConfig.translationLlmPresencePenalty = translationLlm.presence_penalty || 0;
+            this.apiConfig.translationLlmReasoningEffort = translationLlm.reasoning_effort || '';
+            this.apiConfig.translationLlmThinkingProfile = translationLlm.thinking_profile || 'auto';
+            this.apiConfig.translationLlmThinkingExtraBodyText = this.formatJsonObject(translationLlm.thinking_extra_body);
             this.apiConfig.hasExistingTranslationLlmKey = !!(translationLlm.api_key && translationLlm.api_key !== '' && translationLlm.api_key !== 'null');
             this.apiConfig.translationLlmApiKey = ''; // 不显示已有密钥内容
             
             // 如果是 dedicated_llm 模式，翻译提示词使用翻译独立AI的prompt
             if (this.apiConfig.mode === 'dedicated_llm') {
-              this.apiConfig.llmPrompt = translationLlm.prompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：';
+              this.apiConfig.llmPrompt = translationLlm.prompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：\n\n{toon_data}';
             }
             
             // 优先使用original_type（新版本），如果没有则从 interface_type推断（兼容旧数据）
             if (translationLlm.original_type) {
               // 新版本：直接使用original_type
               this.apiConfig.translationLlmType = translationLlm.original_type;
+              if (this.apiConfig.translationLlmType === 'custom') {
+                const profileFromInterface = this.profileFromInterfaceType(translationLlm.interface_type);
+                this.apiConfig.translationLlmInterfaceType = this.normalizeCustomInterfaceType(translationLlm.interface_type);
+                if ((!translationLlm.thinking_profile || translationLlm.thinking_profile === 'auto') && profileFromInterface) {
+                  this.apiConfig.translationLlmThinkingProfile = profileFromInterface;
+                }
+              }
             } else {
               // 兼容旧数据：从 interface_type推断
               const translationInterfaceType = translationLlm.interface_type;
@@ -1557,13 +2368,17 @@ Vue.js features reactive data binding and a component-based architecture, enabli
                 this.apiConfig.translationLlmType = translationInterfaceType;
               } else {
                 // 兼容旧数据或auto模式：根据模型类型推断LLM类型
-              if (translationLlm.model) {
+              if (this.isOpenRouterConfig(translationLlm)) {
+                this.apiConfig.translationLlmType = 'openrouter';
+              } else if (this.isWorldRouterConfig(translationLlm)) {
+                this.apiConfig.translationLlmType = 'worldrouter';
+              } else if (translationLlm.model) {
                 const model = translationLlm.model.toLowerCase();
                 if (model.includes('gpt') || model.includes('openai')) {
                   this.apiConfig.translationLlmType = 'openai';
                 } else if (model.includes('claude') || model.includes('anthropic')) {
                   this.apiConfig.translationLlmType = 'anthropic';
-                } else if (model.includes('deepseek-chat') || model.includes('deepseek-coder')) {
+                } else if (model.includes('deepseek-v4') || model.includes('deepseek-chat') || model.includes('deepseek-coder') || model.includes('deepseek-reasoner')) {
                   this.apiConfig.translationLlmType = 'deepseek';
                 } else if (model.includes('qwen/') || model.includes('deepseek-ai/') || 
                            model.includes('thudm/') || model.includes('meta-llama/') ||
@@ -1583,7 +2398,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
               type: this.apiConfig.translationLlmType,
               model: this.apiConfig.translationLlmModel,
               url: this.apiConfig.translationLlmUrl,
-              interfaceType: this.apiConfig.translationLlmInterfaceType  // 自定义类型需要
+              interfaceType: this.apiConfig.translationLlmInterfaceType,  // 自定义类型需要
+              reasoningEffort: this.apiConfig.translationLlmReasoningEffort,
+              thinkingProfile: this.apiConfig.translationLlmThinkingProfile,
+              thinkingExtraBodyText: this.apiConfig.translationLlmThinkingExtraBodyText
             };
           }
           
@@ -1605,7 +2423,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.summaryMode = summaryConfig.summaryMode || 'global';
             this.apiConfig.summaryStyle = summaryConfig.style || 'concise';
             this.apiConfig.summaryMaxLength = summaryConfig.max_length || 150;
-            this.apiConfig.summaryPrompt = summaryConfig.prompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{lang_json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：';
+            this.apiConfig.summaryPrompt = summaryConfig.prompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：';
             
             // 处理独立AI配置
             if (summaryConfig.dedicated_llm) {
@@ -1619,6 +2437,9 @@ Vue.js features reactive data binding and a component-based architecture, enabli
               this.apiConfig.summaryLlmTopP = dedicatedLlm.top_p || 1.0;
               this.apiConfig.summaryLlmFrequencyPenalty = dedicatedLlm.frequency_penalty || 0;
               this.apiConfig.summaryLlmPresencePenalty = dedicatedLlm.presence_penalty || 0;
+              this.apiConfig.summaryLlmReasoningEffort = dedicatedLlm.reasoning_effort || '';
+              this.apiConfig.summaryLlmThinkingProfile = dedicatedLlm.thinking_profile || 'auto';
+              this.apiConfig.summaryLlmThinkingExtraBodyText = this.formatJsonObject(dedicatedLlm.thinking_extra_body);
               this.apiConfig.hasExistingSummaryLlmKey = !!(dedicatedLlm.api_key && dedicatedLlm.api_key !== '' && dedicatedLlm.api_key !== 'null');
               this.apiConfig.summaryLlmApiKey = ''; // 不显示已有密钥内容
               
@@ -1626,6 +2447,13 @@ Vue.js features reactive data binding and a component-based architecture, enabli
               if (dedicatedLlm.original_type) {
                 // 新版本：直接使用original_type
                 this.apiConfig.summaryLlmType = dedicatedLlm.original_type;
+                if (this.apiConfig.summaryLlmType === 'custom') {
+                  const profileFromInterface = this.profileFromInterfaceType(dedicatedLlm.interface_type);
+                  this.apiConfig.summaryLlmInterfaceType = this.normalizeCustomInterfaceType(dedicatedLlm.interface_type);
+                  if ((!dedicatedLlm.thinking_profile || dedicatedLlm.thinking_profile === 'auto') && profileFromInterface) {
+                    this.apiConfig.summaryLlmThinkingProfile = profileFromInterface;
+                  }
+                }
               } else {
                 // 兼容旧数据：从interface_type推断
                 const summaryInterfaceType = dedicatedLlm.interface_type;
@@ -1633,13 +2461,17 @@ Vue.js features reactive data binding and a component-based architecture, enabli
                   this.apiConfig.summaryLlmType = summaryInterfaceType;
                 } else {
                   // 兼容旧数据或auto模式：根据模型类型推断LLM类型
-                if (dedicatedLlm.model) {
+                if (this.isOpenRouterConfig(dedicatedLlm)) {
+                  this.apiConfig.summaryLlmType = 'openrouter';
+                } else if (this.isWorldRouterConfig(dedicatedLlm)) {
+                  this.apiConfig.summaryLlmType = 'worldrouter';
+                } else if (dedicatedLlm.model) {
                   const model = dedicatedLlm.model.toLowerCase();
                   if (model.includes('gpt') || model.includes('openai')) {
                     this.apiConfig.summaryLlmType = 'openai';
                   } else if (model.includes('claude') || model.includes('anthropic')) {
                     this.apiConfig.summaryLlmType = 'anthropic';
-                  } else if (model.includes('deepseek-chat') || model.includes('deepseek-coder')) {
+                  } else if (model.includes('deepseek-v4') || model.includes('deepseek-chat') || model.includes('deepseek-coder') || model.includes('deepseek-reasoner')) {
                     this.apiConfig.summaryLlmType = 'deepseek';
                   } else if (model.includes('qwen/') || model.includes('deepseek-ai/') || 
                              model.includes('thudm/') || model.includes('meta-llama/') ||
@@ -1661,7 +2493,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
                 type: this.apiConfig.summaryLlmType,
                 model: this.apiConfig.summaryLlmModel,
                 url: this.apiConfig.summaryLlmUrl,
-                interfaceType: this.apiConfig.summaryLlmInterfaceType  // 自定义类型需要
+                interfaceType: this.apiConfig.summaryLlmInterfaceType,  // 自定义类型需要
+                reasoningEffort: this.apiConfig.summaryLlmReasoningEffort,
+                thinkingProfile: this.apiConfig.summaryLlmThinkingProfile,
+                thinkingExtraBodyText: this.apiConfig.summaryLlmThinkingExtraBodyText
               };
             }
           } else {
@@ -1669,7 +2504,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.summaryMode = 'global';
             this.apiConfig.summaryStyle = 'concise';
             this.apiConfig.summaryMaxLength = 150;
-            this.apiConfig.summaryPrompt = '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{lang_json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：';
+            this.apiConfig.summaryPrompt = '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：';
           }
           
           // 自动填充空的API地址
@@ -1695,6 +2530,15 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     async saveApiConfig() {
       try {
         this.loading = true;
+        const llmThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.llmThinkingExtraBodyText, '全局模型自定义请求参数');
+        const translationThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.translationLlmThinkingExtraBodyText, '翻译独立模型自定义请求参数');
+        const summaryThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.summaryLlmThinkingExtraBodyText, '摘要独立模型自定义请求参数');
+        if (!llmThinkingExtraBody.valid || !translationThinkingExtraBody.valid || !summaryThinkingExtraBody.valid) {
+          this.$message.error((!llmThinkingExtraBody.valid && llmThinkingExtraBody.message)
+            || (!translationThinkingExtraBody.valid && translationThinkingExtraBody.message)
+            || summaryThinkingExtraBody.message);
+          return;
+        }
         
         // 构建配置对象（Java驼峰格式）
         const config = {
@@ -1706,17 +2550,23 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         const llmConfigObj = {
           model: this.apiConfig.llmModel,
           api_url: this.apiConfig.llmUrl,
-          prompt: this.apiConfig.llmPrompt || '请将以下文本翻译成中文：',
+          prompt: this.apiConfig.llmPrompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：\n\n{toon_data}',
           // 保存原始类型，用于区分custom和其他类型
           original_type: this.apiConfig.llmType,
           // 如果是custom，使用llmInterfaceType；否则使用llmType
-          interface_type: this.apiConfig.llmType === 'custom' ? this.apiConfig.llmInterfaceType : this.apiConfig.llmType,
+          interface_type: this.apiConfig.llmType === 'custom' ? this.normalizeCustomInterfaceType(this.apiConfig.llmInterfaceType) : this.apiConfig.llmType,
           timeout: this.apiConfig.llmTimeout || 30,
+          max_tokens: this.toPositiveInteger(this.apiConfig.llmMaxTokens, 1000),
           temperature: this.apiConfig.llmTemperature || 0.7,
           top_p: this.apiConfig.llmTopP || 1.0,
           frequency_penalty: this.apiConfig.llmFrequencyPenalty || 0,
-          presence_penalty: this.apiConfig.llmPresencePenalty || 0
+          presence_penalty: this.apiConfig.llmPresencePenalty || 0,
+          thinking_profile: this.apiConfig.llmThinkingProfile || 'auto',
+          thinking_extra_body: llmThinkingExtraBody.value
         };
+        if (this.apiConfig.llmReasoningEffort) {
+          llmConfigObj.reasoning_effort = this.apiConfig.llmReasoningEffort;
+        }
         // 只有输入了新密钥才发送
         if (this.apiConfig.llmApiKey && this.apiConfig.llmApiKey.trim() !== '') {
           llmConfigObj.api_key = this.apiConfig.llmApiKey;
@@ -1729,31 +2579,15 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           // 不翻译模式
           config.translationType = 'none';
         } else if (this.apiConfig.mode === 'api') {
+          if (!this.validateApiProviderConfig()) {
+            return;
+          }
+          config.translationType = this.apiConfig.provider;
+          const providerConfig = this.buildApiProviderConfig();
           if (this.apiConfig.provider === 'baidu') {
-            config.translationType = 'baidu';
-            const baiduConfigObj = {
-              app_id: this.apiConfig.appId
-            };
-            // 只有输入了新密钥才发送
-            if (this.apiConfig.appSecret && this.apiConfig.appSecret.trim() !== '') {
-              baiduConfigObj.app_secret = this.apiConfig.appSecret;
-            }
-            // 序列化为JSON字符串
-            config.baiduConfig = JSON.stringify(baiduConfigObj);
-          } else if (this.apiConfig.provider === 'custom') {
-            config.translationType = 'custom';
-            const customConfigObj = {
-              api_url: this.apiConfig.customUrl
-            };
-            // 只有输入了新密钥才发送
-            if (this.apiConfig.customApiKey && this.apiConfig.customApiKey.trim() !== '') {
-              customConfigObj.api_key = this.apiConfig.customApiKey;
-            }
-            if (this.apiConfig.appSecret && this.apiConfig.appSecret.trim() !== '') {
-              customConfigObj.app_secret = this.apiConfig.appSecret;
-            }
-            // 序列化为JSON字符串
-            config.customConfig = JSON.stringify(customConfigObj);
+            config.baiduConfig = JSON.stringify(providerConfig);
+          } else {
+            config.customConfig = JSON.stringify(providerConfig);
           }
         } else if (this.apiConfig.mode === 'llm') {
           config.translationType = 'llm';
@@ -1763,18 +2597,23 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           const translationLlmConfigObj = {
             model: this.apiConfig.translationLlmModel,
             api_url: this.apiConfig.translationLlmUrl,
-            prompt: this.apiConfig.llmPrompt || '请将以下{format}从{source_lang}翻译成{target_lang}，保持原意和格式，只返回翻译结果，不要添加任何说明或注释：',
+            prompt: this.apiConfig.llmPrompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：\n\n{toon_data}',
             // 保存原始类型，用于区分custom和其他类型
             original_type: this.apiConfig.translationLlmType,
             // 如果是custom，使用translationLlmInterfaceType；否则使用translationLlmType
-            interface_type: this.apiConfig.translationLlmType === 'custom' ? this.apiConfig.translationLlmInterfaceType : this.apiConfig.translationLlmType,
+            interface_type: this.apiConfig.translationLlmType === 'custom' ? this.normalizeCustomInterfaceType(this.apiConfig.translationLlmInterfaceType) : this.apiConfig.translationLlmType,
             timeout: this.apiConfig.translationLlmTimeout || 30,
-            max_tokens: this.apiConfig.translationLlmMaxTokens || 1000,
+            max_tokens: this.toPositiveInteger(this.apiConfig.translationLlmMaxTokens, 1000),
             temperature: this.apiConfig.translationLlmTemperature || 0.7,
             top_p: this.apiConfig.translationLlmTopP || 1.0,
             frequency_penalty: this.apiConfig.translationLlmFrequencyPenalty || 0,
-            presence_penalty: this.apiConfig.translationLlmPresencePenalty || 0
+            presence_penalty: this.apiConfig.translationLlmPresencePenalty || 0,
+            thinking_profile: this.apiConfig.translationLlmThinkingProfile || 'auto',
+            thinking_extra_body: translationThinkingExtraBody.value
           };
+          if (this.apiConfig.translationLlmReasoningEffort) {
+            translationLlmConfigObj.reasoning_effort = this.apiConfig.translationLlmReasoningEffort;
+          }
           // 只有输入了新密钥才发送
           if (this.apiConfig.translationLlmApiKey && this.apiConfig.translationLlmApiKey.trim() !== '') {
             translationLlmConfigObj.api_key = this.apiConfig.translationLlmApiKey;
@@ -1792,7 +2631,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           summaryMode: this.apiConfig.summaryMode || 'global',  // 'global' | 'dedicated' | 'textrank'
           style: this.apiConfig.summaryStyle || 'concise',
           max_length: this.apiConfig.summaryMaxLength || 150,
-          prompt: this.apiConfig.summaryPrompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{lang_json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：'
+          prompt: this.apiConfig.summaryPrompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：'
         };
         
         // 如果启用了独立AI模式，保存独立AI配置
@@ -1803,14 +2642,19 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             // 保存原始类型，用于区分custom和其他类型
             original_type: this.apiConfig.summaryLlmType,
             // 如果是custom，使用summaryLlmInterfaceType；否则使用summaryLlmType
-            interface_type: this.apiConfig.summaryLlmType === 'custom' ? this.apiConfig.summaryLlmInterfaceType : this.apiConfig.summaryLlmType,
+            interface_type: this.apiConfig.summaryLlmType === 'custom' ? this.normalizeCustomInterfaceType(this.apiConfig.summaryLlmInterfaceType) : this.apiConfig.summaryLlmType,
             timeout: this.apiConfig.summaryLlmTimeout || 30,
-            max_tokens: this.apiConfig.summaryLlmMaxTokens || 1000,
+            max_tokens: this.toPositiveInteger(this.apiConfig.summaryLlmMaxTokens, 1000),
             temperature: this.apiConfig.summaryLlmTemperature || 0.7,
             top_p: this.apiConfig.summaryLlmTopP || 1.0,
             frequency_penalty: this.apiConfig.summaryLlmFrequencyPenalty || 0,
-            presence_penalty: this.apiConfig.summaryLlmPresencePenalty || 0
+            presence_penalty: this.apiConfig.summaryLlmPresencePenalty || 0,
+            thinking_profile: this.apiConfig.summaryLlmThinkingProfile || 'auto',
+            thinking_extra_body: summaryThinkingExtraBody.value
           };
+          if (this.apiConfig.summaryLlmReasoningEffort) {
+            dedicatedLlmObj.reasoning_effort = this.apiConfig.summaryLlmReasoningEffort;
+          }
           // 只有输入了新密钥才发送
           if (this.apiConfig.summaryLlmApiKey && this.apiConfig.summaryLlmApiKey.trim() !== '') {
             dedicatedLlmObj.api_key = this.apiConfig.summaryLlmApiKey;
@@ -1923,20 +2767,15 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           return;
         }
       } else if (this.apiConfig.mode === 'api') {
-        // 使用API时，验证API配置
-        if (this.apiConfig.provider === 'baidu' && !this.apiConfig.appId) {
-          this.$message.warning('请先配置百度翻译的APP ID');
-          return;
-        }
-        if (this.apiConfig.provider === 'custom' && !this.apiConfig.customUrl) {
-          this.$message.warning('请先配置自定义API的接口地址');
+        if (!this.validateApiProviderConfig()) {
           return;
         }
       }
       
       // 重置表单，保留测试类型和默认内容，只清空翻译结果
+      const savedTestType = this.testTranslationForm.testType || 'toon';
       this.testTranslationForm = {
-        testType: 'toon',  // 保留测试类型
+        testType: savedTestType,
         sourceText: '# 人工智能简介\n\n人工智能（AI）正在改变我们的生活方式。从智能助手到自动驾驶，AI技术无处不在。\n\n## 深度学习\n\n深度学习是AI的核心技术之一，它通过神经网络模拟人脑的学习过程。',  // 保留默认单文本内容
         title: '人工智能的未来发展',  // 保留默认标题
         content: '# 人工智能简介\n\n人工智能（AI）正在改变我们的生活方式。从智能助手到自动驾驶，AI技术无处不在。\n\n## 深度学习\n\n深度学习是AI的核心技术之一，它通过神经网络模拟人脑的学习过程。',  // 保留默认内容
@@ -1989,12 +2828,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           return;
         }
       } else if (this.apiConfig.mode === 'api') {
-        if (this.apiConfig.provider === 'baidu' && !this.apiConfig.appId) {
-          this.$message.warning('请先配置百度翻译的APP ID');
-          return;
-        }
-        if (this.apiConfig.provider === 'custom' && !this.apiConfig.customUrl) {
-          this.$message.warning('请先配置自定义API的接口地址');
+        if (!this.validateApiProviderConfig()) {
           return;
         }
       }
@@ -2050,30 +2884,44 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       if (response.code === 200 && response.data) {
         this.testTranslationForm.processingTime = (Date.now() - startTime) / 1000;
         
-        // 处理TOON格式结果
-        if (response.data.is_toon && response.data.translated_title && response.data.translated_content) {
-          this.testTranslationForm.translatedTitle = response.data.translated_title;
-          this.testTranslationForm.translatedContent = response.data.translated_content;
+        if (response.data.is_toon) {
+          this.testTranslationForm.translatedTitle = response.data.translated_title || '';
+          this.testTranslationForm.translatedContent = response.data.translated_content || '';
           this.testTranslationForm.toonTokens = response.data.toon_tokens;
           this.testTranslationForm.tokenSavedPercent = response.data.token_saved_percent;
           
-          const tokenMsg = response.data.token_saved_percent ? 
-            `，节省 ${response.data.token_saved_percent}% token` : '';
-          this.$message.success(`TOON翻译成功${tokenMsg} (引擎: ${response.data.engine})`);
-        } 
-        // 处理单文本结果
-        else if (response.data.translated_text) {
+          if (response.data.translated_title || response.data.translated_content) {
+            const tokenMsg = response.data.token_saved_percent ?
+              `，节省 ${response.data.token_saved_percent}% token` : '';
+            this.$message.success(`TOON翻译成功${tokenMsg} (引擎: ${response.data.engine})`);
+          } else {
+            this.$message.warning('翻译完成但未能解析标题和内容，请检查翻译提示词');
+            this.testTranslationForm.error = 'LLM 返回了无法解析的响应，请尝试调整翻译提示词或检查API配置';
+          }
+        } else if (response.data.translated_text) {
           this.testTranslationForm.translatedText = response.data.translated_text;
           this.$message.success(`翻译成功 (引擎: ${response.data.engine})`);
+        } else {
+          this.$message.warning('翻译完成但返回了意外的数据格式');
+          this.testTranslationForm.error = '翻译返回了意外的数据格式，请检查配置';
         }
-        
-        // 日志语言信息
-        if (response.data.source_lang && response.data.target_lang) {
-        }
+
+        this.$nextTick(() => {
+          const el = this.$refs.dialogContent;
+          if (el) {
+            const scrollContainer = el.closest('.el-dialog__body') || el;
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          }
+        });
       } else {
         this.$message.error(response.message || '翻译失败');
         throw new Error(response.message || '翻译失败');
       }
+    },
+    showPromptDialog(type, feature) {
+      this.promptDialogType = type;
+      this.promptDialogFeature = feature || 'translate';
+      this.promptDialogVisible = true;
     },
     formatTime(timeString) {
       if (!timeString) return '';
@@ -2083,13 +2931,15 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     getModelPlaceholder() {
       switch (this.apiConfig.llmType) {
         case 'openai':
-          return '如 gpt-4.1, gpt-4o, gpt-4-turbo, gpt-3.5-turbo';
+          return '如 gpt-5, gpt-4.1, gpt-4o, gpt-4-turbo';
         case 'anthropic':
           return '如 claude-4, claude-3-7-sonnet, claude-3-5-sonnet-20241022';
         case 'siliconflow':
           return '如 Qwen/QwQ-32B, Qwen/Qwen2.5-72B-Instruct，或直接输入任意模型名称';
         case 'deepseek':
-          return '如 deepseek-chat, deepseek-reasoner';
+          return '如 deepseek-v4-flash, deepseek-v4-pro';
+        case 'worldrouter':
+          return '如 gpt-5.4，或 WorldRouter 官方模型列表中的任意模型 ID';
         case 'azure':
           return '如 gpt-4.1, gpt-4o, gpt-4-turbo (Azure部署名称)';
         case 'custom':
@@ -2101,13 +2951,15 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     getModelTip() {
       switch (this.apiConfig.llmType) {
         case 'openai':
-          return '选择OpenAI模型：GPT-5最新版本功能最强，GPT-5-codex代码能力最强，GPT-5-nano性价比高，GPT-4.1强大且稳定';
+          return '选择OpenAI / ChatGPT API 模型：当前使用 Chat Completions 接口；GPT-5适合复杂任务，GPT-5-nano性价比高，GPT-4.1强大且稳定；当前不支持 Codex 接入';
         case 'anthropic':
           return '选择Anthropic Claude模型：Claude-4.1-opus，Claude-4.5 Sonnet性能强大，Claude-3.5系列稳定可靠，Haiku速度快';
         case 'siliconflow':
           return '可选择预设模型或直接输入自定义模型名称。推荐：QwQ-32B推理强、Qwen2.5性价比高、DeepSeek-V3性能强。支持硅基流动平台所有可用模型，API密钥从 https://siliconflow.cn 获取';
         case 'deepseek':
-          return '选择DeepSeek模型：deepseek-chat适合对话和翻译，deepseek-reasoner是推理模型适合复杂任务。API密钥从 https://platform.deepseek.com 获取';
+          return '选择DeepSeek模型：默认 deepseek-v4-flash，复杂任务可用 deepseek-v4-pro 并按需设置思考程度。API密钥从 https://platform.deepseek.com 获取';
+        case 'worldrouter':
+          return '选择WorldRouter模型：默认 gpt-5.4，也可输入官方模型列表中的任意模型 ID。接口按 OpenAI 兼容格式调用';
         case 'azure':
           return '输入Azure OpenAI部署的模型名称，需要与Azure门户中配置的部署名称完全一致。支持GPT-4.1等最新模型';
         case 'custom':
@@ -2350,7 +3202,9 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       const defaultUrls = {
         'openai': 'https://api.openai.com/v1',
         'anthropic': 'https://api.anthropic.com/v1/messages',
-        'siliconflow': 'https://api.siliconflow.cn/v1/chat/completions',
+        'siliconflow': 'https://api.siliconflow.cn/v1',
+        'openrouter': 'https://openrouter.ai/api/v1',
+        'worldrouter': 'https://inference-api.worldrouter.ai/v1',
         'deepseek': 'https://api.deepseek.com/v1',
         'azure': '',  // Azure需要自定义URL
         'custom': ''  // 自定义需要手动填写
@@ -2360,7 +3214,9 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         'openai': 'gpt-4o-mini',
         'anthropic': 'claude-3-5-sonnet-20241022',
         'siliconflow': 'Qwen/Qwen3-8B',
-        'deepseek': 'deepseek-chat',
+        'openrouter': 'openai/gpt-4o-mini',
+        'worldrouter': 'gpt-5.4',
+        'deepseek': 'deepseek-v4-flash',
         'azure': 'gpt-4',
         'custom': ''
       };
@@ -2373,8 +3229,11 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         this.apiConfig.llmUrl = this.savedLlmConfig.url || defaultUrls[newType] || '';
         // 如果是自定义类型，恢复接口类型
         if (newType === 'custom' && this.savedLlmConfig.interfaceType) {
-          this.apiConfig.llmInterfaceType = this.savedLlmConfig.interfaceType;
+          this.apiConfig.llmInterfaceType = this.normalizeCustomInterfaceType(this.savedLlmConfig.interfaceType);
         }
+        this.apiConfig.llmReasoningEffort = this.savedLlmConfig.reasoningEffort || '';
+        this.apiConfig.llmThinkingProfile = this.savedLlmConfig.thinkingProfile || 'auto';
+        this.apiConfig.llmThinkingExtraBodyText = this.savedLlmConfig.thinkingExtraBodyText || '';
         return;
       }
       
@@ -2386,16 +3245,28 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       if (defaultModels[newType] !== undefined) {
         this.apiConfig.llmModel = defaultModels[newType];
       }
+      if (newType === 'custom') {
+        this.apiConfig.llmInterfaceType = this.normalizeCustomInterfaceType(this.apiConfig.llmInterfaceType);
+      }
+      this.apiConfig.llmReasoningEffort = '';
+      if (newType === 'openrouter' && this.apiConfig.llmThinkingProfile === 'auto') {
+        this.apiConfig.llmThinkingProfile = 'openrouter';
+      }
+      if (newType === 'worldrouter' && this.apiConfig.llmThinkingProfile === 'auto') {
+        this.apiConfig.llmThinkingProfile = 'worldrouter';
+      }
     },
     
     // 当翻译独立LLM类型改变时，自动设置默认URL和模型
     onTranslationLlmTypeChange(newType) {
       // 默认配置
       const defaultUrls = {
-        'openai': 'https://api.openai.com/v1/chat/completions',
+        'openai': 'https://api.openai.com/v1',
         'anthropic': 'https://api.anthropic.com/v1/messages',
-        'siliconflow': 'https://api.siliconflow.cn/v1/chat/completions',
-        'deepseek': 'https://api.deepseek.com/v1/chat/completions',
+        'siliconflow': 'https://api.siliconflow.cn/v1',
+        'openrouter': 'https://openrouter.ai/api/v1',
+        'worldrouter': 'https://inference-api.worldrouter.ai/v1',
+        'deepseek': 'https://api.deepseek.com/v1',
         'azure': '',
         'custom': ''
       };
@@ -2404,7 +3275,9 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         'openai': 'gpt-4o-mini',
         'anthropic': 'claude-3-5-sonnet-20241022',
         'siliconflow': 'Qwen/Qwen3-8B',
-        'deepseek': 'deepseek-chat',
+        'openrouter': 'openai/gpt-4o-mini',
+        'worldrouter': 'gpt-5.4',
+        'deepseek': 'deepseek-v4-flash',
         'azure': 'gpt-4',
         'custom': ''
       };
@@ -2417,8 +3290,11 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         this.apiConfig.translationLlmUrl = this.savedTranslationLlmConfig.url || defaultUrls[newType] || '';
         // 如果是自定义类型，恢复接口类型
         if (newType === 'custom' && this.savedTranslationLlmConfig.interfaceType) {
-          this.apiConfig.translationLlmInterfaceType = this.savedTranslationLlmConfig.interfaceType;
+          this.apiConfig.translationLlmInterfaceType = this.normalizeCustomInterfaceType(this.savedTranslationLlmConfig.interfaceType);
         }
+        this.apiConfig.translationLlmReasoningEffort = this.savedTranslationLlmConfig.reasoningEffort || '';
+        this.apiConfig.translationLlmThinkingProfile = this.savedTranslationLlmConfig.thinkingProfile || 'auto';
+        this.apiConfig.translationLlmThinkingExtraBodyText = this.savedTranslationLlmConfig.thinkingExtraBodyText || '';
         return;
       }
       
@@ -2430,16 +3306,28 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       if (defaultModels[newType] !== undefined) {
         this.apiConfig.translationLlmModel = defaultModels[newType];
       }
+      if (newType === 'custom') {
+        this.apiConfig.translationLlmInterfaceType = this.normalizeCustomInterfaceType(this.apiConfig.translationLlmInterfaceType);
+      }
+      this.apiConfig.translationLlmReasoningEffort = '';
+      if (newType === 'openrouter' && this.apiConfig.translationLlmThinkingProfile === 'auto') {
+        this.apiConfig.translationLlmThinkingProfile = 'openrouter';
+      }
+      if (newType === 'worldrouter' && this.apiConfig.translationLlmThinkingProfile === 'auto') {
+        this.apiConfig.translationLlmThinkingProfile = 'worldrouter';
+      }
     },
     
     // 当摘要独立LLM类型改变时，自动设置默认URL和模型
     onSummaryLlmTypeChange(newType) {
       // 默认配置
       const defaultUrls = {
-        'openai': 'https://api.openai.com/v1/chat/completions',
+        'openai': 'https://api.openai.com/v1',
         'anthropic': 'https://api.anthropic.com/v1/messages',
-        'siliconflow': 'https://api.siliconflow.cn/v1/chat/completions',
-        'deepseek': 'https://api.deepseek.com/v1/chat/completions',
+        'siliconflow': 'https://api.siliconflow.cn/v1',
+        'openrouter': 'https://openrouter.ai/api/v1',
+        'worldrouter': 'https://inference-api.worldrouter.ai/v1',
+        'deepseek': 'https://api.deepseek.com/v1',
         'azure': '',
         'custom': ''
       };
@@ -2448,7 +3336,9 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         'openai': 'gpt-4o-mini',
         'anthropic': 'claude-3-5-sonnet-20241022',
         'siliconflow': 'Qwen/Qwen3-8B',
-        'deepseek': 'deepseek-chat',
+        'openrouter': 'openai/gpt-4o-mini',
+        'worldrouter': 'gpt-5.4',
+        'deepseek': 'deepseek-v4-flash',
         'azure': 'gpt-4',
         'custom': ''
       };
@@ -2461,8 +3351,11 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         this.apiConfig.summaryLlmUrl = this.savedSummaryLlmConfig.url || defaultUrls[newType] || '';
         // 如果是自定义类型，恢复接口类型
         if (newType === 'custom' && this.savedSummaryLlmConfig.interfaceType) {
-          this.apiConfig.summaryLlmInterfaceType = this.savedSummaryLlmConfig.interfaceType;
+          this.apiConfig.summaryLlmInterfaceType = this.normalizeCustomInterfaceType(this.savedSummaryLlmConfig.interfaceType);
         }
+        this.apiConfig.summaryLlmReasoningEffort = this.savedSummaryLlmConfig.reasoningEffort || '';
+        this.apiConfig.summaryLlmThinkingProfile = this.savedSummaryLlmConfig.thinkingProfile || 'auto';
+        this.apiConfig.summaryLlmThinkingExtraBodyText = this.savedSummaryLlmConfig.thinkingExtraBodyText || '';
         return;
       }
       
@@ -2473,6 +3366,16 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       
       if (defaultModels[newType] !== undefined) {
         this.apiConfig.summaryLlmModel = defaultModels[newType];
+      }
+      if (newType === 'custom') {
+        this.apiConfig.summaryLlmInterfaceType = this.normalizeCustomInterfaceType(this.apiConfig.summaryLlmInterfaceType);
+      }
+      this.apiConfig.summaryLlmReasoningEffort = '';
+      if (newType === 'openrouter' && this.apiConfig.summaryLlmThinkingProfile === 'auto') {
+        this.apiConfig.summaryLlmThinkingProfile = 'openrouter';
+      }
+      if (newType === 'worldrouter' && this.apiConfig.summaryLlmThinkingProfile === 'auto') {
+        this.apiConfig.summaryLlmThinkingProfile = 'worldrouter';
       }
     },
     
@@ -2534,6 +3437,15 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     
     // 构建临时配置
     buildTempConfig() {
+      const llmThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.llmThinkingExtraBodyText, '全局模型自定义请求参数');
+      const translationThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.translationLlmThinkingExtraBodyText, '翻译独立模型自定义请求参数');
+      const summaryThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.summaryLlmThinkingExtraBodyText, '摘要独立模型自定义请求参数');
+      if (!llmThinkingExtraBody.valid || !translationThinkingExtraBody.valid || !summaryThinkingExtraBody.valid) {
+        throw new Error((!llmThinkingExtraBody.valid && llmThinkingExtraBody.message)
+          || (!translationThinkingExtraBody.valid && translationThinkingExtraBody.message)
+          || summaryThinkingExtraBody.message);
+      }
+
       const config = {
         type: this.apiConfig.mode,  // 'none', 'api', 'llm', 'dedicated_llm'
         default_source_lang: this.apiConfig.defaultSourceLang || 'zh',
@@ -2544,15 +3456,20 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       config.llm = {
         model: this.apiConfig.llmModel,
         api_url: this.apiConfig.llmUrl,
-        interface_type: this.apiConfig.llmType === 'custom' ? this.apiConfig.llmInterfaceType : this.apiConfig.llmType,
+        interface_type: this.apiConfig.llmType === 'custom' ? this.normalizeCustomInterfaceType(this.apiConfig.llmInterfaceType) : this.apiConfig.llmType,
         timeout: this.apiConfig.llmTimeout || 30,
-        max_tokens: this.apiConfig.llmMaxTokens || 1000,
+        max_tokens: this.toPositiveInteger(this.apiConfig.llmMaxTokens, 1000),
         temperature: this.apiConfig.llmTemperature || 0.7,
         top_p: this.apiConfig.llmTopP || 1.0,
         frequency_penalty: this.apiConfig.llmFrequencyPenalty || 0,
         presence_penalty: this.apiConfig.llmPresencePenalty || 0,
-        prompt: this.apiConfig.llmPrompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：'
+        thinking_profile: this.apiConfig.llmThinkingProfile || 'auto',
+        thinking_extra_body: llmThinkingExtraBody.value,
+        prompt: this.apiConfig.llmPrompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：\n\n{toon_data}'
       };
+      if (this.apiConfig.llmReasoningEffort) {
+        config.llm.reasoning_effort = this.apiConfig.llmReasoningEffort;
+      }
       // 只有输入了新密钥才包含api_key字段
       if (this.apiConfig.llmApiKey && this.apiConfig.llmApiKey.trim() !== '') {
         config.llm.api_key = this.apiConfig.llmApiKey;
@@ -2560,38 +3477,26 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       
       // 根据翻译模式添加特定配置
       if (this.apiConfig.mode === 'api') {
-        if (this.apiConfig.provider === 'baidu') {
-          config.baidu = {
-            app_id: this.apiConfig.appId
-          };
-          // 只有输入了新密钥才包含
-          if (this.apiConfig.appSecret && this.apiConfig.appSecret.trim() !== '') {
-            config.baidu.app_secret = this.apiConfig.appSecret;
-          }
-        } else if (this.apiConfig.provider === 'custom') {
-          config.custom = {
-            api_url: this.apiConfig.customUrl
-          };
-          // 只有输入了新密钥才包含
-          if (this.apiConfig.customApiKey && this.apiConfig.customApiKey.trim() !== '') {
-            config.custom.api_key = this.apiConfig.customApiKey;
-          }
-          if (this.apiConfig.appSecret && this.apiConfig.appSecret.trim() !== '') {
-            config.custom.app_secret = this.apiConfig.appSecret;
-          }
-        }
+        config.provider = this.apiConfig.provider;
+        config[this.apiConfig.provider] = this.buildApiProviderConfig();
       } else if (this.apiConfig.mode === 'dedicated_llm') {
         config.translation_llm = {
           model: this.apiConfig.translationLlmModel,
           api_url: this.apiConfig.translationLlmUrl,
-          interface_type: this.apiConfig.translationLlmType === 'custom' ? this.apiConfig.translationLlmInterfaceType : this.apiConfig.translationLlmType,
+          interface_type: this.apiConfig.translationLlmType === 'custom' ? this.normalizeCustomInterfaceType(this.apiConfig.translationLlmInterfaceType) : this.apiConfig.translationLlmType,
           timeout: this.apiConfig.translationLlmTimeout || 30,
+          max_tokens: this.toPositiveInteger(this.apiConfig.translationLlmMaxTokens, 1000),
           temperature: this.apiConfig.translationLlmTemperature || 0.7,
           top_p: this.apiConfig.translationLlmTopP || 1.0,
           frequency_penalty: this.apiConfig.translationLlmFrequencyPenalty || 0,
           presence_penalty: this.apiConfig.translationLlmPresencePenalty || 0,
-          prompt: this.apiConfig.llmPrompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：'
+          thinking_profile: this.apiConfig.translationLlmThinkingProfile || 'auto',
+          thinking_extra_body: translationThinkingExtraBody.value,
+          prompt: this.apiConfig.llmPrompt || '请将以下{source_lang}文本翻译为{target_lang}，保持原意和格式，只返回翻译结果：\n\n{toon_data}'
         };
+        if (this.apiConfig.translationLlmReasoningEffort) {
+          config.translation_llm.reasoning_effort = this.apiConfig.translationLlmReasoningEffort;
+        }
         // 只有输入了新密钥才包含
         if (this.apiConfig.translationLlmApiKey && this.apiConfig.translationLlmApiKey.trim() !== '') {
           config.translation_llm.api_key = this.apiConfig.translationLlmApiKey;
@@ -2612,13 +3517,19 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         config.summary.dedicated_llm = {
           model: this.apiConfig.summaryLlmModel,
           api_url: this.apiConfig.summaryLlmUrl,
-          interface_type: this.apiConfig.summaryLlmType === 'custom' ? this.apiConfig.summaryLlmInterfaceType : this.apiConfig.summaryLlmType,
+          interface_type: this.apiConfig.summaryLlmType === 'custom' ? this.normalizeCustomInterfaceType(this.apiConfig.summaryLlmInterfaceType) : this.apiConfig.summaryLlmType,
           timeout: this.apiConfig.summaryLlmTimeout || 30,
+          max_tokens: this.toPositiveInteger(this.apiConfig.summaryLlmMaxTokens, 1000),
           temperature: this.apiConfig.summaryLlmTemperature || 0.7,
           top_p: this.apiConfig.summaryLlmTopP || 1.0,
           frequency_penalty: this.apiConfig.summaryLlmFrequencyPenalty || 0,
-          presence_penalty: this.apiConfig.summaryLlmPresencePenalty || 0
+          presence_penalty: this.apiConfig.summaryLlmPresencePenalty || 0,
+          thinking_profile: this.apiConfig.summaryLlmThinkingProfile || 'auto',
+          thinking_extra_body: summaryThinkingExtraBody.value
         };
+        if (this.apiConfig.summaryLlmReasoningEffort) {
+          config.summary.dedicated_llm.reasoning_effort = this.apiConfig.summaryLlmReasoningEffort;
+        }
         // 只有输入了新密钥才包含
         if (this.apiConfig.summaryLlmApiKey && this.apiConfig.summaryLlmApiKey.trim() !== '') {
           config.summary.dedicated_llm.api_key = this.apiConfig.summaryLlmApiKey;

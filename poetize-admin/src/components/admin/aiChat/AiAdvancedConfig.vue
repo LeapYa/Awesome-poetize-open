@@ -22,11 +22,6 @@
         <el-button type="primary" icon="el-icon-plus" @click="addHeader">添加Header</el-button>
       </el-form-item>
 
-      <el-form-item id="field-ai-enable-thinking" label="🧠 启用思考模式">
-        <el-switch v-model="advancedConfig.enableThinking"></el-switch>
-        <small class="help-text">启用后AI会先思考再回答，提供更深入的分析（仅部分模型支持，如o1系列）</small>
-      </el-form-item>
-
       <el-form-item id="field-ai-debug" label="调试模式">
         <el-switch v-model="advancedConfig.debugMode"></el-switch>
         <small class="help-text">启用后会在控制台输出详细日志</small>
@@ -60,14 +55,22 @@ export default {
         retryCount: 3,
         customHeaders: [],
         debugMode: false,
-        enableThinking: false
+        enableThinking: false,
+        reasoningEffort: 'medium',
+        thinkingProfile: 'auto',
+        thinkingExtraBodyText: ''
       })
     }
   },
   
   data() {
     return {
-      advancedConfig: { ...this.value }
+      advancedConfig: {
+        reasoningEffort: 'medium',
+        thinkingProfile: 'auto',
+        thinkingExtraBodyText: '',
+        ...this.value
+      }
     }
   },
   
@@ -75,7 +78,12 @@ export default {
     value: {
       handler(newVal) {
         if (JSON.stringify(newVal) !== JSON.stringify(this.advancedConfig)) {
-          this.advancedConfig = { ...newVal };
+          this.advancedConfig = {
+            reasoningEffort: 'medium',
+            thinkingProfile: 'auto',
+            thinkingExtraBodyText: '',
+            ...newVal
+          };
         }
       },
       deep: true

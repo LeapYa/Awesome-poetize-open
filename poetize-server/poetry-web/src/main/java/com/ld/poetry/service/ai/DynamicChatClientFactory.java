@@ -12,6 +12,8 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Service;
 
+import static org.springframework.ai.anthropic.api.AnthropicApi.ThinkingType.ENABLED;
+
 /**
  * 动态 ChatModel 工厂
  * 根据数据库 SysAiConfig 配置动态创建不同 Provider 的 ChatModel
@@ -23,6 +25,12 @@ import org.springframework.stereotype.Service;
 public class DynamicChatClientFactory {
 
     private static final Logger logger = LoggerFactory.getLogger(DynamicChatClientFactory.class);
+
+    private final AiThinkingAdapterRegistry thinkingAdapterRegistry;
+
+    public DynamicChatClientFactory(AiThinkingAdapterRegistry thinkingAdapterRegistry) {
+        this.thinkingAdapterRegistry = thinkingAdapterRegistry;
+    }
 
     /**
      * 根据 AI 配置创建对应的 ChatModel
@@ -44,7 +52,8 @@ public class DynamicChatClientFactory {
                 provider, config.getModel(), config.getApiBase());
 
         return switch (provider.toLowerCase()) {
-            case "openai", "deepseek", "siliconflow", "custom" -> createOpenAiCompatible(config);
+            case "openai", "deepseek", "siliconflow", "openrouter", "worldrouter", "custom" ->
+                createOpenAiCompatible(config);
             case "anthropic" -> createAnthropic(config);
             default -> {
                 logger.warn("不支持的 provider: {}, 降级为 OpenAI 兼容模式", provider);
@@ -59,7 +68,7 @@ public class DynamicChatClientFactory {
     private ChatModel createOpenAiCompatible(SysAiConfig config) {
         String apiKey = config.getApiKey(); // 已解密
         String baseUrl = AiApiBaseUrlNormalizer.normalizeOpenAiCompatibleBaseUrl(
-                config.getApiBase(), "https://api.openai.com");
+                config.getApiBase(), defaultOpenAiCompatibleBaseUrl(config.getProvider()));
         String model = config.getModel() != null ? config.getModel() : "gpt-4o-mini";
         double temperature = config.getTemperature() != null ? config.getTemperature().doubleValue() : 0.7;
 
@@ -68,10 +77,32 @@ public class DynamicChatClientFactory {
                 .apiKey(apiKey)
                 .build();
 
-        var options = OpenAiChatOptions.builder()
+        var optionsBuilder = OpenAiChatOptions.builder()
                 .model(model)
-                .temperature(temperature)
-                .build();
+                .temperature(temperature);
+
+        if (config.getMaxTokens() != null) {
+            optionsBuilder.maxTokens(config.getMaxTokens());
+        }
+        if (config.getTopP() != null) {
+            optionsBuilder.topP(config.getTopP().doubleValue());
+        }
+        if (config.getFrequencyPenalty() != null) {
+            optionsBuilder.frequencyPenalty(config.getFrequencyPenalty().doubleValue());
+        }
+        if (config.getPresencePenalty() != null) {
+            optionsBuilder.presencePenalty(config.getPresencePenalty().doubleValue());
+        }
+
+        AiThinkingAdapterRegistry.ThinkingRequest thinkingRequest = thinkingAdapterRegistry.resolve(config);
+        if (thinkingRequest.reasoningEffort() != null) {
+            optionsBuilder.reasoningEffort(thinkingRequest.reasoningEffort());
+        }
+        if (!thinkingRequest.extraBody().isEmpty()) {
+            optionsBuilder.extraBody(thinkingRequest.extraBody());
+        }
+
+        var options = optionsBuilder.build();
 
         return OpenAiChatModel.builder()
                 .openAiApi(openAiApi)
@@ -93,10 +124,22 @@ public class DynamicChatClientFactory {
                 .apiKey(apiKey)
                 .build();
 
-        var options = AnthropicChatOptions.builder()
+        var optionsBuilder = AnthropicChatOptions.builder()
                 .model(model)
-                .temperature(temperature)
-                .build();
+                .temperature(temperature);
+
+        if (config.getMaxTokens() != null) {
+            optionsBuilder.maxTokens(config.getMaxTokens());
+        }
+        if (config.getTopP() != null) {
+            optionsBuilder.topP(config.getTopP().doubleValue());
+        }
+        AiThinkingAdapterRegistry.ThinkingRequest thinkingRequest = thinkingAdapterRegistry.resolve(config);
+        if (thinkingRequest.anthropicThinkingBudget() != null) {
+            optionsBuilder.thinking(ENABLED, thinkingRequest.anthropicThinkingBudget());
+        }
+
+        var options = optionsBuilder.build();
 
         return AnthropicChatModel.builder()
                 .anthropicApi(anthropicApi)
@@ -109,5 +152,18 @@ public class DynamicChatClientFactory {
             return defaultUrl;
         }
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    private String defaultOpenAiCompatibleBaseUrl(String provider) {
+        if (provider == null) {
+            return "https://api.openai.com";
+        }
+        return switch (provider.toLowerCase()) {
+            case "deepseek" -> "https://api.deepseek.com";
+            case "siliconflow" -> "https://api.siliconflow.cn";
+            case "openrouter" -> "https://openrouter.ai/api/v1";
+            case "worldrouter" -> "https://inference-api.worldrouter.ai/v1";
+            default -> "https://api.openai.com";
+        };
     }
 }

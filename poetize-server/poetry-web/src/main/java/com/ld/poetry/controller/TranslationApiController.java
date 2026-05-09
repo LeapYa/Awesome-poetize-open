@@ -1,7 +1,10 @@
 package com.ld.poetry.controller;
 
+import com.alibaba.fastjson.JSONObject;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.ai.ApiTranslationProvider;
+import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
 import com.ld.poetry.service.ai.DynamicChatClientFactory;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.utils.ToonFormatter;
@@ -9,10 +12,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 翻译测试 API 端点
@@ -26,11 +31,27 @@ import java.util.Map;
 @Slf4j
 public class TranslationApiController {
 
+    private static final String[] API_TRANSLATION_SECRET_FIELDS = {
+            "app_secret",
+            "api_key",
+            "secret_key",
+            "access_key_secret",
+            "token",
+            "subscription_key",
+            "auth_key",
+            "secret_access_key",
+            "session_token",
+            "api_key_or_iam_token"
+    };
+
     @Autowired
     private DynamicChatClientFactory chatClientFactory;
 
     @Autowired
     private SysAiConfigService sysAiConfigService;
+
+    @Autowired
+    private ApiTranslationProviderRegistry apiTranslationProviderRegistry;
 
     // ========== 前端 translationModelManage.vue 兼容端点 ==========
 
@@ -69,6 +90,10 @@ public class TranslationApiController {
 
             if (!isToonTest && (text == null || text.isBlank())) {
                 return PoetryResult.fail("翻译文本不能为空");
+            }
+
+            if (isApiTranslation(config)) {
+                return testApiTranslation(config, text, title, content, sourceLang, targetLang, isToonTest, start);
             }
 
             // 创建临时 ChatModel
@@ -140,20 +165,9 @@ public class TranslationApiController {
                 long elapsed = System.currentTimeMillis() - start;
 
                 if (response != null && !response.isBlank()) {
-                    // 尝试解析 JSON 响应
-                    try {
-                        com.alibaba.fastjson.JSONObject json = extractJsonResponse(response);
-                        if (json != null) {
-                            result.put("translated_title", json.getString("title"));
-                            result.put("translated_content", json.getString("content"));
-                        } else {
-                            result.put("translated_title", "");
-                            result.put("translated_content", response.trim());
-                        }
-                    } catch (Exception e) {
-                        result.put("translated_title", "");
-                        result.put("translated_content", response.trim());
-                    }
+                    Map<String, String> parsed = parseTranslationResponse(response);
+                    result.put("translated_title", parsed.get("title"));
+                    result.put("translated_content", parsed.get("content"));
                     result.put("is_toon", true);
                     result.put("engine", "llm");
                     result.put("source_lang", sourceLang);
@@ -302,7 +316,8 @@ public class TranslationApiController {
             Map<String, Object> toonData = new LinkedHashMap<>();
             toonData.put("summaries", exampleSummaries);
             String toonExample = ToonFormatter.encode(toonData);
-            String jsonExample = com.alibaba.fastjson.JSON.toJSONString(toonData);
+            String jsonExample = com.alibaba.fastjson.JSON.toJSONString(
+                    exampleSummaries, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
             StringBuilder csvBuilder = new StringBuilder();
             for (Map.Entry<String, Object> e : exampleSummaries.entrySet()) {
                 csvBuilder.append(e.getKey()).append(",").append(e.getValue()).append("\n");
@@ -331,6 +346,7 @@ public class TranslationApiController {
                         .replace("{source_lang}", sourceLang)
                         .replace("{toon_example}", toonExample)
                         .replace("{json_example}", jsonExample)
+                        .replace("{lang_json_example}", jsonExample)
                         .replace("{csv_example}", csvExample);
             } else {
                 // 默认提示词：使用 TOON 格式
@@ -360,85 +376,7 @@ public class TranslationApiController {
             long elapsed = System.currentTimeMillis() - start;
 
             if (response != null && !response.isBlank()) {
-                Map<String, String> summaries = null;
-
-                // 1. 先尝试 TOON 格式解析
-                try {
-                    Map<String, Object> toonDecoded = ToonFormatter.decode(response);
-                    if (toonDecoded != null) {
-                        Object summariesObj = toonDecoded.get("summaries");
-                        if (summariesObj instanceof Map) {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> summariesMap = (Map<String, Object>) summariesObj;
-                            summaries = new LinkedHashMap<>();
-                            for (Map.Entry<String, Object> e : summariesMap.entrySet()) {
-                                if (e.getValue() instanceof String s) {
-                                    summaries.put(e.getKey(), s);
-                                }
-                            }
-                        }
-                        if (summaries == null || summaries.isEmpty()) {
-                            // 扁平结构
-                            summaries = new LinkedHashMap<>();
-                            for (Map.Entry<String, Object> e : toonDecoded.entrySet()) {
-                                if (e.getValue() instanceof String s) {
-                                    summaries.put(e.getKey(), s);
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
-
-                // 2. JSON 兜底
-                if (summaries == null || summaries.isEmpty()) {
-                    com.alibaba.fastjson.JSONObject json = extractJsonResponse(response);
-                    if (json != null) {
-                        summaries = new LinkedHashMap<>();
-                        for (String key : json.keySet()) {
-                            summaries.put(key, json.getString(key));
-                        }
-                    }
-                }
-
-                // 3. 键值对 & CSV / TSV 兜底（针对缩进丢失、逗号/制表符/冒号分割的纯文本）
-                if (summaries == null || summaries.isEmpty()) {
-                    Map<String, String> csvResult = new LinkedHashMap<>();
-                    String[] lines = response.split("\n");
-                    for (String line : lines) {
-                        line = line.trim();
-                        // 忽略空白行、markdown块标记以及可能的表头
-                        if (line.isBlank() || line.startsWith("```") || line.toLowerCase().startsWith("lang")
-                                || line.toLowerCase().startsWith("summar")) {
-                            continue;
-                        }
-                        // 支持 CSV/TSV 以及缩进丢失的 TOON（如 zh: summary 或 zh=summary）
-                        String[] parts = line.split("[,，\\t:]", 2);
-                        if (parts.length < 2) {
-                            parts = line.split("：", 2); // 中文冒号
-                        }
-                        if (parts.length < 2) {
-                            parts = line.split("=", 2); // 等号
-                        }
-
-                        if (parts.length == 2) {
-                            String lang = parts[0].replace("\"", "").replace("'", "").trim();
-                            String summary = parts[1].replaceAll("^[\"']|[\"']$", "").trim();
-                            if (languages.containsKey(lang) && !summary.isBlank()) {
-                                csvResult.put(lang, summary);
-                            }
-                        }
-                    }
-                    if (!csvResult.isEmpty()) {
-                        summaries = csvResult;
-                    }
-                }
-
-                // 4. 纯文本兜底
-                if (summaries == null || summaries.isEmpty()) {
-                    summaries = new LinkedHashMap<>();
-                    summaries.put(sourceLang, response.trim());
-                }
+                Map<String, String> summaries = parseSummaryResponse(response, languages);
 
                 result.put("success", true);
                 result.put("summaries", summaries);
@@ -544,6 +482,138 @@ public class TranslationApiController {
 
     // ========== 私有辅助方法 ==========
 
+    private boolean isApiTranslation(Map<String, Object> config) {
+        return config != null && "api".equals(config.get("type"));
+    }
+
+    private PoetryResult<Map<String, Object>> testApiTranslation(Map<String, Object> config, String text,
+            String title, String content, String sourceLang, String targetLang, boolean isToonTest, long start) {
+        String providerKey = resolveTempProviderKey(config);
+        ApiTranslationProvider provider = apiTranslationProviderRegistry.getProvider(providerKey);
+        if (provider == null) {
+            return PoetryResult.fail("API翻译配置为空或服务商不支持，请选择已支持的 API 翻译服务商");
+        }
+
+        JSONObject providerConfig = resolveTempProviderConfig(config, providerKey);
+        mergeSavedProviderSecrets(providerKey, providerConfig);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (isToonTest) {
+            Map<String, String> translated = provider.translateArticle(
+                    title, content, sourceLang, targetLang, providerConfig);
+            if (translated == null || translated.isEmpty()) {
+                return PoetryResult.fail(provider.displayName() + "返回空翻译结果");
+            }
+            result.put("translated_title", translated.get("title"));
+            result.put("translated_content", translated.get("content"));
+            result.put("is_toon", true);
+        } else {
+            String translated = provider.translate(text, sourceLang, targetLang, providerConfig);
+            if (!StringUtils.hasText(translated)) {
+                return PoetryResult.fail(provider.displayName() + "返回空翻译结果");
+            }
+            result.put("translated_text", translated.trim());
+        }
+
+        result.put("engine", providerKey);
+        result.put("source_lang", sourceLang);
+        result.put("target_lang", targetLang);
+        result.put("processing_time", (System.currentTimeMillis() - start) / 1000.0);
+        return PoetryResult.success(result);
+    }
+
+    private String resolveTempProviderKey(Map<String, Object> config) {
+        String directProvider = stringValue(config.get("provider"));
+        if (apiTranslationProviderRegistry.isApiProvider(directProvider)) {
+            return directProvider;
+        }
+        for (String providerKey : apiTranslationProviderRegistry.providerKeys()) {
+            if (config.get(providerKey) instanceof Map<?, ?>) {
+                return providerKey;
+            }
+        }
+        Object custom = config.get("custom");
+        if (custom instanceof Map<?, ?> customMap) {
+            String customProvider = stringValue(customMap.get("provider"));
+            if (apiTranslationProviderRegistry.isApiProvider(customProvider)) {
+                return customProvider;
+            }
+            return "custom";
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private JSONObject resolveTempProviderConfig(Map<String, Object> config, String providerKey) {
+        Object rawProviderConfig = config.get(providerKey);
+        if (rawProviderConfig == null && !"baidu".equals(providerKey)) {
+            rawProviderConfig = config.get("custom");
+        }
+        JSONObject providerConfig = new JSONObject();
+        if (rawProviderConfig instanceof Map<?, ?> rawMap) {
+            rawMap.forEach((key, value) -> providerConfig.put(String.valueOf(key), value));
+        }
+        if (!"baidu".equals(providerKey)) {
+            providerConfig.put("provider", providerKey);
+        }
+        return providerConfig;
+    }
+
+    private void mergeSavedProviderSecrets(String providerKey, JSONObject providerConfig) {
+        JSONObject savedConfig = "baidu".equals(providerKey)
+                ? getSavedBaiduConfig()
+                : getSavedCustomConfig(providerKey);
+        if (savedConfig == null) {
+            return;
+        }
+        for (String field : API_TRANSLATION_SECRET_FIELDS) {
+            String incoming = providerConfig.getString(field);
+            if (!hasPlainSecret(incoming) && StringUtils.hasText(savedConfig.getString(field))) {
+                providerConfig.put(field, savedConfig.getString(field));
+            }
+        }
+    }
+
+    private JSONObject getSavedCustomConfig(String providerKey) {
+        SysAiConfig savedConfig = sysAiConfigService.getArticleAiConfigInternal("default");
+        if (savedConfig == null || !StringUtils.hasText(savedConfig.getCustomConfig())) {
+            return null;
+        }
+        JSONObject customConfig = com.alibaba.fastjson.JSON.parseObject(savedConfig.getCustomConfig());
+        String savedProvider = customConfig.getString("provider");
+        boolean sameProvider = providerKey.equals(savedProvider)
+                || (StringUtils.hasText(savedConfig.getTranslationType())
+                        && providerKey.equals(savedConfig.getTranslationType()))
+                || (!StringUtils.hasText(savedProvider) && "custom".equals(providerKey));
+        return sameProvider ? customConfig : null;
+    }
+
+    private JSONObject getSavedBaiduConfig() {
+        SysAiConfig savedConfig = sysAiConfigService.getArticleAiConfigInternal("default");
+        if (savedConfig == null || !StringUtils.hasText(savedConfig.getBaiduConfig())) {
+            return null;
+        }
+        return com.alibaba.fastjson.JSON.parseObject(savedConfig.getBaiduConfig());
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String firstText(Map<String, Object> map, String... keys) {
+        for (String key : keys) {
+            String value = stringValue(map.get(key));
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasPlainSecret(String value) {
+        return StringUtils.hasText(value) && !value.contains("*");
+    }
+
     /**
      * 从前端 tempConfig 中创建翻译用 ChatModel
      * 优先使用 translation_llm（独立翻译配置），否则使用全局 llm
@@ -628,12 +698,26 @@ public class TranslationApiController {
     /**
      * 从 Map 配置创建 ChatModel
      * Map 格式: {model, api_url, api_key, interface_type, timeout, ...}
+     * OpenAI 兼容模型统一按 Chat Completions 调用。
      */
     private ChatModel createChatModelFromMap(Map<String, Object> llmConfig, String label) {
         try {
             SysAiConfig tempConfig = new SysAiConfig();
             tempConfig.setModel((String) llmConfig.get("model"));
             tempConfig.setApiBase((String) llmConfig.get("api_url"));
+            Object maxTokens = llmConfig.get("max_tokens");
+            if (maxTokens instanceof Number number) {
+                tempConfig.setMaxTokens(number.intValue());
+            }
+            tempConfig.setTopP(toBigDecimal(llmConfig.get("top_p")));
+            tempConfig.setFrequencyPenalty(toBigDecimal(llmConfig.get("frequency_penalty")));
+            tempConfig.setPresencePenalty(toBigDecimal(llmConfig.get("presence_penalty")));
+            Object reasoningEffort = llmConfig.get("reasoning_effort");
+            if (reasoningEffort instanceof String effort && !effort.isBlank()) {
+                tempConfig.setEnableThinking(true);
+                tempConfig.setReasoningEffort(effort);
+            }
+            applyThinkingAdapterConfig(tempConfig, llmConfig);
 
             // API key 处理：前端仅在用户输入新密钥时才发送 api_key
             // 如果未发送，从数据库已保存的配置中读取
@@ -652,7 +736,12 @@ public class TranslationApiController {
             String interfaceType = (String) llmConfig.get("interface_type");
             if (interfaceType != null) {
                 tempConfig.setProvider(switch (interfaceType.toLowerCase()) {
-                    case "openai", "openai_compatible" -> "openai";
+                    case "openai", "openai_chat", "openai_compatible", "chat_completions" -> "openai";
+                    case "deepseek" -> "deepseek";
+                    case "siliconflow" -> "siliconflow";
+                    case "openrouter" -> "openrouter";
+                    case "worldrouter" -> "worldrouter";
+                    case "custom" -> "custom";
                     case "anthropic" -> "anthropic";
                     default -> "openai"; // 默认 OpenAI 兼容
                 });
@@ -670,6 +759,21 @@ public class TranslationApiController {
         } catch (Exception e) {
             log.error("从 Map 创建 {} ChatModel 失败: {}", label, e.getMessage(), e);
             return null;
+        }
+    }
+
+    private void applyThinkingAdapterConfig(SysAiConfig tempConfig, Map<String, Object> llmConfig) {
+        JSONObject extraConfig = new JSONObject();
+        Object thinkingProfile = llmConfig.get("thinking_profile");
+        if (thinkingProfile instanceof String profile && !profile.isBlank()) {
+            extraConfig.put("thinkingProfile", profile);
+        }
+        Object thinkingExtraBody = llmConfig.get("thinking_extra_body");
+        if (thinkingExtraBody != null) {
+            extraConfig.put("thinkingExtraBody", thinkingExtraBody);
+        }
+        if (!extraConfig.isEmpty()) {
+            tempConfig.setExtraConfig(extraConfig.toJSONString());
         }
     }
 
@@ -744,6 +848,25 @@ public class TranslationApiController {
         return null;
     }
 
+    private java.math.BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof java.math.BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+        if (value instanceof Number number) {
+            return java.math.BigDecimal.valueOf(number.doubleValue());
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return new java.math.BigDecimal(text.trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
     /**
      * 从 LLM 响应中提取 JSON 对象
      */
@@ -787,5 +910,211 @@ public class TranslationApiController {
         }
 
         return null;
+    }
+
+    // ========== 格式检测 ==========
+
+    /**
+     * 根据响应文本特征自动检测 LLM 返回的格式。
+     * <p>规则：
+     * <ul>
+     *   <li>去掉首尾空白后以 { 或 [ 开头 → JSON</li>
+     *   <li>包含换行+缩进 → TOON</li>
+     *   <li>其余 → KEY_VALUE（后续再兜底纯文本）</li>
+     * </ul>
+     * 如需支持新格式，增加新的枚举值和检测逻辑即可。
+     */
+    private String detectResponseFormat(String response) {
+        if (response == null || response.isBlank()) {
+            return "plain";
+        }
+        String trimmed = response.trim();
+        char first = trimmed.charAt(0);
+        if (first == '{' || first == '[' || trimmed.startsWith("```json") || extractJsonResponse(trimmed) != null) {
+            return "json";
+        }
+        if (trimmed.contains("\n  ") || trimmed.contains("\n\t")) {
+            return "toon";
+        }
+        String[] lines = trimmed.split("\n");
+        if (lines.length >= 2 && isCsvLike(lines)) {
+            return "csv";
+        }
+        return "key_value";
+    }
+
+    private boolean isCsvLike(String[] lines) {
+        int firstCommas = -1;
+        int matched = 0;
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) continue;
+            int commas = (int) trimmed.chars().filter(c -> c == ',').count();
+            if (commas < 1) continue;
+            if (firstCommas == -1) firstCommas = commas;
+            if (commas == firstCommas) matched++;
+        }
+        return matched >= 2;
+    }
+
+    /**
+     * 按检测到的格式解析摘要响应
+     */
+    private Map<String, String> parseSummaryResponse(String response, Map<String, String> languages) {
+        String format = detectResponseFormat(response);
+        Map<String, String> result = switch (format) {
+            case "json" -> parseJsonSummary(response, languages);
+            case "toon" -> parseToonSummary(response, languages);
+            case "csv" -> parseCsvSummary(response, languages);
+            default -> parseKeyValueSummary(response, languages);
+        };
+        if (result == null || result.isEmpty()) {
+            result = new LinkedHashMap<>();
+            result.put(languages.keySet().iterator().next(), response.trim());
+        }
+        return result;
+    }
+
+    private Map<String, String> parseJsonSummary(String response, Map<String, String> languages) {
+        com.alibaba.fastjson.JSONObject json = extractJsonResponse(response);
+        if (json == null) return null;
+
+        Map<String, String> nested = collectNestedSummaryStrings(json, languages);
+        if (!nested.isEmpty()) return nested;
+
+        Map<String, String> result = collectSummaryStrings(json, languages, true);
+        if (!result.isEmpty()) return result;
+        result = collectSummaryStrings(json, languages, false);
+        return result.isEmpty() ? null : result;
+    }
+
+    private Map<String, String> collectNestedSummaryStrings(Map<?, ?> source, Map<String, String> languages) {
+        Object summariesObj = source.get("summaries");
+        if (summariesObj instanceof Map<?, ?> summariesMap) {
+            Map<String, String> result = collectSummaryStrings(summariesMap, languages, true);
+            if (!result.isEmpty()) return result;
+            result = collectSummaryStrings(summariesMap, languages, false);
+            if (!result.isEmpty()) return result;
+        }
+
+        for (Object value : source.values()) {
+            if (value instanceof Map<?, ?> nestedMap) {
+                Map<String, String> result = collectNestedSummaryStrings(nestedMap, languages);
+                if (!result.isEmpty()) return result;
+                result = collectSummaryStrings(nestedMap, languages, true);
+                if (!result.isEmpty()) return result;
+            }
+        }
+        return new LinkedHashMap<>();
+    }
+
+    private Map<String, String> collectSummaryStrings(
+            Map<?, ?> source, Map<String, String> languages, boolean onlyRequestedLanguages) {
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            String key = Objects.toString(entry.getKey(), "").trim();
+            if (key.isBlank() || "summaries".equals(key)) continue;
+            if (onlyRequestedLanguages && (languages == null || !languages.containsKey(key))) continue;
+
+            Object value = entry.getValue();
+            if (value instanceof String summary && !summary.isBlank()) {
+                result.put(key, summary.trim());
+            } else if (!onlyRequestedLanguages && value != null && !(value instanceof Map<?, ?>)) {
+                String summary = Objects.toString(value, "").trim();
+                if (!summary.isBlank()) result.put(key, summary);
+            }
+        }
+        return result;
+    }
+
+    private Map<String, String> parseToonSummary(String response, Map<String, String> languages) {
+        try {
+            Map<String, Object> decoded = ToonFormatter.decode(response);
+            if (decoded == null) return null;
+
+            Map<String, String> nested = collectNestedSummaryStrings(decoded, languages);
+            if (!nested.isEmpty()) return nested;
+
+            Map<String, String> flat = collectSummaryStrings(decoded, languages, true);
+            if (!flat.isEmpty()) return flat;
+            flat = collectSummaryStrings(decoded, languages, false);
+            return flat.isEmpty() ? null : flat;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Map<String, String> parseCsvSummary(String response, Map<String, String> languages) {
+        Map<String, String> result = new LinkedHashMap<>();
+        for (String line : response.split("\n")) {
+            line = line.trim();
+            if (line.isBlank()) continue;
+            String[] parts = line.split(",", 2);
+            if (parts.length == 2) {
+                String key = parts[0].replace("\"", "").replace("'", "").trim();
+                String value = parts[1].replaceAll("^[\"']|[\"']$", "").trim();
+                if (languages.containsKey(key) && !value.isBlank()) {
+                    result.put(key, value);
+                }
+            }
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    private Map<String, String> parseKeyValueSummary(String response, Map<String, String> languages) {
+        Map<String, String> result = new LinkedHashMap<>();
+        for (String line : response.split("\n")) {
+            line = line.trim();
+            if (line.isBlank() || line.startsWith("```") || line.toLowerCase().startsWith("lang") || line.toLowerCase().startsWith("summar"))
+                continue;
+            String[] parts = line.split("[：\\t:=]", 2);
+            if (parts.length < 2) {
+                parts = line.split("：", 2);
+            }
+            if (parts.length == 2) {
+                String key = parts[0].replace("\"", "").replace("'", "").trim();
+                String value = parts[1].replaceAll("^[\"']|[\"']$", "").trim();
+                if (languages.containsKey(key) && !value.isBlank()) {
+                    result.put(key, value);
+                }
+            }
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    /**
+     * 按检测到的格式解析翻译响应（TOON 文章翻译）
+     */
+    private Map<String, String> parseTranslationResponse(String response) {
+        String format = detectResponseFormat(response);
+        if ("json".equals(format)) {
+            com.alibaba.fastjson.JSONObject json = extractJsonResponse(response);
+            if (json != null) {
+                Map<String, String> result = new LinkedHashMap<>();
+                result.put("title", json.getString("title"));
+                result.put("content", json.getString("content"));
+                return result;
+            }
+        }
+        if ("toon".equals(format)) {
+            try {
+                Map<String, Object> decoded = ToonFormatter.decode(response);
+                if (decoded != null) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> article = (Map<String, Object>) decoded.get("article");
+                    if (article != null) {
+                        Map<String, String> result = new LinkedHashMap<>();
+                        result.put("title", Objects.toString(article.get("title"), ""));
+                        result.put("content", Objects.toString(article.get("content"), ""));
+                        return result;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        Map<String, String> fallback = new LinkedHashMap<>();
+        fallback.put("title", "");
+        fallback.put("content", response.trim());
+        return fallback;
     }
 }

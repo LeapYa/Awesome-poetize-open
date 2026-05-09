@@ -164,6 +164,15 @@ export const useAIChatStore = defineStore('aiChat', {
       }
     },
 
+    createReasoningSegment(content = '') {
+      return {
+        id: Date.now() + Math.random(),
+        type: 'reasoning',
+        content,
+        status: 'thinking',
+      }
+    },
+
     ensureMessageStructure(message) {
       if (!Array.isArray(message.segments)) {
         message.segments = message.content
@@ -238,6 +247,41 @@ export const useAIChatStore = defineStore('aiChat', {
         message.segments.push(this.createTextSegment(text))
       }
 
+      this.saveHistory()
+    },
+
+    appendMessageReasoning(messageId, text) {
+      const message = this.messages.find((m) => m.id === messageId)
+      if (!message || !text) {
+        return
+      }
+
+      this.ensureMessageStructure(message)
+      let reasoningSegment = message.segments.find(
+        (segment) => segment.type === 'reasoning' && segment.status === 'thinking'
+      )
+
+      if (!reasoningSegment) {
+        reasoningSegment = this.createReasoningSegment('')
+        message.segments.push(reasoningSegment)
+      }
+
+      reasoningSegment.content += text
+      this.saveHistory()
+    },
+
+    finishMessageReasoning(messageId) {
+      const message = this.messages.find((m) => m.id === messageId)
+      if (!message) {
+        return
+      }
+
+      this.ensureMessageStructure(message)
+      message.segments
+        .filter((segment) => segment.type === 'reasoning')
+        .forEach((segment) => {
+          segment.status = 'completed'
+        })
       this.saveHistory()
     },
 
@@ -589,7 +633,14 @@ export const useAIChatStore = defineStore('aiChat', {
 
         if (isSuccess && typeof result?.data?.content === 'string') {
           const contentText = result?.data?.content || ''
-          this.addMessage(contentText, 'assistant')
+          const aiMessage = this.addMessage(contentText, 'assistant')
+          if (result.data.reasoningContent) {
+            aiMessage.segments.unshift({
+              ...this.createReasoningSegment(result.data.reasoningContent),
+              status: 'completed',
+            })
+            this.saveHistory()
+          }
           if (this.attachedPageContext) {
             this.attachedPageContext = null
           }
@@ -688,6 +739,9 @@ export const useAIChatStore = defineStore('aiChat', {
                   currentEventName === 'start' ||
                   currentEventName === 'complete'
                 ) {
+                  if (currentEventName === 'complete' && aiMessage) {
+                    this.finishMessageReasoning(aiMessage.id)
+                  }
                   continue
                 }
 
@@ -724,6 +778,21 @@ export const useAIChatStore = defineStore('aiChat', {
                     status: toolData.status || 'executing',
                   })
                   await this.flushStreamingToolState()
+                  continue
+                }
+
+                if (currentEventName === 'reasoning') {
+                  if (!aiMessage) {
+                    this.typing = false
+                    aiMessage = this.addMessage('', 'assistant', {
+                      streaming: true,
+                    })
+                    firstChunkReceived = true
+                  }
+
+                  if (eventData.content) {
+                    this.appendMessageReasoning(aiMessage.id, eventData.content)
+                  }
                   continue
                 }
 
@@ -781,6 +850,7 @@ export const useAIChatStore = defineStore('aiChat', {
           if (message) {
             message.streaming = false
           }
+          this.finishMessageReasoning(aiMessage.id)
         }
 
         if (this.attachedPageContext) {

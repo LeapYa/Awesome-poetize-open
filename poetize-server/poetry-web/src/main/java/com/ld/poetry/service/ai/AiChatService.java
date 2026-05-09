@@ -138,6 +138,7 @@ public class AiChatService {
             result.put("enableTools", config != null && Boolean.TRUE.equals(config.getEnableTools()));
             result.put("enableMemory", config != null && Boolean.TRUE.equals(config.getEnableMemory()));
             result.put("enableThinking", config != null && Boolean.TRUE.equals(config.getEnableThinking()));
+            result.put("reasoningEffort", config != null ? config.getReasoningEffort() : null);
         } catch (Exception e) {
             result.put("configured", false);
             result.put("enabled", false);
@@ -193,13 +194,14 @@ public class AiChatService {
             Prompt prompt = new Prompt(messages, options);
             ChatResponse response = chatModel.call(prompt);
             String content = response.getResult().getOutput().getText();
+            String reasoningContent = extractReasoningContent(response);
 
             // 缓存单轮响应
             tryCachePut(processedMessage, history, config, ragContext, content);
             logChatRequestCompleted("sync", resolvedUserId, resolvedConversationId, startedAt, content, false);
             autoSaveMemory(config, message, content, resolvedConversationId, resolvedUserId);
 
-            return AiChatResponsePayload.of(content, List.of());
+            return AiChatResponsePayload.of(content, reasoningContent, List.of());
         } catch (IllegalArgumentException ex) {
             logChatRequestRejected("sync", resolvedUserId, resolvedConversationId, startedAt, message, ex);
             throw ex;
@@ -267,6 +269,7 @@ public class AiChatService {
         Flux<ChatResponse> flux = chatModel.stream(prompt);
 
         StringBuilder buffer = new StringBuilder();
+        StringBuilder reasoningBuffer = new StringBuilder();
 
         Disposable disposable = flux.subscribe(
                 chatResponse -> {
@@ -274,6 +277,13 @@ public class AiChatService {
                         return;
                     }
                     if (chatResponse != null && chatResponse.getResult() != null) {
+                        String reasoningContent = extractReasoningContent(chatResponse);
+                        if (StringUtils.hasText(reasoningContent)) {
+                            reasoningBuffer.append(reasoningContent);
+                            sendSseEvent(emitter, "reasoning", Map.of("content", reasoningContent), streamCancelled,
+                                    subscriptionRef);
+                        }
+
                         String text = chatResponse.getResult().getOutput().getText();
                         if (text != null && !text.isEmpty()) {
                             buffer.append(text);
@@ -305,7 +315,8 @@ public class AiChatService {
                             false);
                     sendSseEvent(emitter, "complete", Map.of(
                             "conversationId", resolvedConversationId,
-                            "fullResponse", fullResponse), streamCancelled, subscriptionRef);
+                            "fullResponse", fullResponse,
+                            "reasoningContent", reasoningBuffer.toString()), streamCancelled, subscriptionRef);
                     completeEmitterQuietly(emitter);
 
                     // 异步保存记忆
@@ -323,6 +334,47 @@ public class AiChatService {
         });
 
         return emitter;
+    }
+
+    private String extractReasoningContent(ChatResponse chatResponse) {
+        if (chatResponse == null || chatResponse.getResult() == null
+                || chatResponse.getResult().getOutput() == null) {
+            return "";
+        }
+
+        Map<String, Object> metadata = chatResponse.getResult().getOutput().getMetadata();
+        for (String key : List.of("reasoningContent", "reasoning_content", "reasoning", "thinking")) {
+            Object value = metadata.get(key);
+            String text = stringifyReasoning(value);
+            if (StringUtils.hasText(text)) {
+                return text;
+            }
+        }
+        return "";
+    }
+
+    private String stringifyReasoning(Object value) {
+        if (value instanceof String text) {
+            return text;
+        }
+        if (value instanceof Collection<?> collection) {
+            return collection.stream()
+                    .map(this::stringifyReasoning)
+                    .filter(StringUtils::hasText)
+                    .reduce((left, right) -> left + right)
+                    .orElse("");
+        }
+        if (value instanceof Map<?, ?> map) {
+            Object text = map.get("text");
+            if (text == null) {
+                text = map.get("content");
+            }
+            if (text == null) {
+                text = map.get("reasoning");
+            }
+            return stringifyReasoning(text);
+        }
+        return "";
     }
 
     // ========== 日志 ==========
@@ -689,7 +741,10 @@ public class AiChatService {
     }
 
     String buildCacheKey(String message, SysAiConfig config, String ragVersion) {
-        String configPart = config.getProvider() + ":" + config.getModel() + ":" + defaultText(ragVersion, "0");
+        String configPart = config.getProvider() + ":" + config.getModel() + ":"
+                + Boolean.TRUE.equals(config.getEnableThinking()) + ":"
+                + defaultText(config.getReasoningEffort(), "none") + ":"
+                + defaultText(ragVersion, "0");
         String raw = message + ":" + configPart;
         String hash = DigestUtils.md5DigestAsHex(raw.getBytes(StandardCharsets.UTF_8));
         return CACHE_PREFIX + hash;

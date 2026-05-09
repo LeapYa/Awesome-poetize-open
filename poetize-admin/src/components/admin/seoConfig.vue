@@ -910,8 +910,11 @@ Sitemap: /sitemap.xml"
           
           <el-form-item label="请求格式">
             <el-select v-model="aiApiConfig.request_format" placeholder="选择请求格式">
-              <el-option label="OpenAI兼容格式" value="openai">
-                <span>OpenAI兼容格式 (ChatGPT、GPT-4、DeepSeek、豆包、Gemini等大部分AI服务)</span>
+              <el-option label="OpenAI兼容接口(/v1/chat/completions)" value="openai">
+                <span>OpenAI兼容接口(/v1/chat/completions)</span>
+              </el-option>
+              <el-option label="OpenAI兼容接口(/v1/completions)" value="openai_completions" disabled>
+                <span>OpenAI兼容接口(/v1/completions)</span>
               </el-option>
               <el-option label="Anthropic兼容格式" value="anthropic">
                 <span>Anthropic兼容格式 (Claude系列模型)</span>
@@ -994,10 +997,8 @@ Sitemap: /sitemap.xml"
                 <el-option label="o3" value="o3"></el-option>
               </template>
               <template v-else-if="aiApiConfig.provider === 'deepseek'">
-                <el-option label="DeepSeek-Chat" value="deepseek-chat"></el-option>
-                <el-option label="DeepSeek-Coder" value="deepseek-coder"></el-option>
-                <el-option label="DeepSeek-V3" value="deepseek-v3"></el-option>
-                <el-option label="DeepSeek-R1" value="deepseek-r1"></el-option>
+                <el-option label="DeepSeek V4 Flash" value="deepseek-v4-flash"></el-option>
+                <el-option label="DeepSeek V4 Pro" value="deepseek-v4-pro"></el-option>
               </template>
               <template v-else-if="aiApiConfig.provider === 'baidu'">
                 <el-option label="文心一言4.0" value="ernie-bot-4"></el-option>
@@ -1630,7 +1631,7 @@ export default {
       if (this.aiApiConfig.provider === 'openai') {
         this.aiApiConfig.model = 'gpt-4o';
       } else if (this.aiApiConfig.provider === 'deepseek') {
-        this.aiApiConfig.model = 'deepseek-chat';
+        this.aiApiConfig.model = 'deepseek-v4-flash';
       } else if (this.aiApiConfig.provider === 'baidu') {
         this.aiApiConfig.model = 'ernie-bot';
       } else if (this.aiApiConfig.provider === 'zhipu') {

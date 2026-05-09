@@ -23,4 +23,23 @@ class AiChatServiceCacheKeyTest {
         assertNotEquals(keyWithV1, keyWithV2);
         assertEquals(keyWithV1, keyWithV1Again);
     }
+
+    @Test
+    void shouldIncludeReasoningEffortInCacheKey() {
+        SysAiConfig lowConfig = new SysAiConfig();
+        lowConfig.setProvider("openai");
+        lowConfig.setModel("gpt-5.4");
+        lowConfig.setEnableThinking(true);
+        lowConfig.setReasoningEffort("low");
+
+        SysAiConfig highConfig = new SysAiConfig();
+        highConfig.setProvider("openai");
+        highConfig.setModel("gpt-5.4");
+        highConfig.setEnableThinking(true);
+        highConfig.setReasoningEffort("high");
+
+        assertNotEquals(
+                aiChatService.buildCacheKey("你好", lowConfig, "v1"),
+                aiChatService.buildCacheKey("你好", highConfig, "v1"));
+    }
 }

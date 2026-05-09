@@ -201,6 +201,11 @@ public class SysAiConfig implements Serializable {
     private Boolean enableThinking;
 
     /**
+     * 思考程度 (low/medium/high/xhigh)
+     */
+    private String reasoningEffort;
+
+    /**
      * 启用MCP工具 (0:否 1:是)
      */
     private Boolean enableTools;
@@ -235,8 +240,9 @@ public class SysAiConfig implements Serializable {
     // ========== 文章AI助手配置字段 ==========
 
     /**
-     * 翻译实现方式 (none:不翻译 baidu:百度翻译 custom:自定义API llm:使用全局AI模型
-     * dedicated_llm:使用翻译独立AI模型)
+     * 翻译实现方式 (none:不翻译 baidu:百度翻译 youdao:有道云翻译 custom:自定义HTTP接口
+     * tencent/aliyun/volcengine/huawei/google/azure_translator/deepl/aws/yandex:传统翻译API
+     * llm:使用全局AI模型 dedicated_llm:使用翻译独立AI模型)
      */
     private String translationType;
 
@@ -266,12 +272,14 @@ public class SysAiConfig implements Serializable {
     private String baiduConfig;
 
     /**
-     * 自定义API配置 {api_url, api_key, app_secret}
+     * API翻译扩展配置 {provider, api_url, app_key, api_key, app_secret, ...}
+     * 百度翻译继续使用 baiduConfig，其他传统翻译API统一存放于此字段。
      */
     private String customConfig;
 
     /**
      * LLM配置 {model, api_url, api_key, prompt, interface_type, timeout}
+     * OpenAI 兼容 interface_type 使用 Chat Completions。
      * 
      * TODO [架构问题] article_ai 类型使用此 JSON 字段存储模型配置，
      * 而 ai_chat 类型使用顶层 provider/apiKey/apiBase/model 字段。
@@ -281,6 +289,7 @@ public class SysAiConfig implements Serializable {
 
     /**
      * 翻译独立AI配置 {model, api_url, api_key, prompt, interface_type, timeout}
+     * OpenAI 兼容 interface_type 使用 Chat Completions。
      * 仅当translationType=dedicated_llm时使用
      */
     private String translationLlmConfig;
@@ -289,6 +298,7 @@ public class SysAiConfig implements Serializable {
      * 摘要生成配置 {summaryMode, style, max_length, prompt, dedicated_llm}
      * summaryMode: global(使用全局AI) | dedicated(使用独立AI) | textrank(使用TextRank算法)
      * dedicated_llm: {model, api_url, api_key, interface_type, timeout}
+     * OpenAI 兼容 interface_type 使用 Chat Completions。
      * (仅summaryMode=dedicated时存在)
      */
     private String summaryConfig;

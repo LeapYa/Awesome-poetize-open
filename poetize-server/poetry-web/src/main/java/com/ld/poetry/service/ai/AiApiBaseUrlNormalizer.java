@@ -6,6 +6,7 @@ import org.springframework.util.StringUtils;
  * 统一规范化 OpenAI 兼容接口的 baseUrl。
  * Spring AI 会自行拼接 /v1/chat/completions 或 /v1/embeddings，
  * 因此前端若保存了完整端点，必须在进入 SDK 前移除尾部路径。
+ * 当前聊天链路只支持 Chat Completions，不支持 legacy /v1/completions 调用。
  */
 public final class AiApiBaseUrlNormalizer {
 
@@ -25,6 +26,9 @@ public final class AiApiBaseUrlNormalizer {
         }
         if (normalized.endsWith("/embeddings")) {
             normalized = normalized.substring(0, normalized.length() - "/embeddings".length());
+        }
+        if (normalized.endsWith("/completions")) {
+            normalized = normalized.substring(0, normalized.length() - "/completions".length());
         }
         if (normalized.endsWith("/v1")) {
             normalized = normalized.substring(0, normalized.length() - 3);

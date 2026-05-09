@@ -73,7 +73,10 @@
           <!-- PC端：折叠面板 -->
           <el-collapse v-model="activeAiConfigPanels" accordion style="margin: 0 50px;" class="ai-config-collapse" v-if="!isMobileView">
             <el-collapse-item title="AI模型配置" name="model">
-              <AiModelConfig v-model="aiConfigs.modelConfig" />
+              <AiModelConfig
+                v-model="aiConfigs.modelConfig"
+                :advanced-config="aiConfigs.advancedConfig"
+                @update-advanced-config="updateAiAdvancedConfig" />
             </el-collapse-item>
             <el-collapse-item title="聊天设置" name="chat">
               <AiChatSettings v-model="aiConfigs.chatConfig" />
@@ -132,7 +135,11 @@
           width="90%"
           custom-class="centered-dialog mobile-ai-config-dialog">
           <div class="mobile-config-content">
-            <AiModelConfig v-if="currentMobileConfig === 'model'" v-model="aiConfigs.modelConfig" />
+            <AiModelConfig
+              v-if="currentMobileConfig === 'model'"
+              v-model="aiConfigs.modelConfig"
+              :advanced-config="aiConfigs.advancedConfig"
+              @update-advanced-config="updateAiAdvancedConfig" />
             <AiChatSettings v-if="currentMobileConfig === 'chat'" v-model="aiConfigs.chatConfig" />
             <AiAppearanceConfig v-if="currentMobileConfig === 'appearance'" v-model="aiConfigs.appearanceConfig" />
             <AiToolsConfig v-if="currentMobileConfig === 'tools'" v-model="aiConfigs.toolsConfig" @close-dialog="mobileConfigDialogVisible = false" />
@@ -642,7 +649,10 @@ export default {
           retryCount: 3,
           customHeaders: [],
           debugMode: false,
-          enableThinking: false
+          enableThinking: false,
+          reasoningEffort: 'medium',
+          thinkingProfile: 'auto',
+          thinkingExtraBodyText: ''
         },
         toolsConfig: {
           enableMemory: false,
@@ -722,6 +732,11 @@ export default {
     window.removeEventListener('resize', this.checkMobileView);
   },
   methods: {
+    toPositiveInteger(value, fallback) {
+      const parsed = parseInt(value, 10);
+      return Number.isNaN(parsed) || parsed <= 0 ? fallback : parsed;
+    },
+
     async initializeData() {
       await Promise.allSettled([
         this.getWebInfo(),
@@ -808,7 +823,8 @@ export default {
         'field-ai-timeout': 'advanced',
         'field-ai-retry': 'advanced',
         'field-ai-debug': 'advanced',
-        'field-ai-enable-thinking': 'advanced'
+        'field-ai-enable-thinking': 'model',
+        'field-ai-reasoning-effort': 'model'
       };
 
       const aiFeaturePanelName = aiConfigFeatures[id];
@@ -1055,7 +1071,12 @@ export default {
             retryCount: 3,
             customHeaders: [],
             debugMode: false,
-            enableThinking: config.enableThinking || false
+            enableThinking: config.enableThinking || false,
+            reasoningEffort: config.reasoningEffort || 'medium',
+            thinkingProfile: extraConfig.thinkingProfile || 'auto',
+            thinkingExtraBodyText: extraConfig.thinkingExtraBody
+              ? JSON.stringify(extraConfig.thinkingExtraBody, null, 2)
+              : ''
           };
           this.aiConfigs.toolsConfig = {
             enableMemory: config.enableMemory || false,
@@ -1085,6 +1106,11 @@ export default {
     async saveAiConfigs(showMsg = true) {
       this.savingAiConfigs = true;
       try {
+        const thinkingExtraBody = this.parseJsonObject(this.aiConfigs.advancedConfig.thinkingExtraBodyText);
+        if (!thinkingExtraBody.valid) {
+          if (showMsg) this.$message.error(thinkingExtraBody.message);
+          return false;
+        }
         const saveData = {
           configType: 'ai_chat',
           configName: 'default',
@@ -1092,7 +1118,7 @@ export default {
           apiBase: this.aiConfigs.modelConfig.baseUrl,
           model: this.aiConfigs.modelConfig.model,
           temperature: this.aiConfigs.modelConfig.temperature,
-          maxTokens: this.aiConfigs.modelConfig.maxTokens,
+          maxTokens: this.toPositiveInteger(this.aiConfigs.modelConfig.maxTokens, 1000),
           topP: this.aiConfigs.modelConfig.topP || 1.0,
           frequencyPenalty: this.aiConfigs.modelConfig.frequencyPenalty || 0,
           presencePenalty: this.aiConfigs.modelConfig.presencePenalty || 0,
@@ -1112,12 +1138,17 @@ export default {
           enableTypingIndicator: this.aiConfigs.appearanceConfig.typingAnimation,
           showTimestamp: this.aiConfigs.appearanceConfig.showTimestamp,
           enableThinking: this.aiConfigs.advancedConfig.enableThinking,
+          reasoningEffort: this.aiConfigs.advancedConfig.enableThinking
+            ? (this.aiConfigs.advancedConfig.reasoningEffort || 'medium')
+            : '',
           // 工具配置 (Mem0 记忆)
           enableMemory: this.aiConfigs.toolsConfig.enableMemory,
           memoryAutoSave: this.aiConfigs.toolsConfig.memoryAutoSave,
           memoryAutoRecall: this.aiConfigs.toolsConfig.memoryAutoRecall,
           memoryRecallLimit: this.aiConfigs.toolsConfig.memoryRecallLimit,
           extraConfig: JSON.stringify({
+            thinkingProfile: this.aiConfigs.advancedConfig.thinkingProfile || 'auto',
+            thinkingExtraBody: thinkingExtraBody.value,
             rag: {
               enabled: this.aiConfigs.toolsConfig.rag.enabled,
               indexName: this.aiConfigs.toolsConfig.rag.indexName,
@@ -1184,6 +1215,25 @@ export default {
         this.$message.success('配置导入成功');
       } catch (error) {
         this.$message.error('配置导入失败：' + error.message);
+      }
+    },
+
+    updateAiAdvancedConfig(config) {
+      Object.assign(this.aiConfigs.advancedConfig, config);
+    },
+
+    parseJsonObject(text) {
+      if (!text || !String(text).trim()) {
+        return { valid: true, value: {} };
+      }
+      try {
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return { valid: false, value: {}, message: '自定义请求参数必须是 JSON 对象' };
+        }
+        return { valid: true, value: parsed };
+      } catch (error) {
+        return { valid: false, value: {}, message: '自定义请求参数 JSON 格式错误' };
       }
     },
 

@@ -126,7 +126,7 @@ export const adminConfigSearchIndex = [
     sectionTitle: 'AI 模型与聊天配置',
     fieldLabel: 'AI聊天配置',
     keywords: ['AI聊天', 'AI配置', '模型配置'],
-    aliases: ['API密钥', '模型名称', '提示词', 'Mem0', '聊天记录']
+    aliases: ['API密钥', '模型名称', '提示词', 'Mem0', '聊天记录', '思考程度']
   },
   {
     id: 'page-config-list',
@@ -1049,6 +1049,16 @@ export const adminConfigSearchIndex = [
     aliases: []
   },
   {
+    id: 'field-translation-global-llm-reasoning',
+    type: 'field',
+    route: '/translationModelManage',
+    pageTitle: '翻译模型配置',
+    sectionTitle: '全局AI模型配置',
+    fieldLabel: '思考程度',
+    keywords: ['思考程度', '推理强度', 'reasoning effort'],
+    aliases: ['低', '中', '高', '超高', 'reasoning_effort']
+  },
+  {
     id: 'field-translation-mode',
     type: 'field',
     route: '/translationModelManage',
@@ -1085,7 +1095,7 @@ export const adminConfigSearchIndex = [
     pageTitle: '翻译模型配置',
     sectionTitle: 'API翻译配置',
     fieldLabel: '翻译引擎',
-    keywords: ['翻译引擎', '百度翻译', '自定义API'],
+    keywords: ['翻译引擎', '百度翻译', '有道云翻译', '自定义HTTP接口'],
     aliases: []
   },
   {

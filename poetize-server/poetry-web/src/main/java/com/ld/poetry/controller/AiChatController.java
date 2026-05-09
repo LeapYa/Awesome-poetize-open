@@ -63,6 +63,7 @@ public class AiChatController {
 
             Map<String, Object> payload = new java.util.LinkedHashMap<>();
             payload.put("content", response != null ? response.content() : "");
+            payload.put("reasoningContent", response != null ? response.reasoningContent() : "");
             payload.put("actions", response != null ? response.actions() : List.of());
             payload.put("conversationId", request.conversationId());
             return PoetryResult.success(payload);
