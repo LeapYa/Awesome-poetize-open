@@ -7,6 +7,7 @@ import com.ld.poetry.service.ai.ApiTranslationProvider;
 import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
 import com.ld.poetry.service.ai.DynamicChatClientFactory;
 import com.ld.poetry.entity.SysAiConfig;
+import com.ld.poetry.utils.SmartSummaryGenerator;
 import com.ld.poetry.utils.ToonFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -15,7 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -30,6 +33,9 @@ import java.util.Objects;
 @RequestMapping("/admin/translation")
 @Slf4j
 public class TranslationApiController {
+
+    private static final int SUMMARY_LENGTH_REPAIR_ATTEMPTS = 2;
+    private static final double SUMMARY_TARGET_MIN_RATIO = 0.85;
 
     private static final String[] API_TRANSLATION_SECRET_FIELDS = {
             "app_secret",
@@ -129,8 +135,8 @@ public class TranslationApiController {
                 toonDataMap.put("content", content);
                 String toonData = ToonFormatter.encode(toonDataMap);
                 String jsonData = com.alibaba.fastjson.JSON.toJSONString(toonDataMap);
-                String csvData = String.format("title,content\n\"%s\",\"%s\"", title.replace("\"", "\"\""),
-                        content.replace("\"", "\"\""));
+                String csvData = buildArticleCsv(title, content);
+                String inputFormat = inferPromptDataFormat(customPrompt, "json");
 
                 String prompt;
                 if (customPrompt != null && !customPrompt.isBlank()) {
@@ -142,7 +148,7 @@ public class TranslationApiController {
                             .replace("{toon_data}", toonData)
                             .replace("{json_data}", jsonData)
                             .replace("{csv_data}", csvData)
-                            .replace("{format}", "JSON格式");
+                            .replace("{format}", getFormatLabel(inputFormat));
                 } else {
                     prompt = String.format("""
                             请将以下文章从 %s 翻译为 %s。
@@ -166,25 +172,19 @@ public class TranslationApiController {
 
                 if (response != null && !response.isBlank()) {
                     Map<String, String> parsed = parseTranslationResponse(response);
+                    String responseFormat = detectResponseFormat(response);
                     result.put("translated_title", parsed.get("title"));
                     result.put("translated_content", parsed.get("content"));
                     result.put("is_toon", true);
+                    result.put("is_article", true);
                     result.put("engine", "llm");
+                    result.put("input_format", inputFormat);
+                    result.put("response_format", responseFormat);
                     result.put("source_lang", sourceLang);
                     result.put("target_lang", targetLang);
                     result.put("processing_time", elapsed / 1000.0);
 
-                    // 计算 TOON 节省
-                    try {
-                        String toonEncoded = ToonFormatter.encode(toonDataMap);
-                        String jsonStr = com.alibaba.fastjson.JSON.toJSONString(toonDataMap);
-                        if (jsonStr.length() > 0) {
-                            double saved = (1.0 - (double) toonEncoded.length() / jsonStr.length()) * 100;
-                            result.put("token_saved_percent", String.format("%.1f", saved));
-                            result.put("toon_tokens", toonEncoded.length());
-                        }
-                    } catch (Exception ignored) {
-                    }
+                    addFormatEstimate(result, inputFormat, toonData, jsonData, csvData, toonDataMap);
 
                     return PoetryResult.success(result);
                 } else {
@@ -287,6 +287,28 @@ public class TranslationApiController {
                 return PoetryResult.fail("请提供至少一种语言的内容");
             }
 
+            String summaryMode = resolveSummaryMode(config);
+            if ("disabled".equalsIgnoreCase(summaryMode)) {
+                result.put("success", false);
+                result.put("error_message", "自动摘要已关闭，无需测试");
+                return PoetryResult.fail(400, "自动摘要已关闭", result);
+            }
+
+            if ("textrank".equalsIgnoreCase(summaryMode)) {
+                Map<String, String> summaries = new LinkedHashMap<>();
+                for (Map.Entry<String, String> entry : languages.entrySet()) {
+                    if (entry.getValue() != null && !entry.getValue().isBlank()) {
+                        summaries.put(entry.getKey(), SmartSummaryGenerator.generateAdvancedSummary(entry.getValue(), maxLength));
+                    }
+                }
+                long elapsed = System.currentTimeMillis() - start;
+                result.put("success", true);
+                result.put("summaries", summaries);
+                result.put("method", "local-excerpt");
+                result.put("processing_time", String.format("%.2f", elapsed / 1000.0));
+                return PoetryResult.success(result);
+            }
+
             // 创建 ChatModel
             ChatModel chatModel = createSummaryChatModelFromConfig(config);
             if (chatModel == null) {
@@ -318,9 +340,12 @@ public class TranslationApiController {
             String toonExample = ToonFormatter.encode(toonData);
             String jsonExample = com.alibaba.fastjson.JSON.toJSONString(
                     exampleSummaries, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
-            StringBuilder csvBuilder = new StringBuilder();
+            StringBuilder csvBuilder = new StringBuilder("lang,summary\n");
             for (Map.Entry<String, Object> e : exampleSummaries.entrySet()) {
-                csvBuilder.append(e.getKey()).append(",").append(e.getValue()).append("\n");
+                csvBuilder.append(csvEscape(e.getKey()))
+                        .append(",")
+                        .append(csvEscape(Objects.toString(e.getValue(), "")))
+                        .append("\n");
             }
             String csvExample = csvBuilder.toString().trim();
 
@@ -377,6 +402,7 @@ public class TranslationApiController {
 
             if (response != null && !response.isBlank()) {
                 Map<String, String> summaries = parseSummaryResponse(response, languages);
+                summaries = ensureSummaryLengths(chatModel, sourceContent, summaries, languages, maxLength);
 
                 result.put("success", true);
                 result.put("summaries", summaries);
@@ -705,6 +731,7 @@ public class TranslationApiController {
             SysAiConfig tempConfig = new SysAiConfig();
             tempConfig.setModel((String) llmConfig.get("model"));
             tempConfig.setApiBase((String) llmConfig.get("api_url"));
+            tempConfig.setHttpReadTimeoutSeconds(toPositiveInteger(llmConfig.get("timeout")));
             Object maxTokens = llmConfig.get("max_tokens");
             if (maxTokens instanceof Number number) {
                 tempConfig.setMaxTokens(number.intValue());
@@ -848,6 +875,24 @@ public class TranslationApiController {
         return null;
     }
 
+    private Integer toPositiveInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            int intValue = number.intValue();
+            return intValue > 0 ? intValue : null;
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                int intValue = Integer.parseInt(text.trim());
+                return intValue > 0 ? intValue : null;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
     private java.math.BigDecimal toBigDecimal(Object value) {
         if (value == null) {
             return null;
@@ -957,6 +1002,87 @@ public class TranslationApiController {
         return matched >= 2;
     }
 
+    private String resolveSummaryMode(Map<String, Object> config) {
+        if (config == null) {
+            return "global";
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summaryConfig = (Map<String, Object>) config.get("summary");
+        if (summaryConfig == null) {
+            return "global";
+        }
+        Object mode = summaryConfig.get("summaryMode");
+        return mode instanceof String summaryMode && StringUtils.hasText(summaryMode) ? summaryMode : "disabled";
+    }
+
+    private String inferPromptDataFormat(String prompt, String defaultFormat) {
+        if (!StringUtils.hasText(prompt)) {
+            return defaultFormat;
+        }
+        if (prompt.contains("{csv_data}")) {
+            return "csv";
+        }
+        if (prompt.contains("{json_data}")) {
+            return "json";
+        }
+        if (prompt.contains("{toon_data}")) {
+            return "toon";
+        }
+        String lower = prompt.toLowerCase();
+        if (lower.contains("csv")) {
+            return "csv";
+        }
+        if (lower.contains("json")) {
+            return "json";
+        }
+        if (lower.contains("toon")) {
+            return "toon";
+        }
+        return defaultFormat;
+    }
+
+    private String getFormatLabel(String format) {
+        return switch (format) {
+            case "csv" -> "CSV格式";
+            case "json" -> "JSON格式";
+            case "toon" -> "TOON格式";
+            default -> "自定义格式";
+        };
+    }
+
+    private String buildArticleCsv(String title, String content) {
+        return "title,content\n" + csvEscape(title) + "," + csvEscape(content);
+    }
+
+    private String csvEscape(String value) {
+        String safe = value == null ? "" : value;
+        return "\"" + safe.replace("\"", "\"\"") + "\"";
+    }
+
+    private void addFormatEstimate(Map<String, Object> result, String inputFormat, String toonData,
+            String jsonData, String csvData, Map<String, Object> articleData) {
+        String selectedData = switch (inputFormat) {
+            case "csv" -> csvData;
+            case "toon" -> toonData;
+            case "json" -> jsonData;
+            default -> "";
+        };
+        if (!StringUtils.hasText(selectedData)) {
+            return;
+        }
+
+        String traditionalJson = com.alibaba.fastjson.JSON.toJSONString(
+                articleData, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
+        result.put("format_tokens", selectedData.length());
+        result.put("toon_tokens", selectedData.length());
+        result.put("token_baseline", "traditional_json");
+        result.put("token_baseline_label", "传统JSON");
+        if (traditionalJson.length() > 0) {
+            double saved = (1.0 - (double) selectedData.length() / traditionalJson.length()) * 100;
+            result.put("token_saved_percent", String.format("%.1f", saved));
+        }
+    }
+
     /**
      * 按检测到的格式解析摘要响应
      */
@@ -973,6 +1099,108 @@ public class TranslationApiController {
             result.put(languages.keySet().iterator().next(), response.trim());
         }
         return result;
+    }
+
+    private Map<String, String> ensureSummaryLengths(ChatModel chatModel, String sourceContent,
+            Map<String, String> summaries, Map<String, String> languages, int maxLength) {
+        if (summaries == null || summaries.isEmpty()) {
+            return summaries;
+        }
+        Map<String, String> adjusted = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : summaries.entrySet()) {
+            adjusted.put(entry.getKey(), ensureSummaryLength(
+                    chatModel, sourceContent, entry.getKey(), entry.getValue(), maxLength));
+        }
+        return adjusted;
+    }
+
+    private String ensureSummaryLength(ChatModel chatModel, String sourceContent, String languageName,
+            String summary, int maxLength) {
+        String current = clampSummaryLength(stripCodeFence(summary), maxLength);
+        if (!shouldExpandSummary(current, sourceContent, maxLength)) {
+            return current;
+        }
+
+        for (int attempt = 1; attempt <= SUMMARY_LENGTH_REPAIR_ATTEMPTS; attempt++) {
+            int minLength = targetSummaryMinLength(maxLength);
+            String repairPrompt = String.format("""
+                    你正在修正一段已经生成好的摘要长度。
+
+                    服务器实测当前摘要长度为 %d 字，目标长度为 %d-%d 字。
+                    请在不编造事实、不改变原语种（%s）的前提下，把摘要扩写到目标长度区间。
+                    保留摘要文体，不要添加标题、列表、解释、Markdown代码块或额外说明。
+
+                    原文：
+                    %s
+
+                    当前摘要：
+                    %s
+
+                    请只返回修正后的摘要正文：
+                    """, current.length(), minLength, maxLength, languageName,
+                    abbreviateForRepair(sourceContent), current);
+
+            try {
+                String repaired = ChatClient.create(chatModel)
+                        .prompt()
+                        .user(repairPrompt)
+                        .call()
+                        .content();
+                if (StringUtils.hasText(repaired)) {
+                    String normalized = clampSummaryLength(stripCodeFence(repaired), maxLength);
+                    if (normalized.length() > current.length()) {
+                        current = normalized;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("测试摘要长度修正失败，保留当前摘要: {}", e.getMessage());
+                break;
+            }
+
+            if (!shouldExpandSummary(current, sourceContent, maxLength)) {
+                break;
+            }
+        }
+        return current;
+    }
+
+    private boolean shouldExpandSummary(String summary, String sourceContent, int maxLength) {
+        if (!StringUtils.hasText(summary) || maxLength <= 0) {
+            return false;
+        }
+        int minLength = targetSummaryMinLength(maxLength);
+        if (sourceContent != null && sourceContent.length() <= minLength) {
+            return false;
+        }
+        return summary.length() < minLength;
+    }
+
+    private int targetSummaryMinLength(int maxLength) {
+        if (maxLength <= 0) {
+            return 0;
+        }
+        double ratio = maxLength < 120 ? 0.75 : SUMMARY_TARGET_MIN_RATIO;
+        return Math.max(1, (int) Math.ceil(maxLength * ratio));
+    }
+
+    private String clampSummaryLength(String summary, int maxLength) {
+        String normalized = summary == null ? "" : summary.trim();
+        if (maxLength > 0 && normalized.length() > maxLength) {
+            return normalized.substring(0, maxLength).trim();
+        }
+        return normalized;
+    }
+
+    private String abbreviateForRepair(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.trim();
+        int maxRepairSourceLength = 8000;
+        if (normalized.length() <= maxRepairSourceLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxRepairSourceLength);
     }
 
     private Map<String, String> parseJsonSummary(String response, Map<String, String> languages) {
@@ -1046,16 +1274,35 @@ public class TranslationApiController {
 
     private Map<String, String> parseCsvSummary(String response, Map<String, String> languages) {
         Map<String, String> result = new LinkedHashMap<>();
-        for (String line : response.split("\n")) {
-            line = line.trim();
-            if (line.isBlank()) continue;
-            String[] parts = line.split(",", 2);
-            if (parts.length == 2) {
-                String key = parts[0].replace("\"", "").replace("'", "").trim();
-                String value = parts[1].replaceAll("^[\"']|[\"']$", "").trim();
-                if (languages.containsKey(key) && !value.isBlank()) {
-                    result.put(key, value);
-                }
+        List<List<String>> rows = parseCsvRows(stripCodeFence(response));
+        if (rows.isEmpty()) {
+            return null;
+        }
+
+        int langIndex = 0;
+        int summaryIndex = 1;
+        int valueStart = 0;
+        List<String> firstRow = rows.get(0);
+        for (int i = 0; i < firstRow.size(); i++) {
+            String header = firstRow.get(i).trim().toLowerCase();
+            if ("lang".equals(header) || "language".equals(header)) {
+                langIndex = i;
+                valueStart = 1;
+            } else if ("summary".equals(header) || "summaries".equals(header)) {
+                summaryIndex = i;
+                valueStart = 1;
+            }
+        }
+
+        for (int i = valueStart; i < rows.size(); i++) {
+            List<String> row = rows.get(i);
+            if (row.size() <= Math.max(langIndex, summaryIndex)) {
+                continue;
+            }
+            String key = row.get(langIndex).replace("\"", "").replace("'", "").trim();
+            String value = row.get(summaryIndex).trim();
+            if (languages.containsKey(key) && !value.isBlank()) {
+                result.put(key, value);
             }
         }
         return result.isEmpty() ? null : result;
@@ -1082,6 +1329,16 @@ public class TranslationApiController {
         return result.isEmpty() ? null : result;
     }
 
+    private String firstJsonString(com.alibaba.fastjson.JSONObject json, String... keys) {
+        for (String key : keys) {
+            String value = json.getString(key);
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return "";
+    }
+
     /**
      * 按检测到的格式解析翻译响应（TOON 文章翻译）
      */
@@ -1091,8 +1348,8 @@ public class TranslationApiController {
             com.alibaba.fastjson.JSONObject json = extractJsonResponse(response);
             if (json != null) {
                 Map<String, String> result = new LinkedHashMap<>();
-                result.put("title", json.getString("title"));
-                result.put("content", json.getString("content"));
+                result.put("title", firstJsonString(json, "title", "translated_title"));
+                result.put("content", firstJsonString(json, "content", "translated_content"));
                 return result;
             }
         }
@@ -1100,8 +1357,14 @@ public class TranslationApiController {
             try {
                 Map<String, Object> decoded = ToonFormatter.decode(response);
                 if (decoded != null) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> article = (Map<String, Object>) decoded.get("article");
+                    Map<String, Object> article = decoded;
+                    Object articleObj = decoded.get("article");
+                    if (articleObj instanceof Map<?, ?> articleMap) {
+                        article = new LinkedHashMap<>();
+                        for (Map.Entry<?, ?> entry : articleMap.entrySet()) {
+                            article.put(Objects.toString(entry.getKey(), ""), entry.getValue());
+                        }
+                    }
                     if (article != null) {
                         Map<String, String> result = new LinkedHashMap<>();
                         result.put("title", Objects.toString(article.get("title"), ""));
@@ -1112,9 +1375,109 @@ public class TranslationApiController {
             } catch (Exception ignored) {
             }
         }
+        if ("csv".equals(format)) {
+            Map<String, String> csvResult = parseCsvTranslation(response);
+            if (csvResult != null) {
+                return csvResult;
+            }
+        }
         Map<String, String> fallback = new LinkedHashMap<>();
         fallback.put("title", "");
         fallback.put("content", response.trim());
         return fallback;
+    }
+
+    private Map<String, String> parseCsvTranslation(String response) {
+        List<List<String>> rows = parseCsvRows(stripCodeFence(response));
+        if (rows.isEmpty()) {
+            return null;
+        }
+
+        int titleIndex = 0;
+        int contentIndex = 1;
+        int valueRowIndex = 0;
+        List<String> firstRow = rows.get(0);
+        for (int i = 0; i < firstRow.size(); i++) {
+            String header = firstRow.get(i).trim().toLowerCase();
+            if ("title".equals(header)) {
+                titleIndex = i;
+                valueRowIndex = rows.size() > 1 ? 1 : 0;
+            }
+            if ("content".equals(header)) {
+                contentIndex = i;
+                valueRowIndex = rows.size() > 1 ? 1 : 0;
+            }
+        }
+
+        if (rows.size() <= valueRowIndex) {
+            return null;
+        }
+        List<String> values = rows.get(valueRowIndex);
+        if (values.size() <= Math.max(titleIndex, contentIndex)) {
+            return null;
+        }
+
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put("title", values.get(titleIndex).trim());
+        result.put("content", values.get(contentIndex).trim());
+        return result;
+    }
+
+    private String stripCodeFence(String text) {
+        if (text == null) {
+            return "";
+        }
+        String cleaned = text.trim();
+        if (cleaned.startsWith("```")) {
+            int firstNewline = cleaned.indexOf('\n');
+            if (firstNewline >= 0) {
+                cleaned = cleaned.substring(firstNewline + 1);
+            }
+            int fenceEnd = cleaned.lastIndexOf("```");
+            if (fenceEnd >= 0) {
+                cleaned = cleaned.substring(0, fenceEnd);
+            }
+        }
+        return cleaned.trim();
+    }
+
+    private List<List<String>> parseCsvRows(String csv) {
+        List<List<String>> rows = new ArrayList<>();
+        List<String> row = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean quoted = false;
+
+        for (int i = 0; i < csv.length(); i++) {
+            char ch = csv.charAt(i);
+            if (ch == '"') {
+                if (quoted && i + 1 < csv.length() && csv.charAt(i + 1) == '"') {
+                    field.append('"');
+                    i++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (ch == ',' && !quoted) {
+                row.add(field.toString());
+                field.setLength(0);
+            } else if ((ch == '\n' || ch == '\r') && !quoted) {
+                if (ch == '\r' && i + 1 < csv.length() && csv.charAt(i + 1) == '\n') {
+                    i++;
+                }
+                row.add(field.toString());
+                field.setLength(0);
+                if (row.stream().anyMatch(StringUtils::hasText)) {
+                    rows.add(row);
+                }
+                row = new ArrayList<>();
+            } else {
+                field.append(ch);
+            }
+        }
+
+        row.add(field.toString());
+        if (row.stream().anyMatch(StringUtils::hasText)) {
+            rows.add(row);
+        }
+        return rows;
     }
 }

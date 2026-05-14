@@ -70,6 +70,12 @@ public class SysAiConfig implements Serializable {
      */
     private String model;
 
+    /**
+     * 本次模型调用的 HTTP 读取超时（秒），从业务 JSON 配置派生，不入库。
+     */
+    @TableField(exist = false)
+    private Integer httpReadTimeoutSeconds;
+
     // ========== AI聊天参数配置 ==========
 
     /**
@@ -78,9 +84,15 @@ public class SysAiConfig implements Serializable {
     private BigDecimal temperature;
 
     /**
-     * 最大生成令牌数
+     * 最大生成令牌数（输出，不填默认8K）
      */
     private Integer maxTokens;
+
+    /**
+     * 最大输入上下文令牌数（不填默认128K）
+     */
+    @TableField("max_input_tokens")
+    private Integer maxInputTokens;
 
     /**
      * Top-p采样参数(0.0-1.0)

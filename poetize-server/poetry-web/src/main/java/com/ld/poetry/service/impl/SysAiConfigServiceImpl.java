@@ -10,6 +10,7 @@ import com.ld.poetry.dao.SysAiConfigMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.ai.AiCommentSkillDefaults;
 import com.ld.poetry.service.ai.AiThinkingAdapterRegistry;
 import com.ld.poetry.service.ai.DynamicChatClientFactory;
 import com.ld.poetry.utils.AESCryptoUtil;
@@ -95,6 +96,7 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
         // 解密敏感字段并脱敏显示
         if (config != null) {
             decryptAndMaskConfig(config);
+            applyDefaultCommentSkill(config);
         }
 
         return config;
@@ -120,7 +122,9 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 result.put("configured", false);
                 result.put("require_login", false);
                 result.put("chat_name", "AI助手");
+                result.put("chat_avatar", "");
                 result.put("welcome_message", "你好！我是你的AI助手，有什么可以帮助你的吗？");
+                result.put("placeholder_text", "输入你想说的话...");
                 result.put("theme_color", "#4facfe");
                 result.put("enable_typing_indicator", true);
                 result.put("show_timestamp", true);
@@ -140,9 +144,13 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             // 聊天配置
             result.put("require_login", Boolean.TRUE.equals(config.getRequireLogin()));
             result.put("chat_name", StringUtils.hasText(config.getChatName()) ? config.getChatName() : "AI助手");
+            result.put("chat_avatar", StringUtils.hasText(config.getChatAvatar()) ? config.getChatAvatar() : "");
             result.put("welcome_message", StringUtils.hasText(config.getWelcomeMessage())
                     ? config.getWelcomeMessage()
                     : "你好！我是你的AI助手，有什么可以帮助你的吗？");
+            result.put("placeholder_text", StringUtils.hasText(config.getPlaceholderText())
+                    ? config.getPlaceholderText()
+                    : "输入你想说的话...");
             result.put("theme_color", StringUtils.hasText(config.getThemeColor()) ? config.getThemeColor() : "#4facfe");
             result.put("max_message_length", config.getMaxMessageLength() != null ? config.getMaxMessageLength() : 500);
             result.put("max_conversation_length",
@@ -163,7 +171,9 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             result.put("configured", false);
             result.put("require_login", false);
             result.put("chat_name", "AI助手");
+            result.put("chat_avatar", "");
             result.put("welcome_message", "你好！我是你的AI助手，有什么可以帮助你的吗？");
+            result.put("placeholder_text", "输入你想说的话...");
             result.put("theme_color", "#4facfe");
             result.put("enable_typing_indicator", true);
             result.put("show_timestamp", true);
@@ -241,6 +251,7 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
     @Override
     public boolean saveAiChatConfig(SysAiConfig config) {
         config.setConfigType("ai_chat");
+        applyDefaultCommentSkill(config);
         normalizeRagConfig(config);
         return saveOrUpdateConfig(config);
     }
@@ -310,10 +321,10 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
 
         boolean modified = false;
         for (String key : keys) {
-            if (isMissingOrBlank(incomingObject, key)
+            if (isMissing(incomingObject, key)
                     && existingNode.has(key)
                     && StringUtils.hasText(existingNode.get(key).asText())) {
-                incomingObject.put(key, existingNode.get(key).asText());
+                incomingObject.put(key, resolveStoredSecretForSave(existingNode.get(key).asText()));
                 modified = true;
             }
         }
@@ -338,16 +349,21 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 || existingDedicated == null
                 || !existingDedicated.has("api_key")
                 || !StringUtils.hasText(existingDedicated.get("api_key").asText())
-                || !isMissingOrBlank(incomingDedicatedObject, "api_key")) {
+                || !isMissing(incomingDedicatedObject, "api_key")) {
             return incomingJson;
         }
 
-        incomingDedicatedObject.put("api_key", existingDedicated.get("api_key").asText());
+        incomingDedicatedObject.put("api_key", resolveStoredSecretForSave(existingDedicated.get("api_key").asText()));
         return objectMapper.writeValueAsString(incomingObject);
     }
 
-    private boolean isMissingOrBlank(ObjectNode node, String key) {
-        return !node.has(key) || !StringUtils.hasText(node.get(key).asText());
+    private boolean isMissing(ObjectNode node, String key) {
+        return !node.has(key);
+    }
+
+    private String resolveStoredSecretForSave(String storedValue) {
+        String decrypted = aesCryptoUtil.decrypt(storedValue);
+        return decrypted != null ? decrypted : storedValue;
     }
 
     private boolean encryptJsonSecretFields(ObjectNode node, String... fields) {
@@ -808,6 +824,7 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
 
             // 解密JSON字段（不脱敏，供Python服务使用）
             decryptJsonFieldsForInternal(config);
+            applyDefaultCommentSkill(config);
         }
 
         return config;
@@ -1064,6 +1081,13 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
         } catch (Exception e) {
             log.warn("规范化 RAG 配置失败，将继续按原配置保存: {}", e.getMessage());
         }
+    }
+
+    private void applyDefaultCommentSkill(SysAiConfig config) {
+        if (config == null || !"ai_chat".equals(config.getConfigType())) {
+            return;
+        }
+        config.setExtraConfig(AiCommentSkillDefaults.ensureCommentSkill(config.getExtraConfig(), objectMapper));
     }
 
     private boolean isRagRuntimeSupported() {

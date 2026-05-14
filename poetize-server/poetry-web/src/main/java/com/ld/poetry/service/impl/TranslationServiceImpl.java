@@ -216,7 +216,7 @@ public class TranslationServiceImpl implements TranslationService {
 
             if (apiTranslationProviderRegistry.isApiProvider(translationType)) {
                 Map<String, String> result = apiTranslationProviderRegistry.translateArticle(
-                        aiConfig, title, content, sourceLanguage, targetLanguage);
+                        aiConfig, title, content, sourceLanguage, targetLanguage, progressListener);
                 if (result != null && !result.isEmpty()) {
                     log.info("API 文章翻译成功: provider={}", translationType);
                     return result;

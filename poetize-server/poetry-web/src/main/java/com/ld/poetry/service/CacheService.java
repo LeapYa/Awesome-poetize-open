@@ -990,6 +990,13 @@ public class CacheService {
     }
 
     /**
+     * 递增缓存值
+     */
+    public long incr(String key, long delta) {
+        return redisUtil.incr(key, delta);
+    }
+
+    /**
      * 根据模式删除多个缓存键
      */
     public void deleteKeysByPattern(String pattern) {

@@ -10,6 +10,12 @@
         @mousedown.stop="handleMouseDown"
         @touchstart.stop="handleTouchStart"
       >
+        <img
+          class="ai-avatar-icon"
+          :src="chatAvatarUrl"
+          :alt="config?.chat_name || 'AI助手'"
+          draggable="false"
+        />
         <!-- 亮色模式图标 -->
         <svg
           v-if="!isDarkMode"
@@ -44,6 +50,7 @@ import { $on, $off, $once, $emit } from '../../utils/gogocodeTransfer'
 import { computed, onMounted, onUnmounted, ref, getCurrentInstance } from 'vue'
 import { useLive2DStore } from '@/stores/live2d'
 import { useAIChatStore } from '@/stores/aiChat'
+import { getAiAvatarUrl } from '@/utils/ai-avatar'
 
 export default {
   name: 'AIChatButton',
@@ -99,6 +106,9 @@ export default {
     // 计算属性
     const showChat = computed(() => live2dStore.showChat)
     const config = computed(() => aiChatStore.config)
+    const chatAvatarUrl = computed(() =>
+      getAiAvatarUrl(config.value?.chat_avatar)
+    )
 
     // 按钮位置样式
     const buttonStyle = computed(() => {
@@ -172,8 +182,8 @@ export default {
         const newX = currentX.value + deltaX
         const newY = currentY.value + deltaY
 
-        // 限制在视口内（按钮大小50px）
-        const buttonSize = 50
+        // 限制在视口内
+        const buttonSize = 58
         const maxX = window.innerWidth - buttonSize
         const maxY = window.innerHeight - buttonSize
 
@@ -224,7 +234,7 @@ export default {
     const handleResize = () => {
       if (userSavedX.value === null || userSavedY.value === null) return
 
-      const buttonSize = window.innerWidth <= 768 ? 45 : 50
+      const buttonSize = window.innerWidth <= 768 ? 52 : 58
       const maxX = window.innerWidth - buttonSize
       const maxY = window.innerHeight - buttonSize
 
@@ -319,6 +329,7 @@ export default {
       buttonRef,
       showChat,
       config,
+      chatAvatarUrl,
       isDragging,
       isDarkMode,
       buttonStyle,
@@ -337,10 +348,13 @@ export default {
   z-index: 998;
 }
 .ai-chat-button {
-  width: 50px;
-  height: 50px;
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  min-height: 58px;
+  padding: 0;
   border-radius: 50%;
-  background: #ecf0f1;
+  background: #f8fbff;
   border: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   cursor: grab;
@@ -350,6 +364,7 @@ export default {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   position: relative;
+  flex-shrink: 0;
 }
 .ai-chat-button.dragging {
   cursor: grabbing;
@@ -383,10 +398,27 @@ export default {
 .ai-chat-button:active:not(.dragging) {
   transform: scale(0.95);
 }
+.ai-avatar-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transform: scale(1.14);
+  transition: transform 0.3s ease;
+  pointer-events: none;
+  user-select: none;
+}
 .ai-icon {
+  display: none;
   width: 28px;
   height: 28px;
   transition: transform 0.3s ease;
+}
+.ai-chat-button:hover:not(.dragging) .ai-avatar-icon {
+  transform: scale(1.2);
+}
+.ai-chat-button.dragging .ai-avatar-icon {
+  transform: scale(1.08);
 }
 .ai-chat-button:hover:not(.dragging) .ai-icon {
   transform: scale(1.1);
@@ -409,8 +441,8 @@ export default {
     left: 20px;
   }
   .ai-chat-button {
-    width: 45px;
-    height: 45px;
+    width: 52px;
+    height: 52px;
   }
   .ai-icon {
     width: 24px;

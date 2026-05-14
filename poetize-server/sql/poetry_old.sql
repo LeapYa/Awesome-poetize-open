@@ -680,7 +680,8 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   
   -- ========== AI聊天参数配置 ==========
   `temperature` decimal(3,2) DEFAULT 0.70 COMMENT '温度参数(0.0-2.0)',
-  `max_tokens` int DEFAULT 1000 COMMENT '最大生成令牌数',
+  `max_tokens` int DEFAULT 8192 COMMENT '最大输出令牌数(不填默认8K)',
+  `max_input_tokens` int DEFAULT 131072 COMMENT '最大输入上下文令牌数(不填默认128K)',
   `top_p` decimal(3,2) DEFAULT 1.00 COMMENT 'Top-p采样参数(0.0-1.0)',
   `frequency_penalty` decimal(3,2) DEFAULT 0.00 COMMENT '频率惩罚(-2.0到2.0)',
   `presence_penalty` decimal(3,2) DEFAULT 0.00 COMMENT '存在惩罚(-2.0到2.0)',
@@ -754,7 +755,7 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
 INSERT INTO `sys_ai_config` (
   `config_type`, `config_name`, `enabled`,
   `provider`, `api_key`, `api_base`, `model`,
-  `temperature`, `max_tokens`, `top_p`, `frequency_penalty`, `presence_penalty`,
+  `temperature`, `max_tokens`, `max_input_tokens`, `top_p`, `frequency_penalty`, `presence_penalty`,
   `chat_name`, `chat_avatar`, `welcome_message`, `placeholder_text`, `theme_color`,
   `max_conversation_length`, `enable_context`, `enable_typing_indicator`, `show_timestamp`,
   `response_delay`, `enable_quick_actions`, `enable_chat_history`, `enable_streaming`,
@@ -765,7 +766,7 @@ INSERT INTO `sys_ai_config` (
 ) VALUES (
   'ai_chat', 'default', 0,
   'openai', '', '', 'gpt-3.5-turbo',
-  0.70, 1000, 1.00, 0.00, 0.00,
+  0.70, 8192, 131072, 1.00, 0.00, 0.00,
   'AI助手', '', '你好！我是你的AI助手，有什么可以帮助你的吗？', '输入你想说的话...', '#4facfe',
   20, 1, 1, 1,
   1000, 1, 1, 0,
@@ -806,7 +807,7 @@ INSERT INTO `sys_ai_config` (
     'timeout', 240
   ),
   JSON_OBJECT(
-    'summaryMode', 'global',
+    'summaryMode', 'disabled',
     'style', 'concise',
     'max_length', 150,
     'prompt', '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 保持TOON格式结构不变（2个空格缩进）\n5. 只返回TOON格式数据，不添加任何解释或markdown代码块标记\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请返回TOON格式的摘要，格式如下：\n{toon_example}'
@@ -1195,7 +1196,8 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_n
 
 -- 站点根目录图片资源
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `resource_hash`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES
-(1, 'assets', '/poetize.jpg', 30312, '7460056A7CE3125039B7F35604CA5BCE867E3022B79F698A21308827E3791213', 'poetize.jpg', 'image/jpeg', 1, 'local', NOW());
+(1, 'assets', '/poetize.jpg', 30312, '7460056A7CE3125039B7F35604CA5BCE867E3022B79F698A21308827E3791213', 'poetize.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/ai_avatar.png', 1332990, '79E7B5285919D0783D11C371843D010B68CB9A1CE38E74ED8E326113F6D3A8CC', 'ai_avatar.png', 'image/png', 1, 'local', NOW());
 
 -- 视频文件
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 

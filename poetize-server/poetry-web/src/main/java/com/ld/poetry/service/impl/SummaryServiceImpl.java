@@ -26,8 +26,13 @@ import java.util.*;
 @Slf4j
 public class SummaryServiceImpl implements SummaryService {
 
-    private static final SummaryTaskResult SUCCESS_RESULT = new SummaryTaskResult("success", "AI摘要已生成", false);
+    private static final String SUMMARY_MODE_DISABLED = "disabled";
+    private static final String SUMMARY_MODE_TEXTRANK = "textrank";
+    private static final SummaryTaskResult AI_SUCCESS_RESULT = new SummaryTaskResult("success", "AI摘要已生成", false);
+    private static final SummaryTaskResult LOCAL_EXCERPT_SUCCESS_RESULT = new SummaryTaskResult("success", "本地摘录已生成", false);
     private static final SummaryTaskResult SKIPPED_RESULT = new SummaryTaskResult("skipped", "无需生成摘要", false);
+    private static final SummaryTaskResult DISABLED_RESULT = new SummaryTaskResult("skipped", "已关闭自动摘要", false);
+    private static final int DEFAULT_SUMMARY_MAX_LENGTH = 150;
 
     @Autowired
     @Lazy
@@ -47,9 +52,34 @@ public class SummaryServiceImpl implements SummaryService {
     private LlmTranslationService llmTranslationService;
 
     @Override
+    public boolean isAutoSummaryEnabled() {
+        return !SUMMARY_MODE_DISABLED.equalsIgnoreCase(getSummaryGenerationMode());
+    }
+
+    @Override
+    public String getSummaryGenerationMode() {
+        try {
+            var config = sysAiConfigService.getArticleAiConfigInternal("default");
+            if (config == null || !StringUtils.hasText(config.getSummaryConfig())) {
+                return SUMMARY_MODE_DISABLED;
+            }
+            var summaryJson = com.alibaba.fastjson.JSON.parseObject(config.getSummaryConfig());
+            String summaryMode = summaryJson.getString("summaryMode");
+            return StringUtils.hasText(summaryMode) ? summaryMode : SUMMARY_MODE_DISABLED;
+        } catch (Exception e) {
+            log.warn("解析摘要模式失败，按关闭自动摘要处理: {}", e.getMessage());
+            return SUMMARY_MODE_DISABLED;
+        }
+    }
+
+    @Override
     public SummaryTaskResult generateAndSaveSummary(Integer articleId, SummaryProgressListener progressListener) {
 
         try {
+            if (!isAutoSummaryEnabled()) {
+                return DISABLED_RESULT;
+            }
+
             // 获取文章内容
             Article article = articleService.getById(articleId);
             if (article == null) {
@@ -84,12 +114,12 @@ public class SummaryServiceImpl implements SummaryService {
 
             if (summaries == null || summaries.isEmpty()) {
                 log.error("文章{}摘要生成失败，返回空结果", articleId);
-                return new SummaryTaskResult("failed", "AI摘要生成失败", true);
+                return new SummaryTaskResult("failed", getSummaryTaskName() + "生成失败", true);
             }
 
             // 保存摘要到数据库
             saveMultiLangSummaries(articleId, summaries, sourceLanguage);
-            return SUCCESS_RESULT;
+            return buildSuccessResult();
 
         } catch (Exception e) {
             log.error("文章{}摘要生成失败，错误: {}", articleId, e.getMessage(), e);
@@ -101,6 +131,10 @@ public class SummaryServiceImpl implements SummaryService {
     public SummaryTaskResult updateSummary(Integer articleId, String content, SummaryProgressListener progressListener) {
 
         try {
+            if (!isAutoSummaryEnabled()) {
+                return DISABLED_RESULT;
+            }
+
             if (!StringUtils.hasText(content)) {
                 log.warn("文章{}内容为空，跳过摘要更新", articleId);
                 return SKIPPED_RESULT;
@@ -134,12 +168,12 @@ public class SummaryServiceImpl implements SummaryService {
 
             if (summaries == null || summaries.isEmpty()) {
                 log.error("文章{}摘要更新失败，返回空结果", articleId);
-                return new SummaryTaskResult("failed", "AI摘要更新失败", true);
+                return new SummaryTaskResult("failed", getSummaryTaskName() + "更新失败", true);
             }
 
             // 保存摘要到数据库
             saveMultiLangSummaries(articleId, summaries, sourceLanguage);
-            return SUCCESS_RESULT;
+            return buildSuccessResult();
 
         } catch (Exception e) {
             log.error("文章{}摘要更新失败，错误: {}", articleId, e.getMessage(), e);
@@ -225,43 +259,50 @@ public class SummaryServiceImpl implements SummaryService {
             return generateLocalSummaries(languageContents);
         }
 
+        int maxLength = resolveConfiguredSummaryMaxLength();
         Map<String, String> aiSummaries = llmTranslationService.generateMultiLangSummary(
-                articleId, languageContents, 150, progressListener);
+                articleId, languageContents, maxLength, progressListener);
         if (aiSummaries != null && !aiSummaries.isEmpty()) {
             log.info("AI多语言摘要生成成功，文章ID={}，包含{}个语言", articleId, aiSummaries.size());
             return aiSummaries;
         }
 
-        throw new IllegalStateException("AI摘要生成失败");
+        throw new IllegalStateException(getSummaryTaskName() + "生成失败");
     }
 
-    private boolean isTextrankSummaryMode() {
+    private int resolveConfiguredSummaryMaxLength() {
         try {
             var config = sysAiConfigService.getArticleAiConfigInternal("default");
             if (config == null || !StringUtils.hasText(config.getSummaryConfig())) {
-                return false;
+                return DEFAULT_SUMMARY_MAX_LENGTH;
             }
             var summaryJson = com.alibaba.fastjson.JSON.parseObject(config.getSummaryConfig());
-            return "textrank".equalsIgnoreCase(summaryJson.getString("summaryMode"));
+            Integer maxLength = summaryJson.getInteger("max_length");
+            return maxLength != null && maxLength > 0 ? maxLength : DEFAULT_SUMMARY_MAX_LENGTH;
         } catch (Exception e) {
-            log.warn("解析摘要模式失败，按 AI 摘要处理: {}", e.getMessage());
-            return false;
+            log.warn("解析摘要最大长度失败，使用默认值{}: {}", DEFAULT_SUMMARY_MAX_LENGTH, e.getMessage());
+            return DEFAULT_SUMMARY_MAX_LENGTH;
         }
     }
 
+    private boolean isTextrankSummaryMode() {
+        return SUMMARY_MODE_TEXTRANK.equalsIgnoreCase(getSummaryGenerationMode());
+    }
+
     private Map<String, String> generateLocalSummaries(Map<String, Map<String, String>> languageContents) {
-        Map<String, String> localSummaries = new HashMap<>();
+        Map<String, String> localSummaries = new LinkedHashMap<>();
+        int maxLength = resolveConfiguredSummaryMaxLength();
         for (Map.Entry<String, Map<String, String>> entry : languageContents.entrySet()) {
             String langCode = entry.getKey();
             String content = entry.getValue().get("content");
 
             try {
-                String summary = SmartSummaryGenerator.generateAdvancedSummary(content, 150);
+                String summary = SmartSummaryGenerator.generateAdvancedSummary(content, maxLength);
                 if (StringUtils.hasText(summary)) {
                     localSummaries.put(langCode, summary);
                 }
             } catch (Exception e) {
-                log.error("本地算法生成{}语言摘要失败: {}", langCode, e.getMessage());
+                log.error("本地算法生成{}语言摘录失败: {}", langCode, e.getMessage());
             }
         }
         return localSummaries;
@@ -311,9 +352,18 @@ public class SummaryServiceImpl implements SummaryService {
     }
 
     private SummaryTaskResult buildFailureResult(Exception e) {
+        String taskName = getSummaryTaskName();
         if (e instanceof java.util.concurrent.TimeoutException) {
-            return new SummaryTaskResult("timeout", "AI摘要生成超时", true);
+            return new SummaryTaskResult("timeout", taskName + "生成超时", true);
         }
-        return new SummaryTaskResult("failed", "AI摘要生成失败", true);
+        return new SummaryTaskResult("failed", taskName + "生成失败", true);
+    }
+
+    private SummaryTaskResult buildSuccessResult() {
+        return isTextrankSummaryMode() ? LOCAL_EXCERPT_SUCCESS_RESULT : AI_SUCCESS_RESULT;
+    }
+
+    private String getSummaryTaskName() {
+        return isTextrankSummaryMode() ? "本地摘录" : "AI摘要";
     }
 }

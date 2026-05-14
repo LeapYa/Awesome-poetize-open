@@ -20,7 +20,11 @@ public interface CommentService extends IService<Comment> {
 
     PoetryResult saveComment(CommentVO commentVO);
 
+    PoetryResult<Comment> saveAiReplyComment(CommentVO commentVO);
+
     PoetryResult deleteComment(Integer id);
+
+    PoetryResult deleteCommentById(Integer id);
 
     PoetryResult<BaseRequestVO> listComment(BaseRequestVO baseRequestVO);
 
@@ -37,4 +41,6 @@ public interface CommentService extends IService<Comment> {
      * @return 分页的子评论列表
      */
     PoetryResult<Page<CommentVO>> listChildComments(Integer parentCommentId, BaseRequestVO baseRequestVO, Integer current, Integer size);
+
+    PoetryResult<Integer> likeComment(Integer id, Boolean isLike);
 }

@@ -43,38 +43,65 @@
       >
         <!-- 头像 -->
         <el-avatar
-          shape="square"
+          shape="circle"
           class="commentInfo-avatar"
-          :size="35"
-          :src="$common.getAvatarUrl(item.avatar)"
+          :size="40"
+          :src="getAvatarForComment(item)"
+          style="margin-top: 2px;"
         >
           <img :src="$getDefaultAvatar()" />
         </el-avatar>
 
-        <div style="flex: 1; padding-left: 12px">
-          <!-- 评论信息 -->
-          <div style="display: flex; justify-content: space-between">
-            <div>
-              <span class="commentInfo-username">{{ item.username }}</span>
-              <span class="commentInfo-master" v-if="item.userId === userId"
-                >主人翁</span
-              >
-              <span class="commentInfo-location" v-if="item.location">{{
-                item.location
-              }}</span>
-              <span class="commentInfo-other">{{
-                $common.getDateDiff(item.createTime)
-              }}</span>
-            </div>
-            <div class="commentInfo-reply" @click="replyDialog(item, item)">
-              <span v-if="item.childComments && item.childComments.total > 0"
-                >{{ item.childComments.total }} </span
-              ><span>回复</span>
-            </div>
+        <div style="flex: 1; padding-left: 14px">
+          <!-- 评论信息头部 -->
+          <div class="commentInfo-header">
+            <span class="commentInfo-username">{{
+              item.displayUsername || item.username
+            }}</span>
+            <span class="commentInfo-master" v-if="!item.aiReply && item.userId === userId"
+              >主人翁</span
+            >
           </div>
           <!-- 评论内容 -->
-          <div class="commentInfo-content">
-            <span v-html="item.commentContent"></span>
+          <div class="commentInfo-content" :style="item.aiReply ? 'margin-bottom: 4px;' : ''">
+            <CommentMarkdownRenderer
+              :content="item.commentContent"
+              @rendered="bindCommentImages"
+            />
+          </div>
+          <!-- AI生成提示 -->
+          <div class="comment-ai-notice" v-if="item.aiReply">
+            <span>评论由AI生成</span>
+            <svg class="ai-notice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+          <!-- 评论信息底部 -->
+          <div class="commentInfo-meta-bottom">
+            <span class="commentInfo-other">{{
+              $common.getDateDiff(item.createTime)
+            }}</span>
+            <span v-if="item.location">
+              <span class="commentInfo-separator">·</span>
+              <span class="commentInfo-location">{{
+                item.location
+              }}</span>
+            </span>
+            <span class="commentInfo-reply-btn" @click="replyDialog(item, item)">
+              回复
+            </span>
+            <!-- 个人博客评论珍贵，暂时隐藏删除按钮以留住互动。如需启用请取消注释下方代码 -->
+            <!-- <span v-if="canDeleteComment(item)" class="commentInfo-delete-btn" @click="deleteComment(item)">
+              删除
+            </span> -->
+            <div class="commentInfo-like" :class="{ 'liked': isLiked(item.id) }" @click="likeComment(item)">
+              <svg viewBox="0 0 24 24" :fill="isLiked(item.id) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+              </svg>
+              <span class="like-count">{{ item.likeCount || 0 }}</span>
+            </div>
           </div>
           <!-- 懒加载子评论展示 -->
           <div v-if="item.childComments && item.childComments.total > 0">
@@ -111,54 +138,76 @@
               >
                 <!-- 头像 -->
                 <el-avatar
-                  shape="square"
+                  shape="circle"
                   class="commentInfo-avatar"
-                  :size="30"
-                  :src="$common.getAvatarUrl(replyItem.avatar)"
+                  :size="32"
+                  :src="getAvatarForComment(replyItem)"
+                  style="margin-top: 2px;"
                 >
                   <img :src="$getDefaultAvatar()" />
                 </el-avatar>
 
-                <div style="flex: 1; padding-left: 12px">
-                  <!-- 评论信息 -->
-                  <div style="display: flex; justify-content: space-between">
-                    <div>
-                      <span class="commentInfo-username-small">{{
-                        replyItem.username
-                      }}</span>
-                      <span
-                        class="commentInfo-master"
-                        v-if="replyItem.userId === userId"
-                        >主人翁</span
-                      >
-                      <span
-                        class="commentInfo-location-small"
-                        v-if="replyItem.location"
-                        >{{ replyItem.location }}</span
-                      >
-                      <span class="commentInfo-other">{{
-                        $common.getDateDiff(replyItem.createTime)
-                      }}</span>
-                      <span
-                        class="commentInfo-reply-indicator"
-                        style="color: #666"
-                        v-if="shouldShowReplyIndicator(replyItem, item)"
-                      >
-                        回复了 {{ replyItem.parentUsername }}
-                      </span>
-                    </div>
-                    <div>
-                      <span
-                        class="commentInfo-reply"
-                        @click="replyDialog(replyItem, item)"
-                      >
-                        回复
-                      </span>
-                    </div>
+                <div style="flex: 1; padding-left: 14px">
+                  <!-- 评论信息头部 -->
+                  <div class="commentInfo-header">
+                    <span class="commentInfo-username-small">{{
+                      replyItem.displayUsername || replyItem.username
+                    }}</span>
+                    <span
+                      class="commentInfo-master"
+                      v-if="!replyItem.aiReply && replyItem.userId === userId"
+                      >主人翁</span
+                    >
+                    <span
+                      class="commentInfo-reply-indicator"
+                      v-if="shouldShowReplyIndicator(replyItem, item)"
+                    >
+                      回复了 {{ replyItem.parentUsername }}
+                    </span>
                   </div>
                   <!-- 评论内容 -->
-                  <div class="commentInfo-content">
-                    <span v-html="replyItem.commentContent"></span>
+                  <div class="commentInfo-content" :style="replyItem.aiReply ? 'margin-bottom: 4px;' : ''">
+                    <CommentMarkdownRenderer
+                      :content="replyItem.commentContent"
+                      @rendered="bindCommentImages"
+                    />
+                  </div>
+                  <!-- AI生成提示 -->
+                  <div class="comment-ai-notice" v-if="replyItem.aiReply">
+                    <span>评论由AI生成</span>
+                    <svg class="ai-notice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                  </div>
+                  <!-- 评论信息底部 -->
+                  <div class="commentInfo-meta-bottom">
+                    <span class="commentInfo-other">{{
+                      $common.getDateDiff(replyItem.createTime)
+                    }}</span>
+                    <span v-if="replyItem.location">
+                      <span class="commentInfo-separator">·</span>
+                      <span
+                        class="commentInfo-location-small"
+                      >{{ replyItem.location }}</span>
+                    </span>
+                    <span
+                      class="commentInfo-reply-btn"
+                      @click="replyDialog(replyItem, item)"
+                    >
+                      回复
+                    </span>
+                    <!-- 个人博客评论珍贵，暂时隐藏删除按钮以留住互动。如需启用请取消注释下方代码 -->
+                    <!-- <span v-if="canDeleteComment(replyItem)" class="commentInfo-delete-btn" @click="deleteComment(replyItem, item)">
+                      删除
+                    </span> -->
+                    <div class="commentInfo-like" :class="{ 'liked': isLiked(replyItem.id) }" @click="likeComment(replyItem)">
+                      <svg viewBox="0 0 24 24" :fill="isLiked(replyItem.id) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                      </svg>
+                      <span class="like-count">{{ replyItem.likeCount || 0 }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -277,6 +326,7 @@ import { useMainStore } from '@/stores/main'
 
 // ;
 import { checkCaptchaWithCache } from '@/utils/captchaUtil'
+import CommentMarkdownRenderer from './CommentMarkdownRenderer.vue'
 
 export default {
   components: {
@@ -287,6 +337,7 @@ export default {
     ElIconLoading,
     ElIconArrowDown,
     ElIconArrowUp,
+    CommentMarkdownRenderer,
   },
   props: {
     source: {
@@ -324,6 +375,7 @@ export default {
       enableLazyLoad: true, // 是否启用懒加载模式
       scrollThreshold: 200, // 距离底部多少像素时触发加载
       scrollTimer: null, // 滚动防抖定时器
+      likedComments: {},
     }
   },
   computed: {
@@ -340,6 +392,7 @@ export default {
 
     this.getComments(this.pagination)
     this.getTotal()
+    this.loadLikedComments()
   },
   mounted() {
     // 🔧 添加滚动监听
@@ -363,6 +416,98 @@ export default {
     $off(this.$bus, 'restore-page-state', this.handleRestorePageState)
   },
   methods: {
+    getAvatarForComment(item) {
+      if (item.aiReply) {
+        // AI 回复：只使用 displayAvatar，不回退到用户表 avatar
+        // 使用 getAiAvatarUrl 以在未设置时显示专属的 AI 头像
+        return this.$common.getAiAvatarUrl(item.displayAvatar)
+      }
+      return this.$common.getAvatarUrl(item.displayAvatar || item.avatar)
+    },
+    loadLikedComments() {
+      const liked = localStorage.getItem('likedComments')
+      if (liked) {
+        try {
+          const parsed = JSON.parse(liked)
+          this.likedComments = Array.isArray(parsed)
+            ? Object.fromEntries(parsed.map(id => [id, true]))
+            : parsed
+        } catch {
+          this.likedComments = {}
+        }
+      }
+    },
+    isLiked(id) {
+      return !!this.likedComments[id]
+    },
+    canDeleteComment(item) {
+      if (this.$common.isEmpty(this.mainStore.currentUser)) {
+        return false
+      }
+      if (item.aiReply) {
+        return false
+      }
+      return item.userId === this.mainStore.currentUser.id
+    },
+    likeComment(item) {
+      const isLike = !this.isLiked(item.id)
+
+      this.$http
+        .post(this.$constant.baseURL + '/comment/likeComment', { id: item.id, isLike: isLike }, false, false)
+        .then((res) => {
+          if (res.data !== undefined && res.data !== null) {
+            item.likeCount = res.data
+          } else {
+            item.likeCount = isLike ? (item.likeCount || 0) + 1 : Math.max(0, (item.likeCount || 1) - 1)
+          }
+          if (isLike) {
+            this.likedComments[item.id] = true
+          } else {
+            delete this.likedComments[item.id]
+          }
+          localStorage.setItem('likedComments', JSON.stringify(this.likedComments))
+        })
+        .catch(() => {
+          this.$message.warning('操作失败，请稍后再试')
+        })
+    },
+    deleteComment(comment, parentComment) {
+      this.$confirm('确定要删除这条评论吗？删除后不可恢复。', '删除评论', {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      })
+        .then(() => {
+          this.$http
+            .get(this.$constant.baseURL + '/comment/deleteComment', {
+              id: comment.id,
+            })
+            .then(() => {
+              this.$message.success('删除成功')
+              if (comment.parentCommentId && comment.parentCommentId !== 0) {
+                if (parentComment && parentComment.childComments && parentComment.childComments.records) {
+                  const idx = parentComment.childComments.records.findIndex(c => c.id === comment.id)
+                  if (idx > -1) {
+                    parentComment.childComments.records.splice(idx, 1)
+                    if (parentComment.childComments.total > 0) {
+                      parentComment.childComments.total--
+                    }
+                  }
+                }
+              } else {
+                const idx = this.comments.findIndex(c => c.id === comment.id)
+                if (idx > -1) {
+                  this.comments.splice(idx, 1)
+                }
+                this.total = Math.max(0, this.total - 1)
+              }
+            })
+            .catch(() => {
+              this.$message.warning('删除失败，请稍后再试')
+            })
+        })
+        .catch(() => {})
+    },
     toPage(page) {
       this.pagination.current = page
       window.scrollTo({
@@ -738,12 +883,13 @@ export default {
         return false
       }
 
-      // 如果是直接回复主评论，隐藏指示器
-      if (replyItem.parentCommentId === mainComment.id) {
+      // 如果是直接回复主评论，且回复的对象确实是主评论的作者，则隐藏指示器
+      // 通过 parentCommentId 判断是否挂在主评论下，再通过 parentUserId 与主评论作者核对
+      if (replyItem.parentCommentId == mainComment.id && replyItem.parentUserId == mainComment.userId) {
         return false
       }
 
-      // 如果是嵌套回复，显示指示器
+      // 如果是嵌套回复（回复的回复），或者因父评论被删导致提升层级但原本回复的是别人，则显示指示器
       return true
     },
 
@@ -1387,6 +1533,18 @@ export default {
 </script>
 
 <style scoped>
+.comment-ai-notice {
+  font-size: 12px;
+  color: #999;
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  user-select: none;
+}
+.comment-ai-notice .ai-notice-icon {
+  margin-left: 4px;
+  font-size: 13px;
+}
 .comment-head {
   display: flex;
   align-items: center;
@@ -1407,9 +1565,16 @@ export default {
 }
 .commentInfo-detail {
   display: flex;
+  padding: 15px 0;
 }
 .commentInfo-avatar {
-  border-radius: 5px;
+  border-radius: 50% !important;
+  flex-shrink: 0;
+}
+.commentInfo-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .commentInfo-username {
   color: var(--orangeRed);
@@ -1426,28 +1591,50 @@ export default {
 .commentInfo-master {
   color: var(--green);
   border: 1px solid var(--green);
-  border-radius: 0.2rem;
+  border-radius: 20px;
+  font-size: 10px;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  line-height: 1;
+}
+.commentInfo-ai {
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: 20px;
+  font-size: 10px;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  line-height: 1;
+  user-select: none;
+}
+.commentInfo-meta-bottom {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
   font-size: 12px;
-  padding: 2px 4px;
-  margin-right: 5px;
+  color: var(--greyFont);
 }
 .commentInfo-location {
-  color: var(--greyFont);
+  color: #999;
   font-size: 12px;
-  background: var(--lightGray);
-  border-radius: 0.2rem;
-  padding: 2px 6px;
-  margin-right: 5px;
   user-select: none;
 }
 .commentInfo-location-small {
-  color: var(--greyFont);
-  font-size: 11px;
-  background: var(--lightGray);
-  border-radius: 0.2rem;
-  padding: 1px 4px;
-  margin-right: 5px;
+  color: #999;
+  font-size: 12px;
   user-select: none;
+}
+.commentInfo-separator {
+  margin: 0 4px;
+  color: #999;
 }
 .commentInfo-other {
   font-size: 12px;
@@ -1455,31 +1642,65 @@ export default {
   user-select: none;
 }
 .commentInfo-reply-indicator {
-  font-size: 12px;
-  color: var(--blue);
-  margin-left: 8px;
+  font-size: 13px;
+  color: #666;
+  margin: 0 6px;
   user-select: none;
 }
-.commentInfo-reply {
+.commentInfo-reply-btn {
   font-size: 12px;
   cursor: pointer;
   user-select: none;
-  color: var(--white);
-  background: var(--themeBackground);
-  border-radius: 0.2rem;
-  padding: 3px 6px;
+  color: #666;
+  margin-left: 24px;
+  font-weight: 600;
+}
+.commentInfo-reply-btn:hover {
+  color: var(--themeBackground);
+}
+.commentInfo-delete-btn {
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  color: #999;
+  margin-left: 16px;
+  font-weight: 600;
+}
+.commentInfo-delete-btn:hover {
+  color: #f56c6c;
+}
+.commentInfo-like {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #999;
+  transition: all 0.3s;
+  user-select: none;
+}
+.commentInfo-like:hover {
+  color: #ff2442;
+}
+.commentInfo-like.liked {
+  color: #ff2442;
+}
+.commentInfo-like svg {
+  margin-right: 4px;
+}
+.commentInfo-like .like-count {
+  font-size: 13px;
 }
 .commentInfo-content {
-  margin: 15px 0 25px;
-  padding: 18px 20px;
-  background: var(--commentContent);
-  border-radius: 12px;
+  margin: 4px 0 10px;
+  padding: 0;
+  background: none !important;
+  border-radius: 0;
   color: var(--black);
   word-break: break-word;
+  line-height: 1.6;
 }
 .dark-mode .commentInfo-content {
-  background: #d4d4d4 !important;
-  color: black !important;
+  background: none !important;
 }
 .pagination-wrap {
   display: flex;
@@ -1616,5 +1837,20 @@ export default {
   color: var(--greyFont);
   font-size: 12px;
   margin-top: 10px;
+}
+.ai-reply-indicator {
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+  margin-bottom: 25px;
+  font-size: 12px;
+  color: #999;
+}
+.ai-reply-text {
+  margin-right: 4px;
+}
+.ai-reply-icon {
+  width: 14px;
+  height: 14px;
 }
 </style>

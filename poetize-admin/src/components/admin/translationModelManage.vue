@@ -137,24 +137,35 @@
             </el-form-item>
             <el-form-item label="自定义请求参数">
               <el-input v-model="apiConfig.llmThinkingExtraBodyText" type="textarea" :rows="3" placeholder='例如：{"include_reasoning":true}' class="textarea-field"></el-input>
-              <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。</div>
+              <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。根据实际需要填写，可不填。</div>
             </el-form-item>
             
-            <el-form-item id="field-translation-global-llm-key" label="API密钥" v-if="needsApiKey">
-              <el-input v-model="apiConfig.llmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field">
+            <el-form-item id="field-translation-global-llm-key" label="API密钥" v-if="needsApiKey || apiConfig.hasExistingLlmKey || apiConfig.clearExistingLlmKey">
+              <el-input v-model="apiConfig.llmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field" @input="cancelSecretClear('llm')">
                 <template slot="prefix">
                   <i class="el-icon-lock"></i>
                 </template>
               </el-input>
               <div class="form-tip">
                 <i class="el-icon-info"></i>
-                <template v-if="apiConfig.hasExistingLlmKey">
+                <template v-if="apiConfig.clearExistingLlmKey">
+                  保存后将清除已保存密钥。对于本地模型（如Ollama）可以不填写
+                </template>
+                <template v-else-if="apiConfig.hasExistingLlmKey">
                   已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥。对于本地模型（如Ollama）可以不填写
                 </template>
                 <template v-else>
                   API密钥将自动加密存储，确保您的数据安全。对于本地模型（如Ollama）可以不填写
                 </template>
-        </div>
+              </div>
+              <div v-if="apiConfig.hasExistingLlmKey || apiConfig.clearExistingLlmKey" class="secret-actions">
+                <el-button v-if="apiConfig.hasExistingLlmKey" type="text" size="mini" @click="markSecretForClear('llm')">
+                  清除已保存密钥
+                </el-button>
+                <el-button v-if="apiConfig.clearExistingLlmKey" type="text" size="mini" @click="cancelSecretClear('llm', true)">
+                  撤销清除
+                </el-button>
+              </div>
             </el-form-item>
             
             <el-form-item label="超时时间">
@@ -560,9 +571,10 @@
                 <el-input type="textarea" v-model="apiConfig.llmPrompt" :rows="3" placeholder="请输入翻译提示词，用于指导大模型如何进行翻译" class="textarea-field"></el-input>
                 <div class="form-tip">
                   <i class="el-icon-info"></i>
-                  系统已支持输入输出TOON/JSON格式, 具体格式由提示词指定, 后端会自动解析TOON/JSON; 提示词中可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（token更省），{json_data}JSON格式文章数据（简洁直观），{csv_data}CSV格式文章数据，{format}文本格式（单文本翻译使用）
+                  系统已支持输入输出TOON/JSON/CSV格式, 具体格式由提示词指定, 后端会自动解析TOON/JSON/CSV; 提示词中可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（token更省），{json_data}JSON格式文章数据（简洁直观），{csv_data}CSV格式文章数据，{format}文本格式（单文本翻译使用）
                   <a href="javascript:void(0)" @click="showPromptDialog('toon')" style="margin-left: 6px;">TOON格式提示词</a>
                   <a href="javascript:void(0)" @click="showPromptDialog('json')" style="margin-left: 6px;">JSON格式提示词</a>
+                  <a href="javascript:void(0)" @click="showPromptDialog('csv')" style="margin-left: 6px;">CSV格式提示词</a>
                 </div>
               </el-form-item>
             </template>
@@ -680,23 +692,34 @@
               </el-form-item>
               <el-form-item label="自定义请求参数">
                 <el-input v-model="apiConfig.translationLlmThinkingExtraBodyText" type="textarea" :rows="3" placeholder='例如：{"reasoning":{"enabled":true}}' class="textarea-field"></el-input>
-                <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。</div>
+                <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。根据实际需要填写，可不填。</div>
               </el-form-item>
               
               <el-form-item label="API密钥">
-                <el-input v-model="apiConfig.translationLlmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field">
+                <el-input v-model="apiConfig.translationLlmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field" @input="cancelSecretClear('translation')">
                   <template slot="prefix">
                     <i class="el-icon-lock"></i>
                   </template>
                 </el-input>
                 <div class="form-tip">
                   <i class="el-icon-info"></i>
-                  <template v-if="apiConfig.hasExistingTranslationLlmKey">
+                  <template v-if="apiConfig.clearExistingTranslationLlmKey">
+                    保存后将清除已保存密钥
+                  </template>
+                  <template v-else-if="apiConfig.hasExistingTranslationLlmKey">
                     已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
                   </template>
                   <template v-else>
                     API密钥将自动加密存储，确保您的数据安全
                   </template>
+                </div>
+                <div v-if="apiConfig.hasExistingTranslationLlmKey || apiConfig.clearExistingTranslationLlmKey" class="secret-actions">
+                  <el-button v-if="apiConfig.hasExistingTranslationLlmKey" type="text" size="mini" @click="markSecretForClear('translation')">
+                    清除已保存密钥
+                  </el-button>
+                  <el-button v-if="apiConfig.clearExistingTranslationLlmKey" type="text" size="mini" @click="cancelSecretClear('translation', true)">
+                    撤销清除
+                  </el-button>
                 </div>
               </el-form-item>
               
@@ -755,9 +778,10 @@
                 <el-input type="textarea" v-model="apiConfig.llmPrompt" :rows="3" placeholder="请输入翻译提示词，用于指导大模型如何进行翻译" class="textarea-field"></el-input>
                 <div class="form-tip">
                   <i class="el-icon-info"></i>
-                  系统已支持输入输出TOON/JSON格式, 具体格式由提示词指定, 后端会自动解析TOON/JSON; 提示词中可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（token更省），{json_data}JSON格式文章数据（简洁直观），{csv_data}CSV格式文章数据，{format}文本格式（单文本翻译使用）
+                  系统已支持输入输出TOON/JSON/CSV格式, 具体格式由提示词指定, 后端会自动解析TOON/JSON/CSV; 提示词中可使用占位符：{source_lang}源语言名称，{target_lang}目标语言名称，{toon_data}TOON格式文章数据（token更省），{json_data}JSON格式文章数据（简洁直观），{csv_data}CSV格式文章数据，{format}文本格式（单文本翻译使用）
                   <a href="javascript:void(0)" @click="showPromptDialog('toon')" style="margin-left: 6px;">TOON格式提示词</a>
                   <a href="javascript:void(0)" @click="showPromptDialog('json')" style="margin-left: 6px;">JSON格式提示词</a>
+                  <a href="javascript:void(0)" @click="showPromptDialog('csv')" style="margin-left: 6px;">CSV格式提示词</a>
                 </div>
               </el-form-item>
             </template>
@@ -789,7 +813,13 @@
           </div>
           <div class="section-content">
             <el-form-item id="field-translation-summary-mode" label="摘要生成方式">
-              <el-select v-model="apiConfig.summaryMode" placeholder="请选择摘要生成方式" style="width: 200px" class="mrb10">
+              <el-select v-model="apiConfig.summaryMode" placeholder="请选择摘要生成方式" style="width: 220px" class="mrb10">
+                <el-option key="disabled" label="不自动生成摘要" :value="'disabled'">
+                  <span class="option-content">
+                    <i class="el-icon-remove-outline"></i>
+                    不自动生成摘要
+                  </span>
+                </el-option>
                 <el-option key="global" label="使用全局AI模型" :value="'global'">
                   <span class="option-content">
                     <i class="el-icon-s-grid"></i>
@@ -802,28 +832,31 @@
                     使用独立AI模型
                   </span>
                 </el-option>
-                <el-option key="textrank" label="使用TextRank算法" :value="'textrank'">
+                <el-option key="textrank" label="本地摘录（非AI）" :value="'textrank'">
                   <span class="option-content">
                     <i class="el-icon-data-analysis"></i>
-                    使用TextRank算法
+                    本地摘录（非AI）
                   </span>
                 </el-option>
               </el-select>
               <div class="form-tip">
                 <i class="el-icon-info"></i>
-                <template v-if="apiConfig.summaryMode === 'global'">
+                <template v-if="apiConfig.summaryMode === 'disabled'">
+                  保存或更新文章时不自动生成摘要，未填写摘要时前端会使用文章开头作为展示兜底
+                </template>
+                <template v-else-if="apiConfig.summaryMode === 'global'">
                   将使用上方配置的全局AI模型生成摘要，效果好，需要API密钥
                 </template>
                 <template v-else-if="apiConfig.summaryMode === 'dedicated'">
                   为摘要功能配置独立的AI模型，可以使用不同的模型和密钥
                 </template>
                 <template v-else-if="apiConfig.summaryMode === 'textrank'">
-                  使用TextRank关键词提取算法生成摘要，无需API密钥，完全免费
+                  本地算法只抽取/拼接原文片段，不理解文章含义，适合作为摘录兜底，不建议当作正式摘要
                 </template>
               </div>
             </el-form-item>
             
-            <template v-if="apiConfig.summaryMode !== 'textrank'">
+            <template v-if="apiConfig.summaryMode === 'global' || apiConfig.summaryMode === 'dedicated'">
               
               <!-- 使用全局AI模型 -->
               <template v-if="apiConfig.summaryMode === 'global'">
@@ -949,23 +982,34 @@
                 </el-form-item>
                 <el-form-item label="自定义请求参数">
                   <el-input v-model="apiConfig.summaryLlmThinkingExtraBodyText" type="textarea" :rows="3" placeholder='例如：{"thinking_budget":1024}' class="textarea-field"></el-input>
-                  <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。</div>
+                  <div class="form-tip"><i class="el-icon-info"></i>JSON 对象。系统生成的平台参数会覆盖同名字段。根据实际需要填写，可不填。</div>
                 </el-form-item>
             
                 <el-form-item label="API密钥">
-                  <el-input v-model="apiConfig.summaryLlmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field">
+                  <el-input v-model="apiConfig.summaryLlmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field" @input="cancelSecretClear('summary')">
               <template slot="prefix">
                 <i class="el-icon-lock"></i>
               </template>
             </el-input>
               <div class="form-tip">
                 <i class="el-icon-info"></i>
-                    <template v-if="apiConfig.hasExistingSummaryLlmKey">
+                    <template v-if="apiConfig.clearExistingSummaryLlmKey">
+                      保存后将清除已保存密钥
+                </template>
+                    <template v-else-if="apiConfig.hasExistingSummaryLlmKey">
                       已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
                 </template>
                 <template v-else>
                       API密钥将自动加密存储，确保您的数据安全
                 </template>
+              </div>
+              <div v-if="apiConfig.hasExistingSummaryLlmKey || apiConfig.clearExistingSummaryLlmKey" class="secret-actions">
+                <el-button v-if="apiConfig.hasExistingSummaryLlmKey" type="text" size="mini" @click="markSecretForClear('summary')">
+                  清除已保存密钥
+                </el-button>
+                <el-button v-if="apiConfig.clearExistingSummaryLlmKey" type="text" size="mini" @click="cancelSecretClear('summary', true)">
+                  撤销清除
+                </el-button>
               </div>
           </el-form-item>
             
@@ -1067,18 +1111,19 @@
                 </el-input>
                 <div class="form-tip">
                   <i class="el-icon-info"></i>
-                  系统已支持输入输出TOON/JSON格式, 具体格式由提示词指定, 后端会自动解析; 可使用占位符：{style_desc}风格描述，{max_length}最大长度，{toon_example}TOON格式示例（token更省），{json_example}JSON格式示例（简洁直观），{csv_example}CSV格式示例，{source_content}源语言内容，{source_lang}源语言名称，{languages}目标语言列表。AI模式只传源语言内容，让AI翻译生成各语言摘要
+                  系统已支持输入输出TOON/JSON/CSV格式, 具体格式由提示词指定, 后端会自动解析; 可使用占位符：{style_desc}风格描述，{max_length}最大长度，{toon_example}TOON格式示例（token更省），{json_example}JSON格式示例（简洁直观），{csv_example}CSV格式示例，{source_content}源语言内容，{source_lang}源语言名称，{languages}目标语言列表。AI模式只传源语言内容，让AI翻译生成各语言摘要
                   <a href="javascript:void(0)" @click="showPromptDialog('toon', 'summary')" style="margin-left: 6px;">TOON格式提示词</a>
                   <a href="javascript:void(0)" @click="showPromptDialog('json', 'summary')" style="margin-left: 6px;">JSON格式提示词</a>
+                  <a href="javascript:void(0)" @click="showPromptDialog('csv', 'summary')" style="margin-left: 6px;">CSV格式提示词</a>
                 </div>
               </el-form-item>
             </template>
             
-            <!-- 测试摘要按钮（所有模式都显示） -->
-            <el-form-item label=" " style="margin-top: 20px;">
+            <!-- 测试摘要按钮 -->
+            <el-form-item v-if="apiConfig.summaryMode !== 'disabled'" label=" " style="margin-top: 20px;">
               <el-button type="success" @click="testSummary" class="action-btn success-btn" :loading="testSummaryLoading">
                 <i class="el-icon-link"></i>
-                测试摘要
+                {{ apiConfig.summaryMode === 'textrank' ? '测试本地摘录' : '测试摘要' }}
               </el-button>
             </el-form-item>
           </div>
@@ -1108,7 +1153,7 @@
           </el-tag>
           <el-tag size="small" type="success" effect="plain">
             <i class="el-icon-data-analysis"></i>
-            TOON格式优化 · token优化
+            格式优化 · token优化
           </el-tag>
         </div>
       </div>
@@ -1119,7 +1164,7 @@
             <el-tab-pane label="文章翻译（格式自动解析）" name="toon">
               <div class="toon-hint">
                 <i class="el-icon-info"></i>
-                标题和内容将使用TOON/JSON格式一次性翻译，TOON格式相比JSON方式节省少量的token消耗，可以自行选择
+                标题和内容将按提示词指定的TOON/JSON/CSV格式一次性翻译，系统会显示相对传统JSON的长度节省估算
               </div>
               
               <div class="input-section">
@@ -1162,7 +1207,7 @@
             </el-button>
           </div>
           
-          <!-- TOON格式翻译结果 -->
+          <!-- 文章结构化翻译结果 -->
           <template v-if="testTranslationForm.testType === 'toon' && (testTranslationForm.translatedTitle || testTranslationForm.translatedContent)">
             <div class="result-section">
               <label>翻译后的标题</label>
@@ -1175,13 +1220,21 @@
             </div>
             
             <div class="result-meta">
-              <el-tag size="small" type="primary" v-if="testTranslationForm.toonTokens">
+              <el-tag size="small" type="primary" v-if="testTranslationForm.inputFormat">
+                <i class="el-icon-document"></i>
+                输入: {{ getDataFormatLabel(testTranslationForm.inputFormat) }}
+              </el-tag>
+              <el-tag size="small" type="primary" v-if="testTranslationForm.responseFormat">
+                <i class="el-icon-finished"></i>
+                返回: {{ getDataFormatLabel(testTranslationForm.responseFormat) }}
+              </el-tag>
+              <el-tag size="small" type="info" v-if="testTranslationForm.formatTokens">
                 <i class="el-icon-s-data"></i>
-                消耗: {{ testTranslationForm.toonTokens }} tokens
+                格式长度: {{ testTranslationForm.formatTokens }} 字符
               </el-tag>
               <el-tag size="small" type="success" v-if="testTranslationForm.tokenSavedPercent">
                 <i class="el-icon-data-analysis"></i>
-                节省: {{ testTranslationForm.tokenSavedPercent }}%
+                较{{ testTranslationForm.tokenBaselineLabel || '传统JSON' }}估算节省: {{ testTranslationForm.tokenSavedPercent }}%
               </el-tag>
               <el-tag size="small" type="info" v-if="testTranslationForm.processingTime">
                 <i class="el-icon-time"></i>
@@ -1218,11 +1271,11 @@
     </el-dialog>
 
     <!-- 提示词模板对话框 -->
-    <el-dialog :visible.sync="promptDialogVisible" width="55%" custom-class="test-dialog" :title="(promptDialogFeature === 'summary' ? '摘要' : '翻译') + (promptDialogType === 'toon' ? ' TOON' : ' JSON') + '格式提示词'">
+    <el-dialog :visible.sync="promptDialogVisible" width="55%" custom-class="test-dialog" :title="promptDialogTitle">
       <div class="dialog-content">
         <div class="test-form">
           <div class="input-section">
-            <label>{{ promptDialogFeature === 'summary' ? '摘要' : '翻译' }} {{ promptDialogType === 'toon' ? 'TOON' : 'JSON' }} 格式提示词模板</label>
+            <label>{{ promptDialogFeature === 'summary' ? '摘要' : '翻译' }} {{ promptDialogFormatLabel }} 格式提示词模板</label>
             <el-input
               type="textarea"
               v-model="currentPromptTemplate"
@@ -1323,7 +1376,9 @@
                   testSummaryForm.method === 'ai-anthropic' ? 'Claude' :
                   testSummaryForm.method === 'ai-siliconflow' ? '硅基流动' :
                   testSummaryForm.method === 'ai-custom' ? '自定义AI' :
-                  testSummaryForm.method === 'textrank' ? 'TextRank' : 
+                  testSummaryForm.method === 'llm' ? 'AI模型' :
+                  testSummaryForm.method === 'textrank' ? '本地摘录' :
+                  testSummaryForm.method === 'local-excerpt' ? '本地摘录' :
                   testSummaryForm.method 
                 }}
               </el-tag>
@@ -1350,10 +1405,10 @@
       </div>
     </el-dialog>
     
-    <!-- TextRank摘要测试对话框 -->
+    <!-- 本地摘录测试对话框 -->
     <el-dialog :visible.sync="testTextrankDialogVisible" width="75%" custom-class="test-dialog">
       <div slot="title" class="dialog-title-custom">
-        <span class="title-text">测试摘要 - TextRank</span>
+        <span class="title-text">测试本地摘录</span>
         <div style="display: flex; gap: 8px; align-items: center;">
           <el-tag size="small" type="warning" effect="plain">
             <i class="el-icon-cpu"></i>
@@ -1399,7 +1454,7 @@
           
           <div class="input-tips" style="margin-top: 10px;">
             <el-tag size="mini" type="warning">提示</el-tag>
-            <span>建议每种语言至少输入500字符以获得更好的摘要效果</span>
+            <span>本地算法只抽取/拼接原文片段，不理解上下文，建议仅作为展示摘录兜底</span>
           </div>
           
           <div class="test-section">
@@ -1409,12 +1464,12 @@
               :loading="testTextrankLoading" 
               class="test-btn">
               <i class="el-icon-magic-stick"></i>
-              {{ testTextrankLoading ? '生成中...' : '生成摘要' }}
+              {{ testTextrankLoading ? '生成中...' : '生成摘录' }}
             </el-button>
           </div>
           
           <div class="result-section" v-if="testTextrankForm.summaries">
-            <label>生成的多语言摘要</label>
+            <label>生成的多语言摘录</label>
             <div v-for="(summary, langCode) in testTextrankForm.summaries" :key="langCode" style="margin-bottom: 15px;">
               <div style="margin-bottom: 5px;">
                 <el-tag size="small" type="primary">
@@ -1440,7 +1495,7 @@
               </el-tag>
               <el-tag size="small" type="success">
                 <i class="el-icon-data-analysis"></i>
-                方法: TextRank算法
+                方法: 本地摘录
               </el-tag>
               <el-tag size="small" type="primary">
                 <i class="el-icon-files"></i>
@@ -1517,6 +1572,7 @@ export default {
         hasExistingSecondarySecret: false,
         hasExistingSessionToken: false,
         hasExistingLlmKey: false,
+        clearExistingLlmKey: false,
         // 翻译独立AI配置
         translationLlmType: 'openai',
         translationLlmModel: 'gpt-4o-mini',
@@ -1533,8 +1589,9 @@ export default {
         translationLlmThinkingProfile: 'auto',
         translationLlmThinkingExtraBodyText: '',
         hasExistingTranslationLlmKey: false,
+        clearExistingTranslationLlmKey: false,
         // 智能摘要配置
-        summaryMode: 'global',  // 'global' 使用全局AI | 'dedicated' 使用独立AI | 'textrank' 使用TextRank算法
+        summaryMode: 'disabled',  // 'disabled' 不自动生成 | 'global' 使用全局AI | 'dedicated' 使用独立AI | 'textrank' 本地摘录
         summaryStyle: 'concise',
         summaryMaxLength: 150,
         summaryPrompt: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 保持TOON格式结构不变（2个空格缩进）\n5. 只返回TOON格式数据，不添加任何解释或markdown代码块标记\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请返回TOON格式的摘要，格式如下：\n{toon_example}',
@@ -1553,7 +1610,8 @@ export default {
         summaryLlmReasoningEffort: '',
         summaryLlmThinkingProfile: 'auto',
         summaryLlmThinkingExtraBodyText: '',
-        hasExistingSummaryLlmKey: false
+        hasExistingSummaryLlmKey: false,
+        clearExistingSummaryLlmKey: false
       },
       apiProviderGroups: [
         {
@@ -1590,7 +1648,7 @@ export default {
       savedSummaryLlmConfig: null,
       testTranslationDialogVisible: false,
       testTranslationForm: {
-        testType: 'toon',  // 'toon' 或 'single'
+        testType: 'toon',  // 'toon'(文章结构化) 或 'single'
         sourceText: '# 人工智能简介\n\n人工智能（AI）正在改变我们的生活方式。从智能助手到自动驾驶，AI技术无处不在。\n\n## 深度学习\n\n深度学习是AI的核心技术之一，它通过神经网络模拟人脑的学习过程。',
         title: '人工智能的未来发展',
         content: '# 人工智能简介\n\n人工智能（AI）正在改变我们的生活方式。从智能助手到自动驾驶，AI技术无处不在。\n\n## 深度学习\n\n深度学习是AI的核心技术之一，它通过神经网络模拟人脑的学习过程。',
@@ -1598,6 +1656,10 @@ export default {
         translatedTitle: '',
         translatedContent: '',
         toonTokens: null,
+        formatTokens: null,
+        inputFormat: '',
+        responseFormat: '',
+        tokenBaselineLabel: '',
         tokenSavedPercent: null,
         processingTime: null,
         detectedLang: null,
@@ -1610,8 +1672,10 @@ export default {
       promptDialogFeature: 'translate',
       toonPromptTemplate: '将以下TOON格式数据从{source_lang}翻译为{target_lang}。\n\n规则：\n1. 保持TOON格式结构不变（2个空格缩进）\n2. 翻译title和content的值\n3. 保持Markdown格式\n4. 只返回TOON格式数据，不添加任何解释\n\n输入TOON数据：\n{toon_data}\n\n请返回翻译后的TOON数据，格式如下：\narticle:\n  title: (翻译后的{target_lang}标题)\n  content: (翻译后的{target_lang}内容)',
       jsonPromptTemplate: '将以下JSON格式数据从{source_lang}翻译为{target_lang}。\n\n规则：\n1. 翻译title和content的值\n2. 保持Markdown格式\n3. 只返回JSON格式数据，不添加任何解释或markdown代码块标记\n\n输入JSON数据：\n{json_data}\n\n请返回翻译后的JSON数据：\n{"title":"翻译后的{target_lang}标题","content":"翻译后的{target_lang}内容"}',
+      csvPromptTemplate: '将以下CSV格式数据从{source_lang}翻译为{target_lang}。\n\n规则：\n1. 保持CSV结构和表头title,content不变\n2. 翻译title和content字段的值\n3. 字段值必须使用双引号包裹，字段内双引号用两个双引号转义\n4. 保持Markdown格式\n5. 只返回CSV数据，不添加解释或markdown代码块标记\n\n输入CSV数据：\n{csv_data}\n\n请返回翻译后的CSV数据：\ntitle,content\n"翻译后的{target_lang}标题","翻译后的{target_lang}内容"',
       summaryToonPromptTemplate: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 保持TOON格式结构不变（2个空格缩进）\n5. 只返回TOON格式数据，不添加任何解释或markdown代码块标记\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请返回TOON格式的摘要，格式如下：\n{toon_example}',
       summaryJsonPromptTemplate: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：\n{json_example}',
+      summaryCsvPromptTemplate: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 返回CSV格式，表头固定为lang,summary\n5. 字段值必须使用双引号包裹，字段内双引号用两个双引号转义\n6. 只返回CSV数据，不添加解释或markdown代码块标记\n7. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回CSV格式的摘要：\n{csv_example}',
       testSummaryLoading: false,
       testSummaryDialogVisible: false,
       testTextrankDialogVisible: false,
@@ -1681,9 +1745,17 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     },
     currentPromptTemplate() {
       if (this.promptDialogFeature === 'summary') {
+        if (this.promptDialogType === 'csv') return this.summaryCsvPromptTemplate;
         return this.promptDialogType === 'toon' ? this.summaryToonPromptTemplate : this.summaryJsonPromptTemplate;
       }
+      if (this.promptDialogType === 'csv') return this.csvPromptTemplate;
       return this.promptDialogType === 'toon' ? this.toonPromptTemplate : this.jsonPromptTemplate;
+    },
+    promptDialogFormatLabel() {
+      return this.getDataFormatLabel(this.promptDialogType);
+    },
+    promptDialogTitle() {
+      return `${this.promptDialogFeature === 'summary' ? '摘要' : '翻译'} ${this.promptDialogFormatLabel}格式提示词`;
     },
 
   },
@@ -1986,6 +2058,53 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       }
     },
 
+    getSecretFieldMeta(secretType) {
+      const metaMap = {
+        llm: {
+          input: 'llmApiKey',
+          existing: 'hasExistingLlmKey',
+          clear: 'clearExistingLlmKey'
+        },
+        translation: {
+          input: 'translationLlmApiKey',
+          existing: 'hasExistingTranslationLlmKey',
+          clear: 'clearExistingTranslationLlmKey'
+        },
+        summary: {
+          input: 'summaryLlmApiKey',
+          existing: 'hasExistingSummaryLlmKey',
+          clear: 'clearExistingSummaryLlmKey'
+        }
+      };
+      return metaMap[secretType];
+    },
+
+    markSecretForClear(secretType) {
+      const meta = this.getSecretFieldMeta(secretType);
+      if (!meta) return;
+
+      this.apiConfig[meta.input] = '';
+      this.apiConfig[meta.existing] = false;
+      this.apiConfig[meta.clear] = true;
+      this.$message.info('保存配置后将清除已保存密钥');
+    },
+
+    cancelSecretClear(secretType, restoreExisting = false) {
+      const meta = this.getSecretFieldMeta(secretType);
+      if (!meta || !this.apiConfig[meta.clear]) return;
+
+      this.apiConfig[meta.clear] = false;
+      if (restoreExisting && !this.apiConfig[meta.input]) {
+        this.apiConfig[meta.existing] = true;
+      }
+    },
+
+    resetSecretClearFlags() {
+      this.apiConfig.clearExistingLlmKey = false;
+      this.apiConfig.clearExistingTranslationLlmKey = false;
+      this.apiConfig.clearExistingSummaryLlmKey = false;
+    },
+
     buildApiProviderConfig() {
       const provider = this.apiConfig.provider;
       if (provider === 'baidu') {
@@ -2206,6 +2325,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     async getApiConfig() {
       try {
         this.loading = true;
+        this.resetSecretClearFlags();
         
         // 先检查是否有文章（决定是否允许修改源语言）
         await this.checkArticlesExist();
@@ -2420,10 +2540,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
               ? JSON.parse(res.data.summaryConfig) 
               : res.data.summaryConfig;
             
-            this.apiConfig.summaryMode = summaryConfig.summaryMode || 'global';
+            this.apiConfig.summaryMode = summaryConfig.summaryMode || 'disabled';
             this.apiConfig.summaryStyle = summaryConfig.style || 'concise';
             this.apiConfig.summaryMaxLength = summaryConfig.max_length || 150;
-            this.apiConfig.summaryPrompt = summaryConfig.prompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：';
+            this.apiConfig.summaryPrompt = summaryConfig.prompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：\n{json_example}';
             
             // 处理独立AI配置
             if (summaryConfig.dedicated_llm) {
@@ -2501,10 +2621,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             }
           } else {
             // 如果没有摘要配置，使用默认值
-            this.apiConfig.summaryMode = 'global';
+            this.apiConfig.summaryMode = 'disabled';
             this.apiConfig.summaryStyle = 'concise';
             this.apiConfig.summaryMaxLength = 150;
-            this.apiConfig.summaryPrompt = '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：';
+            this.apiConfig.summaryPrompt = '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：\n{json_example}';
           }
           
           // 自动填充空的API地址
@@ -2567,8 +2687,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         if (this.apiConfig.llmReasoningEffort) {
           llmConfigObj.reasoning_effort = this.apiConfig.llmReasoningEffort;
         }
-        // 只有输入了新密钥才发送
-        if (this.apiConfig.llmApiKey && this.apiConfig.llmApiKey.trim() !== '') {
+        // 留空代表保留旧密钥；点击“清除已保存密钥”才发送空值清除。
+        if (this.apiConfig.clearExistingLlmKey) {
+          llmConfigObj.api_key = '';
+        } else if (this.apiConfig.llmApiKey && this.apiConfig.llmApiKey.trim() !== '') {
           llmConfigObj.api_key = this.apiConfig.llmApiKey;
         }
         // 序列化为JSON字符串
@@ -2614,8 +2736,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           if (this.apiConfig.translationLlmReasoningEffort) {
             translationLlmConfigObj.reasoning_effort = this.apiConfig.translationLlmReasoningEffort;
           }
-          // 只有输入了新密钥才发送
-          if (this.apiConfig.translationLlmApiKey && this.apiConfig.translationLlmApiKey.trim() !== '') {
+          // 留空代表保留旧密钥；点击“清除已保存密钥”才发送空值清除。
+          if (this.apiConfig.clearExistingTranslationLlmKey) {
+            translationLlmConfigObj.api_key = '';
+          } else if (this.apiConfig.translationLlmApiKey && this.apiConfig.translationLlmApiKey.trim() !== '') {
             translationLlmConfigObj.api_key = this.apiConfig.translationLlmApiKey;
           }
           // 序列化为JSON字符串
@@ -2628,10 +2752,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         
         // 添加摘要配置（始终保存）
         const summaryConfigObj = {
-          summaryMode: this.apiConfig.summaryMode || 'global',  // 'global' | 'dedicated' | 'textrank'
+          summaryMode: this.apiConfig.summaryMode || 'disabled',  // 'disabled' | 'global' | 'dedicated' | 'textrank'
           style: this.apiConfig.summaryStyle || 'concise',
           max_length: this.apiConfig.summaryMaxLength || 150,
-          prompt: this.apiConfig.summaryPrompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：'
+          prompt: this.apiConfig.summaryPrompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：\n{json_example}'
         };
         
         // 如果启用了独立AI模式，保存独立AI配置
@@ -2655,8 +2779,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           if (this.apiConfig.summaryLlmReasoningEffort) {
             dedicatedLlmObj.reasoning_effort = this.apiConfig.summaryLlmReasoningEffort;
           }
-          // 只有输入了新密钥才发送
-          if (this.apiConfig.summaryLlmApiKey && this.apiConfig.summaryLlmApiKey.trim() !== '') {
+          // 留空代表保留旧密钥；点击“清除已保存密钥”才发送空值清除。
+          if (this.apiConfig.clearExistingSummaryLlmKey) {
+            dedicatedLlmObj.api_key = '';
+          } else if (this.apiConfig.summaryLlmApiKey && this.apiConfig.summaryLlmApiKey.trim() !== '') {
             dedicatedLlmObj.api_key = this.apiConfig.summaryLlmApiKey;
           }
           summaryConfigObj.dedicated_llm = dedicatedLlmObj;
@@ -2783,6 +2909,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         translatedTitle: '',
         translatedContent: '',
         toonTokens: null,
+        formatTokens: null,
+        inputFormat: '',
+        responseFormat: '',
+        tokenBaselineLabel: '',
         tokenSavedPercent: null,
         processingTime: null,
         detectedLang: null,
@@ -2839,6 +2969,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       this.testTranslationForm.translatedTitle = '';
       this.testTranslationForm.translatedContent = '';
       this.testTranslationForm.toonTokens = null;
+      this.testTranslationForm.formatTokens = null;
+      this.testTranslationForm.inputFormat = '';
+      this.testTranslationForm.responseFormat = '';
+      this.testTranslationForm.tokenBaselineLabel = '';
       this.testTranslationForm.tokenSavedPercent = null;
       this.testTranslationForm.error = null;
       
@@ -2870,7 +3004,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       };
       
       if (isToonTest) {
-        // TOON格式测试：发送标题和内容
+        // 文章结构化测试：发送标题和内容
         requestData.title = this.testTranslationForm.title;
         requestData.content = this.testTranslationForm.content;
       } else {
@@ -2884,16 +3018,22 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       if (response.code === 200 && response.data) {
         this.testTranslationForm.processingTime = (Date.now() - startTime) / 1000;
         
-        if (response.data.is_toon) {
+        if (response.data.is_toon || response.data.is_article) {
           this.testTranslationForm.translatedTitle = response.data.translated_title || '';
           this.testTranslationForm.translatedContent = response.data.translated_content || '';
-          this.testTranslationForm.toonTokens = response.data.toon_tokens;
+          this.testTranslationForm.formatTokens = response.data.format_tokens || response.data.toon_tokens;
+          this.testTranslationForm.toonTokens = this.testTranslationForm.formatTokens;
+          this.testTranslationForm.inputFormat = response.data.input_format || '';
+          this.testTranslationForm.responseFormat = response.data.response_format || '';
+          this.testTranslationForm.tokenBaselineLabel = response.data.token_baseline_label || '传统JSON';
           this.testTranslationForm.tokenSavedPercent = response.data.token_saved_percent;
           
           if (response.data.translated_title || response.data.translated_content) {
+            const formatLabel = this.getDataFormatLabel(response.data.input_format || response.data.response_format || 'article');
+            const baselineLabel = response.data.token_baseline_label || '传统JSON';
             const tokenMsg = response.data.token_saved_percent ?
-              `，节省 ${response.data.token_saved_percent}% token` : '';
-            this.$message.success(`TOON翻译成功${tokenMsg} (引擎: ${response.data.engine})`);
+              `，较${baselineLabel}估算节省 ${response.data.token_saved_percent}%` : '';
+            this.$message.success(`${formatLabel}翻译成功${tokenMsg} (引擎: ${response.data.engine})`);
           } else {
             this.$message.warning('翻译完成但未能解析标题和内容，请检查翻译提示词');
             this.testTranslationForm.error = 'LLM 返回了无法解析的响应，请尝试调整翻译提示词或检查API配置';
@@ -2922,6 +3062,16 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       this.promptDialogType = type;
       this.promptDialogFeature = feature || 'translate';
       this.promptDialogVisible = true;
+    },
+    getDataFormatLabel(format) {
+      const normalized = (format || '').toLowerCase();
+      if (normalized === 'toon') return 'TOON';
+      if (normalized === 'json') return 'JSON';
+      if (normalized === 'csv') return 'CSV';
+      if (normalized === 'plain') return '纯文本';
+      if (normalized === 'key_value') return '键值';
+      if (normalized === 'article') return '文章';
+      return '结构化';
     },
     formatTime(timeString) {
       if (!timeString) return '';
@@ -2971,44 +3121,47 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     // 使用统一的后台管理语言映射工具（中文）
     getLanguageName: getAdminLanguageName,
     testSummary() {
+      if (this.apiConfig.summaryMode === 'disabled') {
+        this.$message.info('自动摘要已关闭，无需测试');
+        return;
+      }
+
       // 验证配置完整性（仅对AI模式）
-      if (this.apiConfig.summaryMode !== 'textrank') {
-        if (this.apiConfig.summaryMode === 'global') {
-          // 使用全局AI模型时，验证全局AI配置
-          if (!this.apiConfig.llmModel) {
-            this.$message.warning('请先配置全局AI模型名称');
-            return;
-          }
-          // 对于有默认URL的类型，如果URL为空则自动填充
-          if (!this.apiConfig.llmUrl || this.apiConfig.llmUrl.trim() === '') {
-            this.onLlmTypeChange(this.apiConfig.llmType);
-          }
-          // 再次检查URL（Azure和Custom需要手动配置）
-          if (!this.apiConfig.llmUrl || this.apiConfig.llmUrl.trim() === '') {
-            this.$message.warning('请先配置全局AI的API接口地址');
-            return;
-          }
-        } else if (this.apiConfig.summaryMode === 'dedicated') {
-          // 使用独立AI模型时，验证独立AI配置
-          if (!this.apiConfig.summaryLlmModel) {
-            this.$message.warning('请先配置摘要独立AI模型名称');
-            return;
-          }
-          // 对于有默认URL的类型，如果URL为空则自动填充
-          if (!this.apiConfig.summaryLlmUrl || this.apiConfig.summaryLlmUrl.trim() === '') {
-            this.onSummaryLlmTypeChange(this.apiConfig.summaryLlmType);
-          }
-          // 再次检查URL（Azure和Custom需要手动配置）
-          if (!this.apiConfig.summaryLlmUrl || this.apiConfig.summaryLlmUrl.trim() === '') {
-            this.$message.warning('请先配置摘要独立AI的API接口地址');
-            return;
-          }
+      if (this.apiConfig.summaryMode === 'global') {
+        // 使用全局AI模型时，验证全局AI配置
+        if (!this.apiConfig.llmModel) {
+          this.$message.warning('请先配置全局AI模型名称');
+          return;
+        }
+        // 对于有默认URL的类型，如果URL为空则自动填充
+        if (!this.apiConfig.llmUrl || this.apiConfig.llmUrl.trim() === '') {
+          this.onLlmTypeChange(this.apiConfig.llmType);
+        }
+        // 再次检查URL（Azure和Custom需要手动配置）
+        if (!this.apiConfig.llmUrl || this.apiConfig.llmUrl.trim() === '') {
+          this.$message.warning('请先配置全局AI的API接口地址');
+          return;
+        }
+      } else if (this.apiConfig.summaryMode === 'dedicated') {
+        // 使用独立AI模型时，验证独立AI配置
+        if (!this.apiConfig.summaryLlmModel) {
+          this.$message.warning('请先配置摘要独立AI模型名称');
+          return;
+        }
+        // 对于有默认URL的类型，如果URL为空则自动填充
+        if (!this.apiConfig.summaryLlmUrl || this.apiConfig.summaryLlmUrl.trim() === '') {
+          this.onSummaryLlmTypeChange(this.apiConfig.summaryLlmType);
+        }
+        // 再次检查URL（Azure和Custom需要手动配置）
+        if (!this.apiConfig.summaryLlmUrl || this.apiConfig.summaryLlmUrl.trim() === '') {
+          this.$message.warning('请先配置摘要独立AI的API接口地址');
+          return;
         }
       }
       
       // 根据摘要模式选择不同的测试对话框
       if (this.apiConfig.summaryMode === 'textrank') {
-        // TextRank模式：打开专用对话框
+        // 本地摘录模式：打开专用对话框
         this.testTextrankForm.summaries = null;
         this.testTextrankForm.processingTime = null;
         this.testTextrankForm.error = null;
@@ -3130,7 +3283,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       this.testSummaryForm.error = null;
     },
     
-    // TextRank测试方法
+    // 本地摘录测试方法
     async doTestTextrank() {
       if (!this.testTextrankForm.sourceContent.trim() && !this.testTextrankForm.targetContent.trim()) {
         this.$message.warning('请至少输入一种语言的内容');
@@ -3158,7 +3311,8 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           article_id: 0,
           languages: languages,
           max_length: this.apiConfig.summaryMaxLength,
-          style: this.apiConfig.summaryStyle
+          style: this.apiConfig.summaryStyle,
+          config: this.buildTempConfig()
         };
         
         const startTime = Date.now();
@@ -3172,10 +3326,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.testTextrankForm.processingTime = result.processing_time;
             
             const langCount = Object.keys(result.summaries).length;
-            this.$message.success(`摘要生成成功！生成了${langCount}种语言的摘要`);
+            this.$message.success(`摘录生成成功！生成了${langCount}种语言的摘录`);
           } else {
-            this.testTextrankForm.error = result.error_message || '摘要生成失败';
-            this.$message.error('摘要生成失败：' + this.testTextrankForm.error);
+            this.testTextrankForm.error = result.error_message || '摘录生成失败';
+            this.$message.error('摘录生成失败：' + this.testTextrankForm.error);
           }
         } else {
           this.testTextrankForm.error = res?.message || '网络错误';
@@ -3505,8 +3659,8 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       
       // 添加摘要配置
       config.summary = {
-        summaryMode: this.apiConfig.summaryMode || 'global',  // 'global' | 'dedicated' | 'textrank'
-        ai_enabled: this.apiConfig.summaryMode !== 'textrank',
+        summaryMode: this.apiConfig.summaryMode || 'disabled',  // 'disabled' | 'global' | 'dedicated' | 'textrank'
+        ai_enabled: this.apiConfig.summaryMode === 'global' || this.apiConfig.summaryMode === 'dedicated',
         style: this.apiConfig.summaryStyle || 'concise',
         max_length: this.apiConfig.summaryMaxLength || 150,
         prompt: this.apiConfig.summaryPrompt || '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 保持TOON格式结构不变（2个空格缩进）\n5. 只返回TOON格式数据，不添加任何解释或markdown代码块标记\n\n文章内容：\n\n{source_content}\n\n请返回TOON格式的摘要，格式如下：\n{toon_example}'
@@ -3667,6 +3821,13 @@ Vue.js features reactive data binding and a component-based architecture, enabli
   padding: 8px 12px;
   background: #F5F7FA;
   border-radius: 4px;
+}
+
+.secret-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 .custom-model-tip {
@@ -4374,7 +4535,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
   }
 }
 
-/* TextRank测试对话框语言信息样式已移除（已移至标题区域） */
+/* 本地摘录测试对话框语言信息样式已移除（已移至标题区域） */
 
 .dual-input-section {
   display: grid;

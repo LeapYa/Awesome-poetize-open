@@ -17,7 +17,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -163,7 +163,7 @@ public class ImageDimensionWarmupRunner implements ApplicationRunner {
 
     private InputStream openImageStream(String path) throws Exception {
         if (path.startsWith("http://") || path.startsWith("https://")) {
-            HttpURLConnection conn = (HttpURLConnection) new URL(path).openConnection();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(path).toURL().openConnection();
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
             conn.setRequestProperty("User-Agent", "Poetize-ImageWarmup/1.0");

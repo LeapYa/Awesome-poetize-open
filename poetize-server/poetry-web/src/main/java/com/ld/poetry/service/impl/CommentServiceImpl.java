@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapp
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
@@ -14,12 +16,15 @@ import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.dao.CommentMapper;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.Comment;
+import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.enums.CodeMsg;
 import com.ld.poetry.enums.CommentTypeEnum;
+import com.ld.poetry.event.CommentPublishedEvent;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.CommentService;
 import com.ld.poetry.service.LocationService;
+import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.utils.*;
 import com.ld.poetry.utils.mail.MailSendUtil;
@@ -27,6 +32,7 @@ import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.CommentVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -72,6 +78,14 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Autowired
     private com.ld.poetry.plugin.PluginHookManager pluginHookManager;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    private SysAiConfigService sysAiConfigService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public PoetryResult saveComment(CommentVO commentVO) {
@@ -143,7 +157,66 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         // 清理评论相关缓存
         cacheService.evictCommentRelatedCache(commentVO.getSource(), commentVO.getType());
 
+        eventPublisher.publishEvent(new CommentPublishedEvent(
+                comment.getId(),
+                comment.getSource(),
+                comment.getType(),
+                comment.getUserId(),
+                comment.getParentCommentId(),
+                comment.getParentUserId(),
+                comment.getFloorCommentId(),
+                comment.getCommentContent(),
+                comment.getCommentInfo()));
+
         return PoetryResult.success();
+    }
+
+    @Override
+    public PoetryResult<Comment> saveAiReplyComment(CommentVO commentVO) {
+        if (CommentTypeEnum.getEnumByCode(commentVO.getType()) == null) {
+            return PoetryResult.fail("评论来源类型不存在！");
+        }
+
+        if (CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode().equals(commentVO.getType())) {
+            LambdaQueryChainWrapper<Article> articleWrapper = new LambdaQueryChainWrapper<>(articleMapper);
+            Article one = articleWrapper.eq(Article::getId, commentVO.getSource())
+                    .select(Article::getId, Article::getCommentStatus)
+                    .one();
+            if (one == null) {
+                return PoetryResult.fail("文章不存在");
+            }
+            if (!one.getCommentStatus()) {
+                return PoetryResult.fail("评论功能已关闭！");
+            }
+        }
+
+        String filteredCommentContent = XssFilterUtil.clean(commentVO.getCommentContent());
+        if (!StringUtils.hasText(filteredCommentContent)) {
+            return PoetryResult.fail("AI回复内容不能为空或包含不安全内容！");
+        }
+
+        Comment comment = new Comment();
+        comment.setSource(commentVO.getSource());
+        comment.setType(commentVO.getType());
+        comment.setCommentContent(filteredCommentContent);
+        comment.setParentCommentId(commentVO.getParentCommentId());
+        comment.setFloorCommentId(calculateFloorCommentId(commentVO.getParentCommentId(), commentVO.getFloorCommentId()));
+        comment.setParentUserId(commentVO.getParentUserId());
+
+        User adminUser = PoetryUtil.getAdminUser();
+        comment.setUserId(adminUser != null && adminUser.getId() != null
+                ? adminUser.getId()
+                : CommonConst.ADMIN_USER_ID);
+        if (StringUtils.hasText(commentVO.getCommentInfo())) {
+            comment.setCommentInfo(commentVO.getCommentInfo());
+        } else {
+            comment.setCommentInfo("{\"aiReply\":true}");
+        }
+
+        save(comment);
+        cacheService.evictCommentRelatedCache(commentVO.getSource(), commentVO.getType());
+
+        return PoetryResult.success(comment);
     }
 
     /**
@@ -195,21 +268,70 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Override
     public PoetryResult deleteComment(Integer id) {
-        Integer userId = PoetryUtil.getUserId();
+        return doDeleteComment(id);
+    }
 
-        // 获取评论信息用于清理缓存
+    @Override
+    public PoetryResult deleteCommentById(Integer id) {
+        return doDeleteComment(id);
+    }
+
+    /**
+     * 删除评论核心逻辑：
+     * - 顶级评论（楼层）：级联删除所有后代
+     * - 子评论：只删除自身，将其子评论重新挂到当前评论的父评论上
+     */
+    private PoetryResult doDeleteComment(Integer id) {
         Comment comment = getById(id);
-
-        lambdaUpdate().eq(Comment::getId, id)
-                .eq(Comment::getUserId, userId)
-                .remove();
-
-        // 清理评论相关缓存
-        if (comment != null) {
-            cacheService.evictCommentRelatedCache(comment.getSource(), comment.getType());
+        if (comment == null) {
+            return PoetryResult.success();
         }
 
+        boolean isFloorComment = comment.getParentCommentId() == null
+                || comment.getParentCommentId().equals(CommonConst.FIRST_COMMENT);
+
+        if (isFloorComment) {
+            List<Integer> idsToDelete = collectDescendantIds(id);
+            removeByIds(idsToDelete);
+        } else {
+            // 将当前评论的子评论重新挂到其父评论上
+            List<Comment> children = lambdaQuery()
+                    .select(Comment::getId)
+                    .eq(Comment::getParentCommentId, id)
+                    .list();
+
+            if (!children.isEmpty()) {
+                List<Integer> childIds = children.stream().map(Comment::getId).toList();
+                lambdaUpdate()
+                        .set(Comment::getParentCommentId, comment.getParentCommentId())
+                        .in(Comment::getId, childIds)
+                        .update();
+            }
+
+            removeById(id);
+        }
+
+        cacheService.evictCommentRelatedCache(comment.getSource(), comment.getType());
         return PoetryResult.success();
+    }
+
+    /**
+     * 深度优先递归收集评论及其所有后代ID（仅用于楼层评论级联删除）
+     */
+    private List<Integer> collectDescendantIds(Integer commentId) {
+        List<Integer> ids = new ArrayList<>();
+        ids.add(commentId);
+
+        List<Comment> children = lambdaQuery()
+                .select(Comment::getId)
+                .eq(Comment::getParentCommentId, commentId)
+                .list();
+
+        for (Comment child : children) {
+            ids.addAll(collectDescendantIds(child.getId()));
+        }
+
+        return ids;
     }
 
     @Override
@@ -375,6 +497,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                 String randomParentName = PoetryUtil.getRandomName(commentVO.getParentUserId().toString());
                 commentVO.setParentUsername(randomParentName);
             }
+            commentVO.setParentUsername(resolveParentDisplayUsername(c.getParentCommentId(), commentVO.getParentUsername()));
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -387,6 +510,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             }
         }
 
+        applyCommentDisplay(commentVO);
         return commentVO;
     }
 
@@ -545,9 +669,69 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             if (!StringUtils.hasText(commentVO.getParentUsername())) {
                 commentVO.setParentUsername(PoetryUtil.getRandomName(comment.getParentUserId().toString()));
             }
+            commentVO.setParentUsername(resolveParentDisplayUsername(comment.getParentCommentId(), commentVO.getParentUsername()));
         }
 
+        applyCommentDisplay(commentVO);
         return commentVO;
+    }
+
+    private void applyCommentDisplay(CommentVO commentVO) {
+        boolean aiReply = isAiReplyComment(commentVO.getCommentInfo());
+        commentVO.setAiReply(aiReply);
+
+        if (aiReply) {
+            SysAiConfig config = sysAiConfigService.getAiChatConfigInternal("default");
+            String botName = config != null && StringUtils.hasText(config.getChatName())
+                    ? config.getChatName()
+                    : "AI助手";
+            String botAvatar = config != null && StringUtils.hasText(config.getChatAvatar())
+                    ? config.getChatAvatar()
+                    : "";
+            commentVO.setDisplayUsername(botName);
+            commentVO.setDisplayAvatar(botAvatar);
+            commentVO.setUsername(botName);
+            commentVO.setAvatar(botAvatar);
+            commentVO.setLocation(null);
+            return;
+        }
+
+        commentVO.setDisplayUsername(commentVO.getUsername());
+        commentVO.setDisplayAvatar(commentVO.getAvatar());
+    }
+
+    private String resolveParentDisplayUsername(Integer parentCommentId, String fallback) {
+        if (parentCommentId == null || parentCommentId.equals(CommonConst.FIRST_COMMENT)) {
+            return fallback;
+        }
+        try {
+            Comment parent = lambdaQuery()
+                    .select(Comment::getCommentInfo)
+                    .eq(Comment::getId, parentCommentId)
+                    .one();
+            if (parent != null && isAiReplyComment(parent.getCommentInfo())) {
+                SysAiConfig config = sysAiConfigService.getAiChatConfigInternal("default");
+                return config != null && StringUtils.hasText(config.getChatName())
+                        ? config.getChatName()
+                        : "AI助手";
+            }
+        } catch (Exception e) {
+            log.debug("解析父评论展示名失败: parentCommentId={}", parentCommentId, e);
+        }
+        return fallback;
+    }
+
+    private boolean isAiReplyComment(String commentInfo) {
+        if (!StringUtils.hasText(commentInfo)) {
+            return false;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(commentInfo);
+            return node.path("aiReply").asBoolean(false) || node.path("ai_reply").asBoolean(false);
+        } catch (Exception ignored) {
+            String normalized = commentInfo.replaceAll("\\s+", "");
+            return normalized.contains("\"aiReply\":true") || normalized.contains("\"ai_reply\":true");
+        }
     }
 
     /**
@@ -754,5 +938,22 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         }
 
         return commentVO;
+    }
+
+    @Override
+    public PoetryResult<Integer> likeComment(Integer id, Boolean isLike) {
+        if (isLike) {
+            lambdaUpdate()
+                    .setSql("like_count = like_count + 1")
+                    .eq(Comment::getId, id)
+                    .update();
+        } else {
+            lambdaUpdate()
+                    .setSql("like_count = IF(like_count > 0, like_count - 1, 0)")
+                    .eq(Comment::getId, id)
+                    .update();
+        }
+        Comment updated = getById(id);
+        return PoetryResult.success(updated != null ? updated.getLikeCount() : 0);
     }
 }

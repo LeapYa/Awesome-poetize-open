@@ -6,6 +6,7 @@ import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SummaryService;
 import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.utils.RetryUtil;
 import com.ld.poetry.utils.ToonFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +47,9 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 @Service
 public class LlmTranslationService {
+
+    private static final int SUMMARY_LENGTH_REPAIR_ATTEMPTS = 2;
+    private static final double SUMMARY_TARGET_MIN_RATIO = 0.85;
 
     @Autowired
     private DynamicChatClientFactory chatClientFactory;
@@ -173,11 +178,11 @@ public class LlmTranslationService {
                     %s
                     """, getLanguageName(sourceLang), getLanguageName(targetLang), text);
 
-            String response = ChatClient.create(chatModel)
+            String response = RetryUtil.executeWithRetry(() -> ChatClient.create(chatModel)
                     .prompt()
                     .user(prompt)
                     .call()
-                    .content();
+                    .content(), 3, 1000, "LLM文本翻译");
 
             if (response != null && !response.isBlank() && !response.equals(text)) {
                 log.info("LLM 文本翻译成功: {} -> {}", sourceLang, targetLang);
@@ -246,28 +251,32 @@ public class LlmTranslationService {
                         """, maxLength, content);
             }
 
-            String response = executeSummaryWithTimeout(config, () -> ChatClient.create(chatModel)
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content());
+            String response = RetryUtil.executeWithRetry(() -> {
+                try {
+                    return executeSummaryWithTimeout(config, () -> ChatClient.create(chatModel)
+                            .prompt()
+                            .user(prompt)
+                            .call()
+                            .content());
+                } catch (TimeoutException e) {
+                    throw new RuntimeException(e);
+                }
+            }, 3, 1000, "AI摘要生成");
 
             if (response != null && !response.isBlank()) {
-                String summary = response.trim();
-                // 截取到目标长度
-                if (summary.length() > maxLength) {
-                    summary = summary.substring(0, maxLength) + "...";
-                }
+                String summary = ensureSummaryLength(chatModel, config, content, "原文相同语言", response, maxLength);
                 log.info("AI 摘要生成成功，长度: {}", summary.length());
                 return summary;
             }
 
             return null;
 
-        } catch (TimeoutException e) {
-            log.error("AI 摘要生成超时: {}", e.getMessage(), e);
-            throw new RuntimeException(e);
         } catch (Exception e) {
+            Throwable cause = e.getCause() instanceof TimeoutException te ? te : null;
+            if (cause != null) {
+                log.error("AI 摘要生成超时: {}", cause.getMessage(), cause);
+                throw new RuntimeException(cause);
+            }
             log.error("AI 摘要生成失败: {}", e.getMessage(), e);
             return null;
         }
@@ -326,9 +335,12 @@ public class LlmTranslationService {
             String toonExample = ToonFormatter.encode(toonData);
             String jsonExample = com.alibaba.fastjson.JSON.toJSONString(
                     exampleSummaries, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
-            StringBuilder csvBuilder = new StringBuilder();
+            StringBuilder csvBuilder = new StringBuilder("lang,summary\n");
             for (Map.Entry<String, Object> e : exampleSummaries.entrySet()) {
-                csvBuilder.append(e.getKey()).append(",").append(e.getValue()).append("\n");
+                csvBuilder.append(csvEscape(e.getKey()))
+                        .append(",")
+                        .append(csvEscape(String.valueOf(e.getValue())))
+                        .append("\n");
             }
             String csvExample = csvBuilder.toString().trim();
 
@@ -372,21 +384,29 @@ public class LlmTranslationService {
                         maxLength, sourceContent, toonExample);
             }
 
-            String response = executeSummaryWithTimeout(config,
-                    () -> streamSummaryAttempt(chatModel, prompt, resolveSummaryTimeoutSeconds(config), progressListener));
+            String response = RetryUtil.executeWithRetry(() -> {
+                try {
+                    return executeSummaryWithTimeout(config,
+                            () -> streamSummaryAttempt(chatModel, prompt, resolveSummaryTimeoutSeconds(config), progressListener));
+                } catch (TimeoutException e) {
+                    throw new RuntimeException(e);
+                }
+            }, 3, 1000, "多语言摘要生成");
 
             if (response == null || response.isBlank()) {
                 log.warn("多语言摘要 LLM 返回空结果");
                 return null;
             }
 
-            // 解析响应（先尝试 TOON，再 JSON 兜底）
-            return parseMultiLangSummaryResponse(response, languageContents, maxLength);
+            Map<String, String> summaries = parseMultiLangSummaryResponse(response, languageContents, maxLength);
+            return ensureMultiLangSummaryLengths(chatModel, config, sourceContent, languageContents, summaries, maxLength);
 
-        } catch (TimeoutException e) {
-            log.error("多语言摘要生成超时, 文章ID={}: {}", articleId, e.getMessage(), e);
-            throw e;
         } catch (Exception e) {
+            Throwable cause = e.getCause() instanceof TimeoutException te ? te : null;
+            if (cause != null) {
+                log.error("多语言摘要生成超时, 文章ID={}: {}", articleId, cause.getMessage(), cause);
+                throw (TimeoutException) cause;
+            }
             log.error("多语言摘要生成失败, 文章ID={}: {}", articleId, e.getMessage(), e);
             return null;
         }
@@ -470,6 +490,7 @@ public class LlmTranslationService {
             tempConfig.setModel(json.getString("model"));
             tempConfig.setApiBase(json.getString("api_url"));
             tempConfig.setApiKey(json.getString("api_key"));
+            tempConfig.setHttpReadTimeoutSeconds(readPositiveTimeout(json, "timeout"));
             tempConfig.setMaxTokens(json.getInteger("max_tokens"));
             tempConfig.setTopP(json.getBigDecimal("top_p"));
             tempConfig.setFrequencyPenalty(json.getBigDecimal("frequency_penalty"));
@@ -595,6 +616,9 @@ public class LlmTranslationService {
 
             rawBuffer.append(text);
             StreamingTranslationView currentView = parseStreamingTranslationView(rawBuffer.toString());
+            if (currentView.title().isEmpty() && currentView.content().isEmpty()) {
+                emitTranslationRawProgress(text, rawBuffer.length(), progressListener);
+            }
 
             emitTranslationDelta("title_delta", previousView[0].title(), currentView.title(), progressListener);
             emitTranslationDelta("content_delta", previousView[0].content(), currentView.content(), progressListener);
@@ -602,7 +626,18 @@ public class LlmTranslationService {
             previousView[0] = currentView;
         }).blockLast();
 
-        StreamingTranslationView finalView = parseStreamingTranslationView(rawBuffer.toString());
+        String rawResponse = rawBuffer.toString();
+        StreamingTranslationView finalView = parseStreamingTranslationView(rawResponse);
+        if (!finalView.titleClosed() || !finalView.contentClosed()) {
+            Map<String, String> parsed = parseArticleTranslationResponse(rawResponse, title, content, targetLang);
+            if (parsed != null) {
+                return new StreamingTranslationState(
+                        parsed.getOrDefault("title", ""),
+                        parsed.getOrDefault("content", ""),
+                        true,
+                        true);
+            }
+        }
         return new StreamingTranslationState(
                 finalView.title().trim(),
                 finalView.content().trim(),
@@ -756,6 +791,17 @@ public class LlmTranslationService {
         payload.put("delta", delta);
         payload.put("currentLength", current.length());
         progressListener.onEvent(eventName, payload);
+    }
+
+    private void emitTranslationRawProgress(String delta, int currentLength,
+            TranslationService.TranslationProgressListener progressListener) {
+        if (progressListener == null || delta == null || delta.isEmpty()) {
+            return;
+        }
+        progressListener.onEvent("translation_delta", Map.of(
+                "delta", delta,
+                "currentLength", currentLength,
+                "message", "正在接收AI翻译响应... 已接收 " + currentLength + " 字"));
     }
 
     private Map<String, String> validateStreamingTranslationState(StreamingTranslationState state,
@@ -921,9 +967,9 @@ public class LlmTranslationService {
             Map<String, Object> toonDataMap = new LinkedHashMap<>();
             toonDataMap.put("article", articleData);
             String toonData = ToonFormatter.encode(toonDataMap);
-            String jsonData = JSON.toJSONString(toonDataMap);
-            String csvData = String.format("title,content\n\"%s\",\"%s\"", title.replace("\"", "\"\""),
-                    content.replace("\"", "\"\""));
+            String jsonData = JSON.toJSONString(articleData);
+            String csvData = buildArticleCsv(title, content);
+            String inputFormat = inferPromptDataFormat(customPrompt, "toon");
 
             // 使用自定义提示词，替换变量
             return customPrompt
@@ -934,7 +980,7 @@ public class LlmTranslationService {
                     .replace("{toon_data}", toonData)
                     .replace("{json_data}", jsonData)
                     .replace("{csv_data}", csvData)
-                    .replace("{format}", "TOON格式");
+                    .replace("{format}", getFormatLabel(inputFormat));
         }
 
         // 默认提示词
@@ -966,6 +1012,50 @@ public class LlmTranslationService {
                 getLanguageName(targetLang), getLanguageName(targetLang));
     }
 
+    private String inferPromptDataFormat(String prompt, String defaultFormat) {
+        if (prompt == null || prompt.isBlank()) {
+            return defaultFormat;
+        }
+        if (prompt.contains("{csv_data}")) {
+            return "csv";
+        }
+        if (prompt.contains("{json_data}")) {
+            return "json";
+        }
+        if (prompt.contains("{toon_data}")) {
+            return "toon";
+        }
+        String lower = prompt.toLowerCase();
+        if (lower.contains("csv")) {
+            return "csv";
+        }
+        if (lower.contains("json")) {
+            return "json";
+        }
+        if (lower.contains("toon")) {
+            return "toon";
+        }
+        return defaultFormat;
+    }
+
+    private String getFormatLabel(String format) {
+        return switch (format) {
+            case "csv" -> "CSV格式";
+            case "json" -> "JSON格式";
+            case "toon" -> "TOON格式";
+            default -> "自定义格式";
+        };
+    }
+
+    private String buildArticleCsv(String title, String content) {
+        return "title,content\n" + csvEscape(title) + "," + csvEscape(content);
+    }
+
+    private String csvEscape(String value) {
+        String safe = value == null ? "" : value;
+        return "\"" + safe.replace("\"", "\"\"") + "\"";
+    }
+
     private record StreamingTranslationView(String title, String content, boolean titleClosed, boolean contentClosed) {
     }
 
@@ -982,8 +1072,8 @@ public class LlmTranslationService {
             String jsonStr = extractJson(response);
             if (jsonStr != null) {
                 JSONObject json = JSON.parseObject(jsonStr);
-                String translatedTitle = json.getString("translated_title");
-                String translatedContent = json.getString("translated_content");
+                String translatedTitle = firstJsonString(json, "translated_title", "title");
+                String translatedContent = firstJsonString(json, "translated_content", "content");
 
                 if (translatedTitle != null && !translatedTitle.isBlank()
                         && translatedContent != null && !translatedContent.isBlank()
@@ -997,6 +1087,11 @@ public class LlmTranslationService {
                     log.info("LLM 文章翻译解析成功");
                     return result;
                 }
+            }
+
+            Map<String, String> csvResult = parseCsvArticleTranslation(response, originalTitle, originalContent, targetLang);
+            if (csvResult != null) {
+                return csvResult;
             }
 
             // JSON 解析失败，尝试分段提取
@@ -1024,6 +1119,241 @@ public class LlmTranslationService {
             log.error("解析翻译响应失败: {}", e.getMessage(), e);
             return null;
         }
+    }
+
+    private String firstJsonString(JSONObject json, String... keys) {
+        for (String key : keys) {
+            String value = json.getString(key);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, String> parseCsvArticleTranslation(
+            String response, String originalTitle, String originalContent, String targetLang) {
+        List<List<String>> rows = parseCsvRows(stripCodeFence(response));
+        if (rows.isEmpty()) {
+            return null;
+        }
+
+        int titleIndex = 0;
+        int contentIndex = 1;
+        int valueRowIndex = 0;
+        List<String> firstRow = rows.get(0);
+        for (int i = 0; i < firstRow.size(); i++) {
+            String header = firstRow.get(i).trim().toLowerCase();
+            if ("title".equals(header)) {
+                titleIndex = i;
+                valueRowIndex = rows.size() > 1 ? 1 : 0;
+            } else if ("content".equals(header)) {
+                contentIndex = i;
+                valueRowIndex = rows.size() > 1 ? 1 : 0;
+            }
+        }
+
+        if (rows.size() <= valueRowIndex) {
+            return null;
+        }
+        List<String> values = rows.get(valueRowIndex);
+        if (values.size() <= Math.max(titleIndex, contentIndex)) {
+            return null;
+        }
+
+        String translatedTitle = values.get(titleIndex).trim();
+        String translatedContent = values.get(contentIndex).trim();
+        if (translatedTitle.isBlank() || translatedContent.isBlank()
+                || translatedTitle.equals(originalTitle) || translatedContent.equals(originalContent)) {
+            return null;
+        }
+
+        Map<String, String> result = new HashMap<>();
+        result.put("title", translatedTitle);
+        result.put("content", translatedContent);
+        result.put("language", targetLang);
+        log.info("LLM CSV 文章翻译解析成功");
+        return result;
+    }
+
+    private String stripCodeFence(String text) {
+        if (text == null) {
+            return "";
+        }
+        String cleaned = text.trim();
+        if (cleaned.startsWith("```")) {
+            int firstNewline = cleaned.indexOf('\n');
+            if (firstNewline >= 0) {
+                cleaned = cleaned.substring(firstNewline + 1);
+            }
+            int fenceEnd = cleaned.lastIndexOf("```");
+            if (fenceEnd >= 0) {
+                cleaned = cleaned.substring(0, fenceEnd);
+            }
+        }
+        return cleaned.trim();
+    }
+
+    private List<List<String>> parseCsvRows(String csv) {
+        List<List<String>> rows = new ArrayList<>();
+        List<String> row = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean quoted = false;
+
+        for (int i = 0; i < csv.length(); i++) {
+            char ch = csv.charAt(i);
+            if (ch == '"') {
+                if (quoted && i + 1 < csv.length() && csv.charAt(i + 1) == '"') {
+                    field.append('"');
+                    i++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (ch == ',' && !quoted) {
+                row.add(field.toString());
+                field.setLength(0);
+            } else if ((ch == '\n' || ch == '\r') && !quoted) {
+                if (ch == '\r' && i + 1 < csv.length() && csv.charAt(i + 1) == '\n') {
+                    i++;
+                }
+                row.add(field.toString());
+                field.setLength(0);
+                if (hasTextCell(row)) {
+                    rows.add(row);
+                }
+                row = new ArrayList<>();
+            } else {
+                field.append(ch);
+            }
+        }
+
+        row.add(field.toString());
+        if (hasTextCell(row)) {
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    private boolean hasTextCell(List<String> row) {
+        return row.stream().anyMatch(value -> value != null && !value.isBlank());
+    }
+
+    private Map<String, String> ensureMultiLangSummaryLengths(ChatModel chatModel, SysAiConfig config,
+            String sourceContent, Map<String, Map<String, String>> languageContents,
+            Map<String, String> summaries, int maxLength) {
+        if (summaries == null || summaries.isEmpty()) {
+            return summaries;
+        }
+
+        Map<String, String> adjusted = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : summaries.entrySet()) {
+            String langCode = entry.getKey();
+            String langName = getLanguageName(langCode);
+            String referenceContent = sourceContent;
+            Map<String, String> langContent = languageContents.get(langCode);
+            if (langContent != null && langContent.get("content") != null && !langContent.get("content").isBlank()) {
+                referenceContent = langContent.get("content");
+            }
+            adjusted.put(langCode, ensureSummaryLength(
+                    chatModel, config, referenceContent, langName, entry.getValue(), maxLength));
+        }
+        return adjusted;
+    }
+
+    private String ensureSummaryLength(ChatModel chatModel, SysAiConfig config, String sourceContent,
+            String languageName, String summary, int maxLength) {
+        String current = clampSummaryLength(stripCodeFence(summary), maxLength);
+        if (!shouldExpandSummary(current, sourceContent, maxLength)) {
+            return current;
+        }
+
+        for (int attempt = 1; attempt <= SUMMARY_LENGTH_REPAIR_ATTEMPTS; attempt++) {
+            int minLength = targetSummaryMinLength(maxLength);
+            String repairPrompt = String.format("""
+                    你正在修正一段已经生成好的摘要长度。
+
+                    服务器实测当前摘要长度为 %d 字，目标长度为 %d-%d 字。
+                    请在不编造事实、不改变原语种（%s）的前提下，把摘要扩写到目标长度区间。
+                    保留摘要文体，不要添加标题、列表、解释、Markdown代码块或额外说明。
+
+                    原文：
+                    %s
+
+                    当前摘要：
+                    %s
+
+                    请只返回修正后的摘要正文：
+                    """, current.length(), minLength, maxLength, languageName,
+                    abbreviateForRepair(sourceContent), current);
+
+            try {
+                String repaired = RetryUtil.executeWithRetry(() -> {
+                    try {
+                        return executeSummaryWithTimeout(config, () -> ChatClient.create(chatModel)
+                                .prompt()
+                                .user(repairPrompt)
+                                .call()
+                                .content());
+                    } catch (TimeoutException e) {
+                        throw new RuntimeException(e);
+                    }
+                }, 2, 500, "摘要长度修正");
+
+                if (repaired != null && !repaired.isBlank()) {
+                    String normalized = clampSummaryLength(stripCodeFence(repaired), maxLength);
+                    if (normalized.length() > current.length()) {
+                        current = normalized;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("摘要长度修正失败，保留当前摘要: {}", e.getMessage());
+                break;
+            }
+
+            if (!shouldExpandSummary(current, sourceContent, maxLength)) {
+                break;
+            }
+        }
+        return current;
+    }
+
+    private boolean shouldExpandSummary(String summary, String sourceContent, int maxLength) {
+        if (summary == null || maxLength <= 0) {
+            return false;
+        }
+        int minLength = targetSummaryMinLength(maxLength);
+        if (sourceContent != null && sourceContent.length() <= minLength) {
+            return false;
+        }
+        return summary.length() < minLength;
+    }
+
+    private int targetSummaryMinLength(int maxLength) {
+        if (maxLength <= 0) {
+            return 0;
+        }
+        double ratio = maxLength < 120 ? 0.75 : SUMMARY_TARGET_MIN_RATIO;
+        return Math.max(1, (int) Math.ceil(maxLength * ratio));
+    }
+
+    private String clampSummaryLength(String summary, int maxLength) {
+        String normalized = summary == null ? "" : summary.trim();
+        if (maxLength > 0 && normalized.length() > maxLength) {
+            return normalized.substring(0, maxLength).trim();
+        }
+        return normalized;
+    }
+
+    private String abbreviateForRepair(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.trim();
+        int maxRepairSourceLength = 8000;
+        if (normalized.length() <= maxRepairSourceLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxRepairSourceLength);
     }
 
     /**
@@ -1079,7 +1409,14 @@ public class LlmTranslationService {
             log.debug("JSON 解析也失败: {}", e.getMessage());
         }
 
-        // 3. 键值对 & CSV / TSV 兜底（针对缩进丢失、逗号/制表符/冒号分割的纯文本）
+        // 3. CSV 兜底（用户可能自定义了 CSV 格式的 prompt）
+        Map<String, String> csvStructuredResult = extractCsvSummaries(response, languageContents, maxLength);
+        if (csvStructuredResult != null) {
+            log.info("CSV 摘要解析成功，包含 {} 个语言", csvStructuredResult.size());
+            return csvStructuredResult;
+        }
+
+        // 4. 键值对 & TSV 兜底（针对缩进丢失、制表符/冒号分割的纯文本）
         try {
             Map<String, String> csvResult = new LinkedHashMap<>();
             String[] lines = response.split("\n");
@@ -1103,10 +1440,7 @@ public class LlmTranslationService {
                     String lang = parts[0].replace("\"", "").replace("'", "").trim();
                     String summary = parts[1].replaceAll("^[\"']|[\"']$", "").trim();
                     if (languageContents.containsKey(lang) && !summary.isBlank()) {
-                        if (summary.length() > maxLength) {
-                            summary = summary.substring(0, maxLength) + "...";
-                        }
-                        csvResult.put(lang, summary.trim());
+                        csvResult.put(lang, clampSummaryLength(summary, maxLength));
                     }
                 }
             }
@@ -1120,6 +1454,43 @@ public class LlmTranslationService {
 
         log.warn("多语言摘要解析失败（TOON、JSON 和 CSV 均无法解析）");
         return null;
+    }
+
+    private Map<String, String> extractCsvSummaries(
+            String response, Map<String, Map<String, String>> languageContents, int maxLength) {
+        List<List<String>> rows = parseCsvRows(stripCodeFence(response));
+        if (rows.isEmpty()) {
+            return null;
+        }
+
+        int langIndex = 0;
+        int summaryIndex = 1;
+        int valueStart = 0;
+        List<String> firstRow = rows.get(0);
+        for (int i = 0; i < firstRow.size(); i++) {
+            String header = firstRow.get(i).trim().toLowerCase();
+            if ("lang".equals(header) || "language".equals(header)) {
+                langIndex = i;
+                valueStart = 1;
+            } else if ("summary".equals(header) || "summaries".equals(header)) {
+                summaryIndex = i;
+                valueStart = 1;
+            }
+        }
+
+        Map<String, String> result = new LinkedHashMap<>();
+        for (int i = valueStart; i < rows.size(); i++) {
+            List<String> row = rows.get(i);
+            if (row.size() <= Math.max(langIndex, summaryIndex)) {
+                continue;
+            }
+            String langCode = row.get(langIndex).replace("\"", "").replace("'", "").trim();
+            String summary = row.get(summaryIndex).trim();
+            if (languageContents.containsKey(langCode) && !summary.isBlank()) {
+                result.put(langCode, clampSummaryLength(summary, maxLength));
+            }
+        }
+        return result.isEmpty() ? null : result;
     }
 
     /**
@@ -1161,10 +1532,7 @@ public class LlmTranslationService {
             Object value = entry.getValue();
             if (value instanceof String summary && languageContents.containsKey(langCode)
                     && !summary.isBlank()) {
-                if (summary.length() > maxLength) {
-                    summary = summary.substring(0, maxLength) + "...";
-                }
-                result.put(langCode, summary.trim());
+                result.put(langCode, clampSummaryLength(summary, maxLength));
             }
         }
         return result.isEmpty() ? null : result;

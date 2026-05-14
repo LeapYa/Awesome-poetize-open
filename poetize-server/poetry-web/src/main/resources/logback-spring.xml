@@ -9,6 +9,8 @@
 
     <!-- 日志目录 -->
     <springProperty scope="context" name="logback.rootDir" source="logback.rootDir" defaultValue="/home/poetize/logs"/>
+    <springProperty scope="context" name="consoleLogCharset" source="logging.charset.console"
+                    defaultValue="${stdout.encoding:-${native.encoding:-UTF-8}}"/>
 
 
     <!-- info日志单文件大小限制 -->
@@ -43,9 +45,10 @@
 
     <!-- 控制台输出 -->
     <appender name="consoleLog" class="ch.qos.logback.core.ConsoleAppender">
-        <layout class="ch.qos.logback.classic.PatternLayout">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>${CONSOLE_LOG_PATTERN}</pattern>
-        </layout>
+            <charset>${consoleLogCharset}</charset>
+        </encoder>
     </appender>
 
     <!-- info日志得设定 -->

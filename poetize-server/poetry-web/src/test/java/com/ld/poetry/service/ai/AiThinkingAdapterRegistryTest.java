@@ -22,7 +22,7 @@ class AiThinkingAdapterRegistryTest {
         AiThinkingAdapterRegistry.ThinkingRequest request = registry.resolve(config);
 
         assertEquals(AiThinkingAdapterRegistry.PROFILE_DEEPSEEK_OFFICIAL, request.profile());
-        assertEquals("max", request.reasoningEffort());
+        assertEquals("xhigh", request.reasoningEffort());
         assertEquals(Map.of("type", "enabled"), request.extraBody().get("thinking"));
         assertTrue(request.visibleReasoningLikely());
     }
@@ -93,7 +93,7 @@ class AiThinkingAdapterRegistryTest {
         AiThinkingAdapterRegistry.ThinkingRequest request = registry.resolve(config);
 
         assertEquals(AiThinkingAdapterRegistry.PROFILE_GENERIC_OPENAI_COMPATIBLE, request.profile());
-        assertNull(request.reasoningEffort());
+        assertEquals("medium", request.reasoningEffort());
         assertEquals(true, request.extraBody().get("include_reasoning"));
         assertTrue(request.visibleReasoningLikely());
     }

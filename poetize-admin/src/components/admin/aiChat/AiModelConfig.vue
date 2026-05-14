@@ -132,6 +132,18 @@
         <small class="help-text">单次回复的最大长度</small>
       </el-form-item>
 
+      <el-form-item id="field-ai-max-input-tokens" label="最大输入令牌">
+        <el-input
+          v-model="modelConfig.maxInputTokens"
+          inputmode="numeric"
+          placeholder="131072 (128K)"
+          @input="onMaxInputTokensInput"
+          @blur="normalizeMaxInputTokens">
+          <template slot="append">tokens</template>
+        </el-input>
+        <small class="help-text">模型输入上下文窗口大小，不填默认128K（131072）。如 DeepSeek V4 Pro 支持 1M</small>
+      </el-form-item>
+
       <el-form-item label="Top P">
         <el-slider 
           v-model="modelConfig.topP" 
@@ -203,6 +215,7 @@ export default {
         baseUrl: '',
         temperature: 0.7,
         maxTokens: 1000,
+        maxInputTokens: 131072,
         topP: 1.0,
         frequencyPenalty: 0,
         presencePenalty: 0,
@@ -344,6 +357,18 @@ export default {
         return fallback;
       }
       return Math.min(Math.max(parsed, min), max);
+    },
+
+    onMaxInputTokensInput(value) {
+      const normalized = String(value == null ? '' : value).replace(/[^\d]/g, '');
+      if (value !== normalized) {
+        this.modelConfig.maxInputTokens = normalized;
+      }
+    },
+
+    normalizeMaxInputTokens() {
+      // 范围：4096 ~ 1048576 (4K ~ 1M)，默认 131072 (128K)
+      this.modelConfig.maxInputTokens = this.toIntegerInRange(this.modelConfig.maxInputTokens, 131072, 4096, 1048576);
     },
 
     onProviderChange() {

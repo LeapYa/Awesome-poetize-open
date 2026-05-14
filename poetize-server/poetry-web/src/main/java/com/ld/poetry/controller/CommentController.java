@@ -7,11 +7,13 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.enums.CodeMsg;
+import com.ld.poetry.entity.Comment;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.CaptchaService;
 import com.ld.poetry.service.CommentService;
 import com.ld.poetry.service.LocationService;
 import com.ld.poetry.utils.CommonQuery;
+import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.StringUtil;
 import com.ld.poetry.utils.XssFilterUtil;
 import com.ld.poetry.vo.BaseRequestVO;
@@ -168,5 +170,28 @@ public class CommentController {
     public PoetryResult<String> clearLocationCache() {
         locationService.clearLocationCache();
         return PoetryResult.success("IP地理位置缓存已清理");
+    }
+
+    /**
+     * 点赞评论
+     */
+    @PostMapping("/likeComment")
+    public PoetryResult<Integer> likeComment(@RequestParam("id") Integer id, @RequestParam("isLike") Boolean isLike) {
+        String clientIp = PoetryUtil.getCurrentClientIp();
+        String rateLimitKey = "comment_like_rate:" + clientIp;
+        long count = cacheService.incr(rateLimitKey, 1);
+        if (count == 1) {
+            cacheService.expire(rateLimitKey, 60);
+        }
+        if (count > 30) {
+            return PoetryResult.fail("操作过于频繁，请稍后再试");
+        }
+
+        Comment comment = commentService.getById(id);
+        if (comment == null) {
+            return PoetryResult.fail("评论不存在");
+        }
+
+        return commentService.likeComment(id, isLike);
     }
 }

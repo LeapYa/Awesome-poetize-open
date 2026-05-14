@@ -61,4 +61,7 @@ public class CommentVO {
     private String parentUsername;
     private String username;
     private String avatar;
+    private Boolean aiReply;
+    private String displayUsername;
+    private String displayAvatar;
 }

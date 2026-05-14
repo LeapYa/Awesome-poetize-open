@@ -48,18 +48,16 @@ public class AdminCommentController {
         if (one == null || (PoetryUtil.getUserId().intValue() != one.getUserId().intValue())) {
             return PoetryResult.fail("权限不足！");
         }
-        commentService.removeById(id);
-        return PoetryResult.success();
+        return commentService.deleteCommentById(id);
     }
 
     /**
-     * Boss删除评论
+     * Boss删除评论（级联删除子评论）
      */
     @GetMapping("/comment/boss/deleteComment")
     @LoginCheck(1)
     public PoetryResult bossDeleteComment(@RequestParam("id") Integer id) {
-        commentService.removeById(id);
-        return PoetryResult.success();
+        return commentService.deleteCommentById(id);
     }
 
     /**

@@ -1773,11 +1773,22 @@
           return;
         }
 
+        if (eventName === 'translation_delta') {
+          var translationLength = payload.currentLength || 0;
+          task.stage = 'translating';
+          task.translationText = 'AI翻译响应已接收 ' + translationLength + ' 字';
+          task.message = payload.message || ('正在接收AI翻译响应... 已接收 ' + translationLength + ' 字');
+          task.statusLabel = '翻译中';
+          task.statusColor = '#409EFF';
+          this.applyImportTaskVisualState(task);
+          return;
+        }
+
         if (eventName === 'summary_delta') {
           var summaryLength = payload.currentLength || 0;
           task.stage = 'generating_summary';
-          task.summaryText = 'AI摘要已接收 ' + summaryLength + ' 字';
-          task.message = payload.message || ('正在流式生成AI摘要... 已接收 ' + summaryLength + ' 字');
+          task.summaryText = '摘要已接收 ' + summaryLength + ' 字';
+          task.message = payload.message || ('正在流式生成摘要... 已接收 ' + summaryLength + ' 字');
           task.statusLabel = '摘要中';
           task.statusColor = '#409EFF';
           this.applyImportTaskVisualState(task);
@@ -1786,7 +1797,7 @@
 
         if (eventName === 'summary_start') {
           task.stage = 'generating_summary';
-          task.message = payload.message || '开始流式生成AI摘要...';
+          task.message = payload.message || '开始流式生成摘要...';
           task.statusLabel = '摘要中';
           task.statusColor = '#409EFF';
           this.applyImportTaskVisualState(task);
@@ -1824,7 +1835,7 @@
         }
 
         if (taskStatus.summaryReceivedChars) {
-          task.summaryText = 'AI摘要已接收 ' + taskStatus.summaryReceivedChars + ' 字';
+          task.summaryText = '摘要已接收 ' + taskStatus.summaryReceivedChars + ' 字';
         }
 
         this.applyImportTaskVisualState(task, taskStatus);
@@ -2017,7 +2028,7 @@
           return !localTask || !localTask.finalized;
         }.bind(this)); // 浅拷贝，还未完成的任务列表
         var pollInterval = 2000; // 轮询间隔 2 秒
-        // 动态超时：基础10分钟 + 每篇文章额外30秒（AI摘要生成可能受限流影响）
+        // 动态超时：基础10分钟 + 每篇文章额外30秒（摘要生成可能受限流影响）
         var baseTimeout = 10 * 60 * 1000;
         var perArticleTimeout = 30 * 1000;
         var maxPollTime = Math.max(baseTimeout, tasks.length * perArticleTimeout);
@@ -2033,7 +2044,7 @@
               this.importProgress.current++;
               this.importProgress.failDetails.push({
                 title: pendingTasks[t].title,
-                error: '任务超时（超过' + maxPollMinutes + '分钟未完成，可能是AI摘要生成限流）'
+                error: '任务超时（超过' + maxPollMinutes + '分钟未完成，可能是摘要生成限流）'
               });
             }
             break;

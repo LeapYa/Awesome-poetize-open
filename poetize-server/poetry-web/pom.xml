@@ -400,7 +400,7 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
-                    <jvmArguments>-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005 --enable-preview</jvmArguments>
+                    <jvmArguments>--enable-preview</jvmArguments>
                     <skip>false</skip>
                 </configuration>
                 <executions>
@@ -461,4 +461,3 @@
         </plugins>
     </build>
 </project>
-

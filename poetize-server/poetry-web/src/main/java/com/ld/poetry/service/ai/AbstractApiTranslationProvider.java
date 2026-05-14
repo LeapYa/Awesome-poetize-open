@@ -3,6 +3,8 @@ package com.ld.poetry.service.ai;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.service.TranslationService;
+import com.ld.poetry.utils.RetryUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -48,11 +50,35 @@ public abstract class AbstractApiTranslationProvider implements ApiTranslationPr
 
     @Override
     public String translate(String text, String sourceLang, String targetLang, JSONObject config) {
+        return translate(text, sourceLang, targetLang, config, null);
+    }
+
+    @Override
+    public String translate(String text, String sourceLang, String targetLang, JSONObject config,
+            TranslationService.TranslationProgressListener progressListener) {
         if (!StringUtils.hasText(text)) {
             return text;
         }
         try {
-            String translated = doTranslate(text, sourceLang, targetLang, config == null ? new JSONObject() : config);
+            String translated = RetryUtil.executeWithRetry(() -> {
+                try {
+                    return doTranslate(text, sourceLang, targetLang, config == null ? new JSONObject() : config);
+                } catch (Exception e) {
+                    if (e instanceof RuntimeException re) {
+                        throw re;
+                    }
+                    throw new RuntimeException(e);
+                }
+            }, 3, 1000, displayName() + "翻译", (attempt, maxAttempts, throwable) -> {
+                if (progressListener != null) {
+                    Map<String, Object> payload = new java.util.HashMap<>();
+                    payload.put("attempt", attempt);
+                    payload.put("maxAttempts", maxAttempts);
+                    payload.put("message", displayName() + "翻译第" + attempt + "次失败，正在重试(" + attempt + "/" + maxAttempts + ")...");
+                    payload.put("retryable", attempt < maxAttempts);
+                    progressListener.onEvent("retry", payload);
+                }
+            });
             return StringUtils.hasText(translated) ? translated.trim() : null;
         } catch (RestClientResponseException e) {
             log.error("{} API 错误: status={}, body={}",

@@ -14,6 +14,7 @@
         <result column="model" property="model"/>
         <result column="temperature" property="temperature"/>
         <result column="max_tokens" property="maxTokens"/>
+        <result column="max_input_tokens" property="maxInputTokens"/>
         <result column="top_p" property="topP"/>
         <result column="frequency_penalty" property="frequencyPenalty"/>
         <result column="presence_penalty" property="presencePenalty"/>
@@ -61,7 +62,7 @@
     <!-- 基础列 -->
     <sql id="Base_Column_List">
         id, config_type, config_name, enabled, provider, api_key, api_base, model,
-        temperature, max_tokens, top_p, frequency_penalty, presence_penalty,
+        temperature, max_tokens, max_input_tokens, top_p, frequency_penalty, presence_penalty,
         chat_name, chat_avatar, welcome_message, placeholder_text, theme_color,
         max_conversation_length, enable_context, enable_typing_indicator, show_timestamp, response_delay,
         enable_quick_actions, enable_chat_history, enable_streaming, rate_limit,

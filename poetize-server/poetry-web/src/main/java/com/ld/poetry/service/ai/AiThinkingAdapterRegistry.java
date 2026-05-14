@@ -47,7 +47,7 @@ public class AiThinkingAdapterRegistry {
         if (config != null && Boolean.TRUE.equals(config.getEnableThinking())) {
             switch (profile) {
                 case PROFILE_DEEPSEEK_OFFICIAL -> {
-                    reasoningEffort = mapDeepSeekEffort(effort);
+                    reasoningEffort = mapOpenAiEffort(effort);
                     extraBody.put("thinking", Map.of("type", "enabled"));
                     visibleReasoningLikely = true;
                 }
@@ -69,7 +69,7 @@ public class AiThinkingAdapterRegistry {
                     visibleReasoningLikely = true;
                 }
                 case PROFILE_GENERIC_OPENAI_COMPATIBLE -> {
-                    // Generic relays vary widely. Use only explicit custom extra body.
+                    reasoningEffort = mapOpenAiEffort(effort);
                     visibleReasoningLikely = hasAnyReasoningKey(extraBody);
                 }
                 default -> {
@@ -196,14 +196,6 @@ public class AiThinkingAdapterRegistry {
             case "minimal", "low", "high", "xhigh" -> effort;
             case "none" -> "low";
             default -> "medium";
-        };
-    }
-
-    private String mapDeepSeekEffort(String effort) {
-        return switch (effort) {
-            case "xhigh" -> "max";
-            case "high" -> "high";
-            default -> "high";
         };
     }
 

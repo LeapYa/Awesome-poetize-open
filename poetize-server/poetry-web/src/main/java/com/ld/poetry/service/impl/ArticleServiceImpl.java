@@ -42,7 +42,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import com.ld.poetry.utils.SmartSummaryGenerator;
 import com.ld.poetry.service.SummaryService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -326,14 +325,19 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         articleReadyMessage);
 
                 // ========== 步骤4：生成多语言摘要（基于原文+翻译）==========
-                String summaryMessage = buildSummaryProgressMessage(
-                        articleReadyMessage,
-                        translationOutcome.translationStatus());
-                updateSaveStatus(taskId, "processing", summaryMessage, savedArticleId);
-                updateTaskStage(taskId, "generating_summary", translationOutcome.translationStatus(), "pending",
-                        summaryMessage, null, false);
-                SummaryService.SummaryTaskResult summaryOutcome = summaryService.generateAndSaveSummary(
-                        savedArticleId, buildSummaryProgressListener(taskId));
+                SummaryService.SummaryTaskResult summaryOutcome;
+                if (summaryService.isAutoSummaryEnabled()) {
+                    String summaryMessage = buildSummaryProgressMessage(
+                            articleReadyMessage,
+                            translationOutcome.translationStatus());
+                    updateSaveStatus(taskId, "processing", summaryMessage, savedArticleId);
+                    updateTaskStage(taskId, "generating_summary", translationOutcome.translationStatus(), "pending",
+                            summaryMessage, null, false);
+                    summaryOutcome = summaryService.generateAndSaveSummary(
+                            savedArticleId, buildSummaryProgressListener(taskId));
+                } else {
+                    summaryOutcome = summaryService.generateAndSaveSummary(savedArticleId, null);
+                }
                 applySummaryOutcome(taskId, summaryOutcome);
 
                 // 清除缓存
@@ -649,6 +653,13 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         });
     }
 
+    private void updateTranslationRawProgress(String taskId, Integer currentLength) {
+        mutateSaveStatus(taskId, saveStatus -> {
+            saveStatus.setMessage("正在接收AI翻译响应... 已接收 " + currentLength + " 字");
+            saveStatus.setStreaming(true);
+        });
+    }
+
     private void appendSummaryPreview(String taskId, String delta, Integer currentLength, String preview) {
         mutateSaveStatus(taskId, saveStatus -> {
             saveStatus.setSummaryStatus("streaming");
@@ -656,7 +667,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             saveStatus.setSummaryPreview(StringUtils.hasText(preview)
                     ? preview
                     : appendWithLimit(saveStatus.getSummaryPreview(), delta));
-            saveStatus.setSummaryMessage("正在流式生成AI摘要... 已接收 " + currentLength + " 字");
+            saveStatus.setSummaryMessage("正在流式生成摘要... 已接收 " + currentLength + " 字");
             saveStatus.setMessage(saveStatus.getSummaryMessage());
             saveStatus.setStreaming(true);
         });
@@ -664,7 +675,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private void applySummaryOutcome(String taskId, SummaryService.SummaryTaskResult summaryOutcome) {
         String resolvedStatus = summaryOutcome == null ? "failed" : summaryOutcome.status();
-        String resolvedMessage = summaryOutcome == null ? "AI摘要生成失败" : summaryOutcome.message();
+        String resolvedMessage = summaryOutcome == null ? "摘要生成失败" : summaryOutcome.message();
         mutateSaveStatus(taskId, saveStatus -> {
             saveStatus.setSummaryStatus(resolvedStatus);
             saveStatus.setSummaryMessage(resolvedMessage);
@@ -683,7 +694,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 case "start" -> {
                     mutateSaveStatus(taskId, saveStatus -> {
                         saveStatus.setSummaryStatus("streaming");
-                        saveStatus.setSummaryMessage(readString(safePayload.get("message"), "开始流式生成AI摘要..."));
+                        saveStatus.setSummaryMessage(readString(safePayload.get("message"), "开始流式生成摘要..."));
                         saveStatus.setMessage(saveStatus.getSummaryMessage());
                         saveStatus.setStreaming(true);
                     });
@@ -699,7 +710,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 case "complete" -> {
                     mutateSaveStatus(taskId, saveStatus -> {
                         saveStatus.setSummaryStatus("success");
-                        saveStatus.setSummaryMessage(readString(safePayload.get("message"), "AI摘要已生成"));
+                        saveStatus.setSummaryMessage(readString(safePayload.get("message"), "摘要已生成"));
                         saveStatus.setStreaming(false);
                     });
                     emitTaskEvent(taskId, "summary_complete", enrichTaskPayload(taskId, safePayload));
@@ -707,7 +718,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 case "error" -> {
                     mutateSaveStatus(taskId, saveStatus -> {
                         saveStatus.setSummaryStatus("failed");
-                        saveStatus.setSummaryMessage(readString(safePayload.get("message"), "AI摘要生成失败"));
+                        saveStatus.setSummaryMessage(readString(safePayload.get("message"), "摘要生成失败"));
                         saveStatus.setMessage(saveStatus.getSummaryMessage());
                         saveStatus.setStreaming(false);
                     });
@@ -942,20 +953,20 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         pendingTranslation.get("content"),
                         pendingTranslation.get("language"));
                 updateTranslationStage(taskId, "saving_translation", "manual_saved",
-                        "手动翻译已保存，正在生成多语言AI摘要...", null, false);
+                        "手动翻译已保存，" + getAfterTranslationSummaryMessage(), null, false);
                 emitTaskEvent(taskId, "saved", Map.of("articleId", articleId, "message", "手动翻译保存成功"));
                 return new AsyncTranslationOutcome("manual_saved", false);
             } catch (Exception e) {
                 log.error("手动翻译保存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 updateTranslationStage(taskId, "saving_translation", "failed",
-                        "手动翻译保存失败：" + e.getMessage() + "，正在继续生成多语言AI摘要...", null, false);
+                        "手动翻译保存失败：" + e.getMessage() + "，" + getAfterTranslationSummaryMessage(), null, false);
                 return new AsyncTranslationOutcome("failed", true);
             }
         }
 
         if (shouldSkipAsyncTranslation(skipAiTranslation)) {
             updateTranslationStage(taskId, "translation_skipped", "skipped",
-                    articleReadyMessage + "，已跳过AI翻译，正在生成多语言AI摘要...", null, false);
+                    articleReadyMessage + "，已跳过AI翻译，" + getAfterTranslationSummaryMessage(), null, false);
             return new AsyncTranslationOutcome("skipped", false);
         }
 
@@ -977,7 +988,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         if (translationResult == null || translationResult.isEmpty()) {
             updateTranslationStage(taskId, "translating", "failed",
-                    articleReadyMessage + "，AI翻译失败，正在继续生成多语言AI摘要...", null, false);
+                    articleReadyMessage + "，AI翻译失败，" + getAfterTranslationSummaryMessage(), null, false);
             return new AsyncTranslationOutcome("failed", true);
         }
 
@@ -990,13 +1001,13 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     translationResult.get("content"),
                     translationResult.get("language"));
             updateTranslationStage(taskId, "saving_translation", "saved",
-                    "翻译已保存，正在生成多语言AI摘要...", null, false);
+                    "翻译已保存，" + getAfterTranslationSummaryMessage(), null, false);
             emitTaskEvent(taskId, "saved", Map.of("articleId", articleId, "message", "翻译保存成功"));
             return new AsyncTranslationOutcome("saved", false);
         } catch (Exception e) {
             log.error("翻译结果保存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
             updateTranslationStage(taskId, "saving_translation", "failed",
-                    "翻译保存失败：" + e.getMessage() + "，正在继续生成多语言AI摘要...", null, false);
+                    "翻译保存失败：" + e.getMessage() + "，" + getAfterTranslationSummaryMessage(), null, false);
             return new AsyncTranslationOutcome("failed", true);
         }
     }
@@ -1023,35 +1034,56 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     private String buildSummaryProgressMessage(String articleReadyMessage, String translationStatus) {
+        String summaryTaskLabel = getSummaryTaskLabel();
         return switch (translationStatus) {
-            case "saved" -> "翻译已保存，正在生成多语言AI摘要...";
-            case "manual_saved" -> "手动翻译已保存，正在生成多语言AI摘要...";
-            case "skipped" -> articleReadyMessage + "，已跳过AI翻译，正在生成多语言AI摘要...";
-            case "failed" -> articleReadyMessage + "，AI翻译失败，正在继续生成多语言AI摘要...";
-            default -> articleReadyMessage + "，正在生成多语言AI摘要...";
+            case "saved" -> "翻译已保存，正在生成多语言" + summaryTaskLabel + "...";
+            case "manual_saved" -> "手动翻译已保存，正在生成多语言" + summaryTaskLabel + "...";
+            case "skipped" -> articleReadyMessage + "，已跳过AI翻译，正在生成多语言" + summaryTaskLabel + "...";
+            case "failed" -> articleReadyMessage + "，AI翻译失败，正在继续生成多语言" + summaryTaskLabel + "...";
+            default -> articleReadyMessage + "，正在生成多语言" + summaryTaskLabel + "...";
         };
     }
 
     private String buildFinalAsyncMessage(String actionText, String finalStatus, String translationStatus,
             String summaryStatus) {
+        if ("skipped".equals(summaryStatus)) {
+            return switch (translationStatus) {
+                case "saved" -> "文章" + actionText + "成功！翻译已生成，未自动生成摘要";
+                case "manual_saved" -> "文章" + actionText + "成功！手动翻译已保存，未自动生成摘要";
+                case "failed" -> "文章" + actionText + "成功，但翻译失败，未自动生成摘要";
+                default -> "文章" + actionText + "成功！未自动生成摘要";
+            };
+        }
+
+        String summaryTaskLabel = getSummaryTaskLabel();
         if ("partial_success".equals(finalStatus)) {
             boolean translationFailed = "failed".equals(translationStatus);
             boolean summaryFailed = "timeout".equals(summaryStatus) || "failed".equals(summaryStatus);
             if (translationFailed && summaryFailed) {
-                return "文章" + actionText + "成功，但翻译失败，AI摘要未完成";
+                return "文章" + actionText + "成功，但翻译失败，" + summaryTaskLabel + "未完成";
             }
             if (summaryFailed) {
-                return "文章" + actionText + "成功，但AI摘要生成超时或失败";
+                return "文章" + actionText + "成功，但" + summaryTaskLabel + "生成超时或失败";
             }
-            return "文章" + actionText + "成功，AI摘要已生成，但翻译失败";
+            return "文章" + actionText + "成功，" + summaryTaskLabel + "已生成，但翻译失败";
         }
 
         return switch (translationStatus) {
-            case "saved" -> "文章" + actionText + "成功！翻译与AI摘要已生成";
-            case "manual_saved" -> "文章" + actionText + "成功！手动翻译与AI摘要已生成";
-            case "skipped" -> "文章" + actionText + "成功！已跳过AI翻译，AI摘要已生成";
-            default -> "文章" + actionText + "成功！AI摘要已生成";
+            case "saved" -> "文章" + actionText + "成功！翻译与" + summaryTaskLabel + "已生成";
+            case "manual_saved" -> "文章" + actionText + "成功！手动翻译与" + summaryTaskLabel + "已生成";
+            case "skipped" -> "文章" + actionText + "成功！已跳过AI翻译，" + summaryTaskLabel + "已生成";
+            default -> "文章" + actionText + "成功！" + summaryTaskLabel + "已生成";
         };
+    }
+
+    private String getSummaryTaskLabel() {
+        return "textrank".equalsIgnoreCase(summaryService.getSummaryGenerationMode()) ? "本地摘录" : "AI摘要";
+    }
+
+    private String getAfterTranslationSummaryMessage() {
+        return summaryService.isAutoSummaryEnabled()
+                ? "正在生成多语言" + getSummaryTaskLabel() + "..."
+                : "未自动生成摘要";
     }
 
     private Map<String, Object> buildFinalTaskPayload(String taskId, String finalStatus, Integer articleId, String message,
@@ -1100,6 +1132,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 case "content_delta" -> appendTranslationPreview(
                         taskId, "content", readString(safePayload.get("delta"), ""),
                         readInteger(safePayload.get("currentLength"), 0));
+                case "translation_delta" -> updateTranslationRawProgress(
+                        taskId, readInteger(safePayload.get("currentLength"), 0));
                 case "complete" -> {
                     updateTranslationStage(
                             taskId, "translating", "streaming",
@@ -2302,17 +2336,13 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     /**
-     * 智能摘要生成（优先AI，回退TextRank）
-     * 
-     * @param content 文章内容
-     * @return 生成的摘要
+     * 智能摘要生成（仅使用AI，失败后交给展示层使用文章开头兜底）
      */
     private String generateArticleSummary(String content) {
         if (!StringUtils.hasText(content)) {
             return "";
         }
 
-        // 1. 尝试使用 LLM AI 生成摘要
         try {
             String aiSummary = llmTranslationService.generateSummary(content, 150);
             if (StringUtils.hasText(aiSummary)) {
@@ -2320,23 +2350,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 return aiSummary;
             }
         } catch (Exception e) {
-            log.warn("AI摘要生成失败，回退到TextRank算法: {}", e.getMessage());
+            log.warn("AI摘要生成失败，不再回退到本地摘录算法: {}", e.getMessage());
         }
 
-        // 2. 回退到TextRank算法
-        try {
-            String textRankSummary = SmartSummaryGenerator.generateAdvancedSummary(content, 150);
-            if (StringUtils.hasText(textRankSummary)) {
-                log.info("使用TextRank生成文章摘要成功，长度: {}", textRankSummary.length());
-                return textRankSummary;
-            }
-        } catch (Exception e) {
-            log.error("TextRank摘要生成也失败: {}", e.getMessage());
-        }
-
-        // 3. 最后的回退：简单截取
-        log.warn("所有摘要生成方法都失败，使用简单截取");
-        return content.length() > 100 ? content.substring(0, 100) + "..." : content;
+        return "";
     }
 
     @Override
@@ -2600,14 +2617,19 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
                 // ========== 步骤4：更新多语言摘要（基于原文+翻译）==========
                 if (StringUtils.hasText(articleVO.getArticleContent())) {
-                    String summaryMessage = buildSummaryProgressMessage(
-                            articleReadyMessage,
-                            translationOutcome.translationStatus());
-                    updateSaveStatus(taskId, "processing", summaryMessage, articleVO.getId());
-                    updateTaskStage(taskId, "generating_summary", translationOutcome.translationStatus(), "pending",
-                            summaryMessage, null, false);
-                    SummaryService.SummaryTaskResult summaryOutcome = summaryService.updateSummary(
-                            articleVO.getId(), articleVO.getArticleContent(), buildSummaryProgressListener(taskId));
+                    SummaryService.SummaryTaskResult summaryOutcome;
+                    if (summaryService.isAutoSummaryEnabled()) {
+                        String summaryMessage = buildSummaryProgressMessage(
+                                articleReadyMessage,
+                                translationOutcome.translationStatus());
+                        updateSaveStatus(taskId, "processing", summaryMessage, articleVO.getId());
+                        updateTaskStage(taskId, "generating_summary", translationOutcome.translationStatus(), "pending",
+                                summaryMessage, null, false);
+                        summaryOutcome = summaryService.updateSummary(
+                                articleVO.getId(), articleVO.getArticleContent(), buildSummaryProgressListener(taskId));
+                    } else {
+                        summaryOutcome = summaryService.updateSummary(articleVO.getId(), articleVO.getArticleContent(), null);
+                    }
                     applySummaryOutcome(taskId, summaryOutcome);
                 }
 
@@ -2890,7 +2912,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setSubmitToSearchEngine(articleVO.getSubmitToSearchEngine());
         article.setArticleTitle(articleVO.getArticleTitle());
         article.setArticleContent(articleVO.getArticleContent());
-        article.setSummary(""); // 先设置空摘要，保存后会同步生成多语言AI摘要
+        article.setSummary(""); // 先设置空摘要，保存后按配置决定是否自动生成摘要
         article.setSortId(articleVO.getSortId());
         article.setLabelId(articleVO.getLabelId());
 

@@ -19,7 +19,7 @@
             <div class="notification-title">{{ notification.title }}</div>
             <div class="notification-message">{{ notification.message }}</div>
           </div>
-          <div class="notification-close">
+          <div class="notification-close" @click.stop="removeNotification(notification.id)">
             <i class="el-icon-close"></i>
           </div>
         </div>
@@ -421,6 +421,15 @@ export default {
         const fieldLabel = eventName === 'title_delta' ? '标题' : '正文';
         this.updateNotificationByTaskId(taskId, {
           message: `正在流式翻译${fieldLabel}... 已接收 ${currentLength} 字`,
+          progress: 55
+        });
+        return;
+      }
+
+      if (eventName === 'translation_delta') {
+        const currentLength = payload && payload.currentLength ? payload.currentLength : 0;
+        this.updateNotificationByTaskId(taskId, {
+          message: payload.message || `正在接收AI翻译响应... 已接收 ${currentLength} 字`,
           progress: 55
         });
         return;

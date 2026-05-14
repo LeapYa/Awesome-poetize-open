@@ -1,6 +1,7 @@
 package com.ld.poetry.service.ai;
 
 import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.service.TranslationService;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,8 +21,14 @@ public interface ApiTranslationProvider {
 
     default Map<String, String> translateArticle(String title, String content, String sourceLang,
             String targetLang, JSONObject config) {
-        String translatedTitle = translate(title, sourceLang, targetLang, config);
-        String translatedContent = translate(content, sourceLang, targetLang, config);
+        return translateArticle(title, content, sourceLang, targetLang, config, null);
+    }
+
+    default Map<String, String> translateArticle(String title, String content, String sourceLang,
+            String targetLang, JSONObject config,
+            TranslationService.TranslationProgressListener progressListener) {
+        String translatedTitle = translate(title, sourceLang, targetLang, config, progressListener);
+        String translatedContent = translate(content, sourceLang, targetLang, config, progressListener);
         if (hasText(translatedTitle)
                 && hasText(translatedContent)
                 && !translatedTitle.equals(title)
@@ -33,6 +40,11 @@ public interface ApiTranslationProvider {
             return result;
         }
         return null;
+    }
+
+    default String translate(String text, String sourceLang, String targetLang, JSONObject config,
+            TranslationService.TranslationProgressListener progressListener) {
+        return translate(text, sourceLang, targetLang, config);
     }
 
     private static boolean hasText(String value) {

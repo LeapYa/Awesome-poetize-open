@@ -116,7 +116,9 @@ export const useAIChatStore = defineStore('aiChat', {
         } else {
           this.config = {
             chat_name: 'AI助手',
+            chat_avatar: '',
             welcome_message: '你好！我是你的AI助手，有什么可以帮助你的吗？',
+            placeholder_text: '输入你想说的话...',
             theme_color: '#4facfe',
             enable_streaming: false,
             enable_typing_indicator: true,
@@ -125,6 +127,7 @@ export const useAIChatStore = defineStore('aiChat', {
             max_message_length: 500,
             rate_limit: 20,
           }
+          this.configLoaded = true
         }
       }
     },

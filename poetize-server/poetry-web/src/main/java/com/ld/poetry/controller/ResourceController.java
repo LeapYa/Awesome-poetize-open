@@ -1052,7 +1052,7 @@ public class ResourceController {
             java.io.InputStream is;
             if (path.startsWith("http://") || path.startsWith("https://")) {
                 java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                        new java.net.URL(path).openConnection();
+                        java.net.URI.create(path).toURL().openConnection();
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(10000);
                 conn.setRequestProperty("User-Agent", "Poetize-Backfill/1.0");

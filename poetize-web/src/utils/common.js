@@ -1,6 +1,7 @@
 import { useMainStore } from '../stores/main'
 import { redirectToLogin } from './tokenExpireHandler'
 import { getDefaultAvatar, getAvatarUrl } from './default-avatar'
+import { getAiDefaultAvatar, getAiAvatarUrl } from './ai-avatar'
 import constant from './constant'
 
 export default {
@@ -13,6 +14,16 @@ export default {
    * 获取头像URL（带默认头像回退）
    */
   getAvatarUrl,
+
+  /**
+   * 获取默认AI头像
+   */
+  getAiDefaultAvatar,
+
+  /**
+   * 获取AI头像URL（带默认AI头像回退）
+   */
+  getAiAvatarUrl,
 
   mobile() {
     let flag = navigator.userAgent.match(

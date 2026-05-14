@@ -14,6 +14,11 @@ import java.util.function.Supplier;
 @Slf4j
 public class RetryUtil {
 
+    @FunctionalInterface
+    public interface RetryCallback {
+        void onRetry(int attempt, int maxAttempts, Throwable throwable);
+    }
+
     /**
      * 默认重试次数
      */
@@ -63,6 +68,11 @@ public class RetryUtil {
      * @return 操作结果
      */
     public static <T> T executeWithRetry(Supplier<T> operation, int maxAttempts, long retryDelay, String operationName) {
+        return executeWithRetry(operation, maxAttempts, retryDelay, operationName, null);
+    }
+
+    public static <T> T executeWithRetry(Supplier<T> operation, int maxAttempts, long retryDelay, String operationName,
+            RetryCallback retryCallback) {
         Exception lastException = null;
         
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -85,11 +95,15 @@ public class RetryUtil {
                     log.error("{}在{}次尝试后仍然失败", operationName, maxAttempts, e);
                     break;
                 }
-                
+
                 // 计算重试延迟（指数退避 + 随机抖动）
                 long delay = calculateRetryDelay(retryDelay, attempt);
                 log.warn("{}第{}次尝试失败，{}毫秒后重试: {}", operationName, attempt, delay, e.getMessage());
-                
+
+                if (retryCallback != null) {
+                    retryCallback.onRetry(attempt, maxAttempts, e);
+                }
+
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException ie) {

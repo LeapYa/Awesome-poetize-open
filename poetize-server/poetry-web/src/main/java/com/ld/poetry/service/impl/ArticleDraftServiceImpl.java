@@ -234,7 +234,7 @@ public class ArticleDraftServiceImpl extends ServiceImpl<ArticleDraftMapper, Art
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         if (!sanitizedIds.isEmpty()) {
-            List<User> users = userMapper.selectBatchIds(sanitizedIds);
+            List<User> users = userMapper.selectByIds(sanitizedIds);
             Map<Integer, User> allowedUsers = users.stream()
                     .filter(user -> user.getUserType() != null && user.getUserType() <= 1)
                     .collect(Collectors.toMap(User::getId, user -> user));
@@ -642,7 +642,7 @@ public class ArticleDraftServiceImpl extends ServiceImpl<ArticleDraftMapper, Art
         if (userIds == null || userIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        return userMapper.selectBatchIds(userIds).stream()
+        return userMapper.selectByIds(userIds).stream()
                 .collect(Collectors.toMap(User::getId, user -> user, (left, right) -> left, LinkedHashMap::new));
     }
 

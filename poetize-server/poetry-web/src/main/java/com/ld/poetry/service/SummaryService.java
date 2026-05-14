@@ -16,7 +16,21 @@ public interface SummaryService {
     }
     
     /**
-     * 生成并保存文章多语言AI摘要
+     * 当前配置是否允许自动生成摘要
+     */
+    default boolean isAutoSummaryEnabled() {
+        return true;
+    }
+
+    /**
+     * 当前摘要生成模式
+     */
+    default String getSummaryGenerationMode() {
+        return "global";
+    }
+
+    /**
+     * 生成并保存文章多语言摘要
      * @param articleId 文章ID
      */
     default SummaryTaskResult generateAndSaveSummary(Integer articleId) {
@@ -26,7 +40,7 @@ public interface SummaryService {
     SummaryTaskResult generateAndSaveSummary(Integer articleId, SummaryProgressListener progressListener);
     
     /**
-     * 更新文章多语言AI摘要
+     * 更新文章多语言摘要
      * @param articleId 文章ID  
      * @param content 文章内容
      */

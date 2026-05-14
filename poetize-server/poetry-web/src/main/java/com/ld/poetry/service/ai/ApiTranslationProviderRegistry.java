@@ -3,6 +3,7 @@ package com.ld.poetry.service.ai;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.ld.poetry.entity.SysAiConfig;
+import com.ld.poetry.service.TranslationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -46,11 +47,18 @@ public class ApiTranslationProviderRegistry {
 
     public Map<String, String> translateArticle(SysAiConfig config, String title, String content,
             String sourceLang, String targetLang) {
+        return translateArticle(config, title, content, sourceLang, targetLang, null);
+    }
+
+    public Map<String, String> translateArticle(SysAiConfig config, String title, String content,
+            String sourceLang, String targetLang,
+            TranslationService.TranslationProgressListener progressListener) {
         ApiTranslationContext context = contextFromConfig(config);
         if (context == null) {
             return null;
         }
-        return context.provider().translateArticle(title, content, sourceLang, targetLang, context.providerConfig());
+        return context.provider().translateArticle(title, content, sourceLang, targetLang,
+                context.providerConfig(), progressListener);
     }
 
     public ApiTranslationContext contextFromConfig(SysAiConfig config) {

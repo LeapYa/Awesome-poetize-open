@@ -11,12 +11,22 @@
 
     <!-- 版本信息 -->
     <div class="version-info">
-      <span class="version-tag">{{ appVersion }}</span>
-      <span v-if="updateAvailable" class="update-dot" @click="openReleasePage"></span>
+      <div class="version-tag">
+        <span>{{ appVersion }}</span>
+        <span
+          class="check-update-btn"
+          :class="{ checking: checking, 'has-update': updateAvailable }"
+          @click.stop="updateAvailable ? openReleasePage() : checkForUpdates()"
+          :title="updateAvailable ? '发版有更新，点击前往' : '检查更新'"
+        >
+          <i :class="updateAvailable ? 'el-icon-top' : 'el-icon-refresh'"></i>
+          {{ updateAvailable ? '去更新' : (checking ? '检查中...' : '检查更新') }}
+        </span>
+      </div>
     </div>
 
     <!-- 引导向导呼出区域 - Neubrutalism Style -->
-    <div id="field-welcome-entry" class="guide-trigger-area">
+    <div v-if="!hideGuide" id="field-welcome-entry" class="guide-trigger-area">
       <template v-if="hasStartedGuide">
         <!-- Progress Badge -->
         <div class="neo-badge">
@@ -50,6 +60,9 @@
           开启配置向导
         </button>
       </template>
+      <div class="guide-hide-text" @click="closeGuide">
+        不再显示
+      </div>
     </div>
   </div>
 </template>
@@ -81,7 +94,9 @@
         totalSteps: TOTAL_STEPS,
         hasStartedGuide: false,
         updateAvailable: false,
-        latestVersion: ''
+        latestVersion: '',
+        checking: false,
+        hideGuide: false
       }
     },
 
@@ -114,13 +129,56 @@
           this.hasStartedGuide = true;
         }
       }
-      this.checkForUpdates();
+
+      if (localStorage.getItem('poetize_guide_hide') === 'true') {
+        this.hideGuide = true;
+      }
+
+      this.checkCachedUpdate();
     },
 
     methods: {
+      /**
+       * 只读缓存比较版本，不发网络请求
+       */
+      checkCachedUpdate() {
+        const CACHE_KEY = 'poetize_update_check';
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          try {
+            const { version } = JSON.parse(cached);
+            if (version && this.compareVersions(version, constant.APP_VERSION) > 0) {
+              this.latestVersion = version;
+              this.updateAvailable = true;
+              this.$notify.info(
+                '发现新版本',
+                `${version} 可用，点击前往更新`,
+                5000,
+                () => this.openReleasePage()
+              );
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      },
+
       startGuide(fromStep) {
         // Emit event to the global GuideFloat component
         this.$root.$emit('start-guide', fromStep);
+      },
+
+      closeGuide() {
+        this.$confirm('确定不再显示新手引导吗？以后若需重新开启，需要清除浏览器本地缓存。', '提示', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }).then(() => {
+          this.hideGuide = true;
+          localStorage.setItem('poetize_guide_hide', 'true');
+        }).catch(() => {
+          // 取消关闭
+        });
       },
 
       /**
@@ -155,6 +213,8 @@
        * 检查最新版本（24 小时缓存，GitHub → Gitee 自动降级）
        */
       async checkForUpdates() {
+        if (this.checking) return;
+        this.checking = true;
         try {
           const CACHE_KEY = 'poetize_update_check';
           const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
@@ -197,6 +257,8 @@
           }
         } catch (e) {
           // 静默忽略
+        } finally {
+          this.checking = false;
         }
       },
 
@@ -460,25 +522,79 @@
     font-size: 0.8rem;
     color: #94a3b8;
     background: rgba(241, 245, 249, 0.8);
-    padding: 0.25rem 0.65rem;
+    padding: 0.25rem 0.35rem 0.25rem 0.65rem;
     border-radius: 999px;
     backdrop-filter: blur(4px);
-    user-select: all;
+    user-select: none;
     letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
 
-  .update-dot {
-    width: 8px;
-    height: 8px;
-    background: #FF6B6B;
-    border-radius: 50%;
+  .version-tag > span:first-child {
+    user-select: all;
+  }
+
+  .check-update-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #64748b;
     cursor: pointer;
-    animation: update-pulse 1.5s ease-in-out infinite;
-    flex-shrink: 0;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    transition: all 0.2s ease;
+    background: #e2e8f0;
+    font-weight: 500;
+  }
+
+  .check-update-btn:hover {
+    color: #fff;
+    background: #5362f6;
+  }
+
+  .check-update-btn.has-update {
+    color: #fff;
+    background: #FF6B6B;
+    animation: update-pulse 2s ease-in-out infinite;
+  }
+
+  .check-update-btn.has-update:hover {
+    background: #ff5252;
+  }
+
+  .check-update-btn.checking {
+    cursor: not-allowed;
+    color: #94a3b8;
+    background: #f1f5f9;
+  }
+
+  .check-update-btn.checking i {
+    animation: spin 1s linear infinite;
+  }
+
+  .guide-hide-text {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    color: #999;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: color 0.3s;
+  }
+  .guide-hide-text:hover {
+    color: #666;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   @keyframes update-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.3); }
+    0% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.5); }
+    70% { box-shadow: 0 0 0 5px rgba(255, 107, 107, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); }
   }
 </style>

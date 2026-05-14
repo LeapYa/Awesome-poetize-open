@@ -31,7 +31,7 @@
    <img src="https://img.shields.io/github/license/LeapYa/awesome-poetize-open" alt="License">
    <img src="https://img.shields.io/badge/Vue.js-35495e.svg?logo=vue.js&logoColor=4FC08D" alt="Vue.js">
    <img src="https://img.shields.io/badge/Java-%23ED8B00.svg?logo=openjdk&logoColor=white" alt="Java">
-   <img src="https://img.shields.io/badge/Spring-6DB33F.svg?logo=spring&logoColor=white" alt="Spring">
+   <img src="https://img.shields.io/badge/Spring%20Boot-6DB33F.svg?logo=spring&logoColor=white" alt="Spring Boot">
    <img src="https://img.shields.io/badge/MariaDB-003545?logo=mariadb&logoColor=white" alt="MariaDB">
    <img src="https://img.shields.io/badge/Redis-DC382D.svg?logo=redis&logoColor=white" alt="Redis">
    <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker">

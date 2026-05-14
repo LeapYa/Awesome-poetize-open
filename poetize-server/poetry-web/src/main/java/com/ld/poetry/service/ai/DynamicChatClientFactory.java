@@ -1,5 +1,6 @@
 package com.ld.poetry.service.ai;
 
+import com.ld.poetry.config.AiRestClientConfig.AiRestClientBuilderFactory;
 import com.ld.poetry.entity.SysAiConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,9 +28,12 @@ public class DynamicChatClientFactory {
     private static final Logger logger = LoggerFactory.getLogger(DynamicChatClientFactory.class);
 
     private final AiThinkingAdapterRegistry thinkingAdapterRegistry;
+    private final AiRestClientBuilderFactory aiRestClientBuilderFactory;
 
-    public DynamicChatClientFactory(AiThinkingAdapterRegistry thinkingAdapterRegistry) {
+    public DynamicChatClientFactory(AiThinkingAdapterRegistry thinkingAdapterRegistry,
+            AiRestClientBuilderFactory aiRestClientBuilderFactory) {
         this.thinkingAdapterRegistry = thinkingAdapterRegistry;
+        this.aiRestClientBuilderFactory = aiRestClientBuilderFactory;
     }
 
     /**
@@ -75,6 +79,7 @@ public class DynamicChatClientFactory {
         var openAiApi = OpenAiApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
+                .restClientBuilder(aiRestClientBuilderFactory.create(config.getHttpReadTimeoutSeconds()))
                 .build();
 
         var optionsBuilder = OpenAiChatOptions.builder()
@@ -122,6 +127,7 @@ public class DynamicChatClientFactory {
         var anthropicApi = AnthropicApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
+                .restClientBuilder(aiRestClientBuilderFactory.create(config.getHttpReadTimeoutSeconds()))
                 .build();
 
         var optionsBuilder = AnthropicChatOptions.builder()

@@ -13,6 +13,7 @@ import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClient;
 
 @Component
 public class RagRuntimeFactory {
@@ -21,13 +22,15 @@ public class RagRuntimeFactory {
     private final ObjectMapper objectMapper;
     private final Environment environment;
     private final JdbcTemplate jdbcTemplate;
+    private final RestClient.Builder aiRestClientBuilder;
 
     public RagRuntimeFactory(SysAiConfigService sysAiConfigService, ObjectMapper objectMapper, Environment environment,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate, RestClient.Builder aiRestClientBuilder) {
         this.sysAiConfigService = sysAiConfigService;
         this.objectMapper = objectMapper;
         this.environment = environment;
         this.jdbcTemplate = jdbcTemplate;
+        this.aiRestClientBuilder = aiRestClientBuilder;
     }
 
     public AiRagConfig getCurrentConfig() {
@@ -54,6 +57,7 @@ public class RagRuntimeFactory {
                 .apiKey(config.embeddingApiKey())
                 .baseUrl(AiApiBaseUrlNormalizer.normalizeOpenAiCompatibleBaseUrl(
                         config.embeddingApiBase(), "https://api.openai.com"))
+                .restClientBuilder(aiRestClientBuilder)
                 .build();
 
         OpenAiEmbeddingOptions options = OpenAiEmbeddingOptions.builder()
