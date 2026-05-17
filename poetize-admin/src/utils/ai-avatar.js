@@ -10,9 +10,7 @@
  * @returns {string} 头像 URL
  */
 export function getAiDefaultAvatar() {
-  const baseUrl = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL ? import.meta.env.BASE_URL : '/';
-  const prefix = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-  return prefix + 'ai_avatar.png';
+  return '/static/assets/ai_avatar.png';
 }
 
 /**

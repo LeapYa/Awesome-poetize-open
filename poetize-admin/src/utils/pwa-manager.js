@@ -60,9 +60,9 @@ async function getPwaNotificationIcon() {
     if (webInfo.avatar) return webInfo.avatar;
     
     // 4. 默认图标
-    return getScopedAssetUrl('poetize.jpg');
+    return '/static/assets/poetize.jpg';
   } catch (error) {
-    return getScopedAssetUrl('poetize.jpg');
+    return '/static/assets/poetize.jpg';
   }
 }
 

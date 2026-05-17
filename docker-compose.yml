@@ -178,6 +178,7 @@ services:
       - POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
       - PRERENDER_TEMPLATE_PATH=/app/web-dist/index.html
       - PRERENDER_OUTPUT_ROOT=/app/web-dist/prerender
+      - RESOURCE_AVAILABILITY_STATICROOTS=/app/web-dist/static
       - SITE_URL=${SITE_URL:-http://localhost}
       # 容器网络网段，用于判断请求是否为内网服务的请求
       - DOCKER_SUBNET=${DOCKER_SUBNET:-172.28.147.0/28}

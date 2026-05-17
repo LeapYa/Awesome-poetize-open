@@ -12,7 +12,7 @@ function withBase(path = '') {
 // 需要预缓存的关键资源
 const PRECACHE_RESOURCES = [
   withBase('/'),
-  withBase('/poetize.jpg')
+  withBase('/static/assets/poetize.jpg')
 ];
 
 // 安装Service Worker时预缓存关键资源

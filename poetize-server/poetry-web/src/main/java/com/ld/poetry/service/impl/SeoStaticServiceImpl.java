@@ -254,7 +254,7 @@ public class SeoStaticServiceImpl implements SeoStaticService {
         // 如果没有任何图标，使用默认图标
         if (icons.isEmpty()) {
             Map<String, Object> defaultIcon = new HashMap<>();
-            defaultIcon.put("src", "/poetize.jpg");
+            defaultIcon.put("src", "/static/assets/poetize.jpg");
             defaultIcon.put("sizes", "any");
             defaultIcon.put("type", "image/jpeg");
             defaultIcon.put("purpose", "any");

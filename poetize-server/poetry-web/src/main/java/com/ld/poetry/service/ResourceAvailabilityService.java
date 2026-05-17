@@ -291,6 +291,7 @@ public class ResourceAvailabilityService {
         addExistingRoot(roots, basePath.resolve("public"));
         addExistingRoot(roots, basePath.resolve("dist/static"));
         addExistingRoot(roots, basePath.resolve("dist"));
+        addExistingRoot(roots, basePath.resolve("web-dist/static"));
         addExistingRoot(roots, basePath.resolve("poetize-web/public/static"));
         addExistingRoot(roots, basePath.resolve("poetize-web/public"));
         addExistingRoot(roots, basePath.resolve("poetize-web/dist/static"));

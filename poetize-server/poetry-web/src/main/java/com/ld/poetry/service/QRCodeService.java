@@ -102,7 +102,7 @@ public class QRCodeService {
 
     /**
      * 获取网站Logo URL
-     * 优先级：SEO配置的Logo > 网站默认Logo (siteUrl/poetize.jpg)
+     * 优先级：SEO配置的Logo > 网站默认Logo (siteUrl/static/assets/poetize.jpg)
      * 
      * @param siteUrl 网站基础URL
      * @return Logo URL
@@ -120,7 +120,7 @@ public class QRCodeService {
         }
         
         // 使用默认Logo
-        String defaultLogoUrl = siteUrl + "/poetize.jpg";
+        String defaultLogoUrl = siteUrl + "/static/assets/poetize.jpg";
         return defaultLogoUrl;
     }
 

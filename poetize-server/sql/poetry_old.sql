@@ -1194,10 +1194,10 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_n
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
 (1, 'assets', '/static/assets/loveLike.svg', 8601, 'loveLike.svg', 'image/svg+xml', 1, 'local', NOW());
 
--- 站点根目录图片资源
+-- 站点静态图片资源
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `resource_hash`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES
-(1, 'assets', '/poetize.jpg', 30312, '7460056A7CE3125039B7F35604CA5BCE867E3022B79F698A21308827E3791213', 'poetize.jpg', 'image/jpeg', 1, 'local', NOW()),
-(1, 'assets', '/ai_avatar.png', 1332990, '79E7B5285919D0783D11C371843D010B68CB9A1CE38E74ED8E326113F6D3A8CC', 'ai_avatar.png', 'image/png', 1, 'local', NOW());
+(1, 'assets', '/static/assets/poetize.jpg', 30312, '7460056A7CE3125039B7F35604CA5BCE867E3022B79F698A21308827E3791213', 'poetize.jpg', 'image/jpeg', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/ai_avatar.png', 1332990, '79E7B5285919D0783D11C371843D010B68CB9A1CE38E74ED8E326113F6D3A8CC', 'ai_avatar.png', 'image/png', 1, 'local', NOW());
 
 -- 视频文件
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 

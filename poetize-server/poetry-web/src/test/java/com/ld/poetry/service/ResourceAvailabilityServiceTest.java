@@ -65,20 +65,19 @@ class ResourceAvailabilityServiceTest {
     void builtInStaticResourceShouldBeValidWhenUploadDirectoryMissesIt() throws IOException {
         Path uploadRoot = tempDir.resolve("uploads");
         Path staticRoot = tempDir.resolve("public/static");
-        Path publicRoot = tempDir.resolve("public");
         Files.createDirectories(staticRoot.resolve("assets"));
         Files.write(staticRoot.resolve("backgroundPicture.jpg"), jpegHeader());
         Files.write(staticRoot.resolve("admireImage.jpg"), "/* 样式文件 */".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        Files.write(publicRoot.resolve("poetize.jpg"), jpegHeader());
+        Files.write(staticRoot.resolve("assets/poetize.jpg"), jpegHeader());
 
         ReflectionTestUtils.setField(service, "localUploadUrl", uploadRoot.toString() + "/");
-        ReflectionTestUtils.setField(service, "staticResourceRoots", staticRoot + "," + publicRoot);
+        ReflectionTestUtils.setField(service, "staticResourceRoots", staticRoot.toString());
 
         Resource validBuiltIn = resource(1, "/static/assets/backgroundPicture.jpg");
-        Resource validRootBuiltIn = resource(2, "/poetize.jpg");
+        Resource validStaticBuiltIn = resource(2, "/static/assets/poetize.jpg");
         Resource invalidPseudoImage = resource(3, "/static/assets/admireImage.jpg");
 
-        Page<Resource> page = service.buildInvalidResourcePage(List.of(validBuiltIn, validRootBuiltIn, invalidPseudoImage), 1, 10);
+        Page<Resource> page = service.buildInvalidResourcePage(List.of(validBuiltIn, validStaticBuiltIn, invalidPseudoImage), 1, 10);
 
         assertThat(page.getTotal()).isEqualTo(1);
         assertThat(page.getRecords()).containsExactly(invalidPseudoImage);

@@ -763,6 +763,7 @@ public class ResourceReplaceService {
         addRoot(roots, basePath.resolve("public"), StaticRootMode.FULL);
         addRoot(roots, basePath.resolve("dist/static"), StaticRootMode.STRIPPED);
         addRoot(roots, basePath.resolve("dist"), StaticRootMode.FULL);
+        addRoot(roots, basePath.resolve("web-dist/static"), StaticRootMode.STRIPPED);
         addRoot(roots, basePath.resolve("poetize-web/public/static"), StaticRootMode.STRIPPED);
         addRoot(roots, basePath.resolve("poetize-web/public"), StaticRootMode.FULL);
         addRoot(roots, basePath.resolve("poetize-web/dist/static"), StaticRootMode.STRIPPED);

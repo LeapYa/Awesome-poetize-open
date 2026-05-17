@@ -93,32 +93,32 @@ class ResourceReplaceServiceTest {
     }
 
     @Test
-    void replaceResourceShouldSyncRootPublicResourceAcrossConfiguredStaticRoots() throws Exception {
-        Path webRoot = tempDir.resolve("poetize-web/public");
-        Path adminRoot = tempDir.resolve("poetize-admin/public");
-        Path webFile = webRoot.resolve("poetize.jpg");
-        Path adminFile = adminRoot.resolve("poetize.jpg");
+    void replaceResourceShouldSyncPublicStaticResourceAcrossConfiguredStaticRoots() throws Exception {
+        Path webStaticRoot = tempDir.resolve("poetize-web/public/static");
+        Path adminStaticRoot = tempDir.resolve("poetize-admin/public/static");
+        Path webFile = webStaticRoot.resolve("assets/poetize.jpg");
+        Path adminFile = adminStaticRoot.resolve("assets/poetize.jpg");
         byte[] oldBytes = imageBytes("jpg", 1, 1);
         byte[] newBytes = imageBytes("jpg", 4, 5);
-        Files.createDirectories(webRoot);
-        Files.createDirectories(adminRoot);
+        Files.createDirectories(webFile.getParent());
+        Files.createDirectories(adminFile.getParent());
         Files.write(webFile, oldBytes);
         Files.write(adminFile, oldBytes);
-        ReflectionTestUtils.setField(service, "staticResourceRoots", webRoot + "," + adminRoot);
+        ReflectionTestUtils.setField(service, "staticResourceRoots", webStaticRoot + "," + adminStaticRoot);
 
-        Resource resource = resource(2, "/poetize.jpg", "local");
+        Resource resource = resource(2, "/static/assets/poetize.jpg", "local");
         when(resourceService.getById(2)).thenReturn(resource);
         when(fileSecurityValidator.validateFile(any(), eq("poetize.jpeg"), eq("image/jpeg")))
                 .thenReturn(FileSecurityValidator.ValidationResult.success("jpeg"));
         when(resourceService.updateById(any(Resource.class))).thenReturn(true);
 
         MockMultipartFile file = new MockMultipartFile("file", "poetize.jpeg", "image/jpeg", newBytes);
-        PoetryResult<Resource> result = service.replaceResource(2, "/poetize.jpg", file);
+        PoetryResult<Resource> result = service.replaceResource(2, "/static/assets/poetize.jpg", file);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(Files.readAllBytes(webFile)).isEqualTo(newBytes);
         assertThat(Files.readAllBytes(adminFile)).isEqualTo(newBytes);
-        assertThat(result.getData().getPath()).isEqualTo("/poetize.jpg");
+        assertThat(result.getData().getPath()).isEqualTo("/static/assets/poetize.jpg");
         assertThat(result.getData().getWidth()).isEqualTo(4);
         assertThat(result.getData().getHeight()).isEqualTo(5);
     }

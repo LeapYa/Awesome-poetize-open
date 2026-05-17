@@ -10,7 +10,7 @@ const PRECACHE_RESOURCES = [
   '/libs/css/highlight.min.css',
   '/libs/js/anime.min.js',
   '/libs/js/highlight.min.js',
-  '/poetize.jpg'
+  '/static/assets/poetize.jpg'
 ];
 
 // 安装Service Worker时预缓存关键资源

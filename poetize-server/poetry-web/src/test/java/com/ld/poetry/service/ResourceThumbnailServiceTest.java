@@ -69,15 +69,15 @@ class ResourceThumbnailServiceTest {
     }
 
     @Test
-    void createThumbnailShouldResolveRootPublicResourceFromStaticRoots() throws Exception {
-        Path publicRoot = tempDir.resolve("poetize-web/public");
-        Path targetFile = publicRoot.resolve("poetize.jpg");
+    void createThumbnailShouldResolvePublicStaticResourceFromStaticRoots() throws Exception {
+        Path publicStaticRoot = tempDir.resolve("poetize-web/public/static");
+        Path targetFile = publicStaticRoot.resolve("assets/poetize.jpg");
         byte[] imageBytes = imageBytes("jpg", 200, 240, Color.RED);
-        Files.createDirectories(publicRoot);
+        Files.createDirectories(targetFile.getParent());
         Files.write(targetFile, imageBytes);
-        ReflectionTestUtils.setField(resourceAvailabilityService, "staticResourceRoots", publicRoot.toString());
+        ReflectionTestUtils.setField(resourceAvailabilityService, "staticResourceRoots", publicStaticRoot.toString());
 
-        Resource resource = resource(2, "/poetize.jpg", "local", "image/jpeg");
+        Resource resource = resource(2, "/static/assets/poetize.jpg", "local", "image/jpeg");
         resource.setResourceHash("hash-public");
         resource.setSize(imageBytes.length);
         when(resourceService.getById(2)).thenReturn(resource);
