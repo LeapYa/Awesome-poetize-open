@@ -184,6 +184,40 @@ class FileSecurityValidatorTest {
     }
 
     @Test
+    @DisplayName("测试MP4文件验证")
+    void testMp4Validation() {
+        byte[] mp4Header = {
+            0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
+            0x69, 0x73, 0x6F, 0x6D, 0x00, 0x00, 0x02, 0x00,
+            0x69, 0x73, 0x6F, 0x6D, 0x69, 0x73, 0x6F, 0x32,
+            0x61, 0x76, 0x63, 0x31
+        };
+        FileSecurityValidator.ValidationResult result = validator.validateFile(
+            createMockFile("test.mp4", "video/mp4", mp4Header),
+            "test.mp4",
+            "video/mp4"
+        );
+        assertTrue(result.isSuccess(), "MP4文件验证应该通过，实际消息: " + result.getMessage());
+    }
+
+    @Test
+    @DisplayName("测试WebM文件验证")
+    void testWebmValidation() {
+        byte[] webmHeader = {
+            0x1A, 0x45, (byte) 0xDF, (byte) 0xA3, (byte) 0x9F, 0x42, (byte) 0x86, (byte) 0x81,
+            0x01, 0x42, (byte) 0xF7, (byte) 0x81, 0x01, 0x42, (byte) 0xF2, (byte) 0x81,
+            0x04, 0x42, (byte) 0xF3, (byte) 0x81, 0x08, 0x42, (byte) 0x82, (byte) 0x84,
+            0x77, 0x65, 0x62, 0x6D, 0x42, (byte) 0x87, (byte) 0x81, 0x02
+        };
+        FileSecurityValidator.ValidationResult result = validator.validateFile(
+            createMockFile("test.webm", "video/webm", webmHeader),
+            "test.webm",
+            "video/webm"
+        );
+        assertTrue(result.isSuccess(), "WebM文件验证应该通过，实际消息: " + result.getMessage());
+    }
+
+    @Test
     @DisplayName("测试无效的JPEG魔数")
     void testInvalidJpegMagicNumber() {
         // 错误的魔数

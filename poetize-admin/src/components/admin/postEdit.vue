@@ -2305,9 +2305,10 @@ const uploadPicture = () => import("../common/uploadPicture");
           }
 
           const isImage = !forceAttachment && this.isImageFile(file);
+          const isVideo = !forceAttachment && this.isVideoFile(file);
           // 显示上传中提示
           const loadingMessage = this.$message({
-            message: privateAttachment ? '正在上传私有附件...' : (isImage ? '正在上传图片...' : '正在上传文件...'),
+            message: privateAttachment ? '正在上传私有附件...' : (isImage ? '正在上传图片...' : (isVideo ? '正在上传视频...' : '正在上传文件...')),
             type: 'info',
             iconClass: 'el-icon-loading',
             duration: 0, // 不自动关闭
@@ -2315,13 +2316,13 @@ const uploadPicture = () => import("../common/uploadPicture");
           });
 
           let suffix = file.name.lastIndexOf('.') !== -1 ? file.name.substring(file.name.lastIndexOf('.')) : "";
-          const resourceType = isImage ? "articlePicture" : "articleFile";
+          const resourceType = isImage ? "articlePicture" : (isVideo ? "video/article" : "articleFile");
           let key = resourceType + "/" + this.mainStore.currentAdmin.username.replace(/[^a-zA-Z]/g, '')
                     + this.mainStore.currentAdmin.id + new Date().getTime() 
                     + Math.floor(Math.random() * 1000) + suffix;
 
           // 获取当前存储类型，优先使用更新后的配置
-          // 图床类存储通常只接受图片；文章附件统一走本地存储，私有附件仅通过前端 u/ 标记拦截。
+          // 图床类存储通常只接受图片；文章附件和视频统一走本地存储，私有附件仅通过前端 u/ 标记拦截。
           let storeType = isImage ? (this.currentStoreType || this.mainStore.sysConfig['store.type'] || "local") : "local";
           const uploadOptions = {
             privateAttachment,
@@ -2351,27 +2352,96 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       
       // 本地保存文件
-      saveLocal(fd, loadingMessage, uploadId, uploadOptions = {}) {
-        this.$http.upload(this.$constant.baseURL + "/resource/upload", fd, true)
-          .then((res) => {
-            // 关闭上传中提示
-            if (loadingMessage) loadingMessage.close();
-            
-            if (!this.$common.isEmpty(res.data)) {
-              this.insertUploadedFile(res.data, fd.get("file"), uploadId, uploadOptions);
-              const isImage = !uploadOptions.forceAttachment && this.isImageFile(fd.get("file"));
-              this.$message.success(isImage ? '图片上传成功' : '文件上传成功');
-            } else {
-              this.rejectImageUpload(uploadId);
-              this.showError("文件上传失败", "服务器未返回有效的文件URL");
-            }
-          })
-          .catch((error) => {
-            // 关闭上传中提示
-            if (loadingMessage) loadingMessage.close();
+      async saveLocal(fd, loadingMessage, uploadId, uploadOptions = {}) {
+        const file = fd.get("file");
+        const isVideo = !uploadOptions.forceAttachment && this.isVideoFile(file);
+        try {
+          const res = isVideo
+            ? await this.saveLocalVideoInChunks(fd, loadingMessage)
+            : await this.$http.upload(this.$constant.baseURL + "/resource/upload", fd, true);
+
+          if (loadingMessage) loadingMessage.close();
+
+          if (!this.$common.isEmpty(res.data)) {
+            this.insertUploadedFile(res.data, file, uploadId, uploadOptions);
+            const isImage = !uploadOptions.forceAttachment && this.isImageFile(file);
+            this.$message.success(isImage ? '图片上传成功' : (isVideo ? '视频上传成功' : '文件上传成功'));
+          } else {
             this.rejectImageUpload(uploadId);
-            this.showError("文件本地上传失败", error);
+            this.showError("文件上传失败", "服务器未返回有效的文件URL");
+          }
+        } catch (error) {
+          if (loadingMessage) loadingMessage.close();
+          this.rejectImageUpload(uploadId);
+          this.showError(isVideo ? "视频分片上传失败" : "文件本地上传失败", error);
+        }
+      },
+
+      async saveLocalVideoInChunks(fd, loadingMessage) {
+        const file = fd.get("file");
+        const chunkSize = this.getVideoChunkSize(file.size || 0);
+        const totalChunks = Math.max(1, Math.ceil((file.size || 0) / chunkSize));
+        const uploadId = this.createChunkUploadId();
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+          const start = chunkIndex * chunkSize;
+          const end = Math.min(start + chunkSize, file.size);
+          const chunk = file.slice(start, end);
+          const chunkFd = new FormData();
+          chunkFd.append("chunk", chunk, file.name + ".part" + chunkIndex);
+          chunkFd.append("uploadId", uploadId);
+          chunkFd.append("chunkIndex", String(chunkIndex));
+          chunkFd.append("totalChunks", String(totalChunks));
+
+          const chunkResult = await this.$http.upload(this.$constant.baseURL + "/resource/uploadChunk", chunkFd, true, {
+            timeout: 60000,
+            onProgress: () => {}
           });
+          this.ensureUploadSuccess(chunkResult, "视频分片上传失败");
+
+          if (loadingMessage) {
+            loadingMessage.message = "视频上传中 " + (chunkIndex + 1) + "/" + totalChunks;
+          }
+        }
+
+        const mergeFd = new FormData();
+        mergeFd.append("uploadId", uploadId);
+        mergeFd.append("totalChunks", String(totalChunks));
+        mergeFd.append("originalName", fd.get("originalName") || file.name);
+        mergeFd.append("relativePath", fd.get("relativePath"));
+        mergeFd.append("type", fd.get("type"));
+        mergeFd.append("contentType", this.getVideoMimeType(file) || file.type || "application/octet-stream");
+
+        if (loadingMessage) {
+          loadingMessage.message = "视频处理中，请稍候";
+        }
+
+        const mergeResult = await this.$http.upload(this.$constant.baseURL + "/resource/mergeChunks", mergeFd, true, {
+          timeout: 300000,
+          onProgress: () => {}
+        });
+        this.ensureUploadSuccess(mergeResult, "视频合并失败");
+        return mergeResult;
+      },
+
+      getVideoChunkSize(fileSize) {
+        if (fileSize <= 2 * 1024 * 1024) {
+          return 8 * 1024;
+        }
+        if (fileSize <= 30 * 1024 * 1024) {
+          return 64 * 1024;
+        }
+        return 256 * 1024;
+      },
+
+      createChunkUploadId() {
+        return "v_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
+      },
+
+      ensureUploadSuccess(result, fallbackMessage) {
+        if (!result || (result.code && result.code !== 200) || result.success === false) {
+          throw new Error((result && result.message) || fallbackMessage || "上传失败");
+        }
       },
       
       isImageFile(file) {
@@ -2381,10 +2451,18 @@ const uploadPicture = () => import("../common/uploadPicture");
         return String(file.type || '').startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp|tiff|tif|psd|svg|ico)$/i.test(file.name || '');
       },
 
+      isVideoFile(file) {
+        if (!file) {
+          return false;
+        }
+        return String(file.type || '').startsWith('video/') || /\.(mp4|webm|ogg|ogv|mov|m4v)$/i.test(file.name || '');
+      },
+
       createUploadedFileMarkdown(url, file, uploadOptions = {}) {
         const isImage = !uploadOptions.forceAttachment && this.isImageFile(file);
+        const isVideo = !uploadOptions.forceAttachment && this.isVideoFile(file);
         let fullUrl = url;
-        if (isImage && url.startsWith('/')) {
+        if ((isImage || isVideo) && url.startsWith('/')) {
           // 开发环境（非生产模式）：前后端端口不同，需要完整URL
           // 生产环境：前后端同域，使用相对路径由Nginx代理
           if (!import.meta.env.PROD) {
@@ -2397,9 +2475,45 @@ const uploadPicture = () => import("../common/uploadPicture");
         if (isImage) {
           return `![${safeFilename}](${fullUrl})\n`;
         }
+        if (isVideo) {
+          return this.createUploadedVideoHtml(fullUrl, safeFilename, file);
+        }
         return createAttachmentMarkdown(safeFilename, url, {
           privateAttachment: !!uploadOptions.privateAttachment
         });
+      },
+
+      createUploadedVideoHtml(url, fileName, file) {
+        const safeUrl = this.escapeHtmlAttribute(url);
+        const safeTitle = this.escapeHtmlAttribute(fileName || '视频');
+        const type = this.getVideoMimeType(file);
+        const typeAttr = type ? ` type="${this.escapeHtmlAttribute(type)}"` : '';
+        return `<div class="poetize-video-card" data-title="${safeTitle}">
+  <video class="poetize-video-player" src="${safeUrl}"${typeAttr} controls preload="metadata" playsinline></video>
+  <span class="poetize-video-play-overlay" aria-hidden="true"></span>
+</div>\n`;
+      },
+
+      getVideoMimeType(file) {
+        const mimeType = String((file && file.type) || '').toLowerCase();
+        if (mimeType.startsWith('video/')) {
+          return mimeType;
+        }
+        const name = String((file && file.name) || '').toLowerCase();
+        if (name.endsWith('.webm')) return 'video/webm';
+        if (name.endsWith('.ogv') || name.endsWith('.ogg')) return 'video/ogg';
+        if (name.endsWith('.mov')) return 'video/quicktime';
+        if (name.endsWith('.m4v')) return 'video/x-m4v';
+        if (name.endsWith('.mp4')) return 'video/mp4';
+        return '';
+      },
+
+      escapeHtmlAttribute(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
       },
 
       // 插入上传结果到编辑器
@@ -2438,11 +2552,12 @@ const uploadPicture = () => import("../common/uploadPicture");
                   if (!this.$common.isEmpty(res.key)) {
                     let url = this.mainStore.sysConfig['qiniu.downloadUrl'] + res.key;
                     let file = fd.get("file");
-                    let resourceType = fd.get("type") || (this.isImageFile(file) ? "articlePicture" : "articleFile");
+                    let resourceType = fd.get("type") || (this.isImageFile(file) ? "articlePicture" : (this.isVideoFile(file) ? "video/article" : "articleFile"));
                     this.$common.saveResource(this, resourceType, url, file.size, file.type, file.name, "qiniu", true);
                     this.insertUploadedFile(url, file, uploadId, uploadOptions);
                     const isImage = !uploadOptions.forceAttachment && this.isImageFile(file);
-                    this.$message.success(isImage ? '图片上传成功' : '文件上传成功');
+                    const isVideo = !uploadOptions.forceAttachment && this.isVideoFile(file);
+                    this.$message.success(isImage ? '图片上传成功' : (isVideo ? '视频上传成功' : '文件上传成功'));
                   } else {
                     this.rejectImageUpload(uploadId);
                     this.showError("七牛云上传失败", "未返回有效的文件密钥");
@@ -2481,11 +2596,12 @@ const uploadPicture = () => import("../common/uploadPicture");
               let url = res.data;
               let file = fd.get("file");
               let storeType = fd.get("storeType") || "lsky";
-              let resourceType = fd.get("type") || (this.isImageFile(file) ? "articlePicture" : "articleFile");
+              let resourceType = fd.get("type") || (this.isImageFile(file) ? "articlePicture" : (this.isVideoFile(file) ? "video/article" : "articleFile"));
               this.$common.saveResource(this, resourceType, url, file.size, file.type, file.name, storeType, true);
               this.insertUploadedFile(url, file, uploadId, uploadOptions);
               const isImage = !uploadOptions.forceAttachment && this.isImageFile(file);
-              this.$message.success(isImage ? '图片上传成功' : '文件上传成功');
+              const isVideo = !uploadOptions.forceAttachment && this.isVideoFile(file);
+              this.$message.success(isImage ? '图片上传成功' : (isVideo ? '视频上传成功' : '文件上传成功'));
             } else {
               this.rejectImageUpload(uploadId);
               this.showError("图床上传失败", "服务器未返回有效的文件URL");

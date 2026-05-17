@@ -22,7 +22,6 @@ services:
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - web-root:/usr/share/nginx/html
-      - ./docker/nginx/lua:/etc/nginx/lua
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     ports:
@@ -159,6 +158,7 @@ services:
     volumes:
       - poetize_uploads:/app/static
       - poetize_web_dist:/app/web-dist
+      - poetize_admin_dist:/app/admin-dist
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
@@ -178,6 +178,8 @@ services:
       - POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
       - PRERENDER_TEMPLATE_PATH=/app/web-dist/index.html
       - PRERENDER_OUTPUT_ROOT=/app/web-dist/prerender
+      - PRERENDER_ADMIN_TEMPLATE_PATH=/app/admin-dist/index.html
+      - PRERENDER_ADMIN_OUTPUT_ROOT=/app/admin-dist/prerender
       - RESOURCE_AVAILABILITY_STATICROOTS=/app/web-dist/static
       - SITE_URL=${SITE_URL:-http://localhost}
       # 容器网络网段，用于判断请求是否为内网服务的请求
@@ -210,6 +212,8 @@ services:
         condition: service_healthy
         required: false
       poetize-web:
+        condition: service_completed_successfully
+      poetize-admin:
         condition: service_completed_successfully
     restart: always
     healthcheck:

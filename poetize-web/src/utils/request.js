@@ -87,6 +87,35 @@ function shouldAttachFingerprint(config) {
   )
 }
 
+function buildFriendlyHttpErrorMessage(error) {
+  const status = error?.response?.status
+  if (status === 413) {
+    return '上传的文件超过服务器允许大小，请压缩后再上传，或联系管理员调整上传大小限制'
+  }
+  if (status === 415) {
+    return '当前文件格式暂不支持，请更换文件格式后再试'
+  }
+  if (status === 408) {
+    return '上传等待时间过长，请检查网络后重试'
+  }
+  if (status === 429) {
+    return error?.response?.data?.message || '操作过于频繁，请稍后再试'
+  }
+  if (status >= 500) {
+    return '服务器处理失败，请稍后重试或联系管理员'
+  }
+  if (status >= 400) {
+    return error?.response?.data?.message || '请求处理失败，请检查后重试'
+  }
+  if (error?.code === 'ECONNABORTED') {
+    return '请求超时，请检查网络或文件大小后重试'
+  }
+  if (error?.message === 'Network Error') {
+    return '网络异常，无法连接服务，请检查网络或服务状态'
+  }
+  return ''
+}
+
 // 获取翻译配置中的超时时间
 async function getTranslationTimeout() {
   const now = Date.now()
@@ -427,6 +456,20 @@ axios.interceptors.response.use(
           showMessage: true,
         })
       }
+
+      const friendlyMessage = buildFriendlyHttpErrorMessage(error)
+      if (friendlyMessage) {
+        error.message = friendlyMessage
+        error.friendlyMessage = friendlyMessage
+        error.status = error.response.status
+        return Promise.reject(error)
+      }
+    } else {
+      const friendlyMessage = buildFriendlyHttpErrorMessage(error)
+      if (friendlyMessage) {
+        error.message = friendlyMessage
+        error.friendlyMessage = friendlyMessage
+      }
     }
     return Promise.reject(error)
   }
@@ -495,7 +538,7 @@ export default {
     let config = {
       isAdmin: isAdmin,
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 60000,
+      timeout: option && option.timeout ? option.timeout : 60000,
     }
 
     // 注意：token处理已移至请求拦截器中统一处理，此处不再重复处理

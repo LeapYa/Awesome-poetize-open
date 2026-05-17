@@ -79,6 +79,73 @@
       
       const qiniuUrl = computed(() => mainStore.sysConfig?.qiniuUrl || '');
       const currentUser = computed(() => mainStore.currentUser);
+
+      const ensureUploadSuccess = (result, fallbackMessage) => {
+        if (!result || (result.code && result.code !== 200) || result.success === false) {
+          throw new Error((result && result.message) || fallbackMessage || "上传失败");
+        }
+      };
+
+      const getChunkUploadSize = (fileSize) => {
+        if (fileSize <= 2 * 1024 * 1024) {
+          return 8 * 1024;
+        }
+        if (fileSize <= 30 * 1024 * 1024) {
+          return 64 * 1024;
+        }
+        return 256 * 1024;
+      };
+
+      const createChunkUploadId = () => {
+        return "im_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
+      };
+
+      const uploadLocalFileInChunks = async (file, data, options) => {
+        const chunkSize = getChunkUploadSize(file.size || 0);
+        const totalChunks = Math.max(1, Math.ceil((file.size || 0) / chunkSize));
+        const uploadId = createChunkUploadId();
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+          const start = chunkIndex * chunkSize;
+          const end = Math.min(start + chunkSize, file.size);
+          const chunkFd = new FormData();
+          chunkFd.append("chunk", file.slice(start, end), file.name + ".part" + chunkIndex);
+          chunkFd.append("uploadId", uploadId);
+          chunkFd.append("chunkIndex", String(chunkIndex));
+          chunkFd.append("totalChunks", String(totalChunks));
+
+          const chunkResult = await $http.upload($constant.baseURL + "/resource/uploadChunk", chunkFd, false, {
+            timeout: 60000,
+            onProgress: () => {}
+          });
+          ensureUploadSuccess(chunkResult, "文件分片上传失败");
+
+          if (options && typeof options.onProgress === "function") {
+            options.onProgress({
+              percent: Math.round(((chunkIndex + 1) / totalChunks) * 95)
+            });
+          }
+        }
+
+        const mergeFd = new FormData();
+        mergeFd.append("uploadId", uploadId);
+        mergeFd.append("totalChunks", String(totalChunks));
+        mergeFd.append("originalName", data.originalName || file.name);
+        mergeFd.append("relativePath", data.relativePath);
+        mergeFd.append("type", data.type);
+        mergeFd.append("contentType", file.type || "application/octet-stream");
+
+        const mergeResult = await $http.upload($constant.baseURL + "/resource/mergeChunks", mergeFd, false, {
+          timeout: 300000,
+          onProgress: () => {}
+        });
+        ensureUploadSuccess(mergeResult, "文件合并失败");
+
+        if (options && typeof options.onProgress === "function") {
+          options.onProgress({ percent: 100 });
+        }
+        return mergeResult;
+      };
       
       const submitUpload = () => {
         uploadRef.value.submit();
@@ -113,7 +180,10 @@
           data.storeType = storeType.value;
           data.originalName = options.file.name;
           data.file = options.file;
-          return $http.upload($constant.baseURL + "/resource/upload", data, options);
+          if ((options.file.size || 0) > 1024 * 1024) {
+            return uploadLocalFileInChunks(options.file, data, options);
+          }
+          return $http.upload($constant.baseURL + "/resource/upload", data, false, options);
         } else if (storeType.value === "qiniu") {
           const xhr = new XMLHttpRequest();
           xhr.open('get', $constant.baseURL + "/qiniu/getUpToken?key=" + key, false);

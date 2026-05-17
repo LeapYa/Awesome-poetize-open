@@ -8590,12 +8590,6 @@ modify_docker_compose_for_multi_instance() {
     sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/default.https.conf
   fi
   
-  # 修改nginx lua配置
-  if project_requires_python_backend; then
-    sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/lua/im_seo_access.lua
-    sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/lua/seo_access.lua
-  fi
-
   success "docker-compose.yml多实例配置完成"
 }
 

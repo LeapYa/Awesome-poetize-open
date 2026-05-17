@@ -45,7 +45,7 @@ public class PageViewTrackController {
                 "/qiniu", "/qrcode", "/imChat", "/collect", "/actuator",
                 "/static/", "/css/", "/js/", "/images/", "/assets/", "/libs/",
                 "/seo/", "/python/", "/ws/", "/login/", "/callback/",
-                "/oauth/", "/internal_proxy/", "/sitemap", "/flush_seo_cache", "/.well-known/"
+                "/oauth/", "/internal_proxy/", "/sitemap", "/.well-known/"
         };
 
         // 按第二个字符分桶（所有前缀都以 '/' 开头，用第二个字符区分）

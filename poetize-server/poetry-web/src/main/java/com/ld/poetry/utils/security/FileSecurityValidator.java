@@ -30,7 +30,7 @@ public class FileSecurityValidator {
                 return "图片文件格式验证失败";
             }
         },
-        VIDEO("video", 16) {
+        VIDEO("video", 64) {
             @Override
             public boolean validateMagicNumber(byte[] header) {
                 return isMp4(header) || isAvi(header) || isMov(header) || isWmv(header) || isFlv(header) || isWebm(header);
@@ -79,9 +79,9 @@ public class FileSecurityValidator {
         private static final byte[] TIFF_LE_HEADER = {0x49, 0x49, 0x2A, 0x00}; // TIFF Little Endian
 
         // 视频魔数
-        private static final byte[] MP4_HEADER = {0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70};
         private static final byte[] AVI_HEADER = {0x52, 0x49, 0x46, 0x46};
-        private static final byte[] MOV_HEADER = {0x66, 0x74, 0x79, 0x70};
+        private static final byte[] FTYP_HEADER = {0x66, 0x74, 0x79, 0x70};
+        private static final byte[] EBML_HEADER = {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3};
 
         // 音频魔数
         private static final byte[] MP3_HEADER = {0x49, 0x44, 0x33};
@@ -94,6 +94,23 @@ public class FileSecurityValidator {
                 return false;
             }
             return Arrays.equals(Arrays.copyOf(fileHeader, pattern.length), pattern);
+        }
+
+        private static boolean matchesAt(byte[] fileHeader, int offset, byte[] pattern) {
+            if (offset < 0 || fileHeader.length < offset + pattern.length) {
+                return false;
+            }
+            return Arrays.equals(Arrays.copyOfRange(fileHeader, offset, offset + pattern.length), pattern);
+        }
+
+        private static boolean containsAscii(byte[] fileHeader, String value) {
+            byte[] pattern = value.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            for (int i = 0; i <= fileHeader.length - pattern.length; i++) {
+                if (matchesAt(fileHeader, i, pattern)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // 图片验证
@@ -133,15 +150,32 @@ public class FileSecurityValidator {
         }
 
         // 视频验证
-        private static boolean isMp4(byte[] header) { return matches(header, MP4_HEADER); }
+        private static boolean isMp4(byte[] header) {
+            return matchesAt(header, 4, FTYP_HEADER)
+                    && (containsAscii(header, "mp4")
+                    || containsAscii(header, "isom")
+                    || containsAscii(header, "iso2")
+                    || containsAscii(header, "avc1")
+                    || containsAscii(header, "M4V"));
+        }
         private static boolean isAvi(byte[] header) {
             return matches(header, AVI_HEADER) && header.length >= 12 &&
                     header[8] == 0x41 && header[9] == 0x56 && header[10] == 0x49 && header[11] == 0x20;
         }
-        private static boolean isMov(byte[] header) { return matches(header, MOV_HEADER); }
-        private static boolean isWmv(byte[] header) { return matches(header, MOV_HEADER); }
+        private static boolean isMov(byte[] header) {
+            return matchesAt(header, 4, FTYP_HEADER) && containsAscii(header, "qt  ");
+        }
+        private static boolean isWmv(byte[] header) {
+            return header.length >= 16
+                    && (header[0] & 0xFF) == 0x30
+                    && (header[1] & 0xFF) == 0x26
+                    && (header[2] & 0xFF) == 0xB2
+                    && (header[3] & 0xFF) == 0x75;
+        }
         private static boolean isFlv(byte[] header) { return header.length >= 4 && header[0] == 0x46 && header[1] == 0x4C && header[2] == 0x56 && header[3] == 0x01; }
-        private static boolean isWebm(byte[] header) { return matches(header, MOV_HEADER); }
+        private static boolean isWebm(byte[] header) {
+            return matches(header, EBML_HEADER) && containsAscii(header, "webm");
+        }
 
         // 音频验证
         private static boolean isMp3(byte[] header) { return matches(header, MP3_HEADER); }

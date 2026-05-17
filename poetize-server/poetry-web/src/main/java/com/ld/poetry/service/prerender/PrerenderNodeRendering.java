@@ -31,6 +31,23 @@ class PrerenderNodeRendererRegistry {
 
 @Component
 @RequiredArgsConstructor
+class AdminShellNodeRenderer implements PrerenderNodeRenderer {
+
+    private final PrerenderService prerenderService;
+
+    @Override
+    public boolean supports(PrerenderNode node) {
+        return node instanceof AdminShellNode;
+    }
+
+    @Override
+    public void render(PrerenderNode node, PrerenderSnapshot snapshot) {
+        prerenderService.renderAdminShellPage();
+    }
+}
+
+@Component
+@RequiredArgsConstructor
 class StaticPageNodeRenderer implements PrerenderNodeRenderer {
 
     private final PrerenderService prerenderService;

@@ -18,10 +18,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -81,9 +77,6 @@ public class WebInfoController {
     private FamilyMapper familyMapper;
 
     @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
     private ThirdPartyOauthConfigService thirdPartyOauthConfigService;
 
     @Autowired
@@ -106,29 +99,6 @@ public class WebInfoController {
 
     @Autowired
     private com.ld.poetry.service.ai.rag.RagSyncService ragSyncService;
-
-    /**
-     * 清除nginx SEO缓存
-     * 在网站信息更新后调用，确保nginx不使用旧的缓存数据作为fallback
-     */
-    private void clearNginxSeoCache() {
-        try {
-            String nginxUrl = "http://nginx";
-            String clearCacheUrl = nginxUrl + "/flush_seo_cache";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Service", "poetize-java");
-            headers.set("User-Agent", "poetize-java/1.0.0");
-
-            HttpEntity<?> request = new HttpEntity<>(headers);
-
-            restTemplate.exchange(clearCacheUrl, HttpMethod.GET, request, String.class);
-            log.info("nginx SEO缓存清除成功");
-        } catch (Exception e) {
-            log.warn("清除nginx SEO缓存失败: {}", e.getMessage());
-            // 不抛出异常，避免影响主流程
-        }
-    }
 
     /**
      * 更新完整网站信息（用于基本信息保存）
@@ -217,10 +187,6 @@ public class WebInfoController {
                     // 2. 异步触发清理操作和预渲染
                     CompletableFuture.runAsync(() -> {
                         try {
-                            // 清除nginx SEO缓存（网络IO，可能超时）
-                            clearNginxSeoCache();
-                            Thread.sleep(1000);
-
                             log.info("开始触发预渲染");
                             prerenderFacade.rebuildSite();
                             log.info("网站信息更新后成功触发页面预渲染");

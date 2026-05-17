@@ -162,6 +162,9 @@ export default {
         fd.append('type', this.prefix)
         fd.append('storeType', this.currentStoreType)
 
+        if (this.shouldUseChunkUpload(options.file)) {
+          return this.uploadLocalFileInChunks(options.file, fd, options)
+        }
         return this.$http.upload(
           this.$constant.baseURL + '/resource/upload',
           fd,
@@ -216,6 +219,93 @@ export default {
           this.isAdmin,
           options
         )
+      }
+    },
+
+    async uploadLocalFileInChunks(file, fd, options) {
+      const chunkSize = this.getChunkUploadSize(file.size || 0)
+      const totalChunks = Math.max(1, Math.ceil((file.size || 0) / chunkSize))
+      const uploadId = this.createChunkUploadId()
+
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * chunkSize
+        const end = Math.min(start + chunkSize, file.size)
+        const chunkFd = new FormData()
+        chunkFd.append('chunk', file.slice(start, end), file.name + '.part' + chunkIndex)
+        chunkFd.append('uploadId', uploadId)
+        chunkFd.append('chunkIndex', String(chunkIndex))
+        chunkFd.append('totalChunks', String(totalChunks))
+
+        const chunkResult = await this.$http.upload(
+          this.$constant.baseURL + '/resource/uploadChunk',
+          chunkFd,
+          this.isAdmin,
+          {
+            timeout: 60000,
+            onProgress: () => {},
+          }
+        )
+        this.ensureUploadSuccess(chunkResult, '文件分片上传失败')
+
+        if (options && typeof options.onProgress === 'function') {
+          options.onProgress({
+            percent: Math.round(((chunkIndex + 1) / totalChunks) * 95),
+          })
+        }
+      }
+
+      const mergeFd = new FormData()
+      mergeFd.append('uploadId', uploadId)
+      mergeFd.append('totalChunks', String(totalChunks))
+      mergeFd.append('originalName', fd.get('originalName') || file.name)
+      mergeFd.append('relativePath', fd.get('relativePath'))
+      mergeFd.append('type', fd.get('type'))
+      mergeFd.append('contentType', file.type || 'application/octet-stream')
+
+      const mergeResult = await this.$http.upload(
+        this.$constant.baseURL + '/resource/mergeChunks',
+        mergeFd,
+        this.isAdmin,
+        {
+          timeout: 300000,
+          onProgress: () => {},
+        }
+      )
+      this.ensureUploadSuccess(mergeResult, '文件合并失败')
+
+      if (options && typeof options.onProgress === 'function') {
+        options.onProgress({ percent: 100 })
+      }
+      return mergeResult
+    },
+
+    shouldUseChunkUpload(file) {
+      const fileSize = file && file.size ? file.size : 0
+      return this.currentStoreType === 'local' && fileSize > 1024 * 1024
+    },
+
+    getChunkUploadSize(fileSize) {
+      if (fileSize <= 2 * 1024 * 1024) {
+        return 8 * 1024
+      }
+      if (fileSize <= 30 * 1024 * 1024) {
+        return 64 * 1024
+      }
+      return 256 * 1024
+    },
+
+    createChunkUploadId() {
+      return (
+        'w_' +
+        Date.now().toString(36) +
+        '_' +
+        Math.random().toString(36).slice(2, 12)
+      )
+    },
+
+    ensureUploadSuccess(result, fallbackMessage) {
+      if (!result || (result.code && result.code !== 200) || result.success === false) {
+        throw new Error((result && result.message) || fallbackMessage || '上传失败')
       }
     },
 

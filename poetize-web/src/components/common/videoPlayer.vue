@@ -1,5 +1,5 @@
 <template>
-  <div class="video-player-container">
+  <div class="video-player-container" :class="{ 'is-playing': isPlaying }">
     <video
       ref="videoPlayer"
       class="video-player-box"
@@ -26,6 +26,7 @@
         您的浏览器不支持 HTML5 视频播放，请升级浏览器。
       </p>
     </video>
+    <span class="video-player-overlay" aria-hidden="true"></span>
   </div>
 </template>
 
@@ -46,6 +47,7 @@ export default {
   data() {
     return {
       isReady: false,
+      isPlaying: false,
     }
   },
   computed: {
@@ -65,14 +67,17 @@ export default {
   methods: {
     // 播放回调
     onPlayerPlay(event) {
+      this.isPlaying = true
       this.$emit('play', event)
     },
     // 暂停回调
     onPlayerPause(event) {
+      this.isPlaying = false
       this.$emit('pause', event)
     },
     // 视频播完回调
     onPlayerEnded(event) {
+      this.isPlaying = false
       this.$emit('ended', event)
     },
     // 当播放由于暂时缺少数据而停止时触发
@@ -93,6 +98,7 @@ export default {
 
 <style scoped>
 .video-player-container {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
 }
@@ -103,6 +109,37 @@ export default {
   border-radius: 8px;
   overflow: hidden;
   background-color: #000;
+}
+
+.video-player-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 58px;
+  height: 58px;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.48);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.video-player-overlay::before {
+  position: absolute;
+  top: 50%;
+  left: 52%;
+  width: 0;
+  height: 0;
+  content: '';
+  border-top: 14px solid transparent;
+  border-bottom: 14px solid transparent;
+  border-left: 22px solid #fff;
+  transform: translate(-50%, -50%);
+}
+
+.video-player-container.is-playing .video-player-overlay {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.92);
 }
 
 .fallback-message {

@@ -117,6 +117,34 @@ public class PrerenderService {
         engine.deletePage("article/" + id);
     }
 
+    public void renderAdminShellPage() {
+        if (!engine.isAdminTemplateAvailable()) {
+            log.warn("后台 SPA 模板文件不存在，跳过后台入口预渲染");
+            return;
+        }
+
+        WebInfo webInfo = getWebInfo();
+        Map<String, Object> seoConfig = getSeoConfig();
+        String sourceLanguage = getSourceLanguage();
+        String siteName = getSiteName(webInfo);
+        String baseUrl = getBaseUrl(webInfo);
+        String title = "后台管理 - " + siteName;
+        String description = "后台管理系统";
+        String ogImage = ensureAbsoluteImageUrl(firstNonBlank(webInfo.getAvatar(), stringValue(seoConfig.get("og_image"))), baseUrl);
+        Map<String, Object> meta = createWebsiteMeta(title, description, "后台管理,管理系统", baseUrl,
+                "/admin", "website", ogImage, webInfo, seoConfig);
+        meta.put("robots", "noindex,nofollow,noarchive");
+
+        String html = engine.buildAdminShellPage(PrerenderPageData.builder()
+                .title(title)
+                .meta(meta)
+                .content("")
+                .lang(sourceLanguage)
+                .pageType("admin")
+                .build());
+        engine.writeAdminShellPage(html);
+    }
+
     public void renderHomePage() {
         WebInfo webInfo = getWebInfo();
         Map<String, Object> seoConfig = getSeoConfig();

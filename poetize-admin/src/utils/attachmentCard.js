@@ -124,50 +124,48 @@ export function transformAttachmentLinksInElement(root) {
     }
 
     const icon = document.createElement('span');
-    icon.className = 'poetize-attachment-icon';
-    icon.textContent = extension.slice(0, 4);
-
-    const body = document.createElement('span');
-    body.className = 'poetize-attachment-body';
+    icon.className = 'poetize-attachment-pill-icon';
+    icon.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>`;
 
     const title = document.createElement('span');
-    title.className = 'poetize-attachment-name';
+    title.className = 'poetize-attachment-pill-name';
     title.textContent = name;
 
     const meta = document.createElement('span');
-    meta.className = 'poetize-attachment-meta';
-    meta.textContent = isPrivate ? `${extension} · 登录后可访问` : extension;
+    meta.className = 'poetize-attachment-pill-meta';
+    meta.textContent = isPrivate ? `${extension} · 登录可见` : extension;
 
     const actions = document.createElement('span');
-    actions.className = 'poetize-attachment-actions';
+    actions.className = 'poetize-attachment-pill-actions';
 
     if (canPreview) {
       const preview = document.createElement('a');
-      preview.className = 'poetize-attachment-action-link';
-      preview.textContent = '预览';
+      preview.className = 'poetize-attachment-pill-btn';
+      preview.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
       preview.setAttribute('href', href);
       preview.setAttribute('target', '_blank');
       preview.setAttribute('rel', 'noopener noreferrer');
       preview.setAttribute('data-poetize-attachment-action', 'preview');
+      preview.setAttribute('title', '预览');
       actions.appendChild(preview);
     }
 
     const download = document.createElement('a');
-    download.className = 'poetize-attachment-action-link';
-    download.textContent = '下载';
+    download.className = 'poetize-attachment-pill-btn';
+    download.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
     download.setAttribute('href', downloadHref);
     download.setAttribute('rel', 'noopener noreferrer');
     download.setAttribute('data-poetize-attachment-action', 'download');
+    download.setAttribute('title', '下载');
     if (!isDownloadUrl(downloadHref)) {
       download.setAttribute('target', '_blank');
       download.setAttribute('download', name);
     }
     actions.appendChild(download);
 
-    body.appendChild(title);
-    body.appendChild(meta);
     card.appendChild(icon);
-    card.appendChild(body);
+    card.appendChild(title);
+    card.appendChild(meta);
     card.appendChild(actions);
     link.replaceWith(card);
   });

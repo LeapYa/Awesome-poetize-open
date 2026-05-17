@@ -219,6 +219,9 @@ import upload from '../../utils/ajaxUpload';
           fd.append("type", this.prefix);
           fd.append("storeType", this.currentStoreType);
 
+          if (this.shouldUseChunkUpload(options.file)) {
+            return this.uploadLocalFileInChunks(options.file, fd, options);
+          }
           return this.$http.upload(this.$constant.baseURL + "/resource/upload", fd, this.isAdmin, options);
         } else if (this.currentStoreType === "qiniu") {
           const xhr = new XMLHttpRequest();
@@ -252,6 +255,80 @@ import upload from '../../utils/ajaxUpload';
           fd.append("storeType", this.currentStoreType);
 
           return this.$http.upload(this.$constant.baseURL + "/resource/upload", fd, this.isAdmin, options);
+        }
+      },
+
+      async uploadLocalFileInChunks(file, fd, options) {
+        const chunkSize = this.getChunkUploadSize(file.size || 0);
+        const totalChunks = Math.max(1, Math.ceil((file.size || 0) / chunkSize));
+        const uploadId = this.createChunkUploadId();
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+          const start = chunkIndex * chunkSize;
+          const end = Math.min(start + chunkSize, file.size);
+          const chunkFd = new FormData();
+          chunkFd.append("chunk", file.slice(start, end), file.name + ".part" + chunkIndex);
+          chunkFd.append("uploadId", uploadId);
+          chunkFd.append("chunkIndex", String(chunkIndex));
+          chunkFd.append("totalChunks", String(totalChunks));
+
+          const chunkResult = await this.$http.upload(this.$constant.baseURL + "/resource/uploadChunk", chunkFd, this.isAdmin, {
+            timeout: 60000,
+            onProgress: () => {}
+          });
+          this.ensureUploadSuccess(chunkResult, "文件分片上传失败");
+
+          if (options && typeof options.onProgress === "function") {
+            options.onProgress({
+              percent: Math.round(((chunkIndex + 1) / totalChunks) * 95)
+            });
+          }
+        }
+
+        const mergeFd = new FormData();
+        mergeFd.append("uploadId", uploadId);
+        mergeFd.append("totalChunks", String(totalChunks));
+        mergeFd.append("originalName", fd.get("originalName") || file.name);
+        mergeFd.append("relativePath", fd.get("relativePath"));
+        mergeFd.append("type", fd.get("type"));
+        mergeFd.append("contentType", file.type || "application/octet-stream");
+
+        const mergeResult = await this.$http.upload(this.$constant.baseURL + "/resource/mergeChunks", mergeFd, this.isAdmin, {
+          timeout: 300000,
+          onProgress: () => {}
+        });
+        this.ensureUploadSuccess(mergeResult, "文件合并失败");
+
+        if (options && typeof options.onProgress === "function") {
+          options.onProgress({ percent: 100 });
+        }
+        return mergeResult;
+      },
+
+      shouldUseChunkUpload(file) {
+        const fileSize = file && file.size ? file.size : 0;
+        return this.currentStoreType === "local"
+          && !this.isPictureUpload
+          && fileSize > 1024 * 1024;
+      },
+
+      getChunkUploadSize(fileSize) {
+        if (fileSize <= 2 * 1024 * 1024) {
+          return 8 * 1024;
+        }
+        if (fileSize <= 30 * 1024 * 1024) {
+          return 64 * 1024;
+        }
+        return 256 * 1024;
+      },
+
+      createChunkUploadId() {
+        return "r_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
+      },
+
+      ensureUploadSuccess(result, fallbackMessage) {
+        if (!result || (result.code && result.code !== 200) || result.success === false) {
+          throw new Error((result && result.message) || fallbackMessage || "上传失败");
         }
       },
 
@@ -298,6 +375,10 @@ import upload from '../../utils/ajaxUpload';
         if (typeof err === "string") {
           return err;
         }
+        const friendlyMessage = this.getFriendlyUploadErrorMessage(err);
+        if (friendlyMessage) {
+          return friendlyMessage;
+        }
         if (err.responseData && err.responseData.message) {
           return err.responseData.message;
         }
@@ -321,8 +402,30 @@ import upload from '../../utils/ajaxUpload';
         }
         return "上传失败";
       },
+      getFriendlyUploadErrorMessage(err) {
+        const status = err && err.response && err.response.status;
+        if (status === 413) {
+          return "上传的文件超过服务器允许大小，请压缩后再上传，或联系管理员调整上传大小限制";
+        }
+        if (status === 415) {
+          return "当前文件格式暂不支持，请更换文件格式后再试";
+        }
+        if (status === 408) {
+          return "上传等待时间过长，请检查网络后重试";
+        }
+        if (err && err.code === "ECONNABORTED") {
+          return "上传请求超时，请检查文件大小、网络或存储平台配置";
+        }
+        if (err && err.message === "Network Error") {
+          return "网络异常，无法连接上传服务，请检查网络或服务状态";
+        }
+        return "";
+      },
       getUploadErrorCode(err) {
         if (!err) {
+          return "";
+        }
+        if (this.getFriendlyUploadErrorMessage(err)) {
           return "";
         }
         if (err.code) {

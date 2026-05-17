@@ -35,9 +35,12 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -95,6 +98,8 @@ public class ResourceController {
     );
 
     private static final String DEFAULT_RESOURCE_ORDER = "createTime";
+    private static final String CHUNK_UPLOAD_DIR = ".chunks";
+    private static final int MAX_CHUNK_COUNT = 20000;
 
     private static final Map<String, String> RESOURCE_ORDER_COLUMNS = Map.of(
             "id", "id",
@@ -597,6 +602,233 @@ public class ResourceController {
             response.getOutputStream().write(thumbnail.getBytes());
         } catch (ResourceThumbnailService.ThumbnailException e) {
             response.sendError(e.getStatusCode(), e.getMessage());
+        }
+    }
+
+    /**
+     * 接收大文件分片。每个分片都是很小的 multipart 请求，避免被 Nginx 单请求大小限制拦截。
+     */
+    @PostMapping("/uploadChunk")
+    @LoginCheck
+    public PoetryResult<Boolean> uploadChunk(@RequestParam("chunk") MultipartFile chunk,
+                                             @RequestParam("uploadId") String uploadId,
+                                             @RequestParam("chunkIndex") int chunkIndex,
+                                             @RequestParam("totalChunks") int totalChunks) {
+        if (chunk == null || chunk.isEmpty()) {
+            return PoetryResult.fail("上传分片不能为空！");
+        }
+        if (!isValidChunkUpload(uploadId, chunkIndex, totalChunks)) {
+            return PoetryResult.fail("分片参数不合法！");
+        }
+
+        try {
+            Path chunkDir = resolveChunkDir(uploadId);
+            Files.createDirectories(chunkDir);
+            Path chunkPath = chunkDir.resolve(formatChunkName(chunkIndex)).normalize();
+            if (!chunkPath.startsWith(chunkDir)) {
+                return PoetryResult.fail("分片路径不合法！");
+            }
+            try (InputStream inputStream = chunk.getInputStream()) {
+                Files.copy(inputStream, chunkPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return PoetryResult.success(true);
+        } catch (Exception e) {
+            log.error("上传分片失败: uploadId={}, chunkIndex={}", uploadId, chunkIndex, e);
+            return PoetryResult.fail("上传分片失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 合并分片并保存为资源。当前用于文章编辑器本地视频上传。
+     */
+    @PostMapping("/mergeChunks")
+    @LoginCheck
+    @Transactional(rollbackFor = Exception.class)
+    public synchronized PoetryResult<String> mergeChunks(@RequestParam("uploadId") String uploadId,
+                                                         @RequestParam("totalChunks") int totalChunks,
+                                                         @RequestParam("originalName") String originalName,
+                                                         @RequestParam("relativePath") String relativePath,
+                                                         @RequestParam("type") String type,
+                                                         @RequestParam(value = "contentType", required = false) String contentType) {
+        if (!isValidChunkUpload(uploadId, 0, totalChunks)
+                || !StringUtils.hasText(originalName)
+                || !StringUtils.hasText(relativePath)
+                || !StringUtils.hasText(type)) {
+            return PoetryResult.fail("分片合并参数不合法！");
+        }
+        if (isResourceFilterType(type)) {
+            return PoetryResult.fail(resourceFilterTypeName(type) + "是筛选视图，不能作为资源类型上传！");
+        }
+
+        Path chunkDir = null;
+        Path mergedFile = null;
+        try {
+            chunkDir = resolveChunkDir(uploadId);
+            if (!Files.isDirectory(chunkDir)) {
+                return PoetryResult.fail("上传分片不存在或已过期！");
+            }
+
+            mergedFile = chunkDir.resolve("merged.uploading").normalize();
+            if (!mergedFile.startsWith(chunkDir)) {
+                return PoetryResult.fail("合并路径不合法！");
+            }
+            try (OutputStream outputStream = Files.newOutputStream(mergedFile)) {
+                for (int i = 0; i < totalChunks; i++) {
+                    Path chunkPath = chunkDir.resolve(formatChunkName(i)).normalize();
+                    if (!chunkPath.startsWith(chunkDir) || !Files.isRegularFile(chunkPath)) {
+                        return PoetryResult.fail("上传分片不完整，请重新上传！");
+                    }
+                    Files.copy(chunkPath, outputStream);
+                }
+            }
+
+            MultipartFile mergedMultipartFile = new PathMultipartFile(
+                    "file",
+                    originalName,
+                    StringUtils.hasText(contentType) ? contentType : MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                    mergedFile
+            );
+            FileVO fileVO = new FileVO();
+            fileVO.setType(type);
+            fileVO.setStoreType(StoreEnum.LOCAL.getCode());
+            fileVO.setRelativePath(relativePath);
+            fileVO.setOriginalName(originalName);
+            return saveMergedLocalResource(mergedMultipartFile, fileVO);
+        } catch (Exception e) {
+            log.error("合并分片失败: uploadId={}", uploadId, e);
+            return PoetryResult.fail("合并分片失败: " + e.getMessage());
+        } finally {
+            if (chunkDir != null) {
+                deleteQuietly(chunkDir);
+            } else if (mergedFile != null) {
+                deleteQuietly(mergedFile);
+            }
+        }
+    }
+
+    private PoetryResult<String> saveMergedLocalResource(MultipartFile file, FileVO fileVO) {
+        FileSecurityValidator.ValidationResult validationResult =
+                fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+        if (!validationResult.isSuccess()) {
+            log.warn("分片文件安全验证失败: {}, 用户ID: {}", validationResult.getMessage(), PoetryUtil.getUserId());
+            return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+        }
+
+        if (FileDownloadUtil.shouldForceDownload(fileVO.getRelativePath())
+                && !CommonConst.PATH_TYPE_ARTICLE_FILE.equals(fileVO.getType())) {
+            return PoetryResult.fail("该文件类型只能作为文章附件上传");
+        }
+
+        long fileSize = file.getSize();
+        if (fileSize > Integer.MAX_VALUE) {
+            log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+            return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+        }
+
+        fileVO.setFile(file);
+        fileVO.setStoreType(StoreEnum.LOCAL.getCode());
+        StoreService storeService = fileStorageService.getFileStorage(StoreEnum.LOCAL.getCode());
+        FileVO result = storeService.saveFile(fileVO);
+        if (Boolean.TRUE.equals(result.getReuseExistingResource())) {
+            return PoetryResult.success(result.getVisitPath());
+        }
+
+        Resource resource = new Resource();
+        resource.setPath(result.getVisitPath());
+        resource.setType(fileVO.getType());
+        resource.setSize(Integer.valueOf(Long.toString(fileSize)));
+        resource.setMimeType(file.getContentType());
+        resource.setResourceHash(result.getResourceHash());
+        resource.setStoreType(result.getStoreType());
+        resource.setOriginalName(fileVO.getOriginalName());
+        resource.setUserId(PoetryUtil.getUserId());
+
+        if (StringUtils.hasText(file.getContentType()) && file.getContentType().startsWith("image/")) {
+            try {
+                int[] dims = readImageDimensions(file.getBytes());
+                if (dims != null) {
+                    resource.setWidth(dims[0]);
+                    resource.setHeight(dims[1]);
+                }
+            } catch (IOException e) {
+                log.debug("读取分片合并图片尺寸失败: {}", e.getMessage());
+            }
+        }
+
+        Resource existingResource = resourceService.lambdaQuery()
+                .eq(Resource::getPath, result.getVisitPath())
+                .one();
+        if (existingResource != null) {
+            existingResource.setType(resource.getType());
+            existingResource.setSize(resource.getSize());
+            existingResource.setOriginalName(resource.getOriginalName());
+            existingResource.setMimeType(resource.getMimeType());
+            existingResource.setResourceHash(resource.getResourceHash());
+            existingResource.setStoreType(resource.getStoreType());
+            existingResource.setUserId(resource.getUserId());
+            existingResource.setWidth(resource.getWidth());
+            existingResource.setHeight(resource.getHeight());
+            resourceService.updateById(existingResource);
+        } else {
+            resourceService.save(resource);
+        }
+
+        return PoetryResult.success(result.getVisitPath());
+    }
+
+    private boolean isValidChunkUpload(String uploadId, int chunkIndex, int totalChunks) {
+        return StringUtils.hasText(uploadId)
+                && uploadId.matches("[A-Za-z0-9_-]{8,80}")
+                && totalChunks > 0
+                && totalChunks <= MAX_CHUNK_COUNT
+                && chunkIndex >= 0
+                && chunkIndex < totalChunks;
+    }
+
+    private Path resolveChunkDir(String uploadId) {
+        Path chunkRoot = normalizeLocalUploadRoot()
+                .resolve(CHUNK_UPLOAD_DIR)
+                .resolve(String.valueOf(PoetryUtil.getUserId()))
+                .normalize();
+        Path chunkDir = chunkRoot.resolve(uploadId).normalize();
+        if (!chunkDir.startsWith(chunkRoot)) {
+            throw new IllegalArgumentException("分片路径不合法");
+        }
+        return chunkDir;
+    }
+
+    private Path normalizeLocalUploadRoot() {
+        String uploadPath = StringUtils.hasText(localUploadUrl) ? localUploadUrl : "/app/static/";
+        if (uploadPath.startsWith("file:")) {
+            uploadPath = uploadPath.substring("file:".length());
+        }
+        return Paths.get(uploadPath).toAbsolutePath().normalize();
+    }
+
+    private String formatChunkName(int chunkIndex) {
+        return String.format("%06d.part", chunkIndex);
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            if (path == null || !Files.exists(path)) {
+                return;
+            }
+            if (Files.isDirectory(path)) {
+                try (var stream = Files.walk(path)) {
+                    stream.sorted(Comparator.reverseOrder()).forEach(item -> {
+                        try {
+                            Files.deleteIfExists(item);
+                        } catch (IOException e) {
+                            log.debug("清理分片文件失败: {}", item, e);
+                        }
+                    });
+                }
+            } else {
+                Files.deleteIfExists(path);
+            }
+        } catch (IOException e) {
+            log.debug("清理分片目录失败: {}", path, e);
         }
     }
 
@@ -1123,6 +1355,68 @@ public class ResourceController {
     /**
      * 自定义MultipartFile实现，用于压缩后的文件数据
      */
+    private static class PathMultipartFile implements MultipartFile {
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+        private final Path path;
+
+        public PathMultipartFile(String name, String originalFilename, String contentType, Path path) {
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+            this.path = path;
+        }
+
+        @Override
+        public String getName() {
+            return this.name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return this.originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return this.contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            try {
+                return Files.size(this.path) == 0;
+            } catch (IOException e) {
+                return true;
+            }
+        }
+
+        @Override
+        public long getSize() {
+            try {
+                return Files.size(this.path);
+            } catch (IOException e) {
+                return 0;
+            }
+        }
+
+        @Override
+        public byte[] getBytes() throws IOException {
+            return Files.readAllBytes(this.path);
+        }
+
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return Files.newInputStream(this.path);
+        }
+
+        @Override
+        public void transferTo(File dest) throws IOException, IllegalStateException {
+            Files.copy(this.path, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     private static class CompressedMultipartFile implements MultipartFile {
         private final String name;
         private final String originalFilename;

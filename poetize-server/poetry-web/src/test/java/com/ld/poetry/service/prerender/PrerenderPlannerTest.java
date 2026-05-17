@@ -29,7 +29,8 @@ class PrerenderPlannerTest {
 
         PrerenderPlan plan = planner.plan(request, snapshot);
 
-        assertEquals(16, plan.renderNodes().size());
+        assertEquals(17, plan.renderNodes().size());
+        assertTrue(plan.renderNodes().contains(new AdminShellNode()));
         assertTrue(plan.renderNodes().contains(new StaticPageNode(PrerenderStaticPage.HOME)));
         assertTrue(plan.renderNodes().contains(new SortIndexNode()));
         assertTrue(plan.renderNodes().contains(new SortNode(1)));

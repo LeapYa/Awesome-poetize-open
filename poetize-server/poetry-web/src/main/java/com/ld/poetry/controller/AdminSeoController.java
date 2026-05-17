@@ -14,15 +14,19 @@ import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -68,9 +72,6 @@ public class AdminSeoController {
     private CacheService cacheService;
 
     @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
     private com.ld.poetry.service.RobotsService robotsService;
 
     @Autowired
@@ -79,27 +80,8 @@ public class AdminSeoController {
     @Autowired
     private FileSecurityValidator fileSecurityValidator;
 
-    /**
-     * 清除nginx SEO缓存
-     * 在SEO配置更新后调用，确保nginx不使用旧的缓存数据作为fallback
-     */
-    private void clearNginxSeoCache() {
-        try {
-            String nginxUrl = "http://nginx";
-            String clearCacheUrl = nginxUrl + "/flush_seo_cache";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Service", "poetize-java");
-            headers.set("User-Agent", "poetize-java/1.0.0");
-
-            HttpEntity<?> request = new HttpEntity<>(headers);
-
-            restTemplate.exchange(clearCacheUrl, HttpMethod.GET, request, String.class);
-        } catch (Exception e) {
-            log.warn("清除nginx SEO缓存失败: {}", e.getMessage());
-            // 不抛出异常，避免影响主流程
-        }
-    }
+    @Value("${prerender.template-path:/app/web-dist/index.html}")
+    private String webTemplatePath;
 
     // ========== 配置管理API ==========
 
@@ -149,10 +131,7 @@ public class AdminSeoController {
                         sitemapService.updateSitemapAndPush("SEO配置更新");
                     }
 
-                    // 2. 清除nginx SEO缓存
-                    clearNginxSeoCache();
-
-                    // 3. 异步触发预渲染，避免阻塞主流程，并确保缓存数据已完全生效
+                    // 2. 异步触发预渲染，避免阻塞主流程，并确保缓存数据已完全生效
                     CompletableFuture.runAsync(() -> {
                         try {
                             // 等待2秒确保缓存完全生效并可被预渲染服务读取
@@ -363,6 +342,60 @@ public class AdminSeoController {
         } catch (Exception e) {
             log.error("批量图标处理失败", e);
             return PoetryResult.fail("批量图标处理失败");
+        }
+    }
+
+    /**
+     * 替换前台默认静态图标。
+     */
+    @PostMapping("/replacePoetizeIcon")
+    @LoginCheck(1)
+    public PoetryResult<String> replacePoetizeIcon(@RequestParam("image") MultipartFile imageFile) {
+        try {
+            if (imageFile == null || imageFile.isEmpty()) {
+                return PoetryResult.fail("图片文件为空");
+            }
+
+            FileSecurityValidator.ValidationResult validationResult = fileSecurityValidator.validateFile(
+                    imageFile, imageFile.getOriginalFilename(), imageFile.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("默认静态图标安全验证失败: {}", validationResult.getMessage());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+            }
+
+            Path webRoot = Paths.get(webTemplatePath).toAbsolutePath().normalize().getParent();
+            if (webRoot == null) {
+                return PoetryResult.fail("前台静态资源目录配置不正确");
+            }
+
+            Path target = webRoot.resolve("static/assets/poetize.jpg").normalize();
+            if (!target.startsWith(webRoot)) {
+                return PoetryResult.fail("默认静态图标路径不合法");
+            }
+
+            Files.createDirectories(target.getParent());
+            Path tempFile = Files.createTempFile(target.getParent(), "poetize-", ".jpg.tmp");
+            try {
+                try (InputStream inputStream = imageFile.getInputStream()) {
+                    Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+                }
+                try {
+                    Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(tempFile);
+            }
+
+            return PoetryResult.success("/static/assets/poetize.jpg");
+        } catch (IOException e) {
+            log.error("替换默认静态图标失败", e);
+            return PoetryResult.fail("替换默认静态图标失败");
+        } catch (Exception e) {
+            log.error("替换默认静态图标失败", e);
+            return PoetryResult.fail("替换默认静态图标失败");
         }
     }
 

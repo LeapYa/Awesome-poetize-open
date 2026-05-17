@@ -19,6 +19,8 @@ im:
 prerender:
   template-path: ${PRERENDER_TEMPLATE_PATH:/app/web-dist/index.html}
   output-root: ${PRERENDER_OUTPUT_ROOT:/app/web-dist/prerender}
+  admin-template-path: ${PRERENDER_ADMIN_TEMPLATE_PATH:/app/admin-dist/index.html}
+  admin-output-root: ${PRERENDER_ADMIN_OUTPUT_ROOT:/app/admin-dist/prerender}
   startup:
     # 是否在应用启动时自动执行预渲染
     enabled: true

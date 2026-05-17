@@ -41,6 +41,7 @@ public class SeoImageServiceImpl implements SeoImageService {
         "apple-touch-icon", new IconConfig(180, 180, "png"),
         "icon-192", new IconConfig(192, 192, "png"),
         "icon-512", new IconConfig(512, 512, "png"),
+        "poetize-jpg", new IconConfig(512, 512, "jpg"),
         "logo", new IconConfig(256, 256, "png"),
         "banner", new IconConfig(1200, 630, "png")
     );

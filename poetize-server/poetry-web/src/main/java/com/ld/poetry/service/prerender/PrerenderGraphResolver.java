@@ -13,7 +13,7 @@ class PrerenderGraphResolver {
 
     List<PrerenderNode> childrenOf(PrerenderNode node, PrerenderSnapshot snapshot) {
         if (node instanceof SiteRootNode) {
-            return List.of(new StaticCatalogNode(), new SortCatalogNode(), new ArticleCatalogNode());
+            return List.of(new AdminShellNode(), new StaticCatalogNode(), new SortCatalogNode(), new ArticleCatalogNode());
         }
         if (node instanceof StaticCatalogNode) {
             return List.of(

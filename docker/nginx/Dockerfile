@@ -76,62 +76,66 @@ RUN set -e; \
         exit 1; \
     fi
 
-# 在构建阶段安装lua模块
-WORKDIR /usr/src
-
-# 安装lua-resty-openssl
-RUN set -e; \
-    echo "🔧 尝试安装lua-resty-openssl..."; \
-    # 首先尝试GitHub
-    if timeout -s TERM 240 \
-        git clone --depth=1 https://github.com/fffonion/lua-resty-openssl.git; then \
-        echo "✅ 从GitHub下载lua-resty-openssl成功"; \
-    # 如果GitHub失败，尝试Gitee
-    elif timeout -s TERM 240 \
-        rm -rf lua-resty-openssl && \
-        git clone --depth=1 https://gitee.com/mirrors_fffonion/lua-resty-openssl.git; then \
-        echo "🔄 从Gitee下载lua-resty-openssl成功"; \
-    # 如果都失败，尝试直接下载
-    elif wget -O lua-resty-openssl.tar.gz https://github.com/fffonion/lua-resty-openssl/archive/refs/heads/master.tar.gz && \
-         tar -xzf lua-resty-openssl.tar.gz && mv lua-resty-openssl-master lua-resty-openssl; then \
-        echo "🔄 从tar包下载lua-resty-openssl成功"; \
-    else \
-        echo "❌ lua-resty-openssl下载失败"; \
-        exit 1; \
-    fi; \
-    mkdir -p /usr/local/openresty/lualib/resty/openssl && \
-    cd lua-resty-openssl && \
-    cp -r lib/resty/openssl/* /usr/local/openresty/lualib/resty/openssl/ 2>/dev/null || true && \
-    cp lib/resty/openssl.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true; \
-    echo "✅ lua-resty-openssl安装完成"
-
-# 安装lua-resty-http模块
-RUN set -e; \
-    mkdir -p /usr/local/openresty/lualib/resty; \
-    echo "🔧 尝试安装lua-resty-http..."; \
-    # 首先尝试GitHub
-    if timeout -s TERM 240 \
-        git clone --depth=1 https://github.com/ledgetech/lua-resty-http.git; then \
-        echo "✅ 从GitHub下载lua-resty-http成功"; \
-    # 如果GitHub失败，尝试AtomGit国内镜像
-    elif timeout -s TERM 240 \
-        rm -rf lua-resty-http && \
-        git clone --depth=1 https://atomgit.com/gh_mirrors/lu/lua-resty-http.git; then \
-        echo "🔄 从AtomGit下载lua-resty-http成功"; \
-    # 如果都失败，尝试直接下载
-    elif wget -O lua-resty-http.tar.gz https://github.com/ledgetech/lua-resty-http/archive/refs/heads/master.tar.gz && \
-         tar -xzf lua-resty-http.tar.gz && mv lua-resty-http-master lua-resty-http; then \
-        echo "🔄 从tar包下载lua-resty-http成功"; \
-    else \
-        echo "❌ lua-resty-http下载失败"; \
-        exit 1; \
-    fi; \
-    cd lua-resty-http && \
-    cp lib/resty/http.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
-    cp lib/resty/http_headers.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
-    cp lib/resty/http_connect.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
-    cp -r lib/ngx /usr/local/openresty/lualib/ 2>/dev/null || true; \
-    echo "✅ lua-resty-http安装完成"
+# ===== 已停用：Lua 运行库安装留档 =====
+# 当前 Nginx/SEO 链路已经迁移到后端预渲染 + Nginx 原生 try_files，不再执行 Lua 脚本。
+# 下面这段是历史上为 OpenResty Lua SEO fallback 准备的依赖安装逻辑，先保留为注释，便于以后参考或回退。
+#
+# # 在构建阶段安装lua模块
+# WORKDIR /usr/src
+#
+# # 安装lua-resty-openssl
+# RUN set -e; \
+#     echo "🔧 尝试安装lua-resty-openssl..."; \
+#     # 首先尝试GitHub
+#     if timeout -s TERM 240 \
+#         git clone --depth=1 https://github.com/fffonion/lua-resty-openssl.git; then \
+#         echo "✅ 从GitHub下载lua-resty-openssl成功"; \
+#     # 如果GitHub失败，尝试Gitee
+#     elif timeout -s TERM 240 \
+#         rm -rf lua-resty-openssl && \
+#         git clone --depth=1 https://gitee.com/mirrors_fffonion/lua-resty-openssl.git; then \
+#         echo "🔄 从Gitee下载lua-resty-openssl成功"; \
+#     # 如果都失败，尝试直接下载
+#     elif wget -O lua-resty-openssl.tar.gz https://github.com/fffonion/lua-resty-openssl/archive/refs/heads/master.tar.gz && \
+#          tar -xzf lua-resty-openssl.tar.gz && mv lua-resty-openssl-master lua-resty-openssl; then \
+#         echo "🔄 从tar包下载lua-resty-openssl成功"; \
+#     else \
+#         echo "❌ lua-resty-openssl下载失败"; \
+#         exit 1; \
+#     fi; \
+#     mkdir -p /usr/local/openresty/lualib/resty/openssl && \
+#     cd lua-resty-openssl && \
+#     cp -r lib/resty/openssl/* /usr/local/openresty/lualib/resty/openssl/ 2>/dev/null || true && \
+#     cp lib/resty/openssl.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true; \
+#     echo "✅ lua-resty-openssl安装完成"
+#
+# # 安装lua-resty-http模块
+# RUN set -e; \
+#     mkdir -p /usr/local/openresty/lualib/resty; \
+#     echo "🔧 尝试安装lua-resty-http..."; \
+#     # 首先尝试GitHub
+#     if timeout -s TERM 240 \
+#         git clone --depth=1 https://github.com/ledgetech/lua-resty-http.git; then \
+#         echo "✅ 从GitHub下载lua-resty-http成功"; \
+#     # 如果GitHub失败，尝试AtomGit国内镜像
+#     elif timeout -s TERM 240 \
+#         rm -rf lua-resty-http && \
+#         git clone --depth=1 https://atomgit.com/gh_mirrors/lu/lua-resty-http.git; then \
+#         echo "🔄 从AtomGit下载lua-resty-http成功"; \
+#     # 如果都失败，尝试直接下载
+#     elif wget -O lua-resty-http.tar.gz https://github.com/ledgetech/lua-resty-http/archive/refs/heads/master.tar.gz && \
+#          tar -xzf lua-resty-http.tar.gz && mv lua-resty-http-master lua-resty-http; then \
+#         echo "🔄 从tar包下载lua-resty-http成功"; \
+#     else \
+#         echo "❌ lua-resty-http下载失败"; \
+#         exit 1; \
+#     fi; \
+#     cd lua-resty-http && \
+#     cp lib/resty/http.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
+#     cp lib/resty/http_headers.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
+#     cp lib/resty/http_connect.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true && \
+#     cp -r lib/ngx /usr/local/openresty/lualib/ 2>/dev/null || true; \
+#     echo "✅ lua-resty-http安装完成"
 
 # 最终镜像
 FROM openresty/openresty:1.29.2.3-alpine
@@ -156,9 +160,10 @@ RUN mkdir -p /var/log/nginx /var/cache/nginx /var/run /tmp && \
     chmod -R 755 /var/log/nginx /var/cache/nginx /var/run && \
     chmod 777 /tmp
 
-# 从builder中复制Brotli模块和lua模块
+# 从builder中复制Brotli模块
 COPY --from=builder /usr/local/openresty/nginx/modules/ /usr/local/openresty/nginx/modules/
-COPY --from=builder /usr/local/openresty/lualib/ /usr/local/openresty/lualib/
+# 已停用：Lua 运行库不再进入最终镜像，原复制命令留档。
+# COPY --from=builder /usr/local/openresty/lualib/ /usr/local/openresty/lualib/
 
 # 创建配置目录
 RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d
@@ -182,6 +187,11 @@ RUN mkdir -p /etc/nginx/ssl && \
         -subj "/CN=_" && \
     chmod 644 /etc/nginx/ssl/default.crt /etc/nginx/ssl/default.key
 
+# 已停用：Nginx 不再读取 /etc/nginx/lua 下的脚本，历史命令留档。
+# mkdir -p /etc/nginx/lua && \
+# chown nginx:nginx /etc/nginx/lua && \
+# chmod 755 /etc/nginx/lua && \
+
 # 设置nginx相关目录的权限
 RUN chown -R nginx:nginx /usr/local/openresty/nginx/ && \
     chmod -R 755 /usr/local/openresty/nginx/conf/ && \
@@ -203,10 +213,6 @@ RUN chown -R nginx:nginx /usr/local/openresty/nginx/ && \
     mkdir -p /app/data && \
     chown nginx:nginx /app/data && \
     chmod 755 /app/data && \
-    # 创建并设置lua脚本目录权限（nginx需要读取lua脚本文件）
-    mkdir -p /etc/nginx/lua && \
-    chown nginx:nginx /etc/nginx/lua && \
-    chmod 755 /etc/nginx/lua && \
     # 设置默认SSL证书目录权限
     chown -R nginx:nginx /etc/nginx/ssl && \
     chmod 755 /etc/nginx/ssl

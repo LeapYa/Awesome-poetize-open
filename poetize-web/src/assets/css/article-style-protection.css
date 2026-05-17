@@ -843,124 +843,174 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
 
 /* ========== 附件卡片 ========== */
 .entry-content .poetize-attachment-card {
-  display: inline-flex !important;
+  display: flex !important;
   align-items: center !important;
-  width: min(100%, 460px) !important;
-  min-height: 64px !important;
-  margin: 8px 0 !important;
-  padding: 10px 12px !important;
-  gap: 12px !important;
-  color: #303133 !important;
-  background: #ffffff !important;
-  border: 1px solid #dcdfe6 !important;
-  border-radius: 8px !important;
+  width: 100% !important;
+  max-width: 460px !important;
+  background: #f0f7ff !important;
+  border: 1px solid transparent !important;
+  border-radius: 50px !important;
+  padding: 8px 16px 8px 8px !important;
+  color: #1677ff !important;
+  text-decoration: none !important;
+  transition: all 0.2s ease !important;
+  margin: 12px 0 !important;
   box-sizing: border-box !important;
-  vertical-align: top !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease !important;
 }
 
 .entry-content .poetize-attachment-card:hover {
-  color: #303133 !important;
-  border-color: #409eff !important;
-  box-shadow: 0 6px 18px rgba(64, 158, 255, 0.12) !important;
+  background: #ffffff !important;
+  border-color: #c9e1fb !important;
+  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.1) !important;
   transform: translateY(-1px) !important;
 }
 
-.entry-content .poetize-attachment-icon {
-  display: inline-flex !important;
+.entry-content .poetize-attachment-pill-icon {
+  width: 32px !important;
+  height: 32px !important;
+  background: #1677ff !important;
+  border-radius: 50% !important;
+  display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  flex: 0 0 42px !important;
-  width: 42px !important;
-  height: 42px !important;
-  color: #ffffff !important;
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  line-height: 1 !important;
-  background: #409eff !important;
-  border-radius: 6px !important;
-  letter-spacing: 0 !important;
+  color: #fff !important;
+  margin-right: 12px !important;
+  flex-shrink: 0 !important;
 }
 
-.entry-content .poetize-attachment-body {
-  display: flex !important;
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
-  flex-direction: column !important;
-  gap: 4px !important;
-}
-
-.entry-content .poetize-attachment-name {
-  overflow: hidden !important;
-  color: #303133 !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  line-height: 1.35 !important;
-  text-overflow: ellipsis !important;
+.entry-content .poetize-attachment-pill-name {
+  flex: 1 !important;
   white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  color: #1f2d3d !important;
 }
 
-.entry-content .poetize-attachment-meta {
-  color: #909399 !important;
+.entry-content .poetize-attachment-pill-meta {
   font-size: 12px !important;
-  line-height: 1.2 !important;
+  color: #8bbaf2 !important;
+  margin-left: 8px !important;
+  padding-left: 8px !important;
+  border-left: 1px solid #c9e1fb !important;
+  flex-shrink: 0 !important;
 }
 
-.entry-content .poetize-attachment-action {
-  flex: 0 0 auto !important;
-  color: #409eff !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-}
-
-.entry-content .poetize-attachment-actions {
-  display: inline-flex !important;
-  flex: 0 0 auto !important;
+.entry-content .poetize-attachment-pill-actions {
+  display: flex !important;
   align-items: center !important;
+  margin-left: 12px !important;
   gap: 8px !important;
 }
 
-.entry-content .poetize-attachment-action-link {
-  color: #409eff !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  line-height: 1.2 !important;
+.entry-content .poetize-attachment-pill-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  height: 28px !important;
+  color: #1677ff !important;
+  border-radius: 50% !important;
+  transition: background 0.2s !important;
   text-decoration: none !important;
-  white-space: nowrap !important;
 }
 
-.entry-content .poetize-attachment-action-link:hover {
-  color: #337ecc !important;
-  text-decoration: underline !important;
+.entry-content .poetize-attachment-pill-btn:hover {
+  background: rgba(22, 119, 255, 0.1) !important;
 }
 
+/* 暗黑模式 */
 body.dark-mode .entry-content .poetize-attachment-card,
 .dark-mode .entry-content .poetize-attachment-card {
-  color: #e5eaf3 !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(255, 255, 255, 0.16) !important;
+  background: rgba(22, 119, 255, 0.1) !important;
+  border-color: rgba(22, 119, 255, 0.2) !important;
 }
 
 body.dark-mode .entry-content .poetize-attachment-card:hover,
 .dark-mode .entry-content .poetize-attachment-card:hover {
+  background: rgba(22, 119, 255, 0.15) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+body.dark-mode .entry-content .poetize-attachment-pill-name,
+.dark-mode .entry-content .poetize-attachment-pill-name {
   color: #e5eaf3 !important;
-  border-color: #79bbff !important;
-  box-shadow: 0 6px 18px rgba(121, 187, 255, 0.12) !important;
 }
 
-body.dark-mode .entry-content .poetize-attachment-name,
-.dark-mode .entry-content .poetize-attachment-name {
-  color: #e5eaf3 !important;
+body.dark-mode .entry-content .poetize-attachment-pill-meta,
+.dark-mode .entry-content .poetize-attachment-pill-meta {
+  color: #5c8bba !important;
+  border-left-color: rgba(22, 119, 255, 0.3) !important;
 }
 
-body.dark-mode .entry-content .poetize-attachment-meta,
-.dark-mode .entry-content .poetize-attachment-meta {
-  color: #a3a6ad !important;
-}
-
-body.dark-mode .entry-content .poetize-attachment-action,
-.dark-mode .entry-content .poetize-attachment-action,
-body.dark-mode .entry-content .poetize-attachment-action-link,
-.dark-mode .entry-content .poetize-attachment-action-link {
+body.dark-mode .entry-content .poetize-attachment-pill-btn,
+.dark-mode .entry-content .poetize-attachment-pill-btn {
   color: #79bbff !important;
+}
+
+body.dark-mode .entry-content .poetize-attachment-pill-btn:hover,
+.dark-mode .entry-content .poetize-attachment-pill-btn:hover {
+  background: rgba(22, 119, 255, 0.2) !important;
+}
+
+/* ========== 文章正文视频 ========== */
+.entry-content .poetize-video-card {
+  position: relative !important;
+  width: min(100%, 720px) !important;
+  aspect-ratio: 16 / 9 !important;
+  margin: 16px auto !important;
+  overflow: hidden !important;
+  background: #000 !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 8px !important;
+}
+
+.entry-content .poetize-video-player {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: #000 !important;
+  object-fit: contain !important;
+}
+
+.entry-content .poetize-video-play-overlay {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 54px !important;
+  height: 54px !important;
+  pointer-events: none !important;
+  background: rgba(0, 0, 0, 0.48) !important;
+  border-radius: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  transition: opacity 0.2s ease, transform 0.2s ease !important;
+}
+
+.entry-content .poetize-video-play-overlay::before {
+  position: absolute !important;
+  top: 50% !important;
+  left: 52% !important;
+  width: 0 !important;
+  height: 0 !important;
+  content: '' !important;
+  border-top: 13px solid transparent !important;
+  border-bottom: 13px solid transparent !important;
+  border-left: 20px solid #fff !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+.entry-content .poetize-video-card:hover .poetize-video-play-overlay,
+.entry-content .poetize-video-player:focus + .poetize-video-play-overlay {
+  opacity: 0.86 !important;
+}
+
+.entry-content .poetize-video-card.is-playing .poetize-video-play-overlay {
+  opacity: 0 !important;
+  transform: translate(-50%, -50%) scale(0.92) !important;
+}
+
+body.dark-mode .entry-content .poetize-video-card,
+.dark-mode .entry-content .poetize-video-card {
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }

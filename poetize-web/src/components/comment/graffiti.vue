@@ -337,6 +337,7 @@ export default {
 
       let fd = new FormData()
       fd.append('file', obj)
+      fd.append('originalName', 'graffiti.png')
       fd.append('key', key)
       fd.append('relativePath', key)
       fd.append('type', 'graffiti')
@@ -353,6 +354,11 @@ export default {
       }
     },
     saveLocal(fd) {
+      const file = fd.get('file')
+      if (file && file.size > 1024 * 1024) {
+        this.saveLocalInChunks(fd)
+        return
+      }
       this.$http
         .upload(this.$constant.baseURL + '/resource/upload', fd)
         .then((res) => {
@@ -369,6 +375,88 @@ export default {
             type: 'error',
           })
         })
+    },
+    async saveLocalInChunks(fd) {
+      const file = fd.get('file')
+      const chunkSize = this.getChunkUploadSize(file.size || 0)
+      const totalChunks = Math.max(1, Math.ceil((file.size || 0) / chunkSize))
+      const uploadId = this.createChunkUploadId()
+
+      try {
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+          const start = chunkIndex * chunkSize
+          const end = Math.min(start + chunkSize, file.size)
+          const chunkFd = new FormData()
+          chunkFd.append('chunk', file.slice(start, end), 'graffiti.png.part' + chunkIndex)
+          chunkFd.append('uploadId', uploadId)
+          chunkFd.append('chunkIndex', String(chunkIndex))
+          chunkFd.append('totalChunks', String(totalChunks))
+
+          const chunkResult = await this.$http.upload(
+            this.$constant.baseURL + '/resource/uploadChunk',
+            chunkFd,
+            false,
+            {
+              timeout: 60000,
+              onProgress: () => {},
+            }
+          )
+          this.ensureUploadSuccess(chunkResult, '涂鸦分片上传失败')
+        }
+
+        const mergeFd = new FormData()
+        mergeFd.append('uploadId', uploadId)
+        mergeFd.append('totalChunks', String(totalChunks))
+        mergeFd.append('originalName', fd.get('originalName') || 'graffiti.png')
+        mergeFd.append('relativePath', fd.get('relativePath'))
+        mergeFd.append('type', fd.get('type'))
+        mergeFd.append('contentType', file.type || 'image/png')
+
+        const mergeResult = await this.$http.upload(
+          this.$constant.baseURL + '/resource/mergeChunks',
+          mergeFd,
+          false,
+          {
+            timeout: 300000,
+            onProgress: () => {},
+          }
+        )
+        this.ensureUploadSuccess(mergeResult, '涂鸦合并失败')
+
+        if (!this.$common.isEmpty(mergeResult.data)) {
+          this.clearContext()
+          let url = mergeResult.data
+          let img = '[你画我猜,' + url + ']'
+          $emit(this, 'addGraffitiComment', img)
+        }
+      } catch (error) {
+        this.$message({
+          message: error.message,
+          type: 'error',
+        })
+      }
+    },
+    getChunkUploadSize(fileSize) {
+      if (fileSize <= 2 * 1024 * 1024) {
+        return 8 * 1024
+      }
+      if (fileSize <= 30 * 1024 * 1024) {
+        return 64 * 1024
+      }
+      return 256 * 1024
+    },
+    createChunkUploadId() {
+      return (
+        'g_' +
+        Date.now().toString(36) +
+        '_' +
+        Math.random().toString(36).slice(2, 12)
+      )
+    },
+    ensureUploadSuccess(result, fallbackMessage) {
+      if (!result || (result.code && result.code !== 200) || result.success === false) {
+        throw new Error((result && result.message) || fallbackMessage || '上传失败')
+      }
     },
     saveQiniu(fd) {
       this.$http

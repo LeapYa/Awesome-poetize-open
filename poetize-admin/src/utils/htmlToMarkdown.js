@@ -226,13 +226,13 @@ function getTurndownService() {
         node.getAttribute('data-poetize-attachment-href') ||
         node.getAttribute('href') ||
         '';
-      const nameNode = node.querySelector('.poetize-attachment-name');
+      const nameNode = node.querySelector('.poetize-attachment-pill-name');
       const name = (nameNode ? nameNode.textContent : content || '附件').trim();
       const isPrivate = node.getAttribute('data-poetize-private-attachment') === 'true';
 
       if (!href) {
-        const previewLink = node.querySelector('.poetize-attachment-action-link[data-poetize-attachment-action="preview"]');
-        const downloadLink = node.querySelector('.poetize-attachment-action-link[data-poetize-attachment-action="download"]');
+        const previewLink = node.querySelector('.poetize-attachment-pill-btn[data-poetize-attachment-action="preview"]');
+        const downloadLink = node.querySelector('.poetize-attachment-pill-btn[data-poetize-attachment-action="download"]');
         href = (previewLink && previewLink.getAttribute('href')) ||
           (downloadLink && downloadLink.getAttribute('data-poetize-attachment-href')) ||
           (downloadLink && downloadLink.getAttribute('href')) ||

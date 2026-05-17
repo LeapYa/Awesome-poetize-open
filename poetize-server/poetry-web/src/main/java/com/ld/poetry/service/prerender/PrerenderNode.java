@@ -26,7 +26,7 @@ enum PrerenderStaticPage {
     }
 }
 
-sealed interface PrerenderNode permits SiteRootNode, StaticCatalogNode, SortCatalogNode,
+sealed interface PrerenderNode permits SiteRootNode, AdminShellNode, StaticCatalogNode, SortCatalogNode,
         ArticleCatalogNode, StaticPageNode, SortIndexNode, SortNode, SortLabelNode,
         ArticleNode, ArticleLanguageNode {
 
@@ -53,6 +53,18 @@ record SiteRootNode() implements PrerenderNode {
     @Override
     public boolean renderable() {
         return false;
+    }
+}
+
+record AdminShellNode() implements PrerenderNode {
+    @Override
+    public String key() {
+        return "admin:shell";
+    }
+
+    @Override
+    public int priority() {
+        return 8;
     }
 }
 

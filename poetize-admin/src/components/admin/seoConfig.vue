@@ -1830,7 +1830,7 @@ export default {
         // 创建FormData
         const formData = new FormData();
         formData.append('image', this.uploadedImage);
-        formData.append('iconTypes', 'favicon,apple-touch-icon,icon-192,icon-512,logo');
+        formData.append('iconTypes', 'favicon,apple-touch-icon,icon-192,icon-512,logo,poetize-jpg');
 
         // 打印调试信息
 
@@ -1931,16 +1931,14 @@ export default {
         let uploadedCount = 0;
         const uploadPromises = [];
 
-             for (const [iconType, result] of Object.entries(results)) {
-         if (result && result.base64_data) {
-           const configField = iconMapping[iconType];
-           if (configField) {
-              // 创建上传任务
-              const uploadPromise = this.uploadIconToServer(result.base64_data, result.format, iconType, configField);
+        for (const [iconType, result] of Object.entries(results)) {
+          if (result && result.base64_data) {
+            const configField = iconMapping[iconType];
+            if (configField || iconType === 'poetize-jpg') {
+              const uploadPromise = this.uploadIconToServer(result.base64_data, result.format, iconType, configField)
+                .then((url) => ({ iconType, url }));
               uploadPromises.push(uploadPromise);
-            } else {
             }
-          } else {
           }
         }
         
@@ -1952,8 +1950,8 @@ export default {
         const successDetails = [];
         const failureDetails = [];
         
-        uploadResults.forEach((result, index) => {
-          const iconType = Object.keys(results)[index];
+        uploadResults.forEach((result) => {
+          const iconType = result.status === 'fulfilled' ? result.value.iconType : result.reason?.iconType;
           if (result.status === 'fulfilled') {
             uploadedCount++;
             successDetails.push(iconType);
@@ -1969,7 +1967,8 @@ export default {
             'apple-touch-icon': 'Apple Touch图标',
             'icon-192': 'PWA图标(192x192)',
             'icon-512': 'PWA图标(512x512)',
-            'logo': '网站Logo'
+            'logo': '网站Logo',
+            'poetize-jpg': '默认静态图标(poetize.jpg)'
           };
           const successNames = successDetails.map(type => iconTypeMap[type] || type).join('、');
           
@@ -2054,8 +2053,28 @@ export default {
         const blob = this.base64ToBlob(base64Data, format);
         
         // 生成文件信息
-        const fileExtension = format === 'ico' ? 'ico' : (format || 'png');
-        const fileName = `generated_${iconType}.${fileExtension}`;
+        const normalizedFormat = (format || 'png').toLowerCase();
+        const fileExtension = normalizedFormat === 'jpeg' ? 'jpg' : (normalizedFormat === 'ico' ? 'ico' : normalizedFormat);
+        const fileName = iconType === 'poetize-jpg' ? 'poetize.jpg' : `generated_${iconType}.${fileExtension}`;
+
+        if (iconType === 'poetize-jpg') {
+          const formData = new FormData();
+          formData.append('image', blob, fileName);
+
+          const response = await this.$http.upload(
+            this.$constant.baseURL + '/admin/seo/replacePoetizeIcon',
+            formData,
+            true
+          );
+
+          if (response && response.data) {
+            return response.data;
+          }
+
+          console.error('默认静态图标替换失败:', response);
+          throw new Error(response.message || '默认静态图标替换失败');
+        }
+
         const prefix = `seo${iconType.charAt(0).toUpperCase() + iconType.slice(1)}`;
         
         // 获取Store实例
@@ -2099,7 +2118,9 @@ export default {
 
       } catch (error) {
         console.error(`上传图标 ${iconType} 时出错:`, error);
-        throw new Error(`${iconType} 上传失败: ${error.message}`);
+        const uploadError = new Error(`${iconType} 上传失败: ${error.message}`);
+        uploadError.iconType = iconType;
+        throw uploadError;
       }
     }
   },

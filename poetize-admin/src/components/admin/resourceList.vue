@@ -1307,8 +1307,7 @@ export default {
       const errorItems = (errors || []).slice(0, 5).map((item) => {
         const fileName = this.escapeHtml(item.fileName || '未知文件');
         const reason = this.escapeHtml(item.message || '上传失败');
-        const code = item.code ? '，错误码：' + this.escapeHtml(String(item.code)) : '';
-        return '<li><strong>' + fileName + '</strong>：' + reason + code + '</li>';
+        return '<li><strong>' + fileName + '</strong>：' + reason + '</li>';
       }).join('');
       const moreLine = errors && errors.length > 5
         ? '<div style="margin-top: 6px; color: #909399;">还有 ' + (errors.length - 5) + ' 个失败项未展示。</div>'

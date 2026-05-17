@@ -21,7 +21,7 @@
           >
             <videoPlayer
               :url="{ src: decryptedVideoUrl }"
-              :cover="article.articleCover"
+              :cover="''"
             >
             </videoPlayer>
           </div>
@@ -708,7 +708,7 @@ export default {
      * @returns {Promise<Object>} MarkdownIt 实例
      */
     async createMarkdownRenderer(content) {
-      const md = new MarkdownIt({ breaks: true })
+      const md = new MarkdownIt({ breaks: true, html: true })
         .use(markdownItMultimdTable)
         .use(markdownItTaskLists, {
           enabled: true,
@@ -779,6 +779,7 @@ export default {
       await this.$nextTick()
 
       this.processImages()
+      this.initializeVideoCards()
       this.bindAttachmentCardActions()
       this.normalizeTaskListCheckboxes()
       this.wrapTables()
@@ -795,26 +796,29 @@ export default {
       }
     },
 
-    bindAttachmentCardActions(container) {
+    initializeVideoCards(container) {
       const root =
         container ||
         (this.$el ? this.$el.querySelector('.entry-content') : null) ||
         document.querySelector('.entry-content')
       if (!root) return
 
-      const links = root.querySelectorAll(
-        '[data-poetize-private-attachment="true"] .poetize-attachment-action-link'
-      )
-      links.forEach((link) => {
-        if (link.dataset.poetizePrivateBound === 'true') return
-        link.dataset.poetizePrivateBound = 'true'
-        link.addEventListener('click', this.handlePrivateAttachmentClick)
+      const videos = root.querySelectorAll('.poetize-video-card video')
+      videos.forEach((video) => {
+        const card = video.closest('.poetize-video-card')
+        if (!card || video.dataset.poetizeVideoReady === 'true') return
+        video.dataset.poetizeVideoReady = 'true'
+        const syncPlayingState = () => {
+          card.classList.toggle('is-playing', !video.paused && !video.ended)
+        }
+        video.addEventListener('play', syncPlayingState)
+        video.addEventListener('pause', syncPlayingState)
+        video.addEventListener('ended', syncPlayingState)
+        syncPlayingState()
       })
     },
 
-    handlePrivateAttachmentClick(event) {
-      const hasUser =
-        !this.$common.isEmpty(this.mainStore.currentUser) ||
+    bindAttachmentCardActions(container) {
         !this.$common.isEmpty(this.mainStore.currentAdmin)
       if (hasUser) return
 

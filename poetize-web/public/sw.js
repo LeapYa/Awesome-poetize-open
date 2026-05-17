@@ -9,8 +9,7 @@ const PRECACHE_RESOURCES = [
   '/static/css/inline-styles.css',
   '/libs/css/highlight.min.css',
   '/libs/js/anime.min.js',
-  '/libs/js/highlight.min.js',
-  '/static/assets/poetize.jpg'
+  '/libs/js/highlight.min.js'
 ];
 
 // 安装Service Worker时预缓存关键资源
@@ -54,6 +53,8 @@ self.addEventListener('fetch', event => {
   // 不同类型资源使用不同缓存策略
   if (isPageRequest(request)) {
     event.respondWith(handlePageRequest(request));
+  } else if (isMutableDefaultIcon(request)) {
+    event.respondWith(handleMutableDefaultIcon(request));
   } else if (isStaticAsset(request)) {
     event.respondWith(handleStaticAsset(request));
   } else if (isApiRequest(request)) {
@@ -79,6 +80,11 @@ function isApiRequest(request) {
   return url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/webInfo/') ||
     url.pathname.startsWith('/seo/');
+}
+
+function isMutableDefaultIcon(request) {
+  const url = new URL(request.url);
+  return url.pathname === '/static/assets/poetize.jpg' || url.pathname === '/assets/poetize.jpg';
 }
 
 // 处理页面请求：网络优先
@@ -116,6 +122,21 @@ async function handleStaticAsset(request) {
       statusText: 'Service Unavailable',
       headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
     });
+  }
+}
+
+async function handleMutableDefaultIcon(request) {
+  try {
+    const networkResponse = await fetch(request, { cache: 'reload' });
+    if (networkResponse.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (error) {
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) return cachedResponse;
+    throw error;
   }
 }
 

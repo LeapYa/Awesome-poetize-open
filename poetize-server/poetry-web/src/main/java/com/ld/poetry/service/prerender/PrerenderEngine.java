@@ -93,12 +93,20 @@ public class PrerenderEngine {
     @Value("${prerender.output-root:/app/web-dist/prerender}")
     private String outputRoot;
 
+    @Value("${prerender.admin-template-path:/app/admin-dist/index.html}")
+    private String adminTemplatePath;
+
+    @Value("${prerender.admin-output-root:/app/admin-dist/prerender}")
+    private String adminOutputRoot;
+
     private final Parser markdownParser;
     private final HtmlRenderer htmlRenderer;
     private final ObjectMapper objectMapper;
 
     private volatile String cachedTemplate;
     private volatile long templateLastModified = -1L;
+    private volatile String cachedAdminTemplate;
+    private volatile long adminTemplateLastModified = -1L;
 
     public PrerenderEngine(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -126,9 +134,15 @@ public class PrerenderEngine {
         return Files.isRegularFile(Path.of(templatePath));
     }
 
+    public boolean isAdminTemplateAvailable() {
+        return Files.isRegularFile(Path.of(adminTemplatePath));
+    }
+
     public void clearTemplateCache() {
         cachedTemplate = null;
         templateLastModified = -1L;
+        cachedAdminTemplate = null;
+        adminTemplateLastModified = -1L;
     }
 
     public String getTemplate() {
@@ -154,14 +168,45 @@ public class PrerenderEngine {
         }
     }
 
+    public String getAdminTemplate() {
+        Path path = Path.of(adminTemplatePath);
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalStateException("后台 SPA 模板文件不存在: " + adminTemplatePath);
+        }
+
+        try {
+            FileTime lastModifiedTime = Files.getLastModifiedTime(path);
+            long lastModified = lastModifiedTime.toMillis();
+            if (cachedAdminTemplate == null || adminTemplateLastModified != lastModified) {
+                synchronized (this) {
+                    if (cachedAdminTemplate == null || adminTemplateLastModified != lastModified) {
+                        cachedAdminTemplate = Files.readString(path, StandardCharsets.UTF_8);
+                        adminTemplateLastModified = lastModified;
+                    }
+                }
+            }
+            return cachedAdminTemplate;
+        } catch (IOException e) {
+            throw new IllegalStateException("读取后台 SPA 模板失败: " + adminTemplatePath, e);
+        }
+    }
+
     public String buildPage(PrerenderPageData data) {
+        return buildPageFromTemplate(getTemplate(), data);
+    }
+
+    public String buildAdminShellPage(PrerenderPageData data) {
+        return buildPageFromTemplate(getAdminTemplate(), data);
+    }
+
+    private String buildPageFromTemplate(String template, PrerenderPageData data) {
         Map<String, Object> meta = data.getMeta() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(data.getMeta());
         String lang = StringUtils.hasText(data.getLang()) ? data.getLang() : "zh";
         String pageType = StringUtils.hasText(data.getPageType()) ? data.getPageType() : "article";
         String title = StringUtils.hasText(data.getTitle()) ? data.getTitle() : "POETIZE";
         String content = data.getContent() == null ? "" : data.getContent();
 
-        String html = getTemplate();
+        String html = template;
         html = replaceHtmlLang(html, lang);
         html = replaceTitle(html, title);
         html = removeExistingSeoTags(html);
@@ -179,6 +224,22 @@ public class PrerenderEngine {
         html = replaceAppContent(html, pageType, content);
         html = insertBeforeTag(html, "</body>", buildLoadingScript());
         return formatHead(html);
+    }
+
+    public void writeAdminShellPage(String html) {
+        Path outputDir = Path.of(adminOutputRoot);
+        try {
+            Files.createDirectories(outputDir);
+            Files.writeString(
+                    outputDir.resolve("index.html"),
+                    html,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
+        } catch (IOException e) {
+            throw new IllegalStateException("写入后台预渲染文件失败: " + outputDir, e);
+        }
     }
 
     public void writePage(String subPath, String lang, String html) {
