@@ -2,10 +2,12 @@
   <div id="app">
     <router-view />
     <!-- 全局验证码容器 -->
-    <component
-      :is="captchaContainerComponent"
-      v-if="captchaVisible && captchaContainerComponent"
-    />
+    <Teleport to="body">
+      <component
+        :is="captchaContainerComponent"
+        v-if="captchaVisible && captchaContainerComponent"
+      />
+    </Teleport>
     <!-- 全局异步通知组件 -->
     <async-notification ref="globalNotification" />
     <!-- 全局邮箱收集组件 -->
