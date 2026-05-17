@@ -18,8 +18,10 @@ WORKDIR /app
 # 1. 从 npm 安装 JS 包装代码（使用 npm 上可用的最新版本）
 # 2. 从 GitHub Release 直接下载指定版本的 wasm 二进制产物（无需版本与 npm 完全一致）
 # 3. 如需 GitHub 代理可传入 --build-arg CN_FONT_SPLIT_GH_HOST=https://your-mirror
+# 4. 下载失败会自动尝试备用源，可用 CN_FONT_SPLIT_GH_FALLBACK_HOSTS 覆盖（空格分隔）
 ARG CN_FONT_SPLIT_VERSION=7.6.8
 ARG CN_FONT_SPLIT_GH_HOST=
+ARG CN_FONT_SPLIT_GH_FALLBACK_HOSTS="https://gh-proxy.com/github.com https://ghfast.top/https://github.com https://github.com"
 ENV CN_FONT_SPLIT_MODULE_PATH=/opt/cn-font-split-runtime/node_modules/cn-font-split/dist/wasm/index.mjs
 ENV CN_FONT_SPLIT_WASM_PATH=/opt/cn-font-split-runtime/node_modules/cn-font-split/dist/libffi-wasm32-wasip1.wasm
 
@@ -31,10 +33,28 @@ RUN apk add --no-cache netcat-openbsd curl ffmpeg libwebp libwebp-tools nodejs n
         && npm install --ignore-scripts --prefix /opt/cn-font-split-runtime cn-font-split \
         && cd /opt/cn-font-split-runtime/node_modules/cn-font-split \
         # 2) 从 GitHub Release 下载指定版本 wasm 二进制
-        && WASM_GH_BASE="${CN_FONT_SPLIT_GH_HOST:-https://github.com}" \
-        && echo "Downloading wasm binary from GitHub Release ${CN_FONT_SPLIT_VERSION} ..." \
-        && curl -fsSL --retry 3 --retry-delay 5 -o dist/libffi-wasm32-wasip1.wasm \
-           "${WASM_GH_BASE}/KonghaYao/cn-font-split/releases/download/${CN_FONT_SPLIT_VERSION}/libffi-wasm32-wasip1.wasm" \
+        && WASM_ASSET_PATH="/KonghaYao/cn-font-split/releases/download/${CN_FONT_SPLIT_VERSION}/libffi-wasm32-wasip1.wasm" \
+        && WASM_HOSTS="${CN_FONT_SPLIT_GH_HOST:-} ${CN_FONT_SPLIT_GH_FALLBACK_HOSTS}" \
+        && rm -f dist/libffi-wasm32-wasip1.wasm dist/libffi-wasm32-wasip1.wasm.tmp \
+        && wasm_downloaded=0 \
+        && for WASM_GH_BASE in ${WASM_HOSTS}; do \
+             [ -n "$WASM_GH_BASE" ] || continue; \
+             WASM_URL="${WASM_GH_BASE}${WASM_ASSET_PATH}"; \
+             echo "Downloading wasm binary from ${WASM_URL} ..."; \
+             if curl -fL --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 300 --speed-limit 1024 --speed-time 30 \
+                  -o dist/libffi-wasm32-wasip1.wasm.tmp "$WASM_URL" \
+                && test -s dist/libffi-wasm32-wasip1.wasm.tmp; then \
+               mv dist/libffi-wasm32-wasip1.wasm.tmp dist/libffi-wasm32-wasip1.wasm; \
+               wasm_downloaded=1; \
+               break; \
+             fi; \
+             echo "WARN: download failed from ${WASM_GH_BASE}, trying next mirror ..." >&2; \
+             rm -f dist/libffi-wasm32-wasip1.wasm.tmp; \
+           done \
+        && if [ "$wasm_downloaded" != "1" ]; then \
+             echo "ERROR: failed to download cn-font-split wasm from all configured hosts" >&2; \
+             exit 1; \
+           fi \
         # 3) 验证安装结果
         && test -s dist/wasm/index.mjs \
         && test -s dist/libffi-wasm32-wasip1.wasm \

@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-04-26
+## 修改时间: 2026-05-17
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.11.11
+## 版本: 1.11.12
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.11.11"
+POETIZE_VERSION="1.11.12"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -4389,17 +4389,16 @@ setup_swap() {
   fi
   if [ "$ENABLE_SWAP" = true ]; then
     info "检查并配置swap空间..."
-    
+
     # 检查是否已存在swap
-    if free | grep -q "Swap:"; then
-      EXISTING_SWAP=$(free -m | grep "Swap:" | awk '{print $2}')
-      if [ "$EXISTING_SWAP" -gt 0 ]; then
-        info "系统已配置${EXISTING_SWAP}MB的swap空间，跳过创建"
-        return 0
-      fi
+    EXISTING_SWAP=$(awk 'NR>1 {sum += $3} END {print sum+0}' /proc/swaps 2>/dev/null)
+    if [ "$EXISTING_SWAP" -gt 0 ]; then
+      info "系统已配置${EXISTING_SWAP}KB的swap空间，跳过创建"
+      return 0
     fi
-    
+
     # 检查是否有root权限
+    SUDO_CMD=""
     if [ "$(id -u)" -ne 0 ]; then
       warning "设置swap需要root权限，尝试使用sudo..."
       if ! command -v sudo &>/dev/null; then
@@ -4407,15 +4406,18 @@ setup_swap() {
         warning "跳过swap设置"
         return 1
       fi
+      SUDO_CMD="sudo"
     fi
-    
-    # 创建swap文件
-    info "创建${SWAP_SIZE}大小的swap文件..."
-    
+
     # 移除单位(G, M等)用于计算
     SWAP_SIZE_NUM=$(echo "$SWAP_SIZE" | sed 's/[^0-9]*//g')
     SWAP_SIZE_UNIT=$(echo "$SWAP_SIZE" | sed 's/[0-9]*//g')
-    
+
+    if [ -z "$SWAP_SIZE_NUM" ] || [ "$SWAP_SIZE_NUM" -le 0 ]; then
+      error "swap大小配置无效: $SWAP_SIZE"
+      return 1
+    fi
+
     # 转换为MB用于计算
     case "${SWAP_SIZE_UNIT}" in
       [Gg])
@@ -4432,122 +4434,137 @@ setup_swap() {
         SWAP_SIZE_MB=$SWAP_SIZE_NUM
         ;;
     esac
-    
-    # --- 尝试使用zram创建swap ---
-    info "尝试使用zram创建swap空间..."
-    ZRAM_DEV="/dev/zram0"
-    # 计算字节大小
-    ZRAM_SIZE_BYTES=$((SWAP_SIZE_MB * 1024 * 1024))
 
-    # 尝试加载zram模块
-    if ! lsmod | grep -q "^zram"; then
-      if command -v sudo &>/dev/null; then
-        sudo modprobe zram || true
-      else
-        modprobe zram || true
-      fi
+    if [ "$SWAP_SIZE_MB" -le 0 ]; then
+      error "swap大小必须至少为1MB: $SWAP_SIZE"
+      return 1
     fi
 
-    if lsmod | grep -q "^zram" && [ -e "/sys/block/zram0/disksize" ]; then
-      info "已加载zram模块，配置大小为${SWAP_SIZE}..."
-      if command -v sudo &>/dev/null; then
-        echo $ZRAM_SIZE_BYTES | sudo tee /sys/block/zram0/disksize >/dev/null
-        sudo mkswap $ZRAM_DEV && sudo swapon -p 10 $ZRAM_DEV
-      else
-        echo $ZRAM_SIZE_BYTES > /sys/block/zram0/disksize
-        mkswap $ZRAM_DEV && swapon -p 10 $ZRAM_DEV
+    # 优先尝试zram：只有真正启用并在/proc/swaps中可见才算成功
+    info "检测zram是否可用..."
+    if command -v zramctl &>/dev/null; then
+      if ! lsmod | grep -q "^zram"; then
+        $SUDO_CMD modprobe zram >/dev/null 2>&1 || true
       fi
 
-      if swapon --show | grep -q "$ZRAM_DEV"; then
-        success "成功创建并启用了基于zram的${SWAP_SIZE} swap空间"
-        return 0
+      if lsmod | grep -q "^zram"; then
+        ZRAM_DEV=$($SUDO_CMD zramctl -f 2>/dev/null || true)
+        if [ -n "$ZRAM_DEV" ]; then
+          info "尝试使用${ZRAM_DEV}创建${SWAP_SIZE}的zram swap..."
+
+          if $SUDO_CMD zramctl "$ZRAM_DEV" --algorithm zstd --size "${SWAP_SIZE_MB}M" 2>/dev/null || \
+             $SUDO_CMD zramctl "$ZRAM_DEV" --algorithm lz4 --size "${SWAP_SIZE_MB}M" 2>/dev/null || \
+             $SUDO_CMD zramctl "$ZRAM_DEV" --size "${SWAP_SIZE_MB}M" 2>/dev/null; then
+            if $SUDO_CMD mkswap "$ZRAM_DEV" >/dev/null 2>&1 && $SUDO_CMD swapon -p 10 "$ZRAM_DEV" >/dev/null 2>&1; then
+              ZRAM_SWAP_KB=$(awk -v file="$ZRAM_DEV" '$1 == file {print $3; exit}' /proc/swaps 2>/dev/null)
+              if [ "${ZRAM_SWAP_KB:-0}" -gt 0 ]; then
+                success "成功创建并启用了基于zram的${SWAP_SIZE} swap空间"
+                return 0
+              fi
+            fi
+          fi
+
+          warning "zram swap启用后校验失败，将回退到文件swap方案"
+          $SUDO_CMD swapoff "$ZRAM_DEV" >/dev/null 2>&1 || true
+          $SUDO_CMD zramctl -r "$ZRAM_DEV" >/dev/null 2>&1 || true
+        else
+          warning "未找到空闲zram设备，将回退到文件swap方案"
+        fi
       else
-        warning "zram swap启用失败，将回退到文件swap方案"
+        warning "zram模块不可用，将回退到文件swap方案"
       fi
     else
-      warning "未检测到zram模块或相关设备，回退到文件swap方案"
+      warning "未检测到zramctl命令，将回退到文件swap方案"
     fi
-    # --- zram逻辑结束 ---
 
     SWAP_FILE="/swapfile"
-    
-    # 使用dd命令创建swap文件
-    if command -v sudo &>/dev/null; then
-      sudo dd if=/dev/zero of=$SWAP_FILE bs=1M count=$SWAP_SIZE_MB status=progress || {
-        error "创建swap文件失败"
-        return 1
-      }
-      
-      # 设置权限
-      sudo chmod 600 $SWAP_FILE || warning "设置swap文件权限失败"
-      
-      # 格式化为swap
-      sudo mkswap $SWAP_FILE || {
-        error "格式化swap文件失败"
-        return 1
-      }
-      
-      # 启用swap，设置低优先级
-      sudo swapon -p 5 $SWAP_FILE || {
-        error "启用swap失败"
-        return 1
-      }
-      
-      # 添加到fstab以便开机自动挂载
-      if ! grep -q "$SWAP_FILE" /etc/fstab; then
-        echo "$SWAP_FILE none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null || warning "添加到fstab失败"
-      fi
-    else
-      # 直接以root执行
-      dd if=/dev/zero of=$SWAP_FILE bs=1M count=$SWAP_SIZE_MB status=progress || {
-        error "创建swap文件失败"
-        return 1
-      }
-      
-      # 设置权限
-      sudo chmod 600 $SWAP_FILE || warning "设置swap文件权限失败"
-      
-      # 格式化为swap
-      mkswap $SWAP_FILE || {
-        error "格式化swap文件失败"
-        return 1
-      }
-      
-      # 启用swap，设置低优先级
-      swapon -p 5 $SWAP_FILE || {
-        error "启用swap失败"
-        return 1
-      }
-      
-      # 添加到fstab以便开机自动挂载
-      if ! grep -q "$SWAP_FILE" /etc/fstab; then
-        echo "$SWAP_FILE none swap sw 0 0" >> /etc/fstab || warning "添加到fstab失败"
-      fi
+
+    if awk '{print $1}' /proc/swaps 2>/dev/null | grep -Fxq "$SWAP_FILE"; then
+      EXISTING_SWAP=$(awk -v file="$SWAP_FILE" '$1 == file {print $3; exit}' /proc/swaps 2>/dev/null)
+      info "系统已启用${SWAP_FILE} (${EXISTING_SWAP}KB)，跳过创建"
+      return 0
     fi
-    
+
+    if [ -e "$SWAP_FILE" ]; then
+      if [ ! -f "$SWAP_FILE" ]; then
+        error "${SWAP_FILE}已存在但不是普通文件，无法安全创建swap"
+        return 1
+      fi
+      warning "${SWAP_FILE}已存在但未启用，将重新创建"
+      $SUDO_CMD swapoff "$SWAP_FILE" >/dev/null 2>&1 || true
+      $SUDO_CMD rm -f "$SWAP_FILE" || {
+        error "删除旧swap文件失败: $SWAP_FILE"
+        return 1
+      }
+    fi
+
+    info "创建${SWAP_SIZE}大小的文件swap..."
+
+    if command -v fallocate &>/dev/null; then
+      $SUDO_CMD fallocate -l "${SWAP_SIZE_MB}M" "$SWAP_FILE" || {
+        warning "fallocate创建swap文件失败，改用dd方式创建"
+        $SUDO_CMD dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$SWAP_SIZE_MB" status=progress || {
+          error "创建swap文件失败"
+          return 1
+        }
+      }
+    else
+      $SUDO_CMD dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$SWAP_SIZE_MB" status=progress || {
+        error "创建swap文件失败"
+        return 1
+      }
+    fi
+
+    $SUDO_CMD chmod 600 "$SWAP_FILE" || {
+      error "设置swap文件权限失败"
+      return 1
+    }
+
+    $SUDO_CMD mkswap "$SWAP_FILE" || {
+      error "格式化swap文件失败"
+      return 1
+    }
+
+    $SUDO_CMD swapon "$SWAP_FILE" || {
+      error "启用swap失败"
+      return 1
+    }
+
+    # 添加到fstab以便开机自动挂载
+    if ! grep -Eq "^[[:space:]]*${SWAP_FILE//\//\\/}[[:space:]]" /etc/fstab; then
+      echo "$SWAP_FILE none swap sw 0 0" | $SUDO_CMD tee -a /etc/fstab > /dev/null || {
+        warning "添加到fstab失败，请手动添加: $SWAP_FILE none swap sw 0 0"
+      }
+    fi
+
     # 验证swap是否已启用
-    if free | grep -q "Swap:" && [ "$(free | grep "Swap:" | awk '{print $2}')" -gt 0 ]; then
-      success "成功创建并启用了${SWAP_SIZE}的swap空间"
-      
-      # 调整swappiness参数，减少系统对swap的依赖
-      info "正在调整系统swappiness参数..."
-      if command -v sudo &>/dev/null; then
-        sudo sysctl -w vm.swappiness=10 &>/dev/null && \
-        echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.conf &>/dev/null && \
-        success "已设置swappiness=10，降低系统对swap的使用倾向"
-      else
-        sysctl -w vm.swappiness=10 &>/dev/null && \
-        echo "vm.swappiness=10" >> /etc/sysctl.conf &>/dev/null && \
-        success "已设置swappiness=10，降低系统对swap的使用倾向"
+    if awk '{print $1}' /proc/swaps 2>/dev/null | grep -Fxq "$SWAP_FILE"; then
+      EXISTING_SWAP=$(awk -v file="$SWAP_FILE" '$1 == file {print $3; exit}' /proc/swaps 2>/dev/null)
+      if [ "${EXISTING_SWAP:-0}" -gt 0 ]; then
+        success "成功创建并启用了${SWAP_SIZE}的swap空间"
+
+        # 调整swappiness参数，减少系统对swap的依赖
+        info "正在调整系统swappiness参数..."
+        if $SUDO_CMD sysctl -w vm.swappiness=10 &>/dev/null; then
+          if grep -q "^vm.swappiness=" /etc/sysctl.conf 2>/dev/null; then
+            $SUDO_CMD sed -i "s/^vm.swappiness=.*/vm.swappiness=10/" /etc/sysctl.conf || warning "写入sysctl.conf失败"
+          else
+            echo "vm.swappiness=10" | $SUDO_CMD tee -a /etc/sysctl.conf &>/dev/null || warning "写入sysctl.conf失败"
+          fi
+          success "已设置swappiness=10，降低系统对swap的使用倾向"
+        else
+          warning "设置swappiness失败，不影响swap使用"
+        fi
+        return 0
       fi
-    else
-      warning "swap空间创建失败，但将继续执行后续步骤"
-      # 不再返回错误状态，继续执行
     fi
+
+    error "swap空间创建后校验失败，当前未检测到${SWAP_FILE}"
+    return 1
   else
     info "未启用swap配置，跳过"
   fi
-  
+
   return 0
 }
 
@@ -5253,7 +5270,9 @@ init_deploy() {
   setup_timezone
   
   # 配置swap空间
-  setup_swap
+  if ! setup_swap; then
+    warning "swap配置失败，低内存服务器可能在后续构建或启动容器时失败"
+  fi
 
   # 检查是否使用外部数据库或Redis
   if [ -n "$DB_HOST" ] || [ -n "$REDIS_HOST" ]; then
