@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2026-05-17
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.11.12
+## 版本: 1.11.13
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.11.12"
+POETIZE_VERSION="1.11.13"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -986,7 +986,7 @@ show_help() {
   echo ""
   echo "网络问题解决方案:"
   echo "  如果遇到GitHub访问问题，脚本会自动尝试以下解决方案:"
-  echo "  1. 优先使用Gitee镜像（国内环境）"
+  echo "  1. 自动探测GitHub/Gitee可用性并选择可连仓库"
   echo "  2. 自动修改hosts文件，添加GitHub可用IP"
   echo "  3. 提供多种IP地址尝试连接"
   echo "  4. 如果仍然失败，请访问 https://ping.chinaz.com/github.com 查询最新可用IP"
@@ -1008,23 +1008,70 @@ show_help() {
   echo ""
 }
 
+# Git 仓库地址。国内优先 Gitee，海外优先 GitHub；每个源都会先做可达性探测。
+get_github_repo_url() {
+  echo "https://github.com/LeapYa/awesome-poetize-open.git"
+}
+
+get_gitee_repo_url() {
+  echo "https://gitee.com/leapya/poetize.git"
+}
+
+git_remote_available() {
+  local repo_url="$1"
+  if command -v timeout &>/dev/null; then
+    timeout 12 git ls-remote --heads "$repo_url" main >/dev/null 2>&1
+  else
+    git ls-remote --heads "$repo_url" main >/dev/null 2>&1
+  fi
+}
+
+get_git_repo_candidates() {
+  local github_url
+  local gitee_url
+  local preferred_url
+  local fallback_url
+  github_url=$(get_github_repo_url)
+  gitee_url=$(get_gitee_repo_url)
+
+  if [ -n "${POETIZE_GIT_URL:-}" ]; then
+    echo "$POETIZE_GIT_URL"
+    return 0
+  fi
+
+  if is_china_environment; then
+    preferred_url="$gitee_url"
+    fallback_url="$github_url"
+  else
+    preferred_url="$github_url"
+    fallback_url="$gitee_url"
+  fi
+
+  if git_remote_available "$preferred_url"; then
+    echo "$preferred_url"
+    echo "$fallback_url"
+  elif git_remote_available "$fallback_url"; then
+    echo "$fallback_url"
+    echo "$preferred_url"
+  else
+    echo "$preferred_url"
+    echo "$fallback_url"
+  fi
+}
+
 # 列出可用版本
 list_available_versions() {
   info "正在获取可用版本列表..."
-  local repo_url="https://gitee.com/leapya/poetize.git"
-  local github_url="https://github.com/LeapYa/awesome-poetize-open.git"
   local tags=""
-  if is_china_environment; then
-    tags=$(git ls-remote --tags "$repo_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V)
-    if [ -z "$tags" ]; then
-      tags=$(git ls-remote --tags "$github_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V)
+  local repo_url=""
+  while IFS= read -r repo_url; do
+    if [ -z "$repo_url" ]; then
+      continue
     fi
-  else
-    tags=$(git ls-remote --tags "$github_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V)
     if [ -z "$tags" ]; then
       tags=$(git ls-remote --tags "$repo_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V)
     fi
-  fi
+  done < <(get_git_repo_candidates)
   
   if [ -z "$tags" ]; then
     error "无法获取版本列表，请检查网络连接"
@@ -1050,21 +1097,16 @@ list_available_versions() {
 
 # 获取最新版本标签
 get_latest_tag() {
-  local repo_url="https://gitee.com/leapya/poetize.git"
-  local github_url="https://github.com/LeapYa/awesome-poetize-open.git"
-  
   local latest=""
-  if is_china_environment; then
-    latest=$(git ls-remote --tags "$repo_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V | tail -1)
-    if [ -z "$latest" ]; then
-      latest=$(git ls-remote --tags "$github_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V | tail -1)
+  local repo_url=""
+  while IFS= read -r repo_url; do
+    if [ -z "$repo_url" ]; then
+      continue
     fi
-  else
-    latest=$(git ls-remote --tags "$github_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V | tail -1)
     if [ -z "$latest" ]; then
       latest=$(git ls-remote --tags "$repo_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V | tail -1)
     fi
-  fi
+  done < <(get_git_repo_candidates)
   
   echo "$latest"
 }
@@ -1697,7 +1739,9 @@ is_china_environment() {
     # 方法1: 检测网络连通性
     if command -v curl &>/dev/null; then
         # 检测是否能访问Google（国内通常被屏蔽）
-        if ! curl -s --connect-timeout 3 --max-time 5 "https://www.google.com" >/dev/null 2>&1; then
+        if curl -s --connect-timeout 3 --max-time 5 "https://www.google.com" >/dev/null 2>&1; then
+            return 1  # 能访问Google，优先判断为海外环境
+        else
             # 无法访问Google，再检测是否能访问国内镜像源
             if curl -s --connect-timeout 3 --max-time 5 "http://mirrors.aliyun.com" >/dev/null 2>&1; then
                 return 0  # 无法访问Google但能访问阿里云镜像，判断为国内环境
@@ -1705,7 +1749,9 @@ is_china_environment() {
         fi
     elif command -v ping &>/dev/null; then
         # 如果没有curl，使用ping检测
-        if ! ping -c 1 -W 3 www.google.com >/dev/null 2>&1; then
+        if ping -c 1 -W 3 www.google.com >/dev/null 2>&1; then
+            return 1  # 能访问Google，优先判断为海外环境
+        else
             # 无法ping通Google，再检测国内镜像源
             if ping -c 1 -W 3 mirrors.aliyun.com >/dev/null 2>&1; then
                 return 0  # 无法ping通Google但能ping通阿里云镜像，判断为国内环境
@@ -8623,10 +8669,12 @@ restore_hosts_file() {
 
 # 下载并解压项目源码
 download_and_extract_project() {
-  local download_url="https://github.com/LeapYa/awesome-poetize-open.git"
+  local download_url
   local tar_file="awesome-poetize-open.tar.gz"
   local extract_dir="$1"
-  local repo_url="https://gitee.com/leapya/poetize.git"
+  local repo_url
+  download_url=$(get_github_repo_url)
+  repo_url=$(get_gitee_repo_url)
 
   info "正在下载项目源码..."
 
@@ -8666,95 +8714,57 @@ download_and_extract_project() {
 
   # 尝试下载项目源码
   local clone_success=false
-  
-  if is_china_environment; then
-    # 国内环境，优先使用Gitee
-    if [ "$keep_git" = "true" ]; then
-      info "下载完整Git仓库（支持后续更新功能）..."
-      git clone $clone_branch_opt "$repo_url" "$extract_dir"
-    else
-      info "下载项目源码（浅克隆，不保留Git仓库）..."
-      git clone --depth 1 $clone_branch_opt "$repo_url" "$extract_dir"
-      rm -rf "$extract_dir/.git"
+  local current_repo_url=""
+  local current_repo_name=""
+
+  while IFS= read -r current_repo_url; do
+    if [ -z "$current_repo_url" ]; then
+      continue
     fi
-    
-    # 如果Gitee克隆失败，尝试GitHub
-    if [ $? -ne 0 ]; then
-      warning "Gitee克隆失败，尝试使用GitHub..."
-      
-      # 尝试修复GitHub访问问题
-      fix_github_access
-      
-      if [ "$keep_git" = "true" ]; then
-        info "下载完整Git仓库（支持后续更新功能）..."
-        git clone $clone_branch_opt "$download_url" "$extract_dir"
-      else
-        info "下载项目源码（浅克隆，不保留Git仓库）..."
-        git clone --depth 1 $clone_branch_opt "$download_url" "$extract_dir"
+
+    if [ "$current_repo_url" = "$repo_url" ]; then
+      current_repo_name="Gitee"
+    else
+      current_repo_name="GitHub"
+    fi
+
+    if [ "$keep_git" = "true" ]; then
+      info "使用${current_repo_name}下载完整Git仓库（支持后续更新功能）..."
+      git clone $clone_branch_opt "$current_repo_url" "$extract_dir"
+    else
+      info "使用${current_repo_name}下载项目源码（浅克隆，不保留Git仓库）..."
+      git clone --depth 1 $clone_branch_opt "$current_repo_url" "$extract_dir"
+      if [ $? -eq 0 ]; then
         rm -rf "$extract_dir/.git"
       fi
-      
-      if [ $? -eq 0 ]; then
-        clone_success=true
-        success "GitHub克隆成功"
-      else
-        error "GitHub克隆也失败了"
-      fi
-    else
-      clone_success=true
-      success "Gitee克隆成功"
     fi
-  else
-    # 国外环境，优先使用GitHub
+
+    if [ $? -eq 0 ]; then
+      clone_success=true
+      success "${current_repo_name}克隆成功"
+      break
+    fi
+
+    warning "${current_repo_name}克隆失败，尝试下一个可用仓库源..."
+    rm -rf "$extract_dir"
+
+    if [ "$current_repo_url" = "$download_url" ]; then
+      fix_github_access
+    fi
+  done < <(get_git_repo_candidates)
+
+  if [ "$clone_success" = "false" ] && [ -n "$download_url" ]; then
+    warning "仓库自动选择失败，最后重试GitHub..."
     if [ "$keep_git" = "true" ]; then
-      info "下载完整Git仓库（支持后续更新功能）..."
       git clone $clone_branch_opt "$download_url" "$extract_dir"
     else
-      info "下载项目源码（浅克隆，不保留Git仓库）..."
       git clone --depth 1 $clone_branch_opt "$download_url" "$extract_dir"
-      rm -rf "$extract_dir/.git"
-    fi
-    
-    # 如果GitHub克隆失败，尝试修复GitHub访问问题
-    if [ $? -ne 0 ]; then
-      warning "GitHub克隆失败，尝试修复GitHub访问问题..."
-      
-      # 尝试修复GitHub访问问题
-      fix_github_access
-      
-      if [ "$keep_git" = "true" ]; then
-        info "重新尝试下载完整Git仓库..."
-        git clone $clone_branch_opt "$download_url" "$extract_dir"
-      else
-        info "重新尝试下载项目源码（浅克隆）..."
-        git clone --depth 1 $clone_branch_opt "$download_url" "$extract_dir"
+      if [ $? -eq 0 ]; then
         rm -rf "$extract_dir/.git"
       fi
-      
-      if [ $? -eq 0 ]; then
-        clone_success=true
-        success "GitHub克隆成功（修复后）"
-      else
-        error "GitHub克隆失败，尝试使用Gitee..."
-        
-        # 如果GitHub仍然失败，尝试Gitee
-        if [ "$keep_git" = "true" ]; then
-          info "尝试使用Gitee下载完整Git仓库..."
-          git clone $clone_branch_opt "$repo_url" "$extract_dir"
-        else
-          info "尝试使用Gitee下载项目源码（浅克隆）..."
-          git clone --depth 1 $clone_branch_opt "$repo_url" "$extract_dir"
-          rm -rf "$extract_dir/.git"
-        fi
-        
-        if [ $? -eq 0 ]; then
-          clone_success=true
-          success "Gitee克隆成功"
-        else
-          error "所有克隆尝试均失败"
-        fi
-      fi
-    else
+    fi
+
+    if [ $? -eq 0 ]; then
       clone_success=true
       success "GitHub克隆成功"
     fi
@@ -14050,7 +14060,9 @@ is_china_environment() {
     # 方法1: 检测网络连通性
     if command -v curl &>/dev/null; then
         # 检测是否能访问Google（国内通常被屏蔽）
-        if ! curl -s --connect-timeout 3 --max-time 5 "https://www.google.com" >/dev/null 2>&1; then
+        if curl -s --connect-timeout 3 --max-time 5 "https://www.google.com" >/dev/null 2>&1; then
+            return 1  # 能访问Google，优先判断为海外环境
+        else
             # 无法访问Google，再检测是否能访问国内镜像源
             if curl -s --connect-timeout 3 --max-time 5 "http://mirrors.aliyun.com" >/dev/null 2>&1; then
                 return 0  # 无法访问Google但能访问阿里云镜像，判断为国内环境
@@ -14058,7 +14070,9 @@ is_china_environment() {
         fi
     elif command -v ping &>/dev/null; then
         # 如果没有curl，使用ping检测
-        if ! ping -c 1 -W 3 www.google.com >/dev/null 2>&1; then
+        if ping -c 1 -W 3 www.google.com >/dev/null 2>&1; then
+            return 1  # 能访问Google，优先判断为海外环境
+        else
             # 无法ping通Google，再检测国内镜像源
             if ping -c 1 -W 3 mirrors.aliyun.com >/dev/null 2>&1; then
                 return 0  # 无法ping通Google但能ping通阿里云镜像，判断为国内环境
@@ -14093,19 +14107,13 @@ is_china_environment() {
 
 # 解析更新目标的仓库地址和版本
 resolve_update_source() {
-    local is_china_env=false
     RESOLVED_GIT_URL=""
     RESOLVED_TARGET_VERSION=""
     RESOLVED_BRANCH_OPT=""
 
-    if is_china_environment; then
-        is_china_env=true
-    fi
-
-    if [ "$is_china_env" = true ]; then
-        RESOLVED_GIT_URL="https://gitee.com/leapya/poetize.git"
-    else
-        RESOLVED_GIT_URL="https://github.com/LeapYa/awesome-poetize-open.git"
+    RESOLVED_GIT_URL=$(get_git_repo_candidates | head -n 1)
+    if [ -z "$RESOLVED_GIT_URL" ]; then
+        RESOLVED_GIT_URL=$(get_github_repo_url)
     fi
 
     if [ -n "$UPDATE_VERSION" ]; then
@@ -14114,7 +14122,7 @@ resolve_update_source() {
     elif [ "$USE_LATEST_TAG" = "true" ]; then
         info "获取最新稳定版本..."
         local release_api_url=""
-        if [ "$is_china_env" = true ]; then
+        if [ "$RESOLVED_GIT_URL" = "$(get_gitee_repo_url)" ]; then
             release_api_url="https://gitee.com/api/v5/repos/leapya/poetize/releases/latest"
             RESOLVED_TARGET_VERSION=$(curl -fsSL "$release_api_url" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | head -1 | sed 's/"tag_name":"//;s/"//')
         else
@@ -14126,10 +14134,20 @@ resolve_update_source() {
             info "使用最新稳定版本: $RESOLVED_TARGET_VERSION"
         else
             warning "无法从 Release API 获取版本，尝试使用 git tags..."
-            RESOLVED_TARGET_VERSION=$(git ls-remote --tags "$RESOLVED_GIT_URL" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V | tail -1)
-            if [ -n "$RESOLVED_TARGET_VERSION" ]; then
-                info "使用最新标签版本: $RESOLVED_TARGET_VERSION"
-            else
+            local repo_url=""
+            while IFS= read -r repo_url; do
+                if [ -z "$repo_url" ]; then
+                    continue
+                fi
+                RESOLVED_TARGET_VERSION=$(git ls-remote --tags "$repo_url" 2>/dev/null | grep -o 'refs/tags/v[0-9.]*$' | sed 's|refs/tags/||' | sort -V | tail -1)
+                if [ -n "$RESOLVED_TARGET_VERSION" ]; then
+                    RESOLVED_GIT_URL="$repo_url"
+                    info "使用最新标签版本: $RESOLVED_TARGET_VERSION"
+                    break
+                fi
+            done < <(get_git_repo_candidates)
+
+            if [ -z "$RESOLVED_TARGET_VERSION" ]; then
                 warning "无法获取最新版本标签，将使用main分支"
             fi
         fi
