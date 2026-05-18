@@ -2,6 +2,7 @@
   <div>
     <div class="section-header">
       <el-tag effect="dark" class="my-tag draft-inline-tag">
+        <i class="el-icon-setting default-config-icon" title="默认发文配置" @click="openDefaultConfigDialog" style="cursor: pointer; margin-right: 8px; font-size: 16px; vertical-align: -1px;"></i>
         <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -3px;">
           <path d="M0 0h1024v1024H0V0z" fill="#202425" opacity=".01"></path>
           <path
@@ -99,9 +100,9 @@
           </el-tooltip>
         </template>
         <el-input
+          class="url-slug-input"
           v-model="article.articleSlug"
           maxlength="160"
-          show-word-limit
           placeholder="可留空，留空后使用数字ID作为文章URL"
           @input="handleArticleSlugInput"
         >
@@ -123,7 +124,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- 延迟渲染编辑器，数据加载完成后再初始化 -->
         <ArticleEditor 
           v-if="shouldRenderEditor"
@@ -512,6 +513,43 @@
         </el-button>
       </div>
     </el-dialog>
+
+    <el-dialog title="默认发文配置" :visible.sync="defaultConfigDialogVisible" width="60%">
+      <el-form :model="defaultConfigForm" label-width="140px">
+        <el-form-item label="自动摘要">
+          <el-switch v-model="defaultConfigForm.autoSummary"></el-switch>
+        </el-form-item>
+        <el-form-item label="跳过AI自动翻译">
+          <el-switch v-model="defaultConfigForm.skipAiTranslation"></el-switch>
+        </el-form-item>
+        <el-form-item label="启用评论">
+          <el-switch v-model="defaultConfigForm.commentStatus"></el-switch>
+        </el-form-item>
+        <el-form-item label="是否推荐">
+          <el-switch v-model="defaultConfigForm.recommendStatus"></el-switch>
+        </el-form-item>
+        <el-form-item label="是否可见">
+          <el-switch v-model="defaultConfigForm.viewStatus"></el-switch>
+        </el-form-item>
+        <el-form-item v-if="!defaultConfigForm.viewStatus" label="不可见时的访问密码">
+          <el-input v-model="defaultConfigForm.password" maxlength="30"></el-input>
+        </el-form-item>
+        <el-form-item v-if="!defaultConfigForm.viewStatus" label="密码提示">
+          <el-input v-model="defaultConfigForm.tips" maxlength="60"></el-input>
+        </el-form-item>
+        <el-form-item label="推送至搜索引擎">
+          <el-switch v-model="defaultConfigForm.submitToSearchEngine"></el-switch>
+        </el-form-item>
+        <el-form-item label="封面">
+          <el-input v-model="defaultConfigForm.articleCover" placeholder="支持默认封面URL配置"></el-input>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="defaultConfigDialogVisible = false">取 消</el-button>
+        <el-button type="primary" @click="saveDefaultConfig">保 存</el-button>
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -563,26 +601,43 @@ const uploadPicture = () => import("../common/uploadPicture");
     callback();
   };
 
-  const createDefaultArticle = () => ({
-    articleTitle: "",
-    articleSlug: "",
-    articleContent: "",
-    summary: "",
-    autoSummary: true,
-    commentStatus: true,
-    recommendStatus: false,
-    viewStatus: true,
-    submitToSearchEngine: true,
-    password: "",
-    tips: "",
-    articleCover: "",
-    videoUrl: "",
-    sortId: null,
-    labelId: null,
-    payType: 0,
-    payAmount: null,
-    freePercent: 30
-  });
+  const DEFAULT_CONFIG_KEY = 'poetize_article_default_config';
+
+  const getDefaultConfig = () => {
+    try {
+      const savedConfig = localStorage.getItem(DEFAULT_CONFIG_KEY);
+      if (savedConfig) {
+        return JSON.parse(savedConfig);
+      }
+    } catch (e) {
+      console.error('Failed to parse default config from localStorage', e);
+    }
+    return {};
+  };
+
+  const createDefaultArticle = () => {
+    const config = getDefaultConfig();
+    return {
+      articleTitle: "",
+      articleSlug: "",
+      articleContent: "",
+      summary: "",
+      autoSummary: config.autoSummary ?? true,
+      commentStatus: config.commentStatus ?? true,
+      recommendStatus: config.recommendStatus ?? false,
+      viewStatus: config.viewStatus ?? true,
+      submitToSearchEngine: config.submitToSearchEngine ?? true,
+      password: config.password ?? "",
+      tips: config.tips ?? "",
+      articleCover: config.articleCover ?? "",
+      videoUrl: "",
+      sortId: null,
+      labelId: null,
+      payType: 0,
+      payAmount: null,
+      freePercent: 30
+    };
+  };
 
   export default {
     components: {
@@ -663,8 +718,11 @@ const uploadPicture = () => import("../common/uploadPicture");
           translatedTitle: '',
           translatedContent: ''
         },
+        // 默认配置设置相关
+        defaultConfigDialogVisible: false,
+        defaultConfigForm: Object.assign({}, createDefaultArticle(), { skipAiTranslation: getDefaultConfig().skipAiTranslation ?? false }),
         // 跳过AI翻译开关
-        skipAiTranslation: false,
+        skipAiTranslation: getDefaultConfig().skipAiTranslation ?? false,
         // 暂存的翻译数据
         pendingTranslation: {
           title: '',
@@ -972,6 +1030,30 @@ const uploadPicture = () => import("../common/uploadPicture");
 
 
     methods: {
+      openDefaultConfigDialog() {
+        const config = getDefaultConfig();
+        this.defaultConfigForm = {
+          autoSummary: config.autoSummary ?? true,
+          skipAiTranslation: config.skipAiTranslation ?? false,
+          commentStatus: config.commentStatus ?? true,
+          recommendStatus: config.recommendStatus ?? false,
+          viewStatus: config.viewStatus ?? true,
+          submitToSearchEngine: config.submitToSearchEngine ?? true,
+          password: config.password ?? "",
+          tips: config.tips ?? "",
+          articleCover: config.articleCover ?? "",
+        };
+        this.defaultConfigDialogVisible = true;
+      },
+      saveDefaultConfig() {
+        const configToSave = { ...this.defaultConfigForm };
+        localStorage.setItem(DEFAULT_CONFIG_KEY, JSON.stringify(configToSave));
+        this.$message.success('默认配置保存成功！');
+        this.defaultConfigDialogVisible = false;
+
+        // Use the newly saved configuration partially to the current unsaved state if ID is empty?
+        // Let's just save it. It will be applied next time `createDefaultArticle()` is called.
+      },
       resetDraftContext() {
         this.draftType = null;
         this.draftOwnerUserId = null;
@@ -1005,6 +1087,7 @@ const uploadPicture = () => import("../common/uploadPicture");
             tasks.push(this.ensureDraftSessionCreated());
           } else if (this.$common.isEmpty(this.id)) {
             this.article = createDefaultArticle();
+            this.skipAiTranslation = getDefaultConfig().skipAiTranslation ?? false;
             tasks.push(this.ensureDraftSessionCreated());
           } else {
             this.destroyDraftSession();
@@ -1155,7 +1238,7 @@ const uploadPicture = () => import("../common/uploadPicture");
           ...createDefaultArticle(),
           ...detail.sourceArticle
         } : createDefaultArticle();
-        this.skipAiTranslation = false;
+        this.skipAiTranslation = getDefaultConfig().skipAiTranslation ?? false;
         this.resetTranslationForm();
         this.clearPendingTranslation();
         await this.loadDraftCollaboratorOptions();

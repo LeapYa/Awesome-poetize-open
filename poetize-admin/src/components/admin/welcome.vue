@@ -10,14 +10,15 @@
     </div>
 
     <!-- 版本信息 -->
-    <div class="version-info">
+    <div id="field-update-check" class="version-info">
       <div class="version-tag">
         <span>{{ appVersion }}</span>
         <span
           class="check-update-btn"
           :class="{ checking: checking, 'has-update': updateAvailable }"
           @click.stop="updateAvailable ? openReleasePage() : checkForUpdates()"
-          :title="updateAvailable ? '发版有更新，点击前往' : '检查更新'"
+          :title="updateButtonTitle"
+          :aria-label="updateButtonTitle"
         >
           <i :class="updateAvailable ? 'el-icon-top' : 'el-icon-refresh'"></i>
           {{ updateAvailable ? '去更新' : (checking ? '检查中...' : '检查更新') }}
@@ -71,20 +72,25 @@
   import constant from '@/utils/constant';
 
   const STORAGE_KEY = 'poetize_guide_step';
-  const TOTAL_STEPS = 12;
+  const TOTAL_STEPS = 17;
   const GUIDE_TITLES = [
+    '版本与更新',
     '基础设置',
     '外观个性化',
     '插件管理',
     '配置管理',
+    '存储与图床',
+    '图片优化与位置服务',
     '通知与邮件',
     '邮件模板',
     '安全与登录',
+    '对外 API 接口',
     '站长资料修改',
     'SEO全套配置',
     '本站信息 (siteInfo)',
     '侧边栏定制',
-    '文章AI助手'
+    '文章AI助手',
+    '开启创作之旅'
   ];
 
   export default {
@@ -104,8 +110,17 @@
       appVersion() {
         return constant.APP_VERSION;
       },
+      updateButtonTitle() {
+        if (this.updateAvailable) {
+          return `${this.latestVersion || '新版本'} 可用，点击前往 GitHub Releases 查看更新说明`;
+        }
+        if (this.checking) {
+          return '正在从 GitHub/Gitee 检查 Poetize 最新版本';
+        }
+        return '检查 Poetize 最新版本；发现更新后可前往 GitHub Releases 查看升级说明';
+      },
       resumeStep() {
-        // savedStep 0 = intro (show as 0), savedStep 1-9 = actual steps
+        // savedStep 0 = intro (show as 0), savedStep 1-N = actual steps
         return this.savedStep;
       },
       remainingSteps() {
@@ -123,7 +138,7 @@
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved !== null) {
         const val = parseInt(saved, 10);
-        // val 0 = island intro, val 1-9 = actual steps
+        // val 0 = island intro, val 1-N = actual steps
         if (val >= 0 && val <= TOTAL_STEPS) {
           this.savedStep = val;
           this.hasStartedGuide = true;

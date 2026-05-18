@@ -37,7 +37,16 @@ export const adminConfigSearchIndex = [
     sectionTitle: '欢迎页与配置向导',
     fieldLabel: 'Welcome页面',
     keywords: ['welcome页面', '欢迎页', '欢迎页面'],
-    aliases: ['welcome', '系统欢迎页', '配置向导', '新手引导', '开启配置向导']
+    aliases: ['welcome', '系统欢迎页', '配置向导', '新手引导', '开启配置向导', '版本更新', '检查更新', '去更新', 'Releases']
+  }, {
+    id: 'field-update-check',
+    type: 'field',
+    route: '/welcome',
+    pageTitle: 'Welcome页面',
+    sectionTitle: '欢迎页右下角版本更新',
+    fieldLabel: '检查更新',
+    keywords: ['版本更新', '检查更新', '去更新', '最新版本'],
+    aliases: ['release', 'releases', 'GitHub Releases', 'Gitee', 'GitHub', '当前版本', '右下角更新']
   }, {
     id: 'field-welcome-entry',
     type: 'field',
@@ -46,7 +55,7 @@ export const adminConfigSearchIndex = [
     sectionTitle: '欢迎页与配置向导',
     fieldLabel: '欢迎页',
     keywords: ['欢迎页', '欢迎页面', 'welcome页面'],
-    aliases: ['welcome', '系统欢迎页', '配置向导', '新手引导', '开启配置向导']
+    aliases: ['welcome', '系统欢迎页', '配置向导', '新手引导', '开启配置向导', '版本更新', '检查更新']
   },
   {
     id: 'page-visit-stats',
@@ -516,7 +525,7 @@ export const adminConfigSearchIndex = [
     sectionTitle: '系统配置表',
     fieldLabel: '系统配置搜索',
     keywords: ['系统配置表', '配置键名', '配置键值'],
-    aliases: ['configKey', 'configValue', 'configName', '备案号']
+    aliases: ['configKey', 'configValue', 'configName', '备案号', '腾讯位置服务Key', 'tencent.lbs.key', '默认存储平台', 'store.type', '七牛云', 'qiniu', '兰空图床', 'lsky', '简单图床', 'easyimage', 'WebP图片转换', 'image.webp.enabled', '图片压缩', 'image.compress.enabled']
   },
   {
     id: 'field-plugin-mouse-effect',

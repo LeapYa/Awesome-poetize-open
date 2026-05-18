@@ -241,10 +241,37 @@
     border-radius: 8px !important;
   }
 
+  /* 修复带前后缀输入框的圆角问题 */
+  ::v-deep .el-input-group--prepend .el-input__inner {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+  }
+
+  ::v-deep .el-input-group__prepend {
+    border-top-left-radius: 8px !important;
+    border-bottom-left-radius: 8px !important;
+  }
+
+  ::v-deep .el-input-group--append .el-input__inner {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+  }
+
+  ::v-deep .el-input-group__append {
+    border-top-right-radius: 8px !important;
+    border-bottom-right-radius: 8px !important;
+  }
+
   ::v-deep .el-textarea__inner {
     font-size: 16px !important;
     min-height: 100px !important;
     border-radius: 8px !important;
+  }
+
+  /* URL 别名前缀移动端适配 */
+  ::v-deep .url-slug-input .el-input-group__prepend {
+    padding: 0 8px !important;
+    font-size: 14px !important;
   }
 
   /* 选择器移动端适配 */
