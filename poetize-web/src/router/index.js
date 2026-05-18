@@ -130,6 +130,30 @@ const routes = [
     },
   },
   {
+    path: '/archives',
+    redirect: (to) => ({
+      path: '/',
+      query: to.query,
+      hash: to.hash,
+    }),
+  },
+  {
+    path: '/categories',
+    redirect: (to) => ({
+      path: '/sort',
+      query: to.query,
+      hash: to.hash,
+    }),
+  },
+  {
+    path: '/tags',
+    redirect: (to) => ({
+      path: '/sort',
+      query: to.query,
+      hash: to.hash,
+    }),
+  },
+  {
     path: '/im',
     name: 'im',
     meta: { requireAuth: true },
