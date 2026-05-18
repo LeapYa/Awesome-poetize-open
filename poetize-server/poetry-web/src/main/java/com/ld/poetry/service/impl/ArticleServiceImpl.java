@@ -154,6 +154,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     articleVO.getArticleContent(),
                     skipAiTranslation,
                     pendingTranslation);
+            applyTranslationSummary(translationResult, pendingTranslation, articleVO.getSummary(),
+                    shouldAutoGenerateSummary(articleVO), !skipAiTranslation && !hasPendingTranslation(pendingTranslation));
         } catch (Exception e) {
             log.warn("翻译任务失败（继续后续流程）", e);
             translationResult = null;
@@ -166,7 +168,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         savedArticleId,
                         translationResult.get("title"),
                         translationResult.get("content"),
-                        translationResult.get("language"));
+                        translationResult.get("language"),
+                        translationResult.get("summary"),
+                        translationResult.containsKey("summary"));
                 log.info("翻译结果保存成功，新事务已提交");
             } catch (Exception e) {
                 log.error("翻译结果保存失败（继续执行后续流程）", e);
@@ -327,7 +331,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         skipAiTranslation,
                         pendingTranslation,
                         articleReadyMessage,
-                        autoSummary);
+                        autoSummary,
+                        articleVO.getSummary());
 
                 // ========== 步骤4：生成多语言摘要（基于原文+翻译）==========
                 SummaryService.SummaryTaskResult summaryOutcome;
@@ -954,7 +959,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     private AsyncTranslationOutcome processAsyncTranslation(String taskId, Integer articleId, String title,
             String content, boolean skipAiTranslation, Map<String, String> pendingTranslation,
-            String articleReadyMessage, boolean autoSummary) {
+            String articleReadyMessage, boolean autoSummary, String sourceSummary) {
         if (hasPendingTranslation(pendingTranslation)) {
             updateTranslationStage(taskId, "saving_translation", "manual_saved",
                     articleReadyMessage + "，正在保存手动翻译...", null, false);
@@ -963,7 +968,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         articleId,
                         pendingTranslation.get("title"),
                         pendingTranslation.get("content"),
-                        pendingTranslation.get("language"));
+                        pendingTranslation.get("language"),
+                        pendingTranslation.get("summary"),
+                        pendingTranslation.containsKey("summary"));
                 updateTranslationStage(taskId, "saving_translation", "manual_saved",
                         "手动翻译已保存，" + getAfterTranslationSummaryMessage(autoSummary), null, false);
                 emitTaskEvent(taskId, "saved", Map.of("articleId", articleId, "message", "手动翻译保存成功"));
@@ -1007,11 +1014,14 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         updateTranslationStage(taskId, "saving_translation", "streaming",
                 articleReadyMessage + "，正在保存翻译结果...", null, false);
         try {
+            applyTranslationSummary(translationResult, pendingTranslation, sourceSummary, autoSummary, true);
             saveTranslationInNewTransaction(
                     articleId,
                     translationResult.get("title"),
                     translationResult.get("content"),
-                    translationResult.get("language"));
+                    translationResult.get("language"),
+                    translationResult.get("summary"),
+                    translationResult.containsKey("summary"));
             updateTranslationStage(taskId, "saving_translation", "saved",
                     "翻译已保存，" + getAfterTranslationSummaryMessage(autoSummary), null, false);
             emitTaskEvent(taskId, "saved", Map.of("articleId", articleId, "message", "翻译保存成功"));
@@ -1029,6 +1039,33 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 && StringUtils.hasText(pendingTranslation.get("title"))
                 && StringUtils.hasText(pendingTranslation.get("content"))
                 && StringUtils.hasText(pendingTranslation.get("language"));
+    }
+
+    private void applyTranslationSummary(Map<String, String> translationResult, Map<String, String> pendingTranslation,
+            String sourceSummary, boolean autoSummary, boolean allowSourceSummaryTranslation) {
+        if (translationResult == null || translationResult.isEmpty()) {
+            return;
+        }
+        if (pendingTranslation != null && StringUtils.hasText(pendingTranslation.get("summary"))) {
+            translationResult.put("summary", pendingTranslation.get("summary"));
+            return;
+        }
+        if (!allowSourceSummaryTranslation || autoSummary || !StringUtils.hasText(sourceSummary)) {
+            return;
+        }
+        String targetLanguage = translationResult.get("language");
+        if (!StringUtils.hasText(targetLanguage)) {
+            return;
+        }
+        try {
+            String normalizedSourceSummary = ArticleSummaryTextUtil.toPlainText(sourceSummary, 500);
+            String translatedSummary = translationService.translateText(normalizedSourceSummary, null, targetLanguage);
+            if (StringUtils.hasText(translatedSummary)) {
+                translationResult.put("summary", translatedSummary);
+            }
+        } catch (Exception e) {
+            log.warn("手动摘要翻译失败，将仅保存翻译正文，目标语言: {}, 错误: {}", targetLanguage, e.getMessage());
+        }
     }
 
     private boolean shouldSkipAsyncTranslation(boolean skipAiTranslation) {
@@ -1589,6 +1626,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     articleVO.getArticleContent(),
                     skipAiTranslation,
                     pendingTranslation);
+            applyTranslationSummary(translationResult, pendingTranslation, articleVO.getSummary(),
+                    shouldAutoGenerateSummary(articleVO), !skipAiTranslation && !hasPendingTranslation(pendingTranslation));
         } catch (Exception e) {
             log.warn("翻译任务失败（继续后续流程）", e);
             translationResult = null;
@@ -1601,7 +1640,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         updatedArticleId,
                         translationResult.get("title"),
                         translationResult.get("content"),
-                        translationResult.get("language"));
+                        translationResult.get("language"),
+                        translationResult.get("summary"),
+                        translationResult.containsKey("summary"));
                 log.info("翻译结果保存成功，新事务已提交");
             } catch (Exception e) {
                 log.error("翻译结果保存失败（继续执行后续流程）", e);
@@ -2722,7 +2763,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         skipAiTranslation,
                         pendingTranslation,
                         articleReadyMessage,
-                        autoSummary);
+                        autoSummary,
+                        articleVO.getSummary());
 
                 // ========== 步骤4：更新多语言摘要（基于原文+翻译）==========
                 if (!autoSummary) {
@@ -2979,6 +3021,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             articleVO.setId(article.getId());
             articleVO.setArticleTitle(translatedTitle);
             articleVO.setArticleContent(translatedContent);
+            if (StringUtils.hasText(translation.get("summary"))) {
+                articleVO.setSummary(translation.get("summary"));
+            }
 
             return articleVO;
         } catch (Exception e) {
@@ -3092,8 +3137,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     private void saveTranslationInNewTransaction(Integer articleId, String title, String content, String language) {
+        saveTranslationInNewTransaction(articleId, title, content, language, null, false);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    private void saveTranslationInNewTransaction(Integer articleId, String title, String content, String language,
+            String summary, boolean summaryProvided) {
         try {
-            translationService.saveTranslationResult(articleId, title, content, language);
+            if (summaryProvided) {
+                translationService.saveTranslationResult(articleId, title, content, language, summary);
+            } else {
+                translationService.saveTranslationResult(articleId, title, content, language);
+            }
         } catch (Exception e) {
             log.error("翻译结果保存失败，文章ID: {}, 语言: {}", articleId, language, e);
             throw e; // 抛出异常以触发事务回滚

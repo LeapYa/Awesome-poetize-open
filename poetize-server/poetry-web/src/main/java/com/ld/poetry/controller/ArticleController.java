@@ -131,6 +131,7 @@ public class ArticleController {
                                    @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                    @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
                                    @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                   @RequestParam(value = "pendingTranslationSummary", required = false) String pendingTranslationSummary,
                                    @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
         // 防止空指针异常，验证输入
         if (articleVO == null) {
@@ -180,7 +181,8 @@ public class ArticleController {
             
             boolean resolvedSkipAiTranslation = resolveSkipAiTranslation(articleVO, skipAiTranslation);
             Map<String, String> pendingTranslation = buildPendingTranslation(articleVO,
-                    pendingTranslationTitle, pendingTranslationContent, pendingTranslationLanguage);
+                    pendingTranslationTitle, pendingTranslationContent, pendingTranslationSummary,
+                    pendingTranslationLanguage);
             
             // 保存文章（传递skipAiTranslation和pendingTranslation参数）
             PoetryResult result = articleService.saveArticle(articleVO, resolvedSkipAiTranslation, pendingTranslation);
@@ -229,6 +231,7 @@ public class ArticleController {
                                                 @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                                 @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
                                                 @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                                @RequestParam(value = "pendingTranslationSummary", required = false) String pendingTranslationSummary,
                                                 @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
         // 防止空指针异常，验证输入
         if (articleVO == null) {
@@ -266,7 +269,8 @@ public class ArticleController {
             
             boolean resolvedSkipAiTranslation = resolveSkipAiTranslation(articleVO, skipAiTranslation);
             Map<String, String> pendingTranslation = buildPendingTranslation(articleVO,
-                    pendingTranslationTitle, pendingTranslationContent, pendingTranslationLanguage);
+                    pendingTranslationTitle, pendingTranslationContent, pendingTranslationSummary,
+                    pendingTranslationLanguage);
 
             // 调用异步保存服务
             PoetryResult<String> result = articleService.saveArticleAsync(articleVO, resolvedSkipAiTranslation, pendingTranslation);
@@ -423,6 +427,7 @@ public class ArticleController {
                                      @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                      @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
                                      @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                     @RequestParam(value = "pendingTranslationSummary", required = false) String pendingTranslationSummary,
                                      @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
         // 使用Redis缓存清理替换PoetryCache
         Integer userId = PoetryUtil.getUserId();
@@ -435,7 +440,8 @@ public class ArticleController {
         
         boolean resolvedSkipAiTranslation = resolveSkipAiTranslation(articleVO, skipAiTranslation);
         Map<String, String> pendingTranslation = buildPendingTranslation(articleVO,
-                pendingTranslationTitle, pendingTranslationContent, pendingTranslationLanguage);
+                pendingTranslationTitle, pendingTranslationContent, pendingTranslationSummary,
+                pendingTranslationLanguage);
         Integer currentUserId = PoetryUtil.getUserId();
         
         // 更新文章（传递skipAiTranslation和pendingTranslation参数）
@@ -668,6 +674,9 @@ public class ArticleController {
                 if (translation != null && !translation.isEmpty()) {
                     article.setTranslatedTitle(translation.get("title"));
                     article.setTranslatedContent(translation.get("content"));
+                    if (StringUtils.hasText(translation.get("summary"))) {
+                        article.setSummary(translation.get("summary"));
+                    }
                 }
             } catch (Exception e) {
                 log.warn("获取文章翻译失败（不影响主流程）: 文章ID={}, 语言={}, 错误={}",
@@ -785,7 +794,8 @@ public class ArticleController {
     public PoetryResult<String> saveManualTranslation(@RequestParam("id") Integer id,
                                                      @RequestParam("targetLanguage") String targetLanguage,
                                                      @RequestParam("translatedTitle") String translatedTitle,
-                                                     @RequestParam("translatedContent") String translatedContent) {
+                                                     @RequestParam("translatedContent") String translatedContent,
+                                                     @RequestParam(value = "translatedSummary", required = false) String translatedSummary) {
         // 检查参数
         if (id == null) {
             return PoetryResult.fail("文章ID不能为空");
@@ -806,7 +816,8 @@ public class ArticleController {
         try {
             // 保存手动翻译
             Map<String, Object> result = translationService.saveManualTranslation(id, targetLanguage,
-                                                                                 translatedTitle, translatedContent);
+                                                                                 translatedTitle, translatedContent,
+                                                                                 translatedSummary);
 
             if ((Boolean) result.get("success")) {
                 return PoetryResult.success((String) result.get("message"));
@@ -845,6 +856,7 @@ public class ArticleController {
                                                   @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                                   @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
                                                   @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                                  @RequestParam(value = "pendingTranslationSummary", required = false) String pendingTranslationSummary,
                                                   @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
         // 防止空指针异常，验证输入
         if (articleVO == null) {
@@ -858,7 +870,8 @@ public class ArticleController {
         try {
             boolean resolvedSkipAiTranslation = resolveSkipAiTranslation(articleVO, skipAiTranslation);
             Map<String, String> pendingTranslation = buildPendingTranslation(articleVO,
-                    pendingTranslationTitle, pendingTranslationContent, pendingTranslationLanguage);
+                    pendingTranslationTitle, pendingTranslationContent, pendingTranslationSummary,
+                    pendingTranslationLanguage);
             Integer currentUserId = PoetryUtil.getUserId();
             String currentUsername = PoetryUtil.getUsername();
 
@@ -895,18 +908,27 @@ public class ArticleController {
     private Map<String, String> buildPendingTranslation(ArticleVO articleVO,
                                                         String requestTitle,
                                                         String requestContent,
+                                                        String requestSummary,
                                                         String requestLanguage) {
         String title = StringUtils.hasText(requestTitle) ? requestTitle : articleVO.getPendingTranslationTitle();
         String content = StringUtils.hasText(requestContent) ? requestContent : articleVO.getPendingTranslationContent();
+        String summary = requestSummary != null ? requestSummary : articleVO.getPendingTranslationSummary();
         String language = StringUtils.hasText(requestLanguage) ? requestLanguage : articleVO.getPendingTranslationLanguage();
+        boolean hasManualContent = StringUtils.hasText(title) && StringUtils.hasText(content);
+        boolean hasManualSummary = StringUtils.hasText(summary);
 
-        if (!StringUtils.hasText(title) || !StringUtils.hasText(content) || !StringUtils.hasText(language)) {
+        if (!StringUtils.hasText(language) || (!hasManualContent && !hasManualSummary)) {
             return null;
         }
 
         Map<String, String> pendingTranslation = new HashMap<>();
-        pendingTranslation.put("title", title);
-        pendingTranslation.put("content", content);
+        if (hasManualContent) {
+            pendingTranslation.put("title", title);
+            pendingTranslation.put("content", content);
+        }
+        if (hasManualSummary) {
+            pendingTranslation.put("summary", summary);
+        }
         pendingTranslation.put("language", language);
         return pendingTranslation;
     }
@@ -978,4 +1000,3 @@ public class ArticleController {
         }
     }
 }
-

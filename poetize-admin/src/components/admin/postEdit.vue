@@ -2,7 +2,6 @@
   <div>
     <div class="section-header">
       <el-tag effect="dark" class="my-tag draft-inline-tag">
-        <i class="el-icon-setting default-config-icon" title="默认发文配置" @click="openDefaultConfigDialog" style="cursor: pointer; margin-right: 8px; font-size: 16px; vertical-align: -1px;"></i>
         <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -3px;">
           <path d="M0 0h1024v1024H0V0z" fill="#202425" opacity=".01"></path>
           <path
@@ -16,8 +15,10 @@
             fill="#FFFFFF"></path>
         </svg>
         文章信息
+
+        <span class="draft-inline-spacer"></span>
+
         <template v-if="isDraftMode">
-          <span class="draft-inline-spacer"></span>
           <span class="draft-inline-divider"></span>
           <span class="draft-inline-chip" :data-type="draftStatusType">{{ compactDraftStatusText }}</span>
           <span v-if="draftId || draftLastSyncedAt" class="draft-inline-divider"></span>
@@ -84,6 +85,9 @@
             </el-button>
           </el-popover>
         </template>
+
+        <span class="draft-inline-divider"></span>
+        <i class="el-icon-setting default-config-icon" title="默认发文配置" @click="openDefaultConfigDialog" style="cursor: pointer; font-size: 16px; vertical-align: -1px;"></i>
       </el-tag>
     </div>
     <el-form :model="article" :rules="rules" ref="ruleForm" label-width="120px"
@@ -172,7 +176,7 @@
         <div v-if="hasPendingTranslation" style="margin-top: 8px;">
           <el-tag type="warning" size="mini">
             <i class="el-icon-edit"></i>
-            有未保存的翻译内容 ({{ getLanguageName(pendingTranslation.language) }})
+            {{ pendingTranslationTipText }}
           </el-tag>
         </div>
       </el-form-item>
@@ -479,6 +483,20 @@
           </el-input>
         </el-form-item>
 
+        <!-- 翻译摘要 -->
+        <el-form-item v-if="summaryInputVisible" label="翻译摘要" prop="translatedSummary">
+          <el-input
+            v-model="translationForm.translatedSummary"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            @focus.native="updateDraftEditingField('translationSummary', true)"
+            @blur.native="updateDraftEditingField('translationSummary', false)"
+            placeholder="请输入翻译文章摘要">
+          </el-input>
+        </el-form-item>
+
         <!-- 翻译内容 -->
         <el-form-item label="翻译内容" prop="translatedContent">
           <div v-if="translationDialogVisible && !shouldRenderTranslationEditor" class="editor-loading-wrapper">
@@ -514,34 +532,64 @@
       </div>
     </el-dialog>
 
-    <el-dialog title="默认发文配置" :visible.sync="defaultConfigDialogVisible" width="60%">
-      <el-form :model="defaultConfigForm" label-width="140px">
-        <el-form-item label="自动摘要">
-          <el-switch v-model="defaultConfigForm.autoSummary"></el-switch>
-        </el-form-item>
-        <el-form-item label="跳过AI自动翻译">
-          <el-switch v-model="defaultConfigForm.skipAiTranslation"></el-switch>
-        </el-form-item>
-        <el-form-item label="启用评论">
-          <el-switch v-model="defaultConfigForm.commentStatus"></el-switch>
-        </el-form-item>
-        <el-form-item label="是否推荐">
-          <el-switch v-model="defaultConfigForm.recommendStatus"></el-switch>
-        </el-form-item>
-        <el-form-item label="是否可见">
-          <el-switch v-model="defaultConfigForm.viewStatus"></el-switch>
-        </el-form-item>
-        <el-form-item v-if="!defaultConfigForm.viewStatus" label="不可见时的访问密码">
-          <el-input v-model="defaultConfigForm.password" maxlength="30"></el-input>
-        </el-form-item>
-        <el-form-item v-if="!defaultConfigForm.viewStatus" label="密码提示">
-          <el-input v-model="defaultConfigForm.tips" maxlength="60"></el-input>
-        </el-form-item>
-        <el-form-item label="推送至搜索引擎">
-          <el-switch v-model="defaultConfigForm.submitToSearchEngine"></el-switch>
-        </el-form-item>
-        <el-form-item label="封面">
-          <el-input v-model="defaultConfigForm.articleCover" placeholder="支持默认封面URL配置"></el-input>
+    <el-dialog title="默认发文配置" :visible.sync="defaultConfigDialogVisible" width="700px" custom-class="centered-dialog" :close-on-click-modal="false" :append-to-body="true">
+      <el-form :model="defaultConfigForm" label-width="120px" class="default-config-form">
+        <el-divider content-position="left">自动化与SEO</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="自动摘要">
+              <el-switch v-model="defaultConfigForm.autoSummary"></el-switch>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+             <el-form-item label="跳过AI自动翻译">
+              <el-switch v-model="defaultConfigForm.skipAiTranslation"></el-switch>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+             <el-form-item label="推送至搜索引擎">
+              <el-switch v-model="defaultConfigForm.submitToSearchEngine"></el-switch>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-divider content-position="left">文章属性</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="8">
+             <el-form-item label="启用评论">
+              <el-switch v-model="defaultConfigForm.commentStatus"></el-switch>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+             <el-form-item label="推荐文章">
+              <el-switch v-model="defaultConfigForm.recommendStatus"></el-switch>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+             <el-form-item label="可见状态">
+              <el-switch v-model="defaultConfigForm.viewStatus"></el-switch>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <template v-if="!defaultConfigForm.viewStatus">
+          <el-row :gutter="20">
+            <el-col :span="12">
+               <el-form-item label="访问密码">
+                 <el-input v-model="defaultConfigForm.password" maxlength="30" show-password placeholder="不可见时的访问密码"></el-input>
+               </el-form-item>
+            </el-col>
+            <el-col :span="12">
+               <el-form-item label="密码提示">
+                 <el-input v-model="defaultConfigForm.tips" maxlength="60" placeholder="密码错误时的提示信息"></el-input>
+               </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
+
+        <el-divider content-position="left">外观设置</el-divider>
+        <el-form-item label="默认封面">
+          <el-input v-model="defaultConfigForm.articleCover" placeholder="填写默认图片URL配置" clearable></el-input>
         </el-form-item>
       </el-form>
       <div slot="footer" class="dialog-footer">
@@ -716,6 +764,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         translationForm: {
           targetLanguage: 'en',
           translatedTitle: '',
+          translatedSummary: '',
           translatedContent: ''
         },
         // 默认配置设置相关
@@ -726,6 +775,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         // 暂存的翻译数据
         pendingTranslation: {
           title: '',
+          summary: null,
           content: '',
           language: ''
         },
@@ -895,6 +945,8 @@ const uploadPicture = () => import("../common/uploadPicture");
             metaState[field] = this.skipAiTranslation;
           } else if (field === 'translationLanguage') {
             metaState[field] = this.translationForm.targetLanguage || 'en';
+          } else if (field === 'translationSummary') {
+            metaState[field] = this.translationForm.translatedSummary || '';
           } else {
             metaState[field] = this.article[field];
           }
@@ -907,11 +959,30 @@ const uploadPicture = () => import("../common/uploadPicture");
       draftEditingUsersText() {
         return Object.values(this.draftEditingUsers || {}).map(item => `${item.username}(${this.getDraftFieldLabel(item.field)})`);
       },
-      // 检查是否有暂存的翻译数据
-      hasPendingTranslation() {
+      hasPendingTranslationContent() {
         return this.pendingTranslation.title &&
                this.pendingTranslation.content &&
                this.pendingTranslation.language;
+      },
+      hasPendingTranslationSummary() {
+        return this.pendingTranslation.language &&
+               this.pendingTranslation.summary !== null &&
+               this.pendingTranslation.summary !== undefined &&
+               String(this.pendingTranslation.summary).trim();
+      },
+      // 检查是否有暂存的翻译数据
+      hasPendingTranslation() {
+        return this.hasPendingTranslationContent || this.hasPendingTranslationSummary;
+      },
+      pendingTranslationTipText() {
+        const parts = [];
+        if (this.hasPendingTranslationContent) {
+          parts.push('内容');
+        }
+        if (this.hasPendingTranslationSummary) {
+          parts.push('摘要');
+        }
+        return `有未保存的翻译${parts.join('与')} (${this.getLanguageName(this.pendingTranslation.language)})`;
       }
     },
 
@@ -966,6 +1037,10 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       'translationForm.translatedTitle'() {
         this.syncDraftTextField('translationTitle');
+        this.syncPendingTranslationFromForm();
+      },
+      'translationForm.translatedSummary'() {
+        this.syncDraftMetaFields();
         this.syncPendingTranslationFromForm();
       },
       'translationForm.translatedContent'() {
@@ -1380,6 +1455,10 @@ const uploadPicture = () => import("../common/uploadPicture");
             this.translationForm.targetLanguage = value || 'en';
             return;
           }
+          if (field === 'translationSummary') {
+            this.translationForm.translatedSummary = value || '';
+            return;
+          }
           if (field === 'autoSummary') {
             nextArticle.autoSummary = value === null || value === undefined ? true : value;
             return;
@@ -1397,6 +1476,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         this.translationForm.translatedContent = this.draftTranslationContentText.toString();
         this.pendingTranslation = {
           title: this.translationForm.translatedTitle || '',
+          summary: this.summaryInputVisible ? (this.translationForm.translatedSummary || '') : null,
           content: this.translationForm.translatedContent || '',
           language: this.translationForm.targetLanguage || 'en'
         };
@@ -1438,6 +1518,8 @@ const uploadPicture = () => import("../common/uploadPicture");
               value = this.skipAiTranslation;
             } else if (field === 'translationLanguage') {
               value = this.translationForm.targetLanguage || 'en';
+            } else if (field === 'translationSummary') {
+              value = this.translationForm.translatedSummary || '';
             } else {
               value = this.article[field];
             }
@@ -1451,6 +1533,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         }
         this.pendingTranslation = {
           title: this.translationForm.translatedTitle || '',
+          summary: this.summaryInputVisible ? (this.translationForm.translatedSummary || '') : null,
           content: this.translationForm.translatedContent || '',
           language: this.translationForm.targetLanguage || 'en'
         };
@@ -1502,6 +1585,13 @@ const uploadPicture = () => import("../common/uploadPicture");
             this.translationForm.targetLanguage = value || 'en';
             return;
           }
+          if (field === 'translationSummary') {
+            const nextTranslationSummary = value || '';
+            if (this.translationForm.translatedSummary !== nextTranslationSummary) {
+              this.translationForm.translatedSummary = nextTranslationSummary;
+            }
+            return;
+          }
           if (field === 'autoSummary') {
             const nextAutoSummary = value === null || value === undefined ? true : value;
             if (this.article.autoSummary !== nextAutoSummary) {
@@ -1522,6 +1612,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         });
         this.$nextTick(() => {
           this.skipDraftSync = false;
+          this.syncPendingTranslationFromForm();
         });
       },
       handleDraftEditorShortcut(target, event) {
@@ -1665,6 +1756,7 @@ const uploadPicture = () => import("../common/uploadPicture");
           title: '标题',
           content: '正文',
           translationTitle: '翻译标题',
+          translationSummary: '翻译摘要',
           translationContent: '翻译正文'
         };
         return fieldMap[field] || '正文';
@@ -1942,6 +2034,7 @@ const uploadPicture = () => import("../common/uploadPicture");
 
       resetTranslationForm() {
         this.translationForm.translatedTitle = '';
+        this.translationForm.translatedSummary = '';
         this.translationForm.translatedContent = '';
       },
 
@@ -1951,6 +2044,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         }
 
         this.translationForm.translatedTitle = this.pendingTranslation.title || '';
+        this.translationForm.translatedSummary = this.pendingTranslation.summary || '';
         this.translationForm.translatedContent = this.pendingTranslation.content || '';
         return true;
       },
@@ -1965,15 +2059,21 @@ const uploadPicture = () => import("../common/uploadPicture");
           skipAiTranslation: this.skipAiTranslation
         };
 
-        if (this.hasPendingTranslation) {
+        if (this.hasPendingTranslationContent) {
           payload.pendingTranslationTitle = this.pendingTranslation.title;
           payload.pendingTranslationContent = this.pendingTranslation.content;
-          payload.pendingTranslationLanguage = this.pendingTranslation.language;
         } else {
           payload.pendingTranslationTitle = null;
           payload.pendingTranslationContent = null;
-          payload.pendingTranslationLanguage = null;
         }
+
+        if (this.hasPendingTranslationSummary) {
+          payload.pendingTranslationSummary = String(this.pendingTranslation.summary).trim();
+        } else {
+          payload.pendingTranslationSummary = null;
+        }
+
+        payload.pendingTranslationLanguage = this.hasPendingTranslation ? this.pendingTranslation.language : null;
 
         return payload;
       },
@@ -2041,6 +2141,7 @@ const uploadPicture = () => import("../common/uploadPicture");
 
           if (response.code === 200 && response.data && response.data.status === 'success') {
             this.translationForm.translatedTitle = response.data.title || '';
+            this.translationForm.translatedSummary = response.data.summary || '';
             this.translationForm.translatedContent = response.data.content || '';
           } else {
             // 该语言没有翻译内容，清空表单
@@ -2102,28 +2203,42 @@ const uploadPicture = () => import("../common/uploadPicture");
 
       async saveTranslation() {
         // 验证表单
-        if (!this.translationForm.translatedTitle.trim()) {
-          this.$message.warning('请输入翻译标题');
+        const translatedTitle = this.translationForm.translatedTitle.trim();
+        const translatedContent = this.translationForm.translatedContent.trim();
+        const translatedSummary = this.summaryInputVisible ? this.translationForm.translatedSummary.trim() : '';
+        const hasManualTranslationContent = translatedTitle || translatedContent;
+        const hasManualTranslationSummary = Boolean(translatedSummary);
+
+        if (hasManualTranslationContent && (!translatedTitle || !translatedContent)) {
+          this.$message.warning('手动翻译正文需要同时填写翻译标题和翻译内容');
           return;
         }
 
-        if (!this.translationForm.translatedContent.trim()) {
-          this.$message.warning('请输入翻译内容');
+        if (!hasManualTranslationContent && !hasManualTranslationSummary) {
+          this.$message.warning('请输入翻译内容或翻译摘要');
           return;
         }
 
         // 暂存翻译数据
         this.pendingTranslation = {
-          title: this.translationForm.translatedTitle.trim(),
-          content: this.translationForm.translatedContent.trim(),
+          title: hasManualTranslationContent ? translatedTitle : '',
+          summary: hasManualTranslationSummary ? translatedSummary : null,
+          content: hasManualTranslationContent ? translatedContent : '',
           language: this.translationForm.targetLanguage
         };
 
-        // 自动开启跳过AI翻译开关
-        this.skipAiTranslation = true;
+        if (hasManualTranslationContent) {
+          // 手动翻译正文时保护已编辑内容，避免保存时被AI翻译覆盖。
+          this.skipAiTranslation = true;
+        } else if (hasManualTranslationSummary) {
+          // 只有翻译摘要时，仍需生成翻译正文，否则摘要没有可保存的翻译记录。
+          this.skipAiTranslation = false;
+        }
 
         // 显示成功消息
-        this.$message.success('翻译内容已暂存，请保存文章以应用翻译');
+        this.$message.success(hasManualTranslationContent
+          ? '翻译内容已暂存，请保存文章以应用翻译'
+          : '翻译摘要已暂存，保存文章时将继续执行AI正文翻译');
 
         // 关闭弹窗
         this.closeTranslationDialog();
@@ -2141,6 +2256,7 @@ const uploadPicture = () => import("../common/uploadPicture");
       clearPendingTranslation() {
         this.pendingTranslation = {
           title: '',
+          summary: null,
           content: '',
           language: ''
         };

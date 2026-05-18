@@ -269,9 +269,15 @@
   }
 
   /* URL 别名前缀移动端适配 */
+  ::v-deep .url-slug-input.el-input-group {
+    width: 100% !important;
+  }
+
   ::v-deep .url-slug-input .el-input-group__prepend {
+    width: 1px !important;
     padding: 0 8px !important;
     font-size: 14px !important;
+    white-space: nowrap !important;
   }
 
   /* 选择器移动端适配 */
@@ -397,7 +403,7 @@
     align-items: flex-start !important;
   }
 
-  ::v-deep .el-form-item .el-form-item__content > div > div {
+  ::v-deep .el-form-item .el-form-item__content > div:not(.el-input-group) > div {
     width: 100%;
   }
 

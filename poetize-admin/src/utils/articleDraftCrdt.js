@@ -16,7 +16,8 @@ export const DRAFT_META_FIELDS = [
   'payAmount',
   'freePercent',
   'skipAiTranslation',
-  'translationLanguage'
+  'translationLanguage',
+  'translationSummary'
 ]
 
 export function uint8ArrayToBase64(uint8Array) {

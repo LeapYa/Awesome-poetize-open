@@ -96,6 +96,7 @@ public class ArticleVO {
     // 保存文章时的翻译控制参数
     private Boolean skipAiTranslation; // 是否跳过 AI 自动翻译
     private String pendingTranslationTitle; // 暂存翻译标题
+    private String pendingTranslationSummary; // 暂存翻译摘要
     private String pendingTranslationContent; // 暂存翻译内容
     private String pendingTranslationLanguage; // 暂存翻译语言
 

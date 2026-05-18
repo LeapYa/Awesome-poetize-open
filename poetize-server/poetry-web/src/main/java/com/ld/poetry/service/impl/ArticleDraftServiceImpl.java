@@ -537,14 +537,21 @@ public class ArticleDraftServiceImpl extends ServiceImpl<ArticleDraftMapper, Art
     }
 
     private Map<String, String> buildPendingTranslation(ArticleVO articleVO) {
-        if (!StringUtils.hasText(articleVO.getPendingTranslationTitle())
-                || !StringUtils.hasText(articleVO.getPendingTranslationContent())
-                || !StringUtils.hasText(articleVO.getPendingTranslationLanguage())) {
+        boolean hasManualContent = StringUtils.hasText(articleVO.getPendingTranslationTitle())
+                && StringUtils.hasText(articleVO.getPendingTranslationContent());
+        boolean hasManualSummary = StringUtils.hasText(articleVO.getPendingTranslationSummary());
+        if (!StringUtils.hasText(articleVO.getPendingTranslationLanguage())
+                || (!hasManualContent && !hasManualSummary)) {
             return null;
         }
         Map<String, String> pendingTranslation = new LinkedHashMap<>();
-        pendingTranslation.put("title", articleVO.getPendingTranslationTitle());
-        pendingTranslation.put("content", articleVO.getPendingTranslationContent());
+        if (hasManualContent) {
+            pendingTranslation.put("title", articleVO.getPendingTranslationTitle());
+            pendingTranslation.put("content", articleVO.getPendingTranslationContent());
+        }
+        if (hasManualSummary) {
+            pendingTranslation.put("summary", articleVO.getPendingTranslationSummary());
+        }
         pendingTranslation.put("language", articleVO.getPendingTranslationLanguage());
         return pendingTranslation;
     }

@@ -8,6 +8,7 @@ import com.ld.poetry.entity.ArticleTranslation;
 import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
 import com.ld.poetry.service.ai.LlmTranslationService;
+import com.ld.poetry.utils.ArticleSummaryTextUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -62,9 +63,10 @@ public class TranslationServiceImpl implements TranslationService {
             // 0. 检查翻译配置模式
             com.ld.poetry.entity.SysAiConfig aiConfig = sysAiConfigService.getArticleAiConfig("default");
             boolean isNoneMode = aiConfig != null && "none".equals(aiConfig.getTranslationType());
-            boolean hasPendingTranslation = pendingTranslation != null && !pendingTranslation.isEmpty();
+            boolean hasPendingTranslation = hasManualTranslationContent(pendingTranslation);
+            boolean hasPendingSummary = hasManualTranslationSummary(pendingTranslation);
 
-            if (isNoneMode && !hasPendingTranslation) {
+            if (isNoneMode && !hasPendingTranslation && !hasPendingSummary) {
                 log.info("翻译模式为'不翻译'且无手动翻译，跳过翻译处理，文章ID: {}", articleId);
                 return;
             }
@@ -104,14 +106,16 @@ public class TranslationServiceImpl implements TranslationService {
                 log.info("跳过AI自动翻译，文章ID: {}", articleId);
 
                 // 如果有暂存的翻译数据，保存它
-                if (pendingTranslation != null && !pendingTranslation.isEmpty()) {
+                if (hasManualTranslationContent(pendingTranslation)) {
                     String translatedTitle = pendingTranslation.get("title");
                     String translatedContent = pendingTranslation.get("content");
+                    String translatedSummary = pendingTranslation.get("summary");
                     String translationLanguage = pendingTranslation.get("language");
 
                     if (translatedTitle != null && translatedContent != null && translationLanguage != null) {
                         boolean success = saveOrUpdateTranslation(articleId, translationLanguage,
-                                translatedTitle, translatedContent);
+                                translatedTitle, translatedContent, translatedSummary,
+                                pendingTranslation.containsKey("summary"));
                         if (success) {
                             log.info("暂存翻译保存成功，文章ID: {}, 目标语言: {}，预渲染将由事件监听器自动处理",
                                     articleId, translationLanguage);
@@ -142,9 +146,11 @@ public class TranslationServiceImpl implements TranslationService {
             String translatedTitle = translationResult.get("title");
             String translatedContent = translationResult.get("content");
             String resultTargetLang = translationResult.get("language");
+            String translatedSummary = translationResult.get("summary");
 
             // 5. 保存或更新翻译结果（使用事务和重试机制处理并发）
-            boolean success = saveOrUpdateTranslation(articleId, resultTargetLang, translatedTitle, translatedContent);
+            boolean success = saveOrUpdateTranslation(articleId, resultTargetLang, translatedTitle, translatedContent,
+                    translatedSummary, translationResult.containsKey("summary"));
 
             if (success) {
                 log.info("AI翻译保存成功，文章ID: {}, 目标语言: {}，预渲染将由事件监听器自动处理",
@@ -172,15 +178,20 @@ public class TranslationServiceImpl implements TranslationService {
             // 0. 检查翻译配置模式
             com.ld.poetry.entity.SysAiConfig aiConfig = sysAiConfigService.getArticleAiConfig("default");
             boolean isNoneMode = aiConfig != null && "none".equals(aiConfig.getTranslationType());
-            boolean hasPendingTranslation = pendingTranslation != null && !pendingTranslation.isEmpty();
+            boolean hasPendingTranslation = hasManualTranslationContent(pendingTranslation);
+            boolean hasPendingSummary = hasManualTranslationSummary(pendingTranslation);
 
-            if (isNoneMode && !hasPendingTranslation) {
+            if (isNoneMode && !hasPendingTranslation && !hasPendingSummary) {
                 log.info("翻译模式为'不翻译'且无手动翻译，跳过翻译处理");
                 return null;
             }
             if (isNoneMode && hasPendingTranslation) {
                 log.info("翻译模式为'不翻译'，但检测到手动编辑的翻译内容，将返回手动翻译");
                 return pendingTranslation;
+            }
+            if (isNoneMode) {
+                log.info("翻译模式为'不翻译'且仅暂存了翻译摘要，跳过正文翻译");
+                return null;
             }
 
             // 1. 检查文章是否有内容
@@ -204,7 +215,7 @@ public class TranslationServiceImpl implements TranslationService {
             // 3. 处理跳过AI翻译的情况
             if (skipAiTranslation) {
                 log.info("跳过AI自动翻译");
-                if (pendingTranslation != null && !pendingTranslation.isEmpty()) {
+                if (hasPendingTranslation) {
                     return pendingTranslation;
                 }
                 return null;
@@ -218,6 +229,7 @@ public class TranslationServiceImpl implements TranslationService {
                 Map<String, String> result = apiTranslationProviderRegistry.translateArticle(
                         aiConfig, title, content, sourceLanguage, targetLanguage, progressListener);
                 if (result != null && !result.isEmpty()) {
+                    applyPendingSummary(result, pendingTranslation);
                     log.info("API 文章翻译成功: provider={}", translationType);
                     return result;
                 }
@@ -235,6 +247,7 @@ public class TranslationServiceImpl implements TranslationService {
                     title, content, sourceLanguage, targetLanguage, progressListener);
 
             if (result != null && !result.isEmpty()) {
+                applyPendingSummary(result, pendingTranslation);
                 log.info("LLM 文章翻译成功");
                 return result;
             }
@@ -248,10 +261,36 @@ public class TranslationServiceImpl implements TranslationService {
         }
     }
 
+    private boolean hasManualTranslationContent(Map<String, String> pendingTranslation) {
+        return pendingTranslation != null
+                && pendingTranslation.get("title") != null && !pendingTranslation.get("title").trim().isEmpty()
+                && pendingTranslation.get("content") != null && !pendingTranslation.get("content").trim().isEmpty()
+                && pendingTranslation.get("language") != null && !pendingTranslation.get("language").trim().isEmpty();
+    }
+
+    private boolean hasManualTranslationSummary(Map<String, String> pendingTranslation) {
+        return pendingTranslation != null
+                && pendingTranslation.get("summary") != null && !pendingTranslation.get("summary").trim().isEmpty()
+                && pendingTranslation.get("language") != null && !pendingTranslation.get("language").trim().isEmpty();
+    }
+
+    private void applyPendingSummary(Map<String, String> translationResult, Map<String, String> pendingTranslation) {
+        if (translationResult != null && hasManualTranslationSummary(pendingTranslation)) {
+            translationResult.put("summary", pendingTranslation.get("summary"));
+        }
+    }
+
     @Override
     public boolean saveTranslationResult(Integer articleId, String translatedTitle, String translatedContent,
             String targetLanguage) {
-        return saveOrUpdateTranslation(articleId, targetLanguage, translatedTitle, translatedContent);
+        return saveOrUpdateTranslation(articleId, targetLanguage, translatedTitle, translatedContent, null, false);
+    }
+
+    @Override
+    public boolean saveTranslationResult(Integer articleId, String translatedTitle, String translatedContent,
+            String targetLanguage, String translatedSummary) {
+        return saveOrUpdateTranslation(articleId, targetLanguage, translatedTitle, translatedContent,
+                translatedSummary, true);
     }
 
     /**
@@ -259,6 +298,12 @@ public class TranslationServiceImpl implements TranslationService {
      */
     private boolean saveOrUpdateTranslation(Integer articleId, String targetLanguage, String translatedTitle,
             String translatedContent) {
+        return saveOrUpdateTranslation(articleId, targetLanguage, translatedTitle, translatedContent, null, false);
+    }
+
+    private boolean saveOrUpdateTranslation(Integer articleId, String targetLanguage, String translatedTitle,
+            String translatedContent, String translatedSummary, boolean summaryProvided) {
+        String normalizedSummary = summaryProvided ? ArticleSummaryTextUtil.toPlainText(translatedSummary, 500) : null;
         // 使用重试机制处理并发问题
         int maxRetries = 3;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
@@ -274,6 +319,9 @@ public class TranslationServiceImpl implements TranslationService {
                     // 更新现有翻译
                     existingTranslation.setTitle(translatedTitle);
                     existingTranslation.setContent(translatedContent);
+                    if (summaryProvided) {
+                        existingTranslation.setSummary(normalizedSummary);
+                    }
                     existingTranslation.setUpdateTime(LocalDateTime.now());
                     articleTranslationMapper.updateById(existingTranslation);
                     log.info("更新文章翻译成功，文章ID: {}, 目标语言: {} (尝试第{}次)", articleId, targetLanguage, attempt);
@@ -288,6 +336,9 @@ public class TranslationServiceImpl implements TranslationService {
                     newTranslation.setLanguage(targetLanguage);
                     newTranslation.setTitle(translatedTitle);
                     newTranslation.setContent(translatedContent);
+                    if (summaryProvided) {
+                        newTranslation.setSummary(normalizedSummary);
+                    }
                     newTranslation.setCreateTime(LocalDateTime.now());
                     newTranslation.setUpdateTime(LocalDateTime.now());
 
@@ -310,6 +361,9 @@ public class TranslationServiceImpl implements TranslationService {
                             if (existingTranslation != null) {
                                 existingTranslation.setTitle(translatedTitle);
                                 existingTranslation.setContent(translatedContent);
+                                if (summaryProvided) {
+                                    existingTranslation.setSummary(normalizedSummary);
+                                }
                                 existingTranslation.setUpdateTime(LocalDateTime.now());
                                 articleTranslationMapper.updateById(existingTranslation);
                                 log.info("最终更新文章翻译成功，文章ID: {}, 目标语言: {}", articleId, targetLanguage);
@@ -377,6 +431,7 @@ public class TranslationServiceImpl implements TranslationService {
 
             if (translation != null) {
                 result.put("title", translation.getTitle() != null ? translation.getTitle() : "");
+                result.put("summary", translation.getSummary() != null ? translation.getSummary() : "");
                 result.put("content", translation.getContent() != null ? translation.getContent() : "");
                 result.put("language", translation.getLanguage());
                 result.put("status", "success");
@@ -431,7 +486,7 @@ public class TranslationServiceImpl implements TranslationService {
 
     @Override
     public Map<String, Object> saveManualTranslation(Integer articleId, String targetLanguage,
-            String translatedTitle, String translatedContent) {
+            String translatedTitle, String translatedContent, String translatedSummary) {
         Map<String, Object> result = new HashMap<>();
 
         if (articleId == null || targetLanguage == null || targetLanguage.trim().isEmpty()) {
@@ -463,7 +518,7 @@ public class TranslationServiceImpl implements TranslationService {
 
             // 保存手动翻译
             boolean success = saveOrUpdateTranslation(articleId, targetLanguage,
-                    translatedTitle.trim(), translatedContent.trim());
+                    translatedTitle.trim(), translatedContent.trim(), translatedSummary, translatedSummary != null);
 
             if (success) {
                 result.put("success", true);

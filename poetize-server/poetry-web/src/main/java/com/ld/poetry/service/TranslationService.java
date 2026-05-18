@@ -61,6 +61,18 @@ public interface TranslationService {
     boolean saveTranslationResult(Integer articleId, String translatedTitle, String translatedContent, String targetLanguage);
 
     /**
+     * 保存翻译结果（包含手动摘要）
+     * @param articleId 文章ID
+     * @param translatedTitle 翻译后的标题
+     * @param translatedContent 翻译后的内容
+     * @param targetLanguage 目标语言
+     * @param translatedSummary 翻译摘要
+     * @return 保存是否成功
+     */
+    boolean saveTranslationResult(Integer articleId, String translatedTitle, String translatedContent,
+                                  String targetLanguage, String translatedSummary);
+
+    /**
      * 删除文章的所有翻译
      * @param articleId 文章ID
      */
@@ -99,7 +111,8 @@ public interface TranslationService {
      * @return 保存结果
      */
     Map<String, Object> saveManualTranslation(Integer articleId, String targetLanguage,
-                                            String translatedTitle, String translatedContent);
+                                            String translatedTitle, String translatedContent,
+                                            String translatedSummary);
 
     /**
      * 检查文章是否应该跳过自动翻译
