@@ -1570,9 +1570,8 @@ export default {
     
     saveSeoConfig() {
       this.loading = true;
-      this.$http.post(this.$constant.baseURL + '/admin/seo/updateSeoConfig', this.seoConfig, true)
+      return this.$http.post(this.$constant.baseURL + '/admin/seo/updateSeoConfig', this.seoConfig, true)
         .then((res) => {
-          this.loading = false;
           if (res && res.code === 200) {
             this.showMobileSuccess('保存SEO配置成功');
             this.showAnalysisDialog = false;
@@ -1582,9 +1581,11 @@ export default {
           }
         })
         .catch((error) => {
-          this.loading = false;
           console.error('保存SEO配置失败:', error);
           this.showMobileError('保存SEO配置失败: ' + (error.message || '网络连接问题'));
+        })
+        .finally(() => {
+          this.loading = false;
         });
     },
     
