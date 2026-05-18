@@ -23,6 +23,8 @@ public class ArticleVO {
     @NotBlank(message = "文章标题不能为空")
     private String articleTitle;
 
+    private String articleSlug;
+
     @NotBlank(message = "文章内容不能为空")
     private String articleContent;
 
@@ -65,9 +67,11 @@ public class ArticleVO {
     // API接口兼容字段
     private String title; // 对应 articleTitle
     private String content; // 对应 articleContent
+    private String slug; // 对应 articleSlug
     private Integer classify; // 对应 sortId
     private String cover; // 对应 articleCover
-    private String summary; // 对应 tips
+    private String summary; // 文章摘要；对外API创建时也兼容映射为tips
+    private Boolean autoSummary = true; // 保存时是否按后台配置自动生成摘要
 
     // 搜索引擎推送控制
     private Boolean submitToSearchEngine; // 是否推送至搜索引擎

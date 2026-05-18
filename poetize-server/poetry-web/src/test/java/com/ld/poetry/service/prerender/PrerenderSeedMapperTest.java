@@ -21,7 +21,7 @@ class PrerenderSeedMapperTest {
 
     @Test
     void articleUpdateShouldIncludeAllAffectedSeeds() {
-        ArticleSavedEvent event = new ArticleSavedEvent(42, 2, 9, 1, 7, null, true, "UPDATE", false);
+        ArticleSavedEvent event = new ArticleSavedEvent(42, 2, 9, 1, 7, null, true, "UPDATE", false, null);
 
         PrerenderRequest request = seedMapper.forArticleEvent(event);
 

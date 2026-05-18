@@ -40,6 +40,7 @@ The backend API itself is unchanged, but this skill now adds a strategy layer on
 - Trigger sitemap update: `POST /api/api/seo/sitemap/update`
 - Upload cover/resource: `POST /api/api/resource/upload`
 - Get article detail: `GET /api/api/article/{id}`
+- Get article detail by ID or slug path: `GET /api/api/article/path/{idOrSlug}`
 - List categories: `GET /api/api/categories`
 - List tags: `GET /api/api/tags`
 
@@ -51,10 +52,11 @@ The backend API itself is unchanged, but this skill now adds a strategy layer on
 - It first calls `/api/api/categories` and `/api/api/tags`, reuses exact matches, and stops for confirmation when a new category/tag would be created.
 - When exact taxonomy matches fail, the scripts can return close category or tag candidates.
 - Those fuzzy candidates are suggestions only and must be confirmed before querying, updating, or publishing.
-- Create and update responses return `id` and `articleUrl`
+- Create and update responses return `id`, `articleSlug`, and `articleUrl`
 - Async create/update return `taskId` and `taskStatusUrl`
-- Task status returns `articleId`, `articleUrl`, `stage`, `translationStatus`, and completion flags when available
+- Task status returns `articleId`, `articleSlug`, `articleUrl`, `stage`, `translationStatus`, and completion flags when available
 - Update requests can omit `sort`, `label`, `viewStatus`, and other unchanged fields
+- Update requests can omit `articleSlug` to keep the existing URL alias, or send an empty `articleSlug` to fall back to numeric IDs
 - Hiding an article is implemented as an update with `viewStatus: false`
 - Article deletion is not part of this skill or API workflow
 - If the user wants deletion-like takedown behavior, use article hiding instead
@@ -89,6 +91,7 @@ Recommended defaults unless the user says otherwise:
 ```md
 ---
 title: "用 AI 自动化写博客的实际落地路径"
+slug: "ai-blog-automation-path"
 sort: "AI实践"
 label: "自动化"
 cover: "https://example.com/cover.jpg"
@@ -111,6 +114,7 @@ skipAiTranslation: true
 ## Front Matter to Payload Mapping
 
 - `title` -> `articleTitle`
+- `slug` or `articleSlug` -> `articleSlug`; blank means the article URL falls back to the numeric ID
 - `sort` -> `sortName`
 - `sortId` -> `sortId`
 - `label` -> `labelName`
@@ -192,6 +196,7 @@ Optional for update:
 
 - `sortId` or `sortName`
 - `labelId` or `labelName`
+- `articleSlug`; omit to keep the current slug, send `""` to clear it
 - `viewStatus`
 - any other publish flags that should remain unchanged
 
@@ -269,8 +274,8 @@ Content-Type: application/json
 For existing article operations:
 
 1. `GET /api/api/article/list`
-2. Prefer exact title match on `articleTitle` or use `id`
-3. `GET /api/api/article/{id}` to inspect the current state
+2. Prefer exact title match on `articleTitle`, use `id`, or use `articleSlug`
+3. `GET /api/api/article/{id}` or `GET /api/api/article/path/{idOrSlug}` to inspect the current state
 4. `POST /api/api/article/updateAsync` to update or hide
 5. `GET /api/api/article/task/{taskId}` to poll when needed
 

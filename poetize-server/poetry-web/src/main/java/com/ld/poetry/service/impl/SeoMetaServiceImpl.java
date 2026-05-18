@@ -12,6 +12,8 @@ import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.ArticleTranslation;
 import com.ld.poetry.entity.Sort;
 import com.ld.poetry.entity.Label;
+import com.ld.poetry.utils.ArticleUrlUtil;
+import com.ld.poetry.utils.ArticleSummaryTextUtil;
 import com.ld.poetry.utils.PoetryUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +27,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * <p>
@@ -65,9 +66,6 @@ public class SeoMetaServiceImpl implements SeoMetaService {
 
     @Autowired
     private com.ld.poetry.utils.mail.MailUtil mailUtil;
-
-    // HTML标签清理的正则表达式
-    private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]*>");
 
     // ISO 8601 时区偏移量（北京时间 UTC+8）
     private static final ZoneOffset ZONE_OFFSET = ZoneOffset.ofHours(8);
@@ -139,12 +137,12 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             // Canonical URL (规范链接) - 翻译文章使用 /article/{lang}/{id}
             String siteUrl = mailUtil.getSiteUrl();
             if (StringUtils.hasText(siteUrl)) {
-                String articleUrl = buildArticleUrl(siteUrl, articleId, language, sourceLanguage);
+                String articleUrl = buildArticleUrl(siteUrl, article, language, sourceLanguage);
                 meta.put("canonical", articleUrl);
                 meta.put("og:url", articleUrl);
 
                 // hreflang 标签 — 标识所有语言版本的关系
-                addHreflangTags(meta, siteUrl, articleId, sourceLanguage);
+                addHreflangTags(meta, siteUrl, article, sourceLanguage);
             }
 
             // 获取文章封面图（与前端展示逻辑一致：优先用文章封面，否则用随机封面）
@@ -422,11 +420,8 @@ public class SeoMetaServiceImpl implements SeoMetaService {
      * 构建文章URL（支持翻译文章路径）
      * 翻译文章使用 /article/{lang}/{id} 格式，源语言文章使用 /article/{id}
      */
-    private String buildArticleUrl(String siteUrl, Integer articleId, String language, String sourceLanguage) {
-        if (StringUtils.hasText(language) && !language.equals(sourceLanguage)) {
-            return siteUrl + "/article/" + language + "/" + articleId;
-        }
-        return siteUrl + "/article/" + articleId;
+    private String buildArticleUrl(String siteUrl, Article article, String language, String sourceLanguage) {
+        return siteUrl + ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug(), language, sourceLanguage);
     }
 
     /**
@@ -436,11 +431,13 @@ public class SeoMetaServiceImpl implements SeoMetaService {
      *
      * @param meta           meta map，hreflang 标签以 hreflang_ 前缀存入
      * @param siteUrl        网站根URL
-     * @param articleId      文章ID
+     * @param article        文章
      * @param sourceLanguage 源语言代码
      */
-    private void addHreflangTags(Map<String, Object> meta, String siteUrl, Integer articleId, String sourceLanguage) {
+    private void addHreflangTags(Map<String, Object> meta, String siteUrl, Article article, String sourceLanguage) {
+        Integer articleId = article == null ? null : article.getId();
         try {
+            String articleToken = ArticleUrlUtil.resolveToken(article.getId(), article.getArticleSlug());
             // 查询该文章的所有翻译版本（只查 language 字段即可）
             List<ArticleTranslation> translations = articleTranslationMapper.selectList(
                     new LambdaQueryWrapper<ArticleTranslation>()
@@ -453,7 +450,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             }
 
             // 源语言版本 — 始终包含
-            String sourceUrl = siteUrl + "/article/" + articleId;
+            String sourceUrl = siteUrl + "/article/" + articleToken;
             meta.put("hreflang_" + sourceLanguage,
                     "<link rel=\"alternate\" hreflang=\"" + sourceLanguage + "\" href=\"" + sourceUrl + "\">");
 
@@ -465,7 +462,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             for (ArticleTranslation t : translations) {
                 String lang = t.getLanguage();
                 if (StringUtils.hasText(lang) && !lang.equals(sourceLanguage)) {
-                    String translatedUrl = siteUrl + "/article/" + lang + "/" + articleId;
+                    String translatedUrl = siteUrl + "/article/" + lang + "/" + articleToken;
                     meta.put("hreflang_" + lang,
                             "<link rel=\"alternate\" hreflang=\"" + lang + "\" href=\"" + translatedUrl + "\">");
                 }
@@ -503,7 +500,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
                                     .eq(ArticleTranslation::getLanguage, language));
 
                     if (translation != null && StringUtils.hasText(translation.getSummary())) {
-                        description = cleanHtmlTags(translation.getSummary());
+                        description = cleanSummaryText(translation.getSummary());
                         return description;
                     } else {
                     }
@@ -515,16 +512,16 @@ public class SeoMetaServiceImpl implements SeoMetaService {
 
         // 使用源语言摘要或内容
         if (StringUtils.hasText(article.getSummary())) {
-            description = cleanHtmlTags(article.getSummary());
+            description = cleanSummaryText(article.getSummary());
         } else if (StringUtils.hasText(article.getArticleContent())) {
             // 从内容中提取描述
-            String content = cleanHtmlTags(article.getArticleContent());
-            description = content.length() > 200 ? content.substring(0, 200) + "..." : content;
+            description = cleanSummaryText(article.getArticleContent());
         }
 
         // 如果还是没有，使用网站默认描述
         if (!StringUtils.hasText(description)) {
-            description = seoConfig.get("site_description").toString();
+            Object siteDescription = seoConfig.get("site_description");
+            description = cleanSummaryText(siteDescription == null ? "" : siteDescription.toString());
         }
 
         return description;
@@ -682,7 +679,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
         if (StringUtils.hasText(siteUrl)) {
             Map<String, Object> mainEntity = new HashMap<>();
             mainEntity.put("@type", "WebPage");
-            mainEntity.put("@id", buildArticleUrl(siteUrl, article.getId(), language, sourceLanguage));
+            mainEntity.put("@id", buildArticleUrl(siteUrl, article, language, sourceLanguage));
             structuredData.put("mainEntityOfPage", mainEntity);
         }
 
@@ -758,11 +755,8 @@ public class SeoMetaServiceImpl implements SeoMetaService {
         return dateTime.atOffset(ZONE_OFFSET).format(ISO_OFFSET_FORMATTER);
     }
 
-    private String cleanHtmlTags(String htmlContent) {
-        if (!StringUtils.hasText(htmlContent)) {
-            return "";
-        }
-        return HTML_TAG_PATTERN.matcher(htmlContent).replaceAll("").trim();
+    private String cleanSummaryText(String content) {
+        return ArticleSummaryTextUtil.toPlainText(content, 200);
     }
 
     private String detectUrlFromRequest(HttpServletRequest request) {

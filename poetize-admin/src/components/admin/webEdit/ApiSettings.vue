@@ -77,6 +77,12 @@
                 :disabled="true"
                 style="width: 450px; margin-bottom: 10px;">
               </el-input>
+              <p style="margin: 5px 0; color: #606266;">文章更新API:</p>
+              <el-input
+                :value="$constant.baseURL + '/api/article/update'"
+                :disabled="true"
+                style="width: 450px; margin-bottom: 10px;">
+              </el-input>
               <p style="margin: 5px 0; color: #606266;">文章异步创建API:</p>
               <el-input
                 :value="$constant.baseURL + '/api/article/createAsync'"
@@ -92,6 +98,12 @@
               <p style="margin: 5px 0; color: #606266;">任务状态查询API:</p>
               <el-input
                 :value="$constant.baseURL + '/api/article/task/{taskId}'"
+                :disabled="true"
+                style="width: 450px; margin-bottom: 10px;">
+              </el-input>
+              <p style="margin: 5px 0; color: #606266;">文章详情按路径API:</p>
+              <el-input
+                :value="$constant.baseURL + '/api/article/path/{idOrSlug}'"
                 :disabled="true"
                 style="width: 450px; margin-bottom: 10px;">
               </el-input>
@@ -195,6 +207,7 @@ X-API-KEY: {{apiConfig.apiKey}}
 
 {
   "title": "文章标题",
+  "articleSlug": "seo-friendly-url",
   "content": "文章内容，支持Markdown格式",
   "cover": "封面图片URL(可选)",
   "sortName": "分类名称(将自动创建不存在的分类)",
@@ -214,7 +227,8 @@ X-API-KEY: {{apiConfig.apiKey}}
   "data": {
     "id": 123,
     "articleId": 123,
-    "articleUrl": "https://your-site.example.com/article/123",
+    "articleSlug": "seo-friendly-url",
+    "articleUrl": "https://your-site.example.com/article/seo-friendly-url",
     "viewStatus": true,
     "sortId": 1,
     "labelId": 2
@@ -237,6 +251,7 @@ X-API-KEY: {{apiConfig.apiKey}}
 
 {
   "title": "文章标题",
+  "articleSlug": "seo-friendly-url",
   "content": "文章内容，支持Markdown格式",
   "sortName": "分类名称",
   "labelName": "标签名称",
@@ -268,6 +283,7 @@ X-API-KEY: {{apiConfig.apiKey}}
                 <div style="padding: 10px;">
                   <p><strong>说明:</strong></p>
                   <p>需要传入文章 <code>id</code>。未传的分类、标签、状态字段会沿用原文章值。</p>
+                  <p><code>articleSlug</code> 未传时沿用原文章 URL 别名；传空字符串会清空别名并回退到数字 ID。</p>
                   <p>如果只是想保留“无自定义封面”的状态，也可以传 <code>cover: " "</code>。</p>
                   <p>如果要改成付费文章，同样要求插件管理里的文章付费插件已经启用且配置完成。</p>
                   <p><strong>请求格式:</strong></p>
@@ -279,6 +295,7 @@ X-API-KEY: {{apiConfig.apiKey}}
 {
   "id": 123,
   "title": "更新后的标题",
+  "articleSlug": "updated-seo-friendly-url",
   "content": "更新后的Markdown内容",
   "cover": " ",
   "submitToSearchEngine": false,
@@ -319,7 +336,8 @@ X-API-KEY: {{apiConfig.apiKey}}
     "stage": "complete",
     "message": "文章保存成功！AI摘要已生成",
     "articleId": 123,
-    "articleUrl": "https://your-site.example.com/article/123",
+    "articleSlug": "seo-friendly-url",
+    "articleUrl": "https://your-site.example.com/article/seo-friendly-url",
     "translationStatus": "saved",
     "completed": true,
     "success": true,
@@ -480,6 +498,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       {
         "id": 123,
         "articleTitle": "文章标题",
+        "articleSlug": "seo-friendly-url",
         "articleContent": "文章内容摘要...",
         "articleCover": "图片URL",
         "viewCount": 100,
@@ -502,7 +521,7 @@ X-API-KEY: {{apiConfig.apiKey}}
                 <div style="padding: 10px;">
                   <p><strong>请求格式:</strong></p>
                   <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
-GET {{$constant.baseURL}}/api/article/123
+GET {{$constant.baseURL}}/api/article/path/seo-friendly-url
 X-API-KEY: {{apiConfig.apiKey}}
                   </pre>
                   <p><strong>响应格式:</strong></p>
@@ -513,6 +532,7 @@ X-API-KEY: {{apiConfig.apiKey}}
   "data": {
     "id": 123,
     "articleTitle": "文章标题",
+    "articleSlug": "seo-friendly-url",
     "articleContent": "完整文章内容，包括Markdown格式",
     "articleCover": "图片URL",
     "viewCount": 100,
@@ -525,7 +545,7 @@ X-API-KEY: {{apiConfig.apiKey}}
     "labelId": 1,
     "sortName": "分类名称",
     "labelName": "标签名称",
-    "articleUrl": "https://your-site.example.com/article/123"
+    "articleUrl": "https://your-site.example.com/article/seo-friendly-url"
   }
 }
                   </pre>

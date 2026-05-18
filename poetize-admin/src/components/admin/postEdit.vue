@@ -91,6 +91,22 @@
         <el-input v-model="article.articleTitle" maxlength="500" show-word-limit @focus.native="updateDraftEditingField('title', true)" @blur.native="updateDraftEditingField('title', false)" @keydown.native.capture="handleDraftTextShortcut('title', $event)"></el-input>
       </el-form-item>
 
+      <el-form-item label="URL别名" prop="articleSlug">
+        <el-input
+          v-model="article.articleSlug"
+          maxlength="160"
+          show-word-limit
+          placeholder="可留空，留空后使用数字ID作为文章URL"
+          @input="handleArticleSlugInput"
+        >
+          <template slot="prepend">/article/</template>
+        </el-input>
+        <div class="tip-text">
+          <i class="el-icon-info"></i>
+          仅支持小写英文、数字和短横线，不能是纯数字；例如 spring-boot-seo，留空则使用数字ID
+        </div>
+      </el-form-item>
+
       <el-form-item label="视频链接" prop="videoUrl">
         <el-input maxlength="1000" v-model="article.videoUrl"></el-input>
       </el-form-item>
@@ -121,6 +137,37 @@
           @blur="updateDraftEditingField('content', false)"
           @shortcut="handleDraftEditorShortcut('content', $event)"
         />
+      </el-form-item>
+
+      <el-form-item label="自动摘要">
+        <div class="summary-switch-row">
+          <el-switch
+            v-model="article.autoSummary"
+            :disabled="summaryAutoDisabledByConfig"
+            active-text="开启"
+            inactive-text="手动摘要"
+            active-color="#13CE66"
+            inactive-color="#909399">
+          </el-switch>
+          <el-tooltip :content="summarySwitchTip" placement="top">
+            <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+          </el-tooltip>
+        </div>
+        <div v-if="summaryAutoDisabledByConfig" class="tip-text">
+          <i class="el-icon-info"></i>
+          文章AI助手已关闭自动摘要，可在下方填写手动摘要；留空时使用纯文本内容摘录作为展示与SEO描述
+        </div>
+      </el-form-item>
+
+      <el-form-item v-if="summaryInputVisible" label="手动摘要" prop="summary">
+        <el-input
+          v-model="article.summary"
+          type="textarea"
+          :rows="4"
+          maxlength="500"
+          show-word-limit
+          placeholder="请输入文章摘要，用于列表、SEO描述和分享预览">
+        </el-input>
       </el-form-item>
 
       <!-- 翻译编辑按钮和跳过开关 -->
@@ -477,9 +524,40 @@ const uploadPicture = () => import("../common/uploadPicture");
   const ArticleEditor = () => import('@/components/ArticleEditor.vue');
   import { getAdminLanguageName } from '@/utils/languageUtils';
 
+  const ARTICLE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,158}[a-z0-9])?$/;
+
+  const normalizeArticleSlug = (value) => {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  };
+
+  const validateArticleSlug = (rule, value, callback) => {
+    const slug = normalizeArticleSlug(value);
+    if (!slug) {
+      callback();
+      return;
+    }
+    if (/^\d+$/.test(slug)) {
+      callback(new Error('URL别名不能是纯数字'));
+      return;
+    }
+    if (!ARTICLE_SLUG_PATTERN.test(slug)) {
+      callback(new Error('URL别名仅支持小写英文、数字和短横线，长度1-160'));
+      return;
+    }
+    callback();
+  };
+
   const createDefaultArticle = () => ({
     articleTitle: "",
+    articleSlug: "",
     articleContent: "",
+    summary: "",
+    autoSummary: true,
     commentStatus: true,
     recommendStatus: false,
     viewStatus: true,
@@ -518,6 +596,8 @@ const uploadPicture = () => import("../common/uploadPicture");
         deferredTaskHandles: [],
         searchPushConfigLoading: true,
         searchPushConfiguredEngines: [],
+        summaryConfigLoading: true,
+        summaryMode: '',
         article: createDefaultArticle(),
         // 付费插件状态
         paymentPluginActive: false,
@@ -618,6 +698,9 @@ const uploadPicture = () => import("../common/uploadPicture");
             {required: true, message: '请输入标题', trigger: 'change'},
             {max: 500, message: '标题长度不能超过500个字符', trigger: 'change'}
           ],
+          articleSlug: [
+            { validator: validateArticleSlug, trigger: 'blur' }
+          ],
           articleContent: [
             {required: true, message: '请输入内容', trigger: 'change'}
           ],
@@ -649,6 +732,21 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       searchPushSwitchDisabled() {
         return this.searchPushConfigLoading || this.searchPushConfiguredEngines.length === 0;
+      },
+      summaryAutoDisabledByConfig() {
+        return !this.summaryConfigLoading && this.summaryMode === 'disabled';
+      },
+      summaryInputVisible() {
+        return this.summaryAutoDisabledByConfig || this.article.autoSummary === false;
+      },
+      summarySwitchTip() {
+        if (this.summaryConfigLoading) {
+          return '正在加载文章AI助手摘要配置';
+        }
+        if (this.summaryAutoDisabledByConfig) {
+          return '文章AI助手已关闭自动摘要，保存时不会生成AI摘要';
+        }
+        return '开启后保存时按后台摘要配置生成，关闭后使用手动摘要';
       },
       isDraftMode() {
         return !!this.draftId || this.$common.isEmpty(this.id);
@@ -812,6 +910,16 @@ const uploadPicture = () => import("../common/uploadPicture");
       skipAiTranslation() {
         this.syncDraftMetaFields();
       },
+      'article.autoSummary'(enabled) {
+        if (this.summaryAutoDisabledByConfig && enabled) {
+          this.article.autoSummary = false;
+          return;
+        }
+        if (enabled && this.$refs.ruleForm) {
+          this.$refs.ruleForm.clearValidate('summary');
+        }
+        this.syncDraftMetaFields();
+      },
       draftMetaSyncKey() {
         this.syncDraftMetaFields();
       }
@@ -865,6 +973,12 @@ const uploadPicture = () => import("../common/uploadPicture");
           this.article.articleContent = editor.getValue()
         }
       },
+      handleArticleSlugInput(value) {
+        const normalized = normalizeArticleSlug(value);
+        if (this.article.articleSlug !== normalized) {
+          this.article.articleSlug = normalized;
+        }
+      },
       // 初始化页面数据（优化后的加载流程）
       async initializePageData() {
         this.editorReady = false;
@@ -873,6 +987,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         this.resetDraftContext();
         this.clearDeferredTasks();
         this.searchPushConfigLoading = true;
+        this.summaryConfigLoading = true;
         try {
           const tasks = [this.getSortAndLabel(false)];
           if (this.draftId) {
@@ -885,11 +1000,13 @@ const uploadPicture = () => import("../common/uploadPicture");
             tasks.push(this.ensureRevisionDraftSessionCreated());
           }
           tasks.push(this.loadSearchPushAvailability());
+          tasks.push(this.loadSummaryGenerationMode());
 
           await Promise.all(tasks);
           if (this.searchPushConfiguredEngines.length === 0) {
             this.article.submitToSearchEngine = false;
           }
+          this.applySummaryModeToArticle();
           this.scheduleEditorMount();
           this.scheduleNonCriticalStartupTasks();
         } catch (error) {
@@ -1169,6 +1286,14 @@ const uploadPicture = () => import("../common/uploadPicture");
             this.translationForm.targetLanguage = value || 'en';
             return;
           }
+          if (field === 'autoSummary') {
+            nextArticle.autoSummary = value === null || value === undefined ? true : value;
+            return;
+          }
+          if (field === 'summary') {
+            nextArticle.summary = value || '';
+            return;
+          }
           if (value !== undefined) {
             nextArticle[field] = value;
           }
@@ -1281,6 +1406,20 @@ const uploadPicture = () => import("../common/uploadPicture");
           }
           if (field === 'translationLanguage') {
             this.translationForm.targetLanguage = value || 'en';
+            return;
+          }
+          if (field === 'autoSummary') {
+            const nextAutoSummary = value === null || value === undefined ? true : value;
+            if (this.article.autoSummary !== nextAutoSummary) {
+              this.article.autoSummary = nextAutoSummary;
+            }
+            return;
+          }
+          if (field === 'summary') {
+            const nextSummary = value || '';
+            if (this.article.summary !== nextSummary) {
+              this.article.summary = nextSummary;
+            }
             return;
           }
           if (value !== undefined && this.article[field] !== value) {
@@ -1603,20 +1742,20 @@ const uploadPicture = () => import("../common/uploadPicture");
           const config = res && res.code === 200 && res.data ? res.data : {};
           const configuredEngines = [];
 
-          if (Boolean.TRUE.equals(config.enable)) {
-            if (Boolean.TRUE.equals(config.baidu_push_enabled) && !this.$common.isEmpty(config.baidu_push_token)) {
+          if (config.enable === true) {
+            if (config.baidu_push_enabled === true && !this.$common.isEmpty(config.baidu_push_token)) {
               configuredEngines.push('百度');
             }
-            if (Boolean.TRUE.equals(config.bing_push_enabled) && !this.$common.isEmpty(config.bing_api_key)) {
+            if (config.bing_push_enabled === true && !this.$common.isEmpty(config.bing_api_key)) {
               configuredEngines.push('Bing(IndexNow)');
             }
-            if (Boolean.TRUE.equals(config.yandex_push_enabled) && !this.$common.isEmpty(config.yandex_api_key)) {
+            if (config.yandex_push_enabled === true && !this.$common.isEmpty(config.yandex_api_key)) {
               configuredEngines.push('Yandex');
             }
-            if (Boolean.TRUE.equals(config.sogou_push_enabled) && !this.$common.isEmpty(config.sogou_push_token)) {
+            if (config.sogou_push_enabled === true && !this.$common.isEmpty(config.sogou_push_token)) {
               configuredEngines.push('搜狗');
             }
-            if (Boolean.TRUE.equals(config.shenma_push_enabled) && !this.$common.isEmpty(config.shenma_token)) {
+            if (config.shenma_push_enabled === true && !this.$common.isEmpty(config.shenma_token)) {
               configuredEngines.push('神马');
             }
           }
@@ -1631,6 +1770,41 @@ const uploadPicture = () => import("../common/uploadPicture");
           this.article.submitToSearchEngine = false;
         } finally {
           this.searchPushConfigLoading = false;
+        }
+      },
+
+      async loadSummaryGenerationMode() {
+        try {
+          const res = await this.$http.get(this.$constant.baseURL + '/webInfo/ai/config/articleAi/get', {}, true);
+          const config = res && res.code === 200 && res.data ? res.data : {};
+          const summaryConfig = this.parseSummaryConfig(config.summaryConfig);
+          this.summaryMode = summaryConfig.summaryMode || 'disabled';
+        } catch (error) {
+          console.error('获取文章摘要配置失败:', error);
+          this.summaryMode = '';
+        } finally {
+          this.summaryConfigLoading = false;
+          this.applySummaryModeToArticle();
+        }
+      },
+
+      parseSummaryConfig(summaryConfig) {
+        if (!summaryConfig) {
+          return {};
+        }
+        if (typeof summaryConfig === 'object') {
+          return summaryConfig;
+        }
+        try {
+          return JSON.parse(summaryConfig);
+        } catch (error) {
+          return {};
+        }
+      },
+
+      applySummaryModeToArticle() {
+        if (this.summaryAutoDisabledByConfig && this.article) {
+          this.article.autoSummary = false;
         }
       },
 
@@ -1688,8 +1862,12 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
 
       buildArticleRequestPayload(article) {
+        const autoSummary = !this.summaryAutoDisabledByConfig && article.autoSummary !== false;
         const payload = {
           ...article,
+          articleSlug: normalizeArticleSlug(article.articleSlug),
+          summary: String(article.summary || '').trim(),
+          autoSummary,
           skipAiTranslation: this.skipAiTranslation
         };
 
@@ -1943,7 +2121,14 @@ const uploadPicture = () => import("../common/uploadPicture");
         return this.$http.get(this.$constant.baseURL + "/admin/article/getArticleById", {id: this.id})
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
-              this.article = res.data;
+              this.article = {
+                ...createDefaultArticle(),
+                ...res.data,
+                articleSlug: res.data.articleSlug || '',
+                summary: res.data.summary || '',
+                autoSummary: this.summaryAutoDisabledByConfig ? false : res.data.autoSummary !== false
+              };
+              this.applySummaryModeToArticle();
               // 检查文章是否有手动编辑的翻译，如果有则自动进入编辑翻译模式
               if (checkTranslationStatus) {
                 this.checkAndSetTranslationMode();
@@ -3023,6 +3208,13 @@ const uploadPicture = () => import("../common/uploadPicture");
   padding: 0;
   font-size: 12px;
   vertical-align: baseline;
+}
+
+.summary-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
 }
 </style>
 <style scoped src="@/assets/css/postedit.css"></style>

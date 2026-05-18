@@ -32,22 +32,26 @@ enum PrerenderCleanupType {
 }
 
 record PrerenderCleanup(PrerenderCleanupType type, String pageType, Integer sortId, Integer labelId,
-                        Integer articleId) {
+                        Integer articleId, String articleSlug) {
 
     static PrerenderCleanup article(Integer articleId) {
-        return new PrerenderCleanup(PrerenderCleanupType.ARTICLE, null, null, null, articleId);
+        return article(articleId, null);
+    }
+
+    static PrerenderCleanup article(Integer articleId, String articleSlug) {
+        return new PrerenderCleanup(PrerenderCleanupType.ARTICLE, null, null, null, articleId, articleSlug);
     }
 
     static PrerenderCleanup category(Integer sortId, Integer labelId) {
-        return new PrerenderCleanup(PrerenderCleanupType.CATEGORY_PAGE, null, sortId, labelId, null);
+        return new PrerenderCleanup(PrerenderCleanupType.CATEGORY_PAGE, null, sortId, labelId, null, null);
     }
 
     static PrerenderCleanup page(String pageType) {
-        return new PrerenderCleanup(PrerenderCleanupType.PAGE, pageType, null, null, null);
+        return new PrerenderCleanup(PrerenderCleanupType.PAGE, pageType, null, null, null, null);
     }
 
     static PrerenderCleanup sortIndex() {
-        return new PrerenderCleanup(PrerenderCleanupType.SORT_INDEX, null, null, null, null);
+        return new PrerenderCleanup(PrerenderCleanupType.SORT_INDEX, null, null, null, null, null);
     }
 }
 

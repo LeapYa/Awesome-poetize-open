@@ -15,6 +15,7 @@ import com.ld.poetry.service.SeoConfigService;
 import com.ld.poetry.service.SeoMetaService;
 import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.service.WebInfoService;
+import com.ld.poetry.utils.ArticleUrlUtil;
 import com.ld.poetry.utils.CommonQuery;
 import com.ld.poetry.utils.mail.MailUtil;
 import com.ld.poetry.vo.ArticleVO;
@@ -111,10 +112,18 @@ public class PrerenderService {
     }
 
     public void deleteArticle(Integer id) {
+        deleteArticle(id, null);
+    }
+
+    public void deleteArticle(Integer id, String articleSlug) {
         if (id == null) {
             return;
         }
         engine.deletePage("article/" + id);
+        String normalizedSlug = ArticleUrlUtil.normalizeSlug(articleSlug);
+        if (ArticleUrlUtil.isValidSlug(normalizedSlug)) {
+            engine.deletePage("article/" + normalizedSlug);
+        }
     }
 
     public void renderAdminShellPage() {
@@ -174,7 +183,7 @@ public class PrerenderService {
                         .collect(Collectors.joining())
                 + "</ul></div>"
                 + (recommendArticles.isEmpty() ? "" : "<div class=\"home-recommend-articles\"><h2>🔥推荐文章</h2><ul>"
-                + recommendArticles.stream().map(article -> "<li><a href=\"/article/" + article.getId() + "\" title=\""
+                + recommendArticles.stream().map(article -> "<li><a href=\"" + articlePath(article) + "\" title=\""
                                 + attr(article.getArticleTitle()) + "\">"
                                 + (StringUtils.hasText(article.getArticleCover())
                                         ? "<img src=\"" + attr(article.getArticleCover()) + "\" alt=\"" + attr(article.getArticleTitle())
@@ -186,7 +195,7 @@ public class PrerenderService {
                         .collect(Collectors.joining())
                 + "</ul></div>")
                 + "<div class=\"home-recent-articles\"><h2>最新文章</h2><ul>"
-                + recentArticles.stream().map(article -> "<li><a href=\"/article/" + article.getId() + "\" title=\""
+                + recentArticles.stream().map(article -> "<li><a href=\"" + articlePath(article) + "\" title=\""
                                 + attr(article.getArticleTitle()) + "\"><h3>" + text(article.getArticleTitle()) + "</h3>"
                                 + (StringUtils.hasText(article.getSummary()) ? "<p>" + text(article.getSummary()) + "</p>" : "")
                                 + "<time>" + text(formatDate(article.getCreateTime())) + "</time></a></li>")
@@ -450,6 +459,8 @@ public class PrerenderService {
     }
 
     private void renderSingleArticle(Article article, String lang, String sourceLanguage, Map<String, Object> seoConfig, String siteName, String baseUrl) {
+        String articlePath = ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug());
+        String articleRoute = ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug(), lang, sourceLanguage);
         String articleTitle = article.getArticleTitle();
         String content = article.getArticleContent();
 
@@ -467,9 +478,9 @@ public class PrerenderService {
         enrichSeoMeta(meta, seoConfig, baseUrl);
         meta.putIfAbsent("author", firstNonBlank(stringValue(seoConfig.get("default_author")), siteName));
         meta.putIfAbsent("keywords", firstNonBlank(stringValue(seoConfig.get("site_keywords")), siteName));
-        meta.putIfAbsent("canonical", buildUrl(baseUrl, "/article/" + article.getId()));
+        meta.putIfAbsent("canonical", buildUrl(baseUrl, articleRoute));
         meta.putIfAbsent("og:site_name", siteName);
-        meta.putIfAbsent("og:url", buildUrl(baseUrl, "/article/" + article.getId()));
+        meta.putIfAbsent("og:url", buildUrl(baseUrl, articleRoute));
 
         String socialImage = ensureAbsoluteImageUrl(firstNonBlank(stringValue(meta.get("og:image")), stringValue(seoConfig.get("og_image"))), baseUrl);
         if (StringUtils.hasText(socialImage)) {
@@ -493,7 +504,10 @@ public class PrerenderService {
                 .lang(lang)
                 .pageType("article")
                 .build());
-        engine.writePage("article/" + article.getId(), outputLang, html);
+        if (ArticleUrlUtil.isValidSlug(article.getArticleSlug())) {
+            engine.deletePage("article/" + article.getId());
+        }
+        engine.writePage(articlePath.replaceFirst("^/", ""), outputLang, html);
     }
 
     private void renderCategoryPage(Sort sortData, Integer labelId) {
@@ -528,8 +542,8 @@ public class PrerenderService {
                 + "</h1><p>" + text(firstNonBlank(sortData.getSortDescription(), ""))
                 + "</p></div><div class=\"sort-articles\"><h2>文章列表</h2>"
                 + (articles.isEmpty() ? "<p>暂无文章</p>"
-                        : "<ul class=\"article-list\">" + articles.stream().map(article -> "<li class=\"article-item\"><a href=\"/article/"
-                                        + article.getId() + "\" title=\"" + attr(article.getArticleTitle()) + "\">"
+                        : "<ul class=\"article-list\">" + articles.stream().map(article -> "<li class=\"article-item\"><a href=\""
+                                        + articlePath(article) + "\" title=\"" + attr(article.getArticleTitle()) + "\">"
                                         + (StringUtils.hasText(article.getArticleCover())
                                                 ? "<img src=\"" + attr(article.getArticleCover()) + "\" alt=\"" + attr(article.getArticleTitle()) + "\" loading=\"lazy\">"
                                                 : "")
@@ -702,6 +716,10 @@ public class PrerenderService {
             }
         }
         return articles;
+    }
+
+    private String articlePath(ArticleVO article) {
+        return ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug());
     }
 
     private Map<String, List<ResourcePathVO>> listGroupedResources(String type, boolean orderByCreateTime) {

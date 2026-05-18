@@ -107,7 +107,11 @@ export default {
     if (this.isEmpty(text)) return ''
 
     // 移除代码块
-    let result = text.replace(/```[\s\S]*?```/g, '')
+    let result = String(text).replace(/```[\s\S]*?```/g, ' ')
+    result = result.replace(/~~~[\s\S]*?~~~/g, ' ')
+
+    // 移除图片
+    result = result.replace(/!\[([^\]]*)\]\([^)]+\)/g, ' ')
 
     // 移除行内代码
     result = result.replace(/`([^`]+)`/g, '$1')
@@ -118,12 +122,10 @@ export default {
     // 移除链接，只保留链接文本
     result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
 
-    // 移除图片
-    result = result.replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
-
     // 移除强调标记（加粗、斜体）
     result = result.replace(/(\*\*|__)(.*?)\1/g, '$2')
     result = result.replace(/(\*|_)(.*?)\1/g, '$2')
+    result = result.replace(/~~(.*?)~~/g, '$1')
 
     // 移除引用标记
     result = result.replace(/^\s*>\s+/gm, '')
@@ -136,7 +138,16 @@ export default {
     result = result.replace(/^\s*\d+\.\s+/gm, '')
 
     // 移除HTML标签
-    result = result.replace(/<[^>]*>/g, '')
+    result = result.replace(/<[^>]*>/g, ' ')
+
+    // 摘要降级时保持单行纯文本，避免引号和换行进入HTML源码
+    result = result
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&quot;|&#34;|&#x22;/gi, '')
+      .replace(/&#39;|&#x27;/gi, '')
+      .replace(/["'“”‘’]/g, '')
+      .replace(/\|/g, ' ')
+      .replace(/\s+/g, ' ')
 
     // 移除首尾空白
     result = result.trim()

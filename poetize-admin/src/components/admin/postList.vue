@@ -985,7 +985,8 @@
       handleView(item) {
         // 在新标签页中打开前台文章详情页
         // 使用 constant.frontendURL（已根据环境自动配置）
-        const articleUrl = `${this.$constant.frontendURL}/article/${item.id}`;
+        const articleToken = item.articleSlug || item.id;
+        const articleUrl = `${this.$constant.frontendURL}/article/${articleToken}`;
         window.open(articleUrl, '_blank');
       },
 

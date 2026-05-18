@@ -24,8 +24,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.StructuredTaskScope;
@@ -792,24 +790,45 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
 
     /**
      * 从URL中提取文章ID
-     * 预期URL格式: https://domain.com/article/123
+     * 支持 https://domain.com/article/123、/article/slug、/article/en/slug
      */
     private Integer extractArticleIdFromUrl(String url) {
-        if (!StringUtils.hasText(url)) {
+        String articleToken = extractArticleTokenFromUrl(url);
+        if (!StringUtils.hasText(articleToken)) {
             return null;
         }
-        
+
         try {
-            // 使用正则表达式提取文章ID
-            Pattern pattern = Pattern.compile("/article/(\\d+)");
-            Matcher matcher = pattern.matcher(url);
-            if (matcher.find()) {
-                return Integer.parseInt(matcher.group(1));
-            }
+            return articleService.resolveArticleIdByPath(articleToken);
         } catch (Exception e) {
             log.warn("解析文章URL失败: {}", url, e);
         }
         
+        return null;
+    }
+
+    private String extractArticleTokenFromUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return null;
+        }
+
+        try {
+            URI uri = URI.create(url);
+            String path = uri.getPath();
+            if (!StringUtils.hasText(path)) {
+                return null;
+            }
+
+            String[] segments = path.split("/");
+            for (int i = 0; i < segments.length; i++) {
+                if ("article".equals(segments[i]) && i + 1 < segments.length) {
+                    return i + 2 < segments.length ? segments[i + 2] : segments[i + 1];
+                }
+            }
+        } catch (Exception e) {
+            log.warn("提取文章URL标识失败: {}", url, e);
+        }
+
         return null;
     }
 
@@ -1036,10 +1055,14 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
         urls.add(url);
 
         try {
-            // 检查是否是文章URL格式: {site_address}/article/{id}
+            // 检查是否是文章URL格式: {site_address}/article/{id或slug}
             Integer articleId = extractArticleIdFromUrl(url);
             if (articleId == null) {
                 return urls;
+            }
+            String articleToken = extractArticleTokenFromUrl(url);
+            if (!StringUtils.hasText(articleToken)) {
+                articleToken = String.valueOf(articleId);
             }
 
             // 获取文章的所有翻译语言
@@ -1050,7 +1073,7 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
 
             // 构建翻译文章URL
             for (String language : availableLanguages) {
-                String translatedUrl = buildTranslatedArticleUrl(url, articleId, language);
+                String translatedUrl = buildTranslatedArticleUrl(url, articleToken, language);
                 if (translatedUrl != null) {
                     urls.add(translatedUrl);
                 }
@@ -1067,12 +1090,12 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
      * 安全地构建翻译文章URL
      * 使用 URI 类处理，支持带查询参数和 fragment 的 URL
      * 
-     * @param originalUrl 原始文章URL (如: https://example.com/article/123?ref=twitter#comments)
-     * @param articleId 文章ID
+     * @param originalUrl 原始文章URL (如: https://example.com/article/spring-seo?ref=twitter#comments)
+     * @param articleToken 文章URL标识
      * @param language 目标语言
-     * @return 翻译文章URL (如: https://example.com/article/en/123?ref=twitter#comments)
+     * @return 翻译文章URL (如: https://example.com/article/en/spring-seo?ref=twitter#comments)
      */
-    private String buildTranslatedArticleUrl(String originalUrl, Integer articleId, String language) {
+    private String buildTranslatedArticleUrl(String originalUrl, String articleToken, String language) {
         try {
             java.net.URI originalUri = java.net.URI.create(originalUrl);
             
@@ -1090,9 +1113,9 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 return null;
             }
 
-            // 构建新路径：保留 /article/ 之前的部分 + /article/ + 语言 + / + 文章ID
+            // 构建新路径：保留 /article/ 之前的部分 + /article/ + 语言 + / + 文章ID或URL别名
             String basePath = originalPath.substring(0, articleIndex);
-            String newPath = basePath + "/article/" + language + "/" + articleId;
+            String newPath = basePath + "/article/" + language + "/" + articleToken;
             
             // 构建新的 URI，保留 scheme, host, port, query, fragment
             StringBuilder translatedUrl = new StringBuilder();

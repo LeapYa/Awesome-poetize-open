@@ -54,4 +54,9 @@ public class ArticleSavedEvent {
      * 是否提交到搜索引擎
      */
     private Boolean submitToSearchEngine;
+
+    /**
+     * 变更前URL别名
+     */
+    private String previousArticleSlug;
 }

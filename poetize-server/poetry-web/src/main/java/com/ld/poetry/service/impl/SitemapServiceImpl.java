@@ -8,6 +8,7 @@ import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.Sort;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.SitemapService;
+import com.ld.poetry.utils.ArticleUrlUtil;
 import com.redfin.sitemapgenerator.ChangeFreq;
 import com.redfin.sitemapgenerator.WebSitemapGenerator;
 import com.redfin.sitemapgenerator.WebSitemapUrl;
@@ -282,7 +283,8 @@ public class SitemapServiceImpl implements SitemapService {
             }
             
             // 1. 添加原文章URL（标准格式，不需要语言代码）
-            String originalArticleUrl = siteUrl + "/article/" + article.getId();
+            String articleToken = ArticleUrlUtil.resolveToken(article.getId(), article.getArticleSlug());
+            String originalArticleUrl = siteUrl + "/article/" + articleToken;
             
             WebSitemapUrl.Options originalUrlOptions = new WebSitemapUrl.Options(originalArticleUrl)
                     .changeFreq(getSitemapChangeFreq())
@@ -304,8 +306,8 @@ public class SitemapServiceImpl implements SitemapService {
                 if (!CollectionUtils.isEmpty(translationLanguages)) {
                     
                     for (String language : translationLanguages) {
-                        // 生成翻译文章的URL格式：/article/语言代码/文章ID
-                        String translatedArticleUrl = siteUrl + "/article/" + language + "/" + article.getId();
+                        // 生成翻译文章的URL格式：/article/语言代码/文章ID或URL别名
+                        String translatedArticleUrl = siteUrl + "/article/" + language + "/" + articleToken;
                         
                         WebSitemapUrl.Options translatedUrlOptions = new WebSitemapUrl.Options(translatedArticleUrl)
                                 .changeFreq(getSitemapChangeFreq())

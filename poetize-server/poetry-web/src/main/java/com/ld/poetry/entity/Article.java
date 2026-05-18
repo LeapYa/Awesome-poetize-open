@@ -60,6 +60,12 @@ public class Article implements Serializable {
     private String articleTitle;
 
     /**
+     * URL别名
+     */
+    @TableField("article_slug")
+    private String articleSlug;
+
+    /**
      * 博文内容
      */
     @TableField("article_content")

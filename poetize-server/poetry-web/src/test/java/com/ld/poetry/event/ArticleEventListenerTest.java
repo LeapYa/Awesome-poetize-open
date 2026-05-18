@@ -42,7 +42,7 @@ class ArticleEventListenerTest {
 
     @Test
     void handleArticleSavedEventShouldDelegateToFacade() {
-        ArticleSavedEvent event = new ArticleSavedEvent(42, 2, 9, 1, 7, null, true, "UPDATE", false);
+        ArticleSavedEvent event = new ArticleSavedEvent(42, 2, 9, 1, 7, null, true, "UPDATE", false, null);
 
         listener.handleArticleSavedEvent(event);
 

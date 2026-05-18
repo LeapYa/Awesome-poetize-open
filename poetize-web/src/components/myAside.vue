@@ -418,6 +418,7 @@ import {
 } from '@element-plus/icons-vue'
 import { Vue3SeamlessScroll } from 'vue3-seamless-scroll'
 import { useMainStore } from '@/stores/main'
+import { getArticlePath } from '@/utils/article-url'
 
 export default {
   components: {
@@ -585,7 +586,7 @@ export default {
     // 跳转到文章页面
     goToArticle(article) {
       // 使用简洁格式跳转到原文
-      this.$router.push(`/article/${article.id}`)
+      this.$router.push(getArticlePath(article))
     },
 
     selectSort(sort) {

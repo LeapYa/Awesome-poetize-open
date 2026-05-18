@@ -207,6 +207,7 @@
 </template>
 
 <script>
+import { getArticlePath } from '@/utils/article-url'
 
 export default {
   props: {
@@ -219,7 +220,7 @@ export default {
     handleDragStart(event, article) {
       // 构建文章的完整URL
       const baseUrl = window.location.origin
-      const articlePath = `/article/${article.id}`
+      const articlePath = getArticlePath(article)
       const articleUrl = `${baseUrl}${articlePath}`
 
       // 设置拖拽数据
@@ -237,7 +238,7 @@ export default {
     // 跳转到文章页面
     goToArticle(article) {
       // 使用简洁格式跳转到原文
-      this.$router.push(`/article/${article.id}`)
+      this.$router.push(getArticlePath(article))
     },
 
     getSummaryDisplay(article) {

@@ -87,6 +87,7 @@ def parse_args() -> argparse.Namespace:
 
 def add_article_target_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--article-id", type=int, help="Target article ID.")
+    parser.add_argument("--article-slug", help="Target article URL slug.")
     parser.add_argument("--article-title-exact", help="Resolve target article by exact title.")
 
 
@@ -287,9 +288,24 @@ def resolve_article_id(args: argparse.Namespace) -> int:
     if args.article_id:
         return int(args.article_id)
 
+    if getattr(args, "article_slug", None):
+        slug = str(args.article_slug).strip()
+        response = request_json(
+            "GET",
+            f"{args.base_url.rstrip('/')}/api/api/article/path/{urllib.parse.quote(slug, safe='')}",
+            args.api_key,
+        )
+        if response.get("code") != 200:
+            die(json.dumps(response, ensure_ascii=False, indent=2))
+        data = response.get("data")
+        article_id = data.get("id") if isinstance(data, dict) else None
+        if not isinstance(article_id, int):
+            die(f"Resolved article does not contain a valid id: {slug}")
+        return article_id
+
     title = getattr(args, "article_title_exact", None)
     if not title:
-        die("Provide --article-id or --article-title-exact.")
+        die("Provide --article-id, --article-slug, or --article-title-exact.")
 
     current = 1
     size = 50

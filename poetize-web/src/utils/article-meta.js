@@ -2,6 +2,7 @@ import axios from 'axios'
 
 export function getArticleMeta() {
   this.isLoadingMeta = true
+  const articlePath = this.articlePathToken || this.id
   const timeout = setTimeout(() => {
     if (this.isLoadingMeta) {
       this.isLoadingMeta = false
@@ -10,15 +11,15 @@ export function getArticleMeta() {
   }, 3000)
 
   this.$http
-    .get(this.$constant.baseURL + '/article/getArticleByIdNoCount', {
-      id: this.id,
+    .get(this.$constant.baseURL + '/article/getArticleByPathNoCount', {
+      path: articlePath,
     })
     .then((articleRes) => {
       if (articleRes.code === 200 && articleRes.data) {
         axios
           .get(
             this.$constant.baseURL +
-              `/seo/getArticleMeta?articleId=${this.id}&lang=${this.currentLang}`
+              `/seo/getArticleMeta?articlePath=${encodeURIComponent(articlePath)}&lang=${this.currentLang}`
           )
           .then((res) => {
             clearTimeout(timeout)
@@ -145,6 +146,7 @@ export function updateMetaTags() {
 export function fetchArticleMeta() {
   return new Promise((resolve) => {
     this.isLoadingMeta = true
+    const articlePath = this.articlePathToken || this.id
     const timeout = setTimeout(() => {
       if (this.isLoadingMeta) {
         this.isLoadingMeta = false
@@ -156,7 +158,7 @@ export function fetchArticleMeta() {
     axios
       .get(
         this.$constant.baseURL +
-          `/seo/getArticleMeta?articleId=${this.id}&lang=${this.currentLang}`
+          `/seo/getArticleMeta?articlePath=${encodeURIComponent(articlePath)}&lang=${this.currentLang}`
       )
       .then((res) => {
         clearTimeout(timeout)

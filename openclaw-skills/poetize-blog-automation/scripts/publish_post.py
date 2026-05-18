@@ -25,6 +25,7 @@ HTML_IMAGE_SRC_PATTERN = re.compile(
     r'(<img\b[^>]*?\bsrc\s*=\s*)(["\'])(?P<src>.+?)(\2)',
     re.IGNORECASE,
 )
+ARTICLE_SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,158}[a-z0-9])?$")
 
 
 def configure_stdio() -> None:
@@ -900,6 +901,16 @@ def meta_value(meta: dict[str, Any], key: str, default: Any = MISSING) -> Any:
     return default
 
 
+def normalize_article_slug(value: Any) -> str:
+    slug = re.sub(r"[\s_]+", "-", str(value or "").strip().lower())
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    if not slug:
+        return ""
+    if slug.isdigit() or not ARTICLE_SLUG_PATTERN.fullmatch(slug):
+        die("Invalid articleSlug. Use lowercase letters, numbers, and hyphens; do not use a pure number.")
+    return slug
+
+
 def build_payload(markdown_text: str, args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     meta, body = parse_front_matter(markdown_text)
     is_update = args.article_id is not None
@@ -948,6 +959,12 @@ def build_payload(markdown_text: str, args: argparse.Namespace) -> tuple[dict[st
         "title": str(title),
         "content": body.strip(),
     }
+
+    article_slug = meta_value(meta, "articleSlug")
+    if article_slug is MISSING:
+        article_slug = meta_value(meta, "slug")
+    if article_slug is not MISSING:
+        payload["articleSlug"] = normalize_article_slug(article_slug)
 
     sort_id = meta.get("sortId")
     sort_name = meta.get("sort") or meta.get("sortName")

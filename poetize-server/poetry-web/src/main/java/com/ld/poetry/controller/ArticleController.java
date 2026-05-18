@@ -366,11 +366,13 @@ public class ArticleController {
         // 在删除前先获取文章信息，以便获取分类ID用于预渲染
         Integer sortId = null;
         Integer labelId = null;
+        String articleSlug = null;
         try {
             Article article = articleService.getById(id);
             if (article != null) {
                 sortId = article.getSortId();
                 labelId = article.getLabelId();
+                articleSlug = article.getArticleSlug();
                 log.info("删除文章前获取分类和标签ID: 文章ID={}, 分类ID={}, 标签ID={}", id, sortId, labelId);
             }
         } catch (Exception e) {
@@ -398,7 +400,7 @@ public class ArticleController {
         if (result.getCode() == 200) {
             // 发布文章删除事件，触发预渲染清理（在事务提交后执行）
             // 传递正确的分类ID，确保分类页面也会被重新渲染
-            eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, labelId, sortId, labelId, null, false, "DELETE", null));
+            eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, labelId, sortId, labelId, null, false, "DELETE", null, articleSlug));
             
             // 清除文章二维码缓存
             qrCodeService.evictArticleQRCode(id);
@@ -620,6 +622,58 @@ public class ArticleController {
     @GetMapping("/getArticleByIdNoCount")
     public PoetryResult<ArticleVO> getArticleByIdNoCount(@RequestParam("id") Integer id, @RequestParam(value = "password", required = false) String password) {
         return ((ArticleServiceImpl)articleService).getArticleById(id, password, false);
+    }
+
+    /**
+     * 查询文章 - 支持数字ID或URL别名
+     */
+    @GetMapping("/getArticleByPath")
+    public PoetryResult<ArticleVO> getArticleByPath(
+            @RequestParam("path") String path,
+            @RequestParam(value = "password", required = false) String password,
+            @RequestParam(value = "language", required = false) String language) {
+        PoetryResult<ArticleVO> result = articleService.getArticleByPath(path, password);
+        enrichArticleResponse(result, language);
+        return result;
+    }
+
+    /**
+     * 查询文章 - 支持数字ID或URL别名，不增加浏览量
+     */
+    @GetMapping("/getArticleByPathNoCount")
+    public PoetryResult<ArticleVO> getArticleByPathNoCount(
+            @RequestParam("path") String path,
+            @RequestParam(value = "password", required = false) String password) {
+        return articleService.getArticleByPath(path, password, false);
+    }
+
+    private void enrichArticleResponse(PoetryResult<ArticleVO> result, String language) {
+        if (result == null || result.getCode() != 200 || result.getData() == null) {
+            return;
+        }
+
+        ArticleVO article = result.getData();
+        try {
+            SysPlugin themePlugin = sysPluginService.getActivePlugin(SysPlugin.TYPE_ARTICLE_THEME);
+            if (themePlugin != null && StringUtils.hasText(themePlugin.getPluginConfig())) {
+                article.setArticleThemeConfig(themePlugin.getPluginConfig());
+            }
+        } catch (Exception e) {
+            log.warn("获取文章主题配置失败（不影响主流程）: {}", e.getMessage());
+        }
+
+        if (StringUtils.hasText(language) && article.getId() != null) {
+            try {
+                Map<String, String> translation = translationService.getArticleTranslation(article.getId(), language);
+                if (translation != null && !translation.isEmpty()) {
+                    article.setTranslatedTitle(translation.get("title"));
+                    article.setTranslatedContent(translation.get("content"));
+                }
+            } catch (Exception e) {
+                log.warn("获取文章翻译失败（不影响主流程）: 文章ID={}, 语言={}, 错误={}",
+                        article.getId(), language, e.getMessage());
+            }
+        }
     }
 
     /**

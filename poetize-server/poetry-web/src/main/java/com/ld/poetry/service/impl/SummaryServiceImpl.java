@@ -8,6 +8,7 @@ import com.ld.poetry.service.ArticleService;
 import com.ld.poetry.service.SummaryService;
 import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.service.ai.LlmTranslationService;
+import com.ld.poetry.utils.ArticleSummaryTextUtil;
 import com.ld.poetry.utils.SmartSummaryGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -318,7 +319,7 @@ public class SummaryServiceImpl implements SummaryService {
     private void saveMultiLangSummaries(Integer articleId, Map<String, String> summaries, String sourceLanguage) {
         // 保存源语言摘要到article表
         if (summaries.containsKey(sourceLanguage)) {
-            String sourceSummary = summaries.get(sourceLanguage);
+            String sourceSummary = ArticleSummaryTextUtil.toPlainText(summaries.get(sourceLanguage));
             articleService.lambdaUpdate()
                     .eq(Article::getId, articleId)
                     .set(Article::getSummary, sourceSummary)
@@ -328,7 +329,7 @@ public class SummaryServiceImpl implements SummaryService {
         // 保存其他语言摘要到article_translation表
         for (Map.Entry<String, String> entry : summaries.entrySet()) {
             String langCode = entry.getKey();
-            String summary = entry.getValue();
+            String summary = ArticleSummaryTextUtil.toPlainText(entry.getValue());
 
             // 跳过源语言（已在article表中保存）
             if (langCode.equals(sourceLanguage)) {

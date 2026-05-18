@@ -4,6 +4,7 @@ import com.google.zxing.WriterException;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.SeoConfig;
+import com.ld.poetry.utils.ArticleUrlUtil;
 import com.ld.poetry.utils.QRCodeUtil;
 import com.ld.poetry.utils.RedisUtil;
 import com.ld.poetry.utils.mail.MailUtil;
@@ -67,7 +68,7 @@ public class QRCodeService {
 
         // 3. 生成二维码
         try {
-            byte[] qrCode = generateArticleQRCode(articleId);
+            byte[] qrCode = generateArticleQRCode(article);
             
             // 4. 存入Redis缓存（永久缓存）
             redisUtil.set(cacheKey, qrCode, CacheConstants.QRCODE_EXPIRE_TIME);
@@ -86,12 +87,12 @@ public class QRCodeService {
      * @param articleId 文章ID
      * @return 二维码图片字节数组
      */
-    private byte[] generateArticleQRCode(Integer articleId) throws WriterException, IOException {
+    private byte[] generateArticleQRCode(Article article) throws WriterException, IOException {
         // 1. 获取网站基础URL（复用 MailUtil 的方法）
         String siteUrl = mailUtil.getSiteUrl();
         
         // 2. 构建文章URL
-        String articleUrl = siteUrl + "/article/" + articleId;
+        String articleUrl = siteUrl + ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug());
 
         // 3. 获取网站Logo
         String logoUrl = getLogoUrl(siteUrl);
@@ -153,4 +154,3 @@ public class QRCodeService {
         }
     }
 }
-

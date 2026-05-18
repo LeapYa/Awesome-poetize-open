@@ -27,7 +27,7 @@ upstream poetize-java {
 
 # 添加map指令用于解析请求URI，提取文章ID、分类ID等
 map $request_uri $article_id {
-    ~^/article/([0-9]+)$ $1;
+    ~^/article/([A-Za-z0-9-]+)$ $1;
     default "";
 }
 
@@ -386,16 +386,16 @@ server {
     #     error_page 502 503 504 = /index.html;
     # }
 
-    # 翻译文章页静态预渲染 - 新格式 /article/lang/id
-    location ~ ^/article/([a-zA-Z-]+)/([0-9]+)$ {
+    # 翻译文章页静态预渲染 - 新格式 /article/lang/id-or-slug
+    location ~ ^/article/([a-zA-Z-]+)/([A-Za-z0-9-]+)$ {
         root /usr/share/nginx/html/poetize;
         # $1=语言代码, $2=文章ID
         # 预渲染文件路径：/prerender/article/123/index-en.html
         try_files /prerender/article/$2/index-$1.html /prerender/article/$2/index.html @spa_article;
     }
     
-    # 原文文章页静态预渲染 - 格式 /article/id  
-    location ~ ^/article/([0-9]+)(\?.*)?$ {
+    # 原文文章页静态预渲染 - 格式 /article/id-or-slug
+    location ~ ^/article/([A-Za-z0-9-]+)(\?.*)?$ {
         root /usr/share/nginx/html/poetize;
         # 根据 $lang_suffix 智能选择文件：en->index-en.html，否则 index.html
         try_files /prerender/article/$1/index$lang_suffix.html /prerender/article/$1/index.html @spa_article;

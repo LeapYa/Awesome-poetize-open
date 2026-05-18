@@ -36,6 +36,7 @@ import com.ld.poetry.service.WebInfoService;
 import com.ld.poetry.service.payment.PaymentService;
 import com.ld.poetry.service.impl.ArticleServiceImpl.ArticleSaveStatus;
 import com.ld.poetry.utils.IpUtil;
+import com.ld.poetry.utils.ArticleUrlUtil;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import com.ld.poetry.utils.storage.FileStorageService;
@@ -253,6 +254,9 @@ public class ApiController {
             }
 
             return PoetryResult.fail(result.getMessage() != null ? result.getMessage() : "文章创建失败");
+        } catch (IllegalArgumentException e) {
+            log.error("API创建文章失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
         } catch (PoetryRuntimeException e) {
             log.error("API创建文章失败：{}", e.getMessage());
             return PoetryResult.fail(e.getMessage());
@@ -289,6 +293,9 @@ public class ApiController {
             }
 
             return PoetryResult.fail(result.getMessage() != null ? result.getMessage() : "异步创建文章失败");
+        } catch (IllegalArgumentException e) {
+            log.error("API异步创建文章失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
         } catch (PoetryRuntimeException e) {
             log.error("API异步创建文章失败：{}", e.getMessage());
             return PoetryResult.fail(e.getMessage());
@@ -322,24 +329,21 @@ public class ApiController {
             applyExistingArticleDefaults(articleVO, article);
             normalizeArticlePayload(articleVO, adminUser);
 
-            if (articleVO.getUserId() == null) {
-                articleVO.setUserId(article.getUserId());
+            articleVO.setUserId(article.getUserId());
+            articleVO.setUpdateBy(adminUser.getUsername());
+            PoetryResult<?> result = articleService.updateArticle(
+                    articleVO,
+                    Boolean.TRUE.equals(articleVO.getSkipAiTranslation()),
+                    buildPendingTranslation(articleVO),
+                    article.getUserId());
+            if (result.getCode() != 200) {
+                return PoetryResult.fail(result.getMessage() != null ? result.getMessage() : "文章更新失败");
             }
-
-            Integer previousSortId = article.getSortId();
-            Integer previousLabelId = article.getLabelId();
-            mergeArticleUpdate(article, articleVO, adminUser);
-            article.setUpdateTime(LocalDateTime.now());
-            article.setUpdateBy(adminUser.getUsername());
-
-            boolean updated = articleService.updateById(article);
-            if (!updated) {
-                return PoetryResult.fail("文章更新失败");
-            }
-
-            processPostUpdate(article, articleVO, previousSortId, previousLabelId);
 
             return PoetryResult.success(buildArticleResponseData(article.getId(), articleVO, webInfo, request));
+        } catch (IllegalArgumentException e) {
+            log.error("API更新文章失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
         } catch (PoetryRuntimeException e) {
             log.error("API更新文章失败：{}", e.getMessage());
             return PoetryResult.fail(e.getMessage());
@@ -389,6 +393,9 @@ public class ApiController {
             }
 
             return PoetryResult.fail(result.getMessage() != null ? result.getMessage() : "异步更新文章失败");
+        } catch (IllegalArgumentException e) {
+            log.error("API异步更新文章失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
         } catch (PoetryRuntimeException e) {
             log.error("API异步更新文章失败：{}", e.getMessage());
             return PoetryResult.fail(e.getMessage());
@@ -519,6 +526,7 @@ public class ApiController {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("articleId", article.getId());
             data.put("articleTitle", article.getArticleTitle());
+            data.put("articleSlug", article.getArticleSlug());
             data.put("articleUrl", buildArticleUrl(webInfo, request, article.getId()));
             data.put("viewCount", article.getViewCount());
             data.put("commentStatus", article.getCommentStatus());
@@ -969,6 +977,7 @@ public class ApiController {
             articleVO.setId(article.getId());
             articleVO.setUserId(article.getUserId());
             articleVO.setArticleTitle(article.getArticleTitle());
+            articleVO.setArticleSlug(article.getArticleSlug());
             articleVO.setArticleContent(article.getArticleContent());
             articleVO.setArticleCover(article.getArticleCover());
             articleVO.setSortId(article.getSortId());
@@ -1011,6 +1020,29 @@ public class ApiController {
         }
     }
 
+    /**
+     * API按数字ID或URL别名获取文章详情
+     */
+    @GetMapping("/article/path/{path:[A-Za-z0-9-]+}")
+    public PoetryResult getArticleDetailByPath(@PathVariable("path") String path, HttpServletRequest request) {
+        try {
+            if (!StringUtils.hasText(path)) {
+                return PoetryResult.fail("文章路径不能为空");
+            }
+            Integer articleId = articleService.resolveArticleIdByPath(path);
+            if (articleId == null) {
+                return PoetryResult.fail("文章不存在");
+            }
+            return getArticleDetail(articleId, request);
+        } catch (PoetryRuntimeException e) {
+            log.error("API按路径获取文章详情失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API按路径获取文章详情出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
     private void normalizeArticlePayload(ArticleVO articleVO, User adminUser) {
         if (articleVO == null) {
             throw new PoetryRuntimeException("文章内容不能为空");
@@ -1021,6 +1053,9 @@ public class ApiController {
         }
         if (!StringUtils.hasText(articleVO.getArticleContent()) && StringUtils.hasText(articleVO.getContent())) {
             articleVO.setArticleContent(articleVO.getContent());
+        }
+        if (articleVO.getArticleSlug() == null && articleVO.getSlug() != null) {
+            articleVO.setArticleSlug(articleVO.getSlug());
         }
         if (articleVO.getSortId() == null && articleVO.getClassify() != null) {
             articleVO.setSortId(articleVO.getClassify());
@@ -1123,6 +1158,9 @@ public class ApiController {
         }
         if (articleVO.getArticleCover() == null && articleVO.getCover() == null) {
             articleVO.setArticleCover(article.getArticleCover());
+        }
+        if (articleVO.getArticleSlug() == null && articleVO.getSlug() == null) {
+            articleVO.setArticleSlug(article.getArticleSlug());
         }
         if (articleVO.getVideoUrl() == null) {
             articleVO.setVideoUrl(article.getVideoUrl());
@@ -1286,7 +1324,8 @@ public class ApiController {
         }
     }
 
-    private void processPostUpdate(Article article, ArticleVO articleVO, Integer previousSortId, Integer previousLabelId) {
+    private void processPostUpdate(Article article, ArticleVO articleVO, Integer previousSortId, Integer previousLabelId,
+                                   String previousArticleSlug) {
         cacheService.evictSortArticleList();
 
         Map<String, String> pendingTranslation = buildPendingTranslation(articleVO);
@@ -1318,7 +1357,8 @@ public class ApiController {
                     null,
                     article.getViewStatus(),
                     "UPDATE",
-                    article.getSubmitToSearchEngine()
+                    article.getSubmitToSearchEngine(),
+                    previousArticleSlug
             ));
         } catch (Exception e) {
             log.error("API更新文章后发布事件失败，文章ID: {}", article.getId(), e);
@@ -1333,6 +1373,7 @@ public class ApiController {
         data.put("id", articleId);
         data.put("articleId", articleId);
         data.put("articleUrl", buildArticleUrl(webInfo, request, articleId));
+        data.put("articleSlug", articleVO.getArticleSlug());
         data.put("viewStatus", articleVO.getViewStatus());
         data.put("sortId", articleVO.getSortId());
         data.put("labelId", articleVO.getLabelId());
@@ -1374,6 +1415,10 @@ public class ApiController {
         data.put("failed", "failed".equals(status.getStatus()));
 
         if (status.getArticleId() != null) {
+            Article article = articleService.getById(status.getArticleId());
+            if (article != null) {
+                data.put("articleSlug", article.getArticleSlug());
+            }
             data.put("articleUrl", buildArticleUrl(webInfo, request, status.getArticleId()));
         }
 
@@ -1479,9 +1524,17 @@ public class ApiController {
             baseUrl = buildApiBaseUrl(request);
         }
         if (!StringUtils.hasText(baseUrl)) {
+            return buildArticlePath(articleId);
+        }
+        return baseUrl.replaceAll("/+$", "") + buildArticlePath(articleId);
+    }
+
+    private String buildArticlePath(Integer articleId) {
+        Article article = articleId == null ? null : articleService.getById(articleId);
+        if (article == null) {
             return "/article/" + articleId;
         }
-        return baseUrl.replaceAll("/+$", "") + "/article/" + articleId;
+        return ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug());
     }
 
     private String buildApiBaseUrl(HttpServletRequest request) {

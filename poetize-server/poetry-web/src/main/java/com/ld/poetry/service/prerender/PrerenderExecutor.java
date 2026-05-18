@@ -43,7 +43,7 @@ class PrerenderExecutor {
     private void executeCleanups(List<PrerenderCleanup> cleanups) {
         for (PrerenderCleanup cleanup : cleanups) {
             switch (cleanup.type()) {
-                case ARTICLE -> prerenderService.deleteArticle(cleanup.articleId());
+                case ARTICLE -> prerenderService.deleteArticle(cleanup.articleId(), cleanup.articleSlug());
                 case CATEGORY_PAGE -> prerenderService.deleteCategoryPage(cleanup.sortId(), cleanup.labelId());
                 case PAGE -> prerenderService.deletePage(cleanup.pageType());
                 case SORT_INDEX -> prerenderService.deleteSortIndexPage();

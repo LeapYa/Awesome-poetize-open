@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import com.ld.poetry.entity.Article;
+import com.ld.poetry.utils.ArticleUrlUtil;
 import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 import java.util.HashMap;
@@ -72,7 +73,7 @@ public class SeoService {
 
                 if (org.springframework.util.StringUtils.hasText(siteAddress)) {
 
-                    String articleUrl = siteAddress + "/article/" + articleId;
+                    String articleUrl = siteAddress + ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug());
 
                     // 推送到所有启用的搜索引擎
                     Map<String, Object> pushResult = searchEnginePushService.pushUrlToAllEngines(articleUrl);

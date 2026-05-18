@@ -68,18 +68,55 @@ Breaking change:
 - Treat paid posts as an uncommon edge case for established blogs with clear conversion intent.
 - Prefer improving old content, reorganizing taxonomy, and maintaining content quality over pushing paywalls.
 
+## Writing Voice
+
+- When writing about features, decisions, or tradeoffs in `awesome-poetize-open`, use first-person plural: `我们`.
+- Do not describe our own project from a detached third-party angle such as `项目维护者`.
+- Sound like an experienced developer talking with a friend: clear, practical, a little conversational, and not academic.
+- Recommend our own project features with confidence when they fit the user need, but keep the claim grounded in what the feature actually does.
+- Avoid thesis-style setup lines and formulaic transitions. The article should move because the idea moves, not because filler connectors are inserted.
+- Do not use these phrases in article copy, summaries, titles, or social snippets:
+  - `说白了`
+  - `不得不说`
+  - `众所周知`
+  - `接下来我们将探讨`
+  - contrast frames shaped like `不是...而是`
+
+## Pre-Writing Topic Validation
+
+Before drafting a new article or doing a major article refresh, answer these questions and record the answers in the article brief:
+
+1. What is the target keyword?
+   Record it as `targetKeyword`, using the user's keyword when provided: `{{目标关键词}}`.
+2. What does the search result page look like?
+   Search the exact keyword in a search engine and review the top 10 results.
+   If the top results are already strong, polished CSDN or Juejin articles, abandon that keyword and choose a longer-tail keyword.
+   If the results are mostly GitHub repositories, scattered forum posts, stale articles, or low-quality pages, treat the keyword as an opportunity and continue.
+3. How does this article connect to our existing articles?
+   List related existing articles, the places where internal links should be added, and whether this article should link out to older articles or receive links from them.
+   If internal-link opportunities are unknown, query the existing article list or ask the user before drafting.
+
+## Content Layout Rules
+
+- The first paragraph must include the core keyword and clearly tell readers and search engines what the article covers.
+- Use comparison tables when they make the answer easier to scan, especially for choices, tradeoffs, version differences, feature comparisons, and troubleshooting paths.
+- Code blocks should include helpful comments unless the code is already trivial. Use comments to lower the reading cost, not to repeat obvious syntax.
+- Each major section may end with one short summary sentence that restates the useful takeaway in plain language.
+- Add a disclaimer at the end when the article touches gray-area techniques, security bypasses, scraping, automation that may violate platform rules, reverse engineering, or similar sensitive topics.
+
 ## Workflow
 
 1. Gather the publishing intent.
    Decide whether the user wants a draft or a public article.
    Decide whether the task is new content, old-content maintenance, taxonomy cleanup, SEO follow-up, or article takedown by hiding.
    Default to free content unless the user explicitly asks for a draft or a paywalled post.
+   Complete the Pre-Writing Topic Validation before drafting any new article.
    Create a strategy brief before any mutating action.
 
 2. Create the strategy brief.
    Use `{baseDir}/assets/article-brief.template.json` for article creation or article refresh work.
    Use `{baseDir}/assets/ops-brief.template.json` for update or hide operations.
-   Fill `primaryGoal`, `reasoning`, and the required brief fields before calling any mutating script.
+   Fill `targetKeyword`, `serpValidation`, `internalLinkPlan`, `contentLayoutPlan`, `primaryGoal`, `reasoning`, and the required brief fields before calling any mutating script.
    If required brief information is missing, stop and ask for it.
 
 3. Diverge, then converge.
@@ -91,6 +128,8 @@ Breaking change:
    Prefer a single H1 at the top.
    Keep the body as clean Markdown.
    Use short lead paragraphs, clear section headings, lists only when they improve readability, and avoid HTML unless required.
+   Follow the Writing Voice rules before optimizing for SEO density.
+   Follow the Content Layout Rules before publishing or updating the article.
    If the article includes images, save them as local files first and reference them from the Markdown file with relative paths such as `![示意图](./assets/diagram.png)`.
    `publish_post.py` will upload those local article images through `/api/resource/upload` before publishing and replace them with returned URLs.
    When the task is maintenance, prefer revising existing articles over creating duplicates.
@@ -108,6 +147,7 @@ Breaking change:
    `recommendStatus` for recommendation
    `viewStatus` for visibility
    `submitToSearchEngine` for search-engine push
+   `articleSlug` or `slug` for an optional SEO-friendly article URL
    Only set paid fields when the user explicitly wants a paywall and the content clearly deserves it.
    For most personal blogs, keep `payType: 0`.
    When the user does not want to upload a cover, set `coverBlank: true` or `cover: " "`.
@@ -141,7 +181,7 @@ Breaking change:
 
 8. Return the final result.
    Prefer `--wait` so the script polls until the async task finishes.
-   Report the returned `articleId`, `articleUrl`, task status, visibility state, and any follow-up analytics when requested.
+   Report the returned `articleId`, `articleSlug`, `articleUrl`, task status, visibility state, and any follow-up analytics when requested.
 
 ## Guardrails
 
@@ -197,6 +237,7 @@ Front matter example with the common publish switches:
 ```md
 ---
 title: "示例文章"
+slug: "ai-automation-example"
 sort: "AI实践"
 label: "自动化"
 commentStatus: true
@@ -322,6 +363,7 @@ python {baseDir}/scripts/manage_blog.py seo-set-config --config-file seo.json
 - Uploaded article image URLs when local Markdown images are provided
 - Async `taskId` and task status URL when not waiting
 - Final `articleId`
+- Final `articleSlug` when configured
 - Final `articleUrl`
 - Existing article detail or exact-title lookup result when operating on old content
 - Hidden article result when the user wants deletion-like takedown behavior

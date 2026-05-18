@@ -42,6 +42,12 @@ public interface ArticleService extends IService<Article> {
 
     PoetryResult<ArticleVO> getArticleById(Integer id, String password);
 
+    PoetryResult<ArticleVO> getArticleByPath(String path, String password);
+
+    PoetryResult<ArticleVO> getArticleByPath(String path, String password, boolean incrementViewCount);
+
+    Integer resolveArticleIdByPath(String path);
+
     PoetryResult<Page> listAdminArticle(BaseRequestVO baseRequestVO, Boolean isBoss);
 
     PoetryResult<ArticleVO> getArticleByIdForUser(Integer id);

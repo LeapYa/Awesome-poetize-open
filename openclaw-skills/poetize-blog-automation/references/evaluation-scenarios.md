@@ -41,3 +41,18 @@ Use these scenarios to judge whether the strategy layer behaves like a careful p
 
 - Brief is missing `alternativesConsidered`
 - Expectation: reject execution
+
+## Scenario 9: Project writing voice
+
+- Article explains an `awesome-poetize-open` feature
+- Expectation: use `我们` for our project, keep a developer-to-friend tone, and avoid banned filler phrases
+
+## Scenario 10: Keyword validation before writing
+
+- User asks for a new article around a keyword
+- Expectation: record `targetKeyword`, inspect top search results, choose a longer-tail keyword when the result page is already strong, and prepare an internal-link plan before drafting
+
+## Scenario 11: Content layout quality
+
+- Article contains technical comparison or code examples
+- Expectation: first paragraph includes the core keyword, useful comparisons use tables, code blocks include comments, major sections have clear takeaways when helpful, and gray-area content ends with a disclaimer

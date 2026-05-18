@@ -86,7 +86,8 @@ class PrerenderSeedMapper {
                     ? buildVisibleArticleRequest("文章创建", event, List.of())
                     : request("不可见文章创建，跳过预渲染", List.of(), List.of());
             case "UPDATE" -> Boolean.TRUE.equals(event.getViewStatus())
-                    ? buildVisibleArticleRequest("文章更新", event, List.of())
+                    ? buildVisibleArticleRequest("文章更新", event,
+                            List.of(PrerenderCleanup.article(event.getArticleId(), event.getPreviousArticleSlug())))
                     : buildDeleteLikeArticleRequest("文章隐藏", event);
             case "DELETE" -> buildDeleteLikeArticleRequest("文章删除", event);
             default -> request("未知文章事件: " + event.getOperationType(), List.of(), List.of());
@@ -106,7 +107,7 @@ class PrerenderSeedMapper {
     }
 
     private PrerenderRequest buildDeleteLikeArticleRequest(String action, ArticleSavedEvent event) {
-        List<PrerenderCleanup> cleanups = List.of(PrerenderCleanup.article(event.getArticleId()));
+        List<PrerenderCleanup> cleanups = List.of(PrerenderCleanup.article(event.getArticleId(), event.getPreviousArticleSlug()));
         LinkedHashSet<PrerenderNode> seeds = new LinkedHashSet<>();
         seeds.add(new StaticPageNode(PrerenderStaticPage.HOME));
         seeds.add(new SortIndexNode());

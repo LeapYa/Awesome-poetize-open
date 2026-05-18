@@ -334,6 +334,7 @@ export default {
   data() {
     return {
       id: this.$route.params.id,
+      articlePathToken: this.$route.params.id,
       lang: this.$route.params.lang,
       subscribe: false,
       article: {},
@@ -431,7 +432,7 @@ export default {
       this.articleContentHtml = ''
       this.articleContentKey = Date.now()
 
-      this.getArticle(localStorage.getItem('article_password_' + this.id))
+      this.getArticle(localStorage.getItem('article_password_' + this.articlePathToken))
 
       if ('0' !== localStorage.getItem('showSubscribe')) {
         this.$notify.success('文章订阅', '点击文章下方订阅/取消订阅专栏', 15000)
@@ -611,24 +612,25 @@ export default {
       const newLang = newParams.lang
       const oldLang = oldParams.lang
 
-      if (newId && newId !== this.id) {
+      if (newId && newId !== this.articlePathToken) {
         // 重置组件状态，防止显示旧数据
         this.resetComponentState()
 
         // 更新组件的id和lang数据
         this.id = newId
+        this.articlePathToken = newId
         this.lang = newLang
 
         // 重新初始化语言设置 - 关键修复：确保每次切换文章都重新初始化语言
         this.initializeLanguageSettings()
           .then(() => {
             // 语言初始化完成后再获取文章
-            const password = localStorage.getItem('article_password_' + this.id)
+            const password = localStorage.getItem('article_password_' + this.articlePathToken)
             this.getArticle(password)
           })
           .catch((error) => {
             // 即使语言初始化失败，也要获取文章
-            const password = localStorage.getItem('article_password_' + this.id)
+            const password = localStorage.getItem('article_password_' + this.articlePathToken)
             this.getArticle(password)
           })
 
@@ -636,7 +638,7 @@ export default {
         this.$nextTick(() => {
           this.checkPendingSubscribe()
         })
-      } else if (newId === this.id && newLang !== oldLang) {
+      } else if (newId === this.articlePathToken && newLang !== oldLang) {
         // 同一文章，仅语言参数变化
         this.lang = newLang
 
@@ -1061,7 +1063,7 @@ export default {
     // 保存订阅意图并跳转到登录页面
     saveSubscribeIntentAndRedirectToLogin() {
       const subscribeIntent = {
-        articleId: this.id,
+        articleId: this.article.id || this.id,
         labelId: this.article.labelId,
         labelName: this.article.label.labelName,
         action: this.subscribe ? 'unsubscribe' : 'subscribe',
@@ -1120,7 +1122,7 @@ export default {
         const subscribeIntent = JSON.parse(pendingSubscribe)
 
         // 检查是否是当前文章的订阅意图
-        if (subscribeIntent.articleId === this.id) {
+        if (String(subscribeIntent.articleId) === String(this.article.id || this.id)) {
           // 清除待执行的订阅意图
           localStorage.removeItem('pendingSubscribe')
 
@@ -1277,9 +1279,10 @@ export default {
     updateMetaTags,
     getArticle(password) {
       this.isLoading = true
+      const articlePathToken = this.articlePathToken || this.id
 
-      // 设置正在加载的文章ID（在this.id更新之后调用，所以this.id已经是新文章ID）
-      this.loadingArticleId = this.id
+      // 设置正在加载的文章URL标识（数字ID或URL别名）
+      this.loadingArticleId = articlePathToken
 
       // 重置状态，防止显示旧数据
       this.article = {}
@@ -1292,27 +1295,24 @@ export default {
 
       // 使用Promise.all并行处理所有请求
       // 如果当前语言不是源语言，在第一次请求时就带上语言参数
-      const articleParams = { id: this.id, password: password }
+      const articleParams = { path: articlePathToken, password: password }
       if (this.currentLang && this.currentLang !== this.sourceLanguage) {
         articleParams.language = this.currentLang
       }
 
       Promise.all([
         this.$http.get(
-          this.$constant.baseURL + '/article/getArticleById',
+          this.$constant.baseURL + '/article/getArticleByPath',
           articleParams
         ),
-        this.$http.post(this.$constant.baseURL + '/weiYan/listNews', {
-          current: 1,
-          size: 9999,
-          source: this.id,
-        }),
         this.fetchArticleMeta(),
       ])
-        .then(async ([articleRes, newsRes]) => {
+        .then(async ([articleRes]) => {
           // 处理文章数据
           if (!this.$common.isEmpty(articleRes.data)) {
             this.article = articleRes.data
+            this.id = this.article.id
+            this.articlePathToken = this.article.articleSlug || String(this.article.id)
 
             // 解密视频URL
             if (this.article.videoUrl) {
@@ -1369,7 +1369,7 @@ export default {
             }, 1000)
 
             if (!this.$common.isEmpty(password)) {
-              localStorage.setItem('article_password_' + this.id, password)
+              localStorage.setItem('article_password_' + this.articlePathToken, password)
             }
             this.showPasswordDialog = false
             if (
@@ -1383,6 +1383,7 @@ export default {
 
             // 获取文章可用的翻译语言并生成动态按钮
             this.getArticleAvailableLanguages()
+            this.checkPendingSubscribe()
           } else {
             // 文章数据为空，说明文章不存在，跳转到404页面
             this.$router.push('/404')
@@ -1390,6 +1391,13 @@ export default {
           }
 
           // 处理"最新进展"数据
+          const newsRes = await this.$http
+            .post(this.$constant.baseURL + '/weiYan/listNews', {
+              current: 1,
+              size: 9999,
+              source: this.article.id,
+            })
+            .catch(() => ({ data: null }))
           if (!this.$common.isEmpty(newsRes.data)) {
             newsRes.data.records.forEach((c) => {
               c.content = c.content.replace(
@@ -1414,7 +1422,7 @@ export default {
           ) {
             // 密码错误，显示密码输入框
             if (!this.$common.isEmpty(password)) {
-              localStorage.removeItem('article_password_' + this.id)
+              localStorage.removeItem('article_password_' + this.articlePathToken)
               this.$message({
                 message: '密码错误，请重新输入！',
                 type: 'error',

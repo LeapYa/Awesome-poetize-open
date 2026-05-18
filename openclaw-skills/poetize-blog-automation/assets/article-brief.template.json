@@ -2,6 +2,26 @@
   "taskType": "create_article",
   "primaryGoal": "asset_maintenance",
   "targetAudience": "Readers who want a clear, practical explanation.",
+  "targetKeyword": "{{目标关键词}}",
+  "serpValidation": {
+    "checked": false,
+    "topResultsQuality": "",
+    "decision": "continue_or_choose_long_tail",
+    "reasoning": ""
+  },
+  "internalLinkPlan": {
+    "relatedExistingArticles": [],
+    "linksToAddInThisArticle": [],
+    "olderArticlesToUpdateWithBacklinks": []
+  },
+  "contentLayoutPlan": {
+    "openingParagraphKeyword": "{{目标关键词}}",
+    "comparisonTables": [],
+    "codeBlocksNeedComments": true,
+    "sectionSummarySentences": true,
+    "disclaimerNeeded": false,
+    "disclaimerReason": ""
+  },
   "publishIntent": "public",
   "reasoning": "This article adds durable value to the blog's long-term content library.",
   "selectedAngle": "Explain the topic through a practical, maintenance-oriented guide.",

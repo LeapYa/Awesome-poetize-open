@@ -294,4 +294,4 @@ python {baseDir}/scripts/publish_post.py --markdown-file article.md --brief-file
 - Upload a local cover image
 - Start an async create or update task
 - Poll task status until publish completes
-- Return `articleId` and `articleUrl` to the caller
+- Return `articleId`, `articleSlug`, and `articleUrl` to the caller

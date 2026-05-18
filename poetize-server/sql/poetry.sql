@@ -55,6 +55,7 @@ CREATE TABLE `poetize`.`article` (
   `label_id` int NOT NULL COMMENT '标签ID',
   `article_cover` varchar(256) DEFAULT NULL COMMENT '封面',
   `article_title` varchar(500) NOT NULL COMMENT '博文标题',
+  `article_slug` varchar(160) DEFAULT NULL COMMENT 'URL别名',
   `article_content` text NOT NULL COMMENT '博文内容',
   `summary` varchar(500) DEFAULT NULL COMMENT '文章摘要',
   `video_url` varchar(1024) DEFAULT NULL COMMENT '视频链接',
@@ -74,7 +75,8 @@ CREATE TABLE `poetize`.`article` (
   `update_by` varchar(32) DEFAULT NULL COMMENT '最终修改人',
   `deleted` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否启用[0:未删除，1:已删除]',
 
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_article_slug` (`article_slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章表';
 
 DROP TABLE IF EXISTS `poetize`.`comment`;

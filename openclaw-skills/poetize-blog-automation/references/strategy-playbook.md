@@ -9,6 +9,27 @@ Use this playbook when OpenClaw needs to decide what kind of blog action to take
 - Prefer maintaining and upgrading existing articles before creating near-duplicate new ones.
 - Use hiding instead of deletion when a post should be taken down from public view.
 
+## Topic validation before writing
+
+Before drafting a new article or making a major refresh, record:
+
+- `targetKeyword`: the exact keyword the article is trying to win, for example `{{目标关键词}}`
+- `serpValidation`: what the top 10 search results look like
+- `internalLinkPlan`: how the article connects to our existing articles
+
+Keyword decision rules:
+
+- If the top 10 results are dominated by strong CSDN or Juejin articles, switch to a longer-tail keyword before writing.
+- If the top 10 results are mostly GitHub repositories, scattered forum posts, stale articles, or low-quality pages, continue because there is likely room for a better article.
+- If search results cannot be checked from the current environment, ask the user for a top-10 snapshot or postpone drafting until the keyword can be verified.
+
+Internal-link decision rules:
+
+- Reuse existing article list/search before drafting when article history is available.
+- Identify older articles this article should link to.
+- Identify older articles that should later link back to this article.
+- Prefer refreshing an existing article when the keyword overlaps heavily with content we already have.
+
 ## Action selection
 
 Choose one action before executing:

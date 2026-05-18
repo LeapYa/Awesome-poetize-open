@@ -267,6 +267,7 @@
 <script>
 import { Document as ElIconDocument } from '@element-plus/icons-vue'
 import { getLanguageName } from '@/utils/languageUtils'
+import { getArticlePath } from '@/utils/article-url'
 
 export default {
   components: {
@@ -288,9 +289,9 @@ export default {
       const baseUrl = window.location.origin
       let articlePath
       if (article.isTranslationMatch && article.matchedLanguage) {
-        articlePath = `/article/${article.matchedLanguage}/${article.id}`
+        articlePath = getArticlePath(article, article.matchedLanguage)
       } else {
-        articlePath = `/article/${article.id}`
+        articlePath = getArticlePath(article)
       }
       const articleUrl = `${baseUrl}${articlePath}`
 
@@ -346,17 +347,17 @@ export default {
       let path
       if (article.isTranslationMatch && article.matchedLanguage) {
         // 如果是翻译匹配，使用语言路径格式
-        path = `/article/${article.matchedLanguage}/${article.id}`
+        path = getArticlePath(article, article.matchedLanguage)
       } else {
         // 原文使用简洁格式
-        path = `/article/${article.id}`
+        path = getArticlePath(article)
       }
       this.$router.push({ path })
     },
 
     // 查看原文
     viewOriginal(article) {
-      this.$router.push(`/article/${article.id}`)
+      this.$router.push(getArticlePath(article))
     },
 
     // 切换翻译视图

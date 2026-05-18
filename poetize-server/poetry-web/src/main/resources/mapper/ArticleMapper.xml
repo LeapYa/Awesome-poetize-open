@@ -10,6 +10,7 @@
         <result column="label_id" property="labelId"/>
         <result column="article_cover" property="articleCover"/>
         <result column="article_title" property="articleTitle"/>
+        <result column="article_slug" property="articleSlug"/>
         <result column="article_content" property="articleContent"/>
         <result column="summary" property="summary"/>
         <result column="video_url" property="videoUrl"/>
@@ -27,7 +28,7 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, user_id, sort_id, label_id, article_cover, article_title, video_url, article_content, summary, password, tips, view_status, recommend_status, view_count, comment_status, create_time, update_time, update_by, deleted
+        id, user_id, sort_id, label_id, article_cover, article_title, article_slug, video_url, article_content, summary, password, tips, view_status, recommend_status, view_count, comment_status, create_time, update_time, update_by, deleted
     </sql>
 
 </mapper>

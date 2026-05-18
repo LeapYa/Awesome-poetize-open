@@ -1,3 +1,5 @@
+import { getArticlePath } from './article-url'
+
 export function setupLanguageSwitchEventDelegation() {
   if (this.languageSwitchHandler) {
     document.removeEventListener('click', this.languageSwitchHandler, true)
@@ -176,11 +178,14 @@ export async function fetchTranslation() {
 
 export function updateUrlWithLanguage(lang) {
   let newPath
+  const articleForPath = this.article && this.article.id
+    ? this.article
+    : { id: this.id, articleSlug: this.articlePathToken }
 
   if (lang === this.sourceLanguage) {
-    newPath = `/article/${this.id}`
+    newPath = getArticlePath(articleForPath)
   } else {
-    newPath = `/article/${lang}/${this.id}`
+    newPath = getArticlePath(articleForPath, lang)
   }
 
   const query = { ...this.$route.query }
