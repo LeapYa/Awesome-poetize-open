@@ -91,7 +91,13 @@
         <el-input v-model="article.articleTitle" maxlength="500" show-word-limit @focus.native="updateDraftEditingField('title', true)" @blur.native="updateDraftEditingField('title', false)" @keydown.native.capture="handleDraftTextShortcut('title', $event)"></el-input>
       </el-form-item>
 
-      <el-form-item label="URL别名" prop="articleSlug">
+      <el-form-item prop="articleSlug">
+        <template slot="label">
+          URL别名
+          <el-tooltip content="仅支持小写英文、数字和短横线，不能是纯数字；例如 spring-boot-seo，留空则使用数字ID" placement="top">
+            <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+          </el-tooltip>
+        </template>
         <el-input
           v-model="article.articleSlug"
           maxlength="160"
@@ -101,10 +107,6 @@
         >
           <template slot="prepend">/article/</template>
         </el-input>
-        <div class="tip-text">
-          <i class="el-icon-info"></i>
-          仅支持小写英文、数字和短横线，不能是纯数字；例如 spring-boot-seo，留空则使用数字ID
-        </div>
       </el-form-item>
 
       <el-form-item label="视频链接" prop="videoUrl">
@@ -137,37 +139,6 @@
           @blur="updateDraftEditingField('content', false)"
           @shortcut="handleDraftEditorShortcut('content', $event)"
         />
-      </el-form-item>
-
-      <el-form-item label="自动摘要">
-        <div class="summary-switch-row">
-          <el-switch
-            v-model="article.autoSummary"
-            :disabled="summaryAutoDisabledByConfig"
-            active-text="开启"
-            inactive-text="手动摘要"
-            active-color="#13CE66"
-            inactive-color="#909399">
-          </el-switch>
-          <el-tooltip :content="summarySwitchTip" placement="top">
-            <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
-          </el-tooltip>
-        </div>
-        <div v-if="summaryAutoDisabledByConfig" class="tip-text">
-          <i class="el-icon-info"></i>
-          文章AI助手已关闭自动摘要，可在下方填写手动摘要；留空时使用纯文本内容摘录作为展示与SEO描述
-        </div>
-      </el-form-item>
-
-      <el-form-item v-if="summaryInputVisible" label="手动摘要" prop="summary">
-        <el-input
-          v-model="article.summary"
-          type="textarea"
-          :rows="4"
-          maxlength="500"
-          show-word-limit
-          placeholder="请输入文章摘要，用于列表、SEO描述和分享预览">
-        </el-input>
       </el-form-item>
 
       <!-- 翻译编辑按钮和跳过开关 -->
@@ -203,6 +174,37 @@
             有未保存的翻译内容 ({{ getLanguageName(pendingTranslation.language) }})
           </el-tag>
         </div>
+      </el-form-item>
+
+      <el-form-item label="自动摘要">
+        <div class="summary-switch-row">
+          <el-switch
+            v-model="article.autoSummary"
+            :disabled="summaryAutoDisabledByConfig"
+            active-text="开启"
+            inactive-text="手动摘要"
+            active-color="#13CE66"
+            inactive-color="#909399">
+          </el-switch>
+          <el-tooltip :content="summarySwitchTip" placement="top">
+            <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+          </el-tooltip>
+        </div>
+        <div v-if="summaryAutoDisabledByConfig" class="tip-text">
+          <i class="el-icon-info"></i>
+          文章AI助手已关闭自动摘要，可在下方填写手动摘要；留空时使用纯文本内容摘录作为展示与SEO描述
+        </div>
+      </el-form-item>
+
+      <el-form-item v-if="summaryInputVisible" label="手动摘要" prop="summary">
+        <el-input
+          v-model="article.summary"
+          type="textarea"
+          :rows="4"
+          maxlength="500"
+          show-word-limit
+          placeholder="请输入文章摘要，用于列表、SEO描述和分享预览">
+        </el-input>
       </el-form-item>
 
       <el-form-item label="是否启用评论" prop="commentStatus">
@@ -362,7 +364,7 @@
         </el-form-item>
       </template>
 
-      <div v-else class="payment-not-enabled-tip" style="margin: 10px 0 20px 120px; color: #909399; font-size: 12px;">
+      <div v-else class="payment-not-enabled-tip">
         <i class="el-icon-info"></i>
         如需设置文章付费，请先在 <b>插件管理 → 文章付费</b> 中启用并配置付费插件。
       </div>
@@ -533,6 +535,15 @@ const uploadPicture = () => import("../common/uploadPicture");
       .replace(/[\s_]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-+|-+$/g, '');
+  };
+
+  const sanitizeArticleSlugInput = (value) => {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-+/, '');
   };
 
   const validateArticleSlug = (rule, value, callback) => {
@@ -974,9 +985,9 @@ const uploadPicture = () => import("../common/uploadPicture");
         }
       },
       handleArticleSlugInput(value) {
-        const normalized = normalizeArticleSlug(value);
-        if (this.article.articleSlug !== normalized) {
-          this.article.articleSlug = normalized;
+        const sanitized = sanitizeArticleSlugInput(value);
+        if (this.article.articleSlug !== sanitized) {
+          this.article.articleSlug = sanitized;
         }
       },
       // 初始化页面数据（优化后的加载流程）
@@ -3215,6 +3226,18 @@ const uploadPicture = () => import("../common/uploadPicture");
   align-items: center;
   gap: 8px;
   min-height: 32px;
+}
+
+.payment-not-enabled-tip {
+  margin: 10px 0 20px 120px;
+  color: #909399;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .payment-not-enabled-tip {
+    margin-left: 0;
+  }
 }
 </style>
 <style scoped src="@/assets/css/postedit.css"></style>
