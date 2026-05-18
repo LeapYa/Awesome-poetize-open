@@ -10506,15 +10506,19 @@ main() {
       info "开始处理 Dockerfile 国内镜像加速..."
       patch_dockerfile_mirror
 
-      # cn-font-split 需要从 GitHub Releases 下载 wasm 二进制，国内直连不通
+      # cn-font-split 优先使用随 Docker 构建上下文携带的 wasm，避免服务器安装时触发外网二进制下载告警
       if [ -z "${CN_FONT_SPLIT_GH_HOST:-}" ]; then
-        local selected_cn_font_split_gh_host
-        selected_cn_font_split_gh_host=$(choose_cn_font_split_gh_host)
-        if [ -n "$selected_cn_font_split_gh_host" ]; then
-          export CN_FONT_SPLIT_GH_HOST="$selected_cn_font_split_gh_host"
-          info "已设置 CN_FONT_SPLIT_GH_HOST=$CN_FONT_SPLIT_GH_HOST"
+        if [ -s "docker/java/cn-font-split-assets/libffi-wasm32-wasip1.wasm" ]; then
+          info "检测到 cn-font-split 离线 WASM 资产，跳过 GitHub 代理探测"
         else
-          warning "未探测到可用的 cn-font-split GitHub 代理，将使用 Dockerfile 默认地址"
+          local selected_cn_font_split_gh_host
+          selected_cn_font_split_gh_host=$(choose_cn_font_split_gh_host)
+          if [ -n "$selected_cn_font_split_gh_host" ]; then
+            export CN_FONT_SPLIT_GH_HOST="$selected_cn_font_split_gh_host"
+            info "已设置 CN_FONT_SPLIT_GH_HOST=$CN_FONT_SPLIT_GH_HOST"
+          else
+            warning "未探测到可用的 cn-font-split GitHub 代理，将使用 Dockerfile 默认地址"
+          fi
         fi
       fi
     else
