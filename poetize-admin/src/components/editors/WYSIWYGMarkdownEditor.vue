@@ -159,7 +159,7 @@
             <i class="el-icon-s-operation"></i>
           </div>
         </el-tooltip>
-        <el-tooltip :content="isFullscreen ? '退出全屏 (Esc)' : '全屏 (F11)'" placement="top" :enterable="false">
+        <el-tooltip ref="fullscreenTooltip" :content="isFullscreen ? '退出全屏 (Esc)' : '全屏 (F11)'" placement="top" :enterable="false">
           <div class="toolbar-item" :class="{ 'active': isFullscreen }" @click="toggleFullscreen">
             <i class="el-icon-full-screen"></i>
           </div>
@@ -197,6 +197,7 @@
         class="source-editor"
         v-model="markdownContent"
         @input="handleSourceInput"
+        @focus="closeFullscreenTooltip"
         @compositionstart="handleCompositionStart"
         @compositionend="handleCompositionEnd"
         @blur="syncFromSource"
@@ -1041,9 +1042,11 @@ export default {
     // ==================== 输入处理 ====================
     
     handleCompositionStart() {
+      this.closeFullscreenTooltip();
       this.isComposing = true;
     },
     handleCompositionEnd() {
+      this.closeFullscreenTooltip();
       this.isComposing = false;
       this.$nextTick(() => {
         this.flushQueuedImageUploads();
@@ -1055,6 +1058,7 @@ export default {
      */
     handleInput(e) {
       if (this.readonly) return;
+      this.closeFullscreenTooltip();
       
       // 如果是语言标签的输入，同步更新 data-lang
       if (e && e.target && e.target.classList && e.target.classList.contains('hl-lang')) {
@@ -1101,6 +1105,7 @@ export default {
      * 处理源码编辑器输入
      */
     handleSourceInput() {
+      this.closeFullscreenTooltip();
       // 源码模式下直接更新
       this.historyNextMode = 'merge';
       this.emitChange();
@@ -2069,6 +2074,7 @@ export default {
      */
     handleFocus() {
       this.isFocused = true;
+      this.closeFullscreenTooltip();
       this.updateSavedSelection();
       this.updateFormatState();
       this.$emit('focus');
@@ -3122,6 +3128,17 @@ export default {
         this.$refs.sourceEditor?.blur();
       } else {
         this.$refs.editorContent?.blur();
+      }
+    },
+
+    closeFullscreenTooltip() {
+      const tooltip = this.$refs.fullscreenTooltip;
+      if (!tooltip) return;
+
+      if (typeof tooltip.doClose === 'function') {
+        tooltip.doClose();
+      } else {
+        tooltip.showPopper = false;
       }
     },
 

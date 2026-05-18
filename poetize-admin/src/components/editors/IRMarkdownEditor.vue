@@ -99,7 +99,7 @@
             <i class="el-icon-s-operation"></i>
           </div>
         </el-tooltip>
-        <el-tooltip :content="isFullscreen ? '退出全屏 (Esc)' : '全屏 (F11)'" placement="top" :enterable="false">
+        <el-tooltip ref="fullscreenTooltip" :content="isFullscreen ? '退出全屏 (Esc)' : '全屏 (F11)'" placement="top" :enterable="false">
           <div class="toolbar-item" :class="{ 'active': isFullscreen }" @click="toggleFullscreen">
             <i class="el-icon-full-screen"></i>
           </div>
@@ -1254,6 +1254,7 @@ export default {
 
     handleEditorFocus() {
       this.isFocused = true;
+      this.closeFullscreenTooltip();
       this.$emit('focus');
       this.scheduleSegmentRender({ delay: 0 });
     },
@@ -1387,6 +1388,7 @@ export default {
      * 处理输入
      */
     handleInput(e) {
+      this.closeFullscreenTooltip();
       if (this.readonly || this.isComposing) return;
       
       const text = e.target.value;
@@ -1400,6 +1402,7 @@ export default {
      * 处理输入法开始
      */
     handleCompositionStart() {
+      this.closeFullscreenTooltip();
       this.isComposing = true;
       this.compositionText = '';
     },
@@ -1415,6 +1418,7 @@ export default {
      * 处理输入法结束
      */
     handleCompositionEnd(e) {
+      this.closeFullscreenTooltip();
       this.isComposing = false;
       const text = e.data;
       this.compositionText = '';
@@ -2282,6 +2286,17 @@ export default {
           }
         }
         document.body.style.overflow = '';
+      }
+    },
+
+    closeFullscreenTooltip() {
+      const tooltip = this.$refs.fullscreenTooltip;
+      if (!tooltip) return;
+
+      if (typeof tooltip.doClose === 'function') {
+        tooltip.doClose();
+      } else {
+        tooltip.showPopper = false;
       }
     },
     

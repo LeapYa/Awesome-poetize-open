@@ -100,7 +100,7 @@
             <i class="el-icon-s-operation"></i>
           </div>
         </el-tooltip>
-        <el-tooltip :content="isFullscreen ? '退出全屏 (Esc)' : '全屏 (F11)'" placement="top" :enterable="false">
+        <el-tooltip ref="fullscreenTooltip" :content="isFullscreen ? '退出全屏 (Esc)' : '全屏 (F11)'" placement="top" :enterable="false">
           <div class="toolbar-item" :class="{ 'active': isFullscreen }" @click="toggleFullscreen">
             <i class="el-icon-full-screen"></i>
           </div>
@@ -116,7 +116,7 @@
           class="editor-textarea"
           :value="internalContent"
           :placeholder="placeholder"
-          @focus="$emit('focus')"
+          @focus="handleEditorFocus"
           @blur="$emit('blur')"
           @input="handleInput"
           @compositionstart="handleCompositionStart"
@@ -537,9 +537,11 @@ export default {
       this.isDarkMode = Boolean(isDark);
     },
     handleCompositionStart() {
+      this.closeFullscreenTooltip();
       this.isComposing = true;
     },
     handleCompositionEnd(e) {
+      this.closeFullscreenTooltip();
       // 合成结束时，有些浏览器/输入法不会立刻触发一次 input，这里主动刷新
       this.isComposing = false;
       if (e && e.target) {
@@ -552,6 +554,7 @@ export default {
       });
     },
     handleInput(e) {
+      this.closeFullscreenTooltip();
       // 合成输入过程中不做预览刷新（避免中间态频繁抖动）；等 compositionend 统一刷新
       if (this.isComposing) {
         // 仍然更新内部内容，保证光标/显示正确
@@ -568,6 +571,22 @@ export default {
       this.$emit('change', downgradedValue);
       // 更新预览（使用原始内容，即升级后的标题）
       this.updatePreview(e.target.value);
+    },
+
+    handleEditorFocus() {
+      this.closeFullscreenTooltip();
+      this.$emit('focus');
+    },
+
+    closeFullscreenTooltip() {
+      const tooltip = this.$refs.fullscreenTooltip;
+      if (!tooltip) return;
+
+      if (typeof tooltip.doClose === 'function') {
+        tooltip.doClose();
+      } else {
+        tooltip.showPopper = false;
+      }
     },
 
     undo() {
