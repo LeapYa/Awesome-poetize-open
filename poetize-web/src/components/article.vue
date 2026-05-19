@@ -821,12 +821,34 @@ export default {
     },
 
     bindAttachmentCardActions(container) {
-        !this.$common.isEmpty(this.mainStore.currentAdmin)
-      if (hasUser) return
+      const root =
+        container ||
+        (this.$el ? this.$el.querySelector('.entry-content') : null) ||
+        document.querySelector('.entry-content')
+      if (!root) return
 
-      event.preventDefault()
-      event.stopPropagation()
-      this.$message.warning('请先登录后查看附件')
+      const privateCards = root.querySelectorAll(
+        '[data-poetize-private-attachment="true"]'
+      )
+      privateCards.forEach((card) => {
+        if (card.dataset.poetizeAttachmentBound === 'true') return
+        card.dataset.poetizeAttachmentBound = 'true'
+
+        card.addEventListener(
+          'click',
+          (event) => {
+            const hasUser =
+              !this.$common.isEmpty(this.mainStore.currentUser) ||
+              !this.$common.isEmpty(this.mainStore.currentAdmin)
+            if (hasUser) return
+
+            event.preventDefault()
+            event.stopPropagation()
+            this.$message.warning('请先登录后查看附件')
+          },
+          true
+        )
+      })
     },
 
     normalizeTaskListCheckboxes(container) {

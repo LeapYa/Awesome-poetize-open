@@ -172,6 +172,16 @@ qiniu:
   bucket:
   downloadUrl:
 
+live2d:
+  assets:
+    # Live2D 模型包按需下载配置。默认先探测 Google，可访问则优先直连 GitHub，不可访问则优先走 ghproxy。
+    static-root: ${LIVE2D_ASSETS_STATIC_ROOT:${RESOURCE_AVAILABILITY_STATICROOTS:}}
+    download-url: ${LIVE2D_API_DOWNLOAD_URL:https://github.com/fghrsh/live2d_api/archive/refs/heads/master.zip}
+    download-proxy-url: ${LIVE2D_API_DOWNLOAD_PROXY_URL:https://ghproxy.com/}
+    connectivity-check-url: ${LIVE2D_CONNECTIVITY_CHECK_URL:https://www.google.com/generate_204}
+    connectivity-check-enabled: ${LIVE2D_CONNECTIVITY_CHECK_ENABLED:true}
+    cdn-base-url: ${LIVE2D_API_CDN_BASE_URL:https://cdn.jsdelivr.net/gh/fghrsh/live2d_api/}
+
 # 兰空图床配置
 lsky:
   enable:

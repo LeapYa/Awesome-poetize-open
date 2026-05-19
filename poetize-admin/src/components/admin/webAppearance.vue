@@ -3,6 +3,25 @@
     <div class="page-header">
       <h3>外观与个性化</h3>
       <p class="page-desc">看板娘、AI聊天、夜间模式、灰色模式、字体、动态标题、随机配置等</p>
+      <div v-if="showLive2dHeaderProgress" class="live2d-header-progress">
+        <el-tooltip
+          placement="top"
+          effect="dark"
+          popper-class="live2d-progress-popper">
+          <div slot="content" class="live2d-progress-tooltip">
+            <div class="live2d-progress-title">{{ live2dInstallTooltipTitle }}</div>
+            <div v-for="line in live2dInstallTooltipLines" :key="line">{{ line }}</div>
+          </div>
+          <span
+            class="live2d-progress-ring"
+            :class="live2dProgressRingClass"
+            :style="live2dProgressRingStyle">
+            <i v-if="live2dInstallTaskState === 'failed'" class="el-icon-close"></i>
+            <i v-else-if="live2dInstallTaskState === 'completed'" class="el-icon-check"></i>
+          </span>
+        </el-tooltip>
+        <span>{{ live2dHeaderProgressText }}</span>
+      </div>
     </div>
 
     <!-- 看板娘 / 夜间 / 灰色 / 动态标题 -->
@@ -53,7 +72,26 @@
         <el-form-item v-if="webInfo.enableWaifu" label="显示模式">
           <el-radio-group v-model="webInfo.waifuDisplayMode" @change="handleWaifuDisplayModeChange">
             <el-radio label="live2d">
-              <span>Live2D看板娘</span>
+              <span class="live2d-radio-label">
+                <span>Live2D看板娘</span>
+                <el-tooltip
+                  v-if="live2dInstallProgressVisible"
+                  placement="top"
+                  effect="dark"
+                  popper-class="live2d-progress-popper">
+                  <div slot="content" class="live2d-progress-tooltip">
+                    <div class="live2d-progress-title">{{ live2dInstallTooltipTitle }}</div>
+                    <div v-for="line in live2dInstallTooltipLines" :key="line">{{ line }}</div>
+                  </div>
+                  <span
+                    class="live2d-progress-ring"
+                    :class="live2dProgressRingClass"
+                    :style="live2dProgressRingStyle">
+                    <i v-if="live2dInstallTaskState === 'failed'" class="el-icon-close"></i>
+                    <i v-else-if="live2dInstallTaskState === 'completed'" class="el-icon-check"></i>
+                  </span>
+                </el-tooltip>
+              </span>
               <span style="color: #909399; font-size: 12px; margin-left: 8px;">（完整动画角色）</span>
             </el-radio>
             <el-radio label="button">
@@ -61,6 +99,23 @@
               <span style="color: #909399; font-size: 12px; margin-left: 8px;">（圆形AI聊天按钮）</span>
             </el-radio>
           </el-radio-group>
+          <div v-if="webInfo.waifuDisplayMode === 'live2d'" class="live2d-asset-row">
+            <el-tag size="mini" :type="live2dAssetStatusTagType">{{ live2dAssetStatusText }}</el-tag>
+            <span class="live2d-asset-detail">{{ live2dAssetStatusDetail }}</span>
+            <el-tooltip
+              :content="live2dAssetTaskRunning ? '刷新 Live2D 下载进度' : '刷新 Live2D 资源状态'"
+              placement="top">
+              <el-button
+                class="live2d-refresh-button"
+                type="text"
+                size="mini"
+                icon="el-icon-refresh"
+                :title="live2dAssetTaskRunning ? '刷新 Live2D 下载进度' : '刷新 Live2D 资源状态'"
+                :loading="live2dAssetStatusLoading"
+                @click="loadLive2dAssetStatus(true)">
+              </el-button>
+            </el-tooltip>
+          </div>
         </el-form-item>
 
         <!-- AI聊天配置区域 -->
@@ -724,6 +779,11 @@ export default {
       fontCleaning: false,
       fontUploadProgress: 0,
       fontResult: null,
+      live2dAssetStatus: null,
+      live2dAssetStatusLoading: false,
+      live2dAssetsInstalling: false,
+      live2dAssetStatusPollTimer: null,
+      live2dInstallActiveTaskId: null,
       pendingSearchFocus: null,
       pendingSearchPanel: null
     };
@@ -735,6 +795,107 @@ export default {
     fontUploadHeaders() {
       // Cookie-based auth: no Authorization header needed, withCredentials handles it
       return {};
+    },
+    live2dAssetStatusText() {
+      if (this.live2dAssetStatusLoading) return '检测中';
+      if (this.live2dAssetTaskRunning) return '后台下载中';
+      if (this.live2dInstallTaskState === 'failed') return '下载失败';
+      return this.live2dAssetStatus?.installed ? '本地模型已安装' : '使用 CDN';
+    },
+    live2dAssetStatusTagType() {
+      if (this.live2dAssetStatusLoading) return 'info';
+      if (this.live2dAssetTaskRunning) return 'info';
+      if (this.live2dInstallTaskState === 'failed') return 'danger';
+      return this.live2dAssetStatus?.installed ? 'success' : 'warning';
+    },
+    live2dAssetStatusDetail() {
+      if (!this.live2dAssetStatus) {
+        return '本地模型包未检测，默认从 CDN 加载。';
+      }
+      if (this.live2dAssetTaskRunning) {
+        return `${this.live2dInstallTask.stage || '下载中'} ${this.live2dInstallProgress}%`;
+      }
+      if (this.live2dInstallTaskState === 'failed') {
+        return this.live2dInstallTask.message || '下载失败，可刷新状态后重试。';
+      }
+      if (this.live2dAssetStatus.installed) {
+        return `本地资源约 ${this.formatSize(this.live2dAssetStatus.totalSize)}，前端优先读取本地。`;
+      }
+      return '本地不放大模型包，访问时从 CDN 按需加载。';
+    },
+    live2dInstallTask() {
+      return this.live2dAssetStatus?.installTask || {};
+    },
+    live2dInstallTaskState() {
+      return this.live2dInstallTask.state || 'idle';
+    },
+    live2dAssetTaskRunning() {
+      return this.isLive2dInstallRunning(this.live2dInstallTask);
+    },
+    live2dInstallProgress() {
+      const progress = Number(this.live2dInstallTask.progress || 0);
+      return Math.max(0, Math.min(100, Math.round(progress)));
+    },
+    live2dInstallProgressVisible() {
+      return this.live2dAssetTaskRunning
+        || (!!this.live2dInstallTask.id && ['failed', 'completed'].includes(this.live2dInstallTaskState));
+    },
+    showLive2dAssetInlineProgress() {
+      return this.webInfo.enableWaifu;
+    },
+    showLive2dHeaderProgress() {
+      return this.live2dInstallProgressVisible && !this.showLive2dAssetInlineProgress;
+    },
+    live2dHeaderProgressText() {
+      if (this.live2dAssetTaskRunning) {
+        return `${this.live2dInstallTask.stage || 'Live2D 模型后台下载中'} ${this.live2dInstallProgress}%`;
+      }
+      if (this.live2dInstallTaskState === 'failed') {
+        return this.live2dInstallTask.message || 'Live2D 模型下载失败，将继续使用 CDN';
+      }
+      return this.live2dInstallTask.message || 'Live2D 模型资源已就绪';
+    },
+    live2dProgressRingClass() {
+      return {
+        'is-running': this.live2dAssetTaskRunning,
+        'is-failed': this.live2dInstallTaskState === 'failed',
+        'is-completed': this.live2dInstallTaskState === 'completed'
+      };
+    },
+    live2dProgressRingStyle() {
+      return {
+        '--progress': `${this.live2dInstallProgress}`
+      };
+    },
+    live2dInstallTooltipTitle() {
+      if (this.live2dAssetTaskRunning) {
+        return `Live2D 模型后台下载：${this.live2dInstallProgress}%`;
+      }
+      if (this.live2dInstallTaskState === 'failed') {
+        return 'Live2D 模型下载失败';
+      }
+      return 'Live2D 模型资源已就绪';
+    },
+    live2dInstallTooltipLines() {
+      const task = this.live2dInstallTask;
+      const lines = [];
+      if (task.stage) {
+        lines.push(`阶段：${task.stage}`);
+      }
+      if (task.message) {
+        lines.push(`状态：${task.message}`);
+      }
+      if (task.downloadedBytes > 0) {
+        const totalText = task.totalBytes > 0 ? this.formatSize(task.totalBytes) : '未知大小';
+        lines.push(`进度：${this.formatSize(task.downloadedBytes)} / ${totalText}`);
+      }
+      if (task.sourceType) {
+        lines.push(`来源：${task.sourceType === 'proxy' ? 'ghproxy 代理' : 'GitHub 直连'}`);
+      }
+      if (task.currentUrl) {
+        lines.push(`地址：${task.currentUrl}`);
+      }
+      return lines.length ? lines : ['等待后台任务状态更新'];
     }
   },
   watch: {
@@ -772,6 +933,7 @@ export default {
   },
   beforeDestroy() {
     window.removeEventListener('resize', this.checkMobileView);
+    this.stopLive2dAssetStatusPolling();
   },
   methods: {
     toPositiveInteger(value, fallback) {
@@ -805,6 +967,7 @@ export default {
           this.randomAvatar = JSON.parse(res.data.randomAvatar || '[]');
           this.randomName = JSON.parse(res.data.randomName || '[]');
           this.randomCover = JSON.parse(res.data.randomCover || '[]');
+          this.loadLive2dAssetStatus(false);
           // 解析移动端侧边栏配置
           if (res.data.mobileDrawerConfig) {
             try {
@@ -993,11 +1156,155 @@ export default {
       });
     },
 
-    handleWaifuChange(value) {
+    async handleWaifuChange(value) {
       this.webInfo.enableWaifu = value;
+      if (value && this.webInfo.waifuDisplayMode === 'live2d') {
+        await this.ensureLive2dAssetsChoice();
+      }
     },
-    handleWaifuDisplayModeChange(value) {
+    async handleWaifuDisplayModeChange(value) {
       this.webInfo.waifuDisplayMode = value;
+      if (value === 'live2d') {
+        await this.ensureLive2dAssetsChoice();
+      }
+    },
+    async loadLive2dAssetStatus(showMessage = false) {
+      this.live2dAssetStatusLoading = true;
+      try {
+        const previousTask = this.live2dAssetStatus?.installTask;
+        const res = await this.$http.get(this.$constant.baseURL + '/webInfo/live2d/assets/status', {}, true);
+        if (res.code === 200 && res.data) {
+          this.live2dAssetStatus = res.data;
+          this.syncLive2dInstallPolling(res.data, previousTask);
+          if (showMessage) {
+            this.$message.success('Live2D 模型资源状态已刷新');
+          }
+          return res.data;
+        }
+        throw new Error(res.message || '获取 Live2D 模型资源状态失败');
+      } catch (error) {
+        if (showMessage) {
+          this.$message.warning(error.message || '获取 Live2D 模型资源状态失败，将使用 CDN');
+        }
+        return { installed: false };
+      } finally {
+        this.live2dAssetStatusLoading = false;
+      }
+    },
+    startLive2dAssetStatusPolling() {
+      if (this.live2dAssetStatusPollTimer) {
+        return;
+      }
+      this.live2dAssetStatusPollTimer = window.setInterval(() => {
+        this.pollLive2dAssetStatus();
+      }, 1500);
+    },
+    stopLive2dAssetStatusPolling() {
+      if (this.live2dAssetStatusPollTimer) {
+        window.clearInterval(this.live2dAssetStatusPollTimer);
+        this.live2dAssetStatusPollTimer = null;
+      }
+    },
+    async pollLive2dAssetStatus() {
+      try {
+        const previousTask = this.live2dAssetStatus?.installTask;
+        const res = await this.$http.get(this.$constant.baseURL + '/webInfo/live2d/assets/status', {}, true);
+        if (res.code === 200 && res.data) {
+          this.live2dAssetStatus = res.data;
+          this.syncLive2dInstallPolling(res.data, previousTask);
+        }
+      } catch (error) {
+        // 轮询失败时保持当前页面状态，下一轮继续尝试。
+      }
+    },
+    syncLive2dInstallPolling(status, previousTask = null) {
+      const task = status?.installTask;
+      if (this.isLive2dInstallRunning(task)) {
+        this.live2dInstallActiveTaskId = task.id || this.live2dInstallActiveTaskId;
+        this.startLive2dAssetStatusPolling();
+        return;
+      }
+
+      this.stopLive2dAssetStatusPolling();
+      if (!task || !task.id) {
+        return;
+      }
+
+      const wasRunning = this.isLive2dInstallRunning(previousTask)
+        || (this.live2dInstallActiveTaskId && this.live2dInstallActiveTaskId === task.id);
+      if (!wasRunning) {
+        return;
+      }
+
+      this.live2dInstallActiveTaskId = null;
+      if (task.state === 'completed') {
+        this.$message.success(task.message || 'Live2D 本地模型下载完成');
+      } else if (task.state === 'failed') {
+        this.$message.warning((task.message || 'Live2D 模型资源下载失败') + '，将继续使用 CDN。');
+      }
+    },
+    isLive2dInstallRunning(task) {
+      return !!task && ['queued', 'preparing', 'probing', 'downloading', 'extracting', 'installing'].includes(task.state);
+    },
+    async ensureLive2dAssetsChoice() {
+      const status = await this.loadLive2dAssetStatus(false);
+      if (status.installed) {
+        return;
+      }
+      if (this.isLive2dInstallRunning(status.installTask)) {
+        this.$message.info('Live2D 模型正在后台下载，完成前会继续使用 CDN。');
+        this.startLive2dAssetStatusPolling();
+        return;
+      }
+
+      try {
+        await this.$confirm(
+          '当前部署包不再内置 Live2D 大模型资源。你可以启动后台下载到本地静态目录，下载期间无需等待，完成前会继续使用 CDN 加载。',
+          'Live2D 模型资源未安装',
+          {
+            confirmButtonText: '后台下载到本地',
+            cancelButtonText: '使用 CDN',
+            type: 'warning',
+            distinguishCancelAndClose: true
+          }
+        );
+        await this.installLive2dAssets();
+      } catch (action) {
+        if (action === 'cancel') {
+          this.$message.info('已选择 CDN 加载 Live2D 模型，不占用本地部署包体积。');
+        }
+      }
+    },
+    async installLive2dAssets() {
+      if (this.live2dAssetsInstalling || this.live2dAssetTaskRunning) {
+        this.startLive2dAssetStatusPolling();
+        return true;
+      }
+
+      this.live2dAssetsInstalling = true;
+
+      try {
+        const previousTask = this.live2dAssetStatus?.installTask;
+        const res = await this.$http.post(this.$constant.baseURL + '/webInfo/live2d/assets/install', { force: false }, true);
+        if (res.code === 200 && res.data) {
+          this.live2dAssetStatus = res.data;
+          this.syncLive2dInstallPolling(res.data, previousTask);
+          if (res.data.skipped) {
+            this.$message.success('Live2D 本地模型已存在');
+          } else if (res.data.alreadyRunning) {
+            this.$message.info('Live2D 模型已在后台下载中');
+          } else {
+            this.$message.success('Live2D 模型已开始后台下载，完成前会继续使用 CDN。');
+          }
+          return true;
+        }
+        throw new Error(res.message || '启动 Live2D 模型下载失败');
+      } catch (error) {
+        this.$message.warning((error.message || '启动 Live2D 模型下载失败') + '，将继续使用 CDN。');
+        return false;
+      } finally {
+        this.live2dAssetsInstalling = false;
+      }
     },
     handleMouseClickEffectChange(value) {
       this.webInfo.mouseClickEffect = value;
@@ -1448,6 +1755,99 @@ export default {
   box-shadow: 0 6px 16px rgba(64,158,255,0.4);
 }
 
+.live2d-asset-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  max-width: 680px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.live2d-radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.live2d-asset-detail {
+  flex: 1;
+  min-width: 180px;
+  line-height: 20px;
+}
+
+.live2d-refresh-button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-left: auto;
+  color: #909399;
+}
+
+.live2d-refresh-button:hover {
+  color: #409eff;
+}
+
+.live2d-progress-ring {
+  --progress: 0;
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  color: #67c23a;
+  cursor: help;
+  background:
+    conic-gradient(#606266 calc(var(--progress) * 1%), rgba(144, 147, 153, 0.25) 0);
+}
+
+.live2d-progress-ring::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.live2d-progress-ring.is-running::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: #606266;
+  animation: live2d-progress-spin 0.9s linear infinite;
+  z-index: 1;
+}
+
+.live2d-progress-ring.is-completed {
+  background: conic-gradient(#67c23a 100%, rgba(103, 194, 58, 0.18) 0);
+}
+
+.live2d-progress-ring.is-failed {
+  color: #f56c6c;
+  background: conic-gradient(#f56c6c calc(var(--progress) * 1%), rgba(245, 108, 108, 0.18) 0);
+}
+
+.live2d-progress-ring i {
+  position: relative;
+  z-index: 2;
+  font-size: 11px;
+  line-height: 1;
+}
+
+@keyframes live2d-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .pro-max-section {
   color: #333;
 }
@@ -1665,6 +2065,19 @@ export default {
   color: #909399;
 }
 
+.live2d-header-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  color: #606266;
+  font-size: 12px;
+  line-height: 20px;
+}
+
 .my-tag {
   margin-bottom: 20px !important;
   width: 100%;
@@ -1865,6 +2278,21 @@ export default {
 <style>
 .el-collapse-item__wrap { overflow: visible !important; }
 .el-collapse-item__content { overflow: visible !important; }
+
+.live2d-progress-popper {
+  max-width: 360px;
+}
+
+.live2d-progress-tooltip {
+  max-width: 340px;
+  line-height: 1.7;
+  word-break: break-all;
+}
+
+.live2d-progress-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
 
 /* 移动端AI配置对话框 */
 @media screen and (max-width: 768px) {

@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.http.MediaType;
 
 /**
  * 首页控制器
@@ -29,10 +30,21 @@ public class HomeController {
     }
 
     /**
-     * 单独处理前端文章路由，排除API路径
-     * 只匹配非API的文章路径，如 /article/123, /article/detail/123 等
+     * 数字文章地址也可能是前端文章页，浏览器刷新时优先交给 SPA。
      */
-    @GetMapping("/article/{path:(?!api).*}")
+    @GetMapping(value = "/article/{id:\\d+}", headers = "Accept=text/html", produces = MediaType.TEXT_HTML_VALUE)
+    public String forwardNumericArticleToIndex() {
+        return "forward:/index.html";
+    }
+
+    /**
+     * 单独处理前端文章路由，避免拦截 /article 下的 JSON API。
+     * 只在浏览器请求 HTML 页面时转发，如 /article/123、/article/slug、/article/en/slug。
+     */
+    @GetMapping(value = {
+            "/article/{path:(?!\\d+$).+}",
+            "/article/{lang:[a-zA-Z]{2,8}(?:-[a-zA-Z]{2,8})?}/{path}"
+    }, headers = "Accept=text/html", produces = MediaType.TEXT_HTML_VALUE)
     public String forwardArticleToIndex() {
         return "forward:/index.html";
     }

@@ -135,10 +135,7 @@ export async function loadMermaidResources() {
  */
 export async function loadLive2DResources(live2dPath) {
   const resources = [
-    { url: `${live2dPath}waifu.css`, type: 'css' },
     { url: `${live2dPath}live2d.min.js`, type: 'js' },
-    { url: `${live2dPath}waifu-drag.css`, type: 'css' },
-    { url: `${live2dPath}waifu-drag.js`, type: 'js' },
   ]
 
   try {

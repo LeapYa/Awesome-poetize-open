@@ -100,6 +100,9 @@ public class WebInfoController {
     @Autowired
     private com.ld.poetry.service.ai.rag.RagSyncService ragSyncService;
 
+    @Autowired
+    private com.ld.poetry.service.Live2dAssetService live2dAssetService;
+
     /**
      * 更新完整网站信息（用于基本信息保存）
      */
@@ -208,6 +211,30 @@ public class WebInfoController {
         } catch (Exception e) {
             log.error("更新网站信息失败", e);
             return PoetryResult.fail("更新网站信息失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取 Live2D 模型资源状态。
+     * 未安装本地资源时，前端会自动使用 CDN。
+     */
+    @GetMapping("/live2d/assets/status")
+    public PoetryResult<Map<String, Object>> getLive2dAssetStatus() {
+        return PoetryResult.success(live2dAssetService.getStatus());
+    }
+
+    /**
+     * 创建 Live2D 模型资源后台下载任务。
+     */
+    @LoginCheck(0)
+    @PostMapping("/live2d/assets/install")
+    public PoetryResult<Map<String, Object>> installLive2dAssets(@RequestBody(required = false) Map<String, Object> params) {
+        try {
+            boolean force = params != null && Boolean.TRUE.equals(params.get("force"));
+            return PoetryResult.success(live2dAssetService.install(force));
+        } catch (Exception e) {
+            log.error("安装 Live2D 模型资源失败", e);
+            return PoetryResult.fail("安装 Live2D 模型资源失败: " + e.getMessage());
         }
     }
 

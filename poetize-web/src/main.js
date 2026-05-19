@@ -13,7 +13,7 @@ import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 import 'element-plus/es/components/notification/style/css'
 import 'element-plus/es/components/loading/style/css'
-import { createPinia } from 'pinia'
+import { createPinia, setActivePinia } from 'pinia'
 import mitt from 'mitt'
 
 // 工具函数
@@ -56,6 +56,7 @@ const app = createApp(App)
 
 // 初始化 Pinia - 必须在 app.use(pinia) 之前创建
 const pinia = createPinia()
+setActivePinia(pinia)
 
 // ==================== 插件注册 ====================
 // 重要：pinia 必须最先注册，因为其他代码可能依赖它
@@ -65,7 +66,7 @@ app.use(router)
 
 // ==================== 现在可以安全使用 store 了 ====================
 // 在 app.use(pinia) 之后立即创建 store 实例
-const mainStore = useMainStore()
+const mainStore = useMainStore(pinia)
 
 // 注册全局指令
 app.directive('animate', animateDirective)
@@ -164,11 +165,15 @@ nextTick(() => {
             // 初始化图片懒加载
             initImageLoader()
 
-            // 启动当前激活的粒子特效插件
-            initParticleEffect()
-
             // 注册 PWA Service Worker
             registerServiceWorker(notificationManager.info)
+
+            await router.isReady().catch(err => {
+                console.debug('等待首屏路由就绪失败:', err)
+            })
+
+            // 启动当前激活的粒子特效插件
+            initParticleEffect()
         } catch (err) {
             console.error('初始化非关键模块失败:', err)
         }

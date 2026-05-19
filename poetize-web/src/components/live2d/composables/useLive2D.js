@@ -72,14 +72,14 @@ export function useLive2D() {
    * 切换模型
    */
   const loadRandomModel = () => {
-    store.loadRandomModel()
+    return store.loadRandomModel()
   }
 
   /**
    * 切换材质
    */
   const changeTexture = () => {
-    store.changeTexture()
+    return store.changeTexture()
   }
 
   /**

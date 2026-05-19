@@ -52,11 +52,10 @@ export default defineComponent({
 <style scoped>
 .waifu-tips {
   position: absolute;
-  bottom: 120px;
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  max-width: 250px;
+  bottom: calc(var(--waifu-size, 280px) - 18px);
+  left: 18px;
+  width: min(250px, calc(100vw - 36px));
+  max-width: calc(100vw - 36px);
   min-height: 60px;
   padding: 10px 15px;
   background: rgba(236, 217, 188, 0.5);

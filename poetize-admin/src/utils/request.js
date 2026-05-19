@@ -146,6 +146,7 @@ const TIMEOUT_CONFIG = {
   SEO: 30000,               // SEO请求30秒
   TRANSLATION: 120000,      // 翻译请求2分钟
   ARTICLE_SAVE: 300000,     // 文章保存最少5分钟
+  LIVE2D_ASSET_INSTALL: 30000,  // Live2D模型包后台下载任务启动30秒
   ARTICLE_BUFFER: 30        // 文章保存缓冲时间（秒）
 };
 
@@ -193,6 +194,13 @@ function configureTimeout(config) {
   if (url.includes('/api/translation/')) {
     if (isDefaultTimeout) {
       config.timeout = TIMEOUT_CONFIG.TRANSLATION;
+    }
+    return config;
+  }
+
+  if (url.includes('/webInfo/live2d/assets/install')) {
+    if (isDefaultTimeout) {
+      config.timeout = TIMEOUT_CONFIG.LIVE2D_ASSET_INSTALL;
     }
     return config;
   }

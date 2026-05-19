@@ -4,7 +4,7 @@
     <el-divider content-position="left">模型配置</el-divider>
     <el-form-item label="模型路径">
       <el-input v-model="waifuConfig.modelPath" placeholder="例如: Potion-Maker/Pio"></el-input>
-      <div class="sub-title">相对于 /static/live2d_api/model/ 的路径</div>
+      <div class="sub-title">相对于 Live2D API 的 model/ 目录，本地包和 CDN 使用同一套路径</div>
     </el-form-item>
     <el-form-item label="材质列表">
       <el-input type="textarea" :rows="3" v-model="waifuConfig.texturesStr" placeholder="每行一个材质路径，例如：&#10;Potion-Maker/Pio&#10;Potion-Maker/Pio-2"></el-input>

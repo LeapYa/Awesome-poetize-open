@@ -622,7 +622,7 @@ server {
             # Live2D资源现在由前端动态preload，避免重复预加载
             # add_header Link '</static/live2d-widget/dist/live2d.min.js>; rel=preload; as=script';
             # add_header Link '</static/live2d-widget/dist/waifu.css>; rel=preload; as=style';
-            # add_header Link '</static/live2d_api/model_list.json>; rel=preload; as=fetch; crossorigin=anonymous';
+            # Live2D 模型包已改为按需本地安装或 CDN 加载，不再默认预加载 model_list.json。
         }
     }
 

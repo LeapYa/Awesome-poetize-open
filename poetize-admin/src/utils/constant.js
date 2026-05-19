@@ -38,8 +38,10 @@ export default {
 
   // 本地看板娘资源路径（使用主站的静态资源）
   live2d_path: "/static/live2d-widget/dist/",
-  // 使用本地模型文件
-  cdnPath: "/static/live2d_api/",
+  // Live2D 模型默认走 CDN，本地模型包按需下载后会自动切回 /static/live2d_api/
+  localLive2dApiPath: "/static/live2d_api/",
+  remoteLive2dApiPath: "https://cdn.jsdelivr.net/gh/fghrsh/live2d_api/",
+  cdnPath: "https://cdn.jsdelivr.net/gh/fghrsh/live2d_api/",
   waifuPath: "/webInfo/getWaifuJson",
   // 一言API保留外部链接，但添加本地备用数据
   hitokoto: "https://v1.hitokoto.cn",

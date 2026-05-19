@@ -4,6 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import constant from '@/utils/constant'
+import { fetchLive2DAssetStatus, getDefaultLive2DBaseUrl, normalizeLive2DBaseUrl } from '@/utils/live2dAssets'
 
 export const useLive2DStore = defineStore('live2d', {
   state: () => ({
@@ -17,6 +18,8 @@ export const useLive2DStore = defineStore('live2d', {
     currentTextureId: 0,
     modelList: null,
     modelLoading: false,
+    assetStatus: null,
+    modelBaseUrl: getDefaultLive2DBaseUrl(),
 
     // 位置和交互
     position: (() => {
@@ -145,10 +148,26 @@ export const useLive2DStore = defineStore('live2d', {
     },
 
     /**
+     * 获取 Live2D 模型资源状态，本地包不存在时使用 CDN。
+     */
+    async loadAssetStatus(force = false) {
+      if (this.assetStatus && !force) {
+        return this.assetStatus
+      }
+
+      const status = await fetchLive2DAssetStatus()
+      this.assetStatus = status
+      this.modelBaseUrl = normalizeLive2DBaseUrl(status.modelBaseUrl)
+      return status
+    },
+
+    /**
      * 加载模型列表
      * 优先从后端获取激活的看板娘模型配置
      */
     async loadModelList() {
+      await this.loadAssetStatus()
+
       // 首先尝试从后端获取所有启用的看板娘模型
       try {
         const response = await fetch(
@@ -206,8 +225,9 @@ export const useLive2DStore = defineStore('live2d', {
       }
 
       // 降级：使用本地 model_list.json
-      const cacheKey = 'model-list-cache'
-      const cacheTimeKey = 'model-list-cache-time'
+      const modelBaseUrl = normalizeLive2DBaseUrl(this.modelBaseUrl)
+      const cacheKey = `model-list-cache:${modelBaseUrl}`
+      const cacheTimeKey = `model-list-cache-time:${modelBaseUrl}`
       const cacheDuration = 24 * 60 * 60 * 1000 // 1天
 
       const cachedTime = localStorage.getItem(cacheTimeKey)
@@ -226,7 +246,7 @@ export const useLive2DStore = defineStore('live2d', {
       }
 
       try {
-        const cdnPath = constant.cdnPath
+        const cdnPath = modelBaseUrl
         const response = await fetch(`${cdnPath}model_list.json?t=${now}`)
 
         if (!response.ok) {
@@ -308,20 +328,23 @@ export const useLive2DStore = defineStore('live2d', {
     /**
      * 随机切换模型
      */
-    loadRandomModel() {
-      if (!this.modelList) return
-
-      const modelCount = this.modelList.models.length
-      let newModelId = Math.floor(Math.random() * modelCount)
-
-      // 避免重复
-      if (newModelId === this.currentModelId && modelCount > 1) {
-        newModelId = (newModelId + 1) % modelCount
+    async loadRandomModel() {
+      if (!this.modelList) {
+        await this.loadModelList()
       }
 
+      if (!this.modelList || !Array.isArray(this.modelList.models)) return
+
+      const modelCount = this.modelList.models.length
+      if (modelCount <= 1) {
+        this.showMessage('暂时没有其他角色哦～', 3000, 10)
+        return
+      }
+
+      const newModelId = (this.currentModelId + 1) % modelCount
       this.currentTextureId = 0
 
-      this.loadModel(newModelId, '看看我的新造型吧！')
+      await this.loadModel(newModelId, '看看我的新造型吧！')
     },
 
     /**
@@ -356,6 +379,18 @@ export const useLive2DStore = defineStore('live2d', {
         sessionStorage.removeItem('waifu-text')
         this.messageTimer = null
       }, timeout)
+    },
+
+    /**
+     * 清除当前气泡消息
+     */
+    clearMessage() {
+      if (this.messageTimer) {
+        clearTimeout(this.messageTimer)
+        this.messageTimer = null
+      }
+      this.currentMessage = null
+      sessionStorage.removeItem('waifu-text')
     },
 
     /**
