@@ -45,11 +45,10 @@ export const notificationManager = {
       taskId
     });
     
-    if (taskId && this.getInstance().startPolling) {
-      this.getInstance().startPolling(taskId);
-    }
     if (taskId && this.getInstance().startStream) {
       this.getInstance().startStream(taskId);
+    } else if (taskId && this.getInstance().startPolling) {
+      this.getInstance().startPolling(taskId);
     }
     
     return notificationId;

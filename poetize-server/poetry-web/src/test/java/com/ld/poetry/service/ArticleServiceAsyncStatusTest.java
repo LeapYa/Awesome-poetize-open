@@ -33,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -79,8 +80,10 @@ class ArticleServiceAsyncStatusTest {
             return true;
         }).when(service).save(any(Article.class));
 
-        doNothing().when(summaryService).generateAndSaveSummary(anyInt());
-        doNothing().when(summaryService).updateSummary(anyInt(), anyString());
+        SummaryService.SummaryTaskResult summarySuccess =
+                new SummaryService.SummaryTaskResult("saved", "摘要已生成", false);
+        when(summaryService.generateAndSaveSummary(anyInt(), any())).thenReturn(summarySuccess);
+        when(summaryService.updateSummary(anyInt(), anyString(), any())).thenReturn(summarySuccess);
         doNothing().when(cacheService).evictSortArticleList();
         doNothing().when(eventPublisher).publishEvent(any(ArticleSavedEvent.class));
         when(translationService.saveTranslationResult(anyInt(), anyString(), anyString(), anyString())).thenReturn(true);
@@ -97,7 +100,7 @@ class ArticleServiceAsyncStatusTest {
         assertEquals("complete", finalStatus.getStage());
         assertEquals("skipped", finalStatus.getTranslationStatus());
         assertTrue(finalStatus.getMessage().contains("已跳过AI翻译"));
-        verify(summaryService, times(1)).generateAndSaveSummary(101);
+        verify(summaryService, times(1)).generateAndSaveSummary(eq(101), any());
     }
 
     @Test
@@ -116,7 +119,7 @@ class ArticleServiceAsyncStatusTest {
         assertEquals("manual_saved", finalStatus.getTranslationStatus());
         assertTrue(finalStatus.getMessage().contains("手动翻译"));
         verify(translationService, times(1)).saveTranslationResult(101, "Manual Title", "Manual Content", "en");
-        verify(summaryService, times(1)).generateAndSaveSummary(101);
+        verify(summaryService, times(1)).generateAndSaveSummary(eq(101), any());
     }
 
     @Test
@@ -131,7 +134,7 @@ class ArticleServiceAsyncStatusTest {
         assertEquals("complete", finalStatus.getStage());
         assertEquals("failed", finalStatus.getTranslationStatus());
         assertTrue(finalStatus.getMessage().contains("翻译失败"));
-        verify(summaryService, times(1)).generateAndSaveSummary(101);
+        verify(summaryService, times(1)).generateAndSaveSummary(eq(101), any());
     }
 
     @Test
@@ -170,7 +173,53 @@ class ArticleServiceAsyncStatusTest {
         assertEquals("success", finalStatus.getStatus());
         assertEquals("complete", finalStatus.getStage());
         assertEquals("saved", finalStatus.getTranslationStatus());
-        verify(summaryService, times(1)).generateAndSaveSummary(101);
+        verify(summaryService, times(1)).generateAndSaveSummary(eq(101), any());
+    }
+
+    @Test
+    void saveArticleAsync_whenTranslationRetries_keepsReceivedCharsMonotonic() throws Exception {
+        when(sysAiConfigService.getArticleAiConfigInternal("default")).thenReturn(configWithType("llm"));
+
+        CountDownLatch progressEmitted = new CountDownLatch(1);
+        CountDownLatch releaseTranslation = new CountDownLatch(1);
+
+        when(translationService.translateArticleOnly(anyString(), anyString(), anyBoolean(), any(), any()))
+                .thenAnswer(invocation -> {
+                    TranslationService.TranslationProgressListener listener = invocation.getArgument(4);
+                    listener.onEvent("translation_delta", Map.of(
+                            "currentLength", 10000,
+                            "receivedLength", 10000));
+                    listener.onEvent("content_delta", Map.of(
+                            "delta", "first partial",
+                            "currentLength", 5000,
+                            "receivedLength", 12000));
+                    listener.onEvent("retry", Map.of(
+                            "attempt", 2,
+                            "message", "正在重试整篇流式翻译..."));
+                    listener.onEvent("content_delta", Map.of(
+                            "delta", "retry partial",
+                            "currentLength", 5000,
+                            "receivedLength", 15000));
+                    progressEmitted.countDown();
+
+                    assertTrue(releaseTranslation.await(2, TimeUnit.SECONDS));
+                    return Map.of(
+                            "title", "Translated Title",
+                            "content", "Translated Content",
+                            "language", "en");
+                });
+
+        PoetryResult<String> result = service.saveArticleAsync(buildCreateArticle(), false, null);
+        assertTrue(progressEmitted.await(2, TimeUnit.SECONDS));
+
+        ArticleSaveStatus interimStatus = service.getArticleSaveStatus(result.getData()).getData();
+        assertNotNull(interimStatus);
+        assertEquals(15000, interimStatus.getTranslationReceivedChars());
+        assertTrue(interimStatus.getMessage().contains("已接收 15000 字"));
+
+        releaseTranslation.countDown();
+        ArticleSaveStatus finalStatus = awaitTerminalStatus(result.getData());
+        assertEquals("success", finalStatus.getStatus());
     }
 
     @Test
@@ -190,7 +239,7 @@ class ArticleServiceAsyncStatusTest {
         assertEquals("success", finalStatus.getStatus());
         assertEquals("manual_saved", finalStatus.getTranslationStatus());
         verify(translationService, times(1)).saveTranslationResult(202, "Updated Manual Title", "Updated Manual Content", "en");
-        verify(summaryService, times(1)).updateSummary(202, articleVO.getArticleContent());
+        verify(summaryService, times(1)).updateSummary(eq(202), eq(articleVO.getArticleContent()), any());
     }
 
     @Test
@@ -205,10 +254,17 @@ class ArticleServiceAsyncStatusTest {
 
         assertEquals("partial_success", finalStatus.getStatus());
         assertEquals("failed", finalStatus.getTranslationStatus());
-        verify(summaryService, times(1)).updateSummary(303, articleVO.getArticleContent());
+        verify(summaryService, times(1)).updateSummary(eq(303), eq(articleVO.getArticleContent()), any());
     }
 
     private void stubUpdateWrapper(boolean updateResult) {
+        Article existingArticle = new Article();
+        existingArticle.setId(202);
+        existingArticle.setSortId(1);
+        existingArticle.setLabelId(1);
+        existingArticle.setArticleSlug("old-slug");
+        doReturn(existingArticle).when(service).getById(anyInt());
+
         @SuppressWarnings("unchecked")
         LambdaUpdateChainWrapper<Article> updateWrapper =
                 mock(LambdaUpdateChainWrapper.class, Answers.RETURNS_SELF);

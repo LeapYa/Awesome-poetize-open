@@ -43,6 +43,7 @@ export default {
       streamHeartbeatTimers: {},
       streamReconnectTimers: {},
       streamReconnectAttempts: {},
+      translationReceivedChars: {},
       streamHeartbeatTimeoutMs: 25000,
       maxStreamReconnectAttempts: 2
     }
@@ -163,6 +164,7 @@ export default {
         if (notification && notification.taskId) {
           this.stopPolling(notification.taskId);
           this.stopStream(notification.taskId);
+          delete this.translationReceivedChars[notification.taskId];
         }
         this.notifications.splice(index, 1);
       }
@@ -191,6 +193,7 @@ export default {
         this.clearStreamReconnect(taskId);
       });
       this.streamReconnectAttempts = {};
+      this.translationReceivedChars = {};
     },
     
     /**
@@ -417,7 +420,7 @@ export default {
       }
 
       if (eventName === 'title_delta' || eventName === 'content_delta') {
-        const currentLength = payload && payload.currentLength ? payload.currentLength : 0;
+        const currentLength = this.resolveTranslationReceivedChars(taskId, payload);
         const fieldLabel = eventName === 'title_delta' ? '标题' : '正文';
         this.updateNotificationByTaskId(taskId, {
           message: `正在流式翻译${fieldLabel}... 已接收 ${currentLength} 字`,
@@ -427,9 +430,14 @@ export default {
       }
 
       if (eventName === 'translation_delta') {
-        const currentLength = payload && payload.currentLength ? payload.currentLength : 0;
+        const currentLength = this.resolveTranslationReceivedChars(taskId, payload);
         this.updateNotificationByTaskId(taskId, {
-          message: payload.message || `正在接收AI翻译响应... 已接收 ${currentLength} 字`,
+          message: this.replaceReceivedChars(
+            payload && payload.message
+              ? payload.message
+              : '正在接收AI翻译响应...',
+            currentLength
+          ),
           progress: 55
         });
         return;
@@ -536,10 +544,11 @@ export default {
       }
 
       const message = status.seoPushMessage || status.message || '任务处理中...';
+      const stableMessage = this.resolveTaskStatusMessage(taskId, status, message);
       const progress = this.getProgressByStage(status.stage, status.status);
 
       this.updateNotificationByTaskId(taskId, {
-        message,
+        message: stableMessage,
         progress
       });
 
@@ -571,6 +580,61 @@ export default {
       }
     },
 
+    resolveTranslationReceivedChars(taskId, payload) {
+      const rawLength = payload && payload.receivedLength !== undefined
+        ? payload.receivedLength
+        : payload && payload.currentLength !== undefined
+          ? payload.currentLength
+          : 0;
+      const parsedLength = Number(rawLength);
+      const currentLength = Number.isFinite(parsedLength) ? Math.max(0, parsedLength) : 0;
+      const previousLength = this.translationReceivedChars[taskId] || 0;
+      const stableLength = Math.max(previousLength, currentLength);
+      this.translationReceivedChars[taskId] = stableLength;
+      return stableLength;
+    },
+
+    resolveTaskStatusMessage(taskId, status, message) {
+      if (!this.isTranslationProgressStatus(status, message)) {
+        return message;
+      }
+
+      const receivedChars = status && status.translationReceivedChars !== undefined
+        ? status.translationReceivedChars
+        : this.extractReceivedChars(message);
+      if (receivedChars === null || receivedChars === undefined) {
+        return message;
+      }
+
+      const stableLength = this.resolveTranslationReceivedChars(taskId, {
+        receivedLength: receivedChars
+      });
+      return this.replaceReceivedChars(message, stableLength);
+    },
+
+    isTranslationProgressStatus(status, message) {
+      if (status && (status.stage === 'translating' || status.stage === 'translation_retry')) {
+        return true;
+      }
+      return typeof message === 'string' && /翻译/.test(message) && /已接收\s*\d+\s*字/.test(message);
+    },
+
+    extractReceivedChars(message) {
+      if (typeof message !== 'string') {
+        return null;
+      }
+      const match = message.match(/已接收\s*(\d+)\s*字/);
+      return match ? Number(match[1]) : null;
+    },
+
+    replaceReceivedChars(message, receivedChars) {
+      const safeMessage = message || '正在接收AI翻译响应...';
+      if (/已接收\s*\d+\s*字/.test(safeMessage)) {
+        return safeMessage.replace(/已接收\s*\d+\s*字/, `已接收 ${receivedChars} 字`);
+      }
+      return `${safeMessage} 已接收 ${receivedChars} 字`;
+    },
+
     handleStreamHeartbeatTimeout(taskId) {
       if (this.isTaskStreamSettled(taskId)) {
         this.stopStream(taskId);
@@ -594,7 +658,7 @@ export default {
         this.updateNotificationByTaskId(taskId, {
           message: '任务流连接中断，已切换为状态轮询同步...'
         });
-        this.checkTaskStatus(taskId);
+        this.startPolling(taskId);
         return;
       }
 
@@ -619,6 +683,7 @@ export default {
     isTaskStreamSettled(taskId) {
       const notification = this.notifications.find(n => n.taskId === taskId);
       if (!notification) {
+        delete this.translationReceivedChars[taskId];
         return true;
       }
       return notification.progress === 100

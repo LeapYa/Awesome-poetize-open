@@ -447,6 +447,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 && System.currentTimeMillis() - status.getLastUpdateTime() > 10 * 60 * 1000) {
             ARTICLE_SAVE_STATUS.remove(taskId);
             ARTICLE_SAVE_EMITTERS.remove(taskId);
+            clearTaskTransientState(taskId);
             releaseAsyncTaskGuard(taskId);
             return PoetryResult.fail("任务已过期");
         }
@@ -606,6 +607,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     // 文章保存状态缓存（内存级别，重启后清空）
     private static final Map<String, ArticleSaveStatus> ARTICLE_SAVE_STATUS = new ConcurrentHashMap<>();
     private static final Map<String, CopyOnWriteArrayList<SseEmitter>> ARTICLE_SAVE_EMITTERS = new ConcurrentHashMap<>();
+    private static final Map<String, Long> TASK_EVENT_THROTTLE_TIMES = new ConcurrentHashMap<>();
     private static final Map<String, String> ACTIVE_ASYNC_ARTICLE_TASKS = new ConcurrentHashMap<>();
     private static final Map<String, String> ASYNC_TASK_DEDUP_KEYS = new ConcurrentHashMap<>();
     private static final SummaryService.SummaryTaskResult MANUAL_SUMMARY_RESULT =
@@ -627,6 +629,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     private void mutateSaveStatus(String taskId, Consumer<ArticleSaveStatus> mutator) {
+        mutateSaveStatus(taskId, mutator, true);
+    }
+
+    private void mutateSaveStatus(String taskId, Consumer<ArticleSaveStatus> mutator, boolean emitStageEvent) {
         ArticleSaveStatus saveStatus = ARTICLE_SAVE_STATUS.get(taskId);
         if (saveStatus == null) {
             log.warn("状态更新失败 - 任务ID不存在: {}", taskId);
@@ -635,7 +641,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         mutator.accept(saveStatus);
         saveStatus.setLastUpdateTime(System.currentTimeMillis());
-        emitTaskEvent(taskId, "stage", buildStagePayload(saveStatus));
+        if (emitStageEvent) {
+            emitTaskEvent(taskId, "stage", buildStagePayload(saveStatus));
+        }
     }
 
     private void updateTranslationStage(String taskId, String stage, String translationStatus,
@@ -657,23 +665,36 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         });
     }
 
-    private void appendTranslationPreview(String taskId, String field, String delta, Integer currentLength) {
+    private void appendTranslationPreview(String taskId, String field, String delta, Integer currentLength,
+            Integer receivedLength) {
         mutateSaveStatus(taskId, saveStatus -> {
+            int displayLength = updateTranslationReceivedChars(saveStatus, receivedLength != null ? receivedLength : currentLength);
             if ("title".equals(field)) {
                 saveStatus.setTranslatedTitlePreview(appendWithLimit(saveStatus.getTranslatedTitlePreview(), delta));
-                saveStatus.setMessage("正在流式翻译标题... 已接收 " + currentLength + " 字");
+                saveStatus.setMessage("正在流式翻译标题... 已接收 " + displayLength + " 字");
             } else {
                 saveStatus.setTranslatedContentPreview(appendWithLimit(saveStatus.getTranslatedContentPreview(), delta));
-                saveStatus.setMessage("正在流式翻译正文... 已接收 " + currentLength + " 字");
+                saveStatus.setMessage("正在流式翻译正文... 已接收 " + displayLength + " 字");
             }
-        });
+        }, false);
     }
 
     private void updateTranslationRawProgress(String taskId, Integer currentLength) {
         mutateSaveStatus(taskId, saveStatus -> {
-            saveStatus.setMessage("正在接收AI翻译响应... 已接收 " + currentLength + " 字");
+            int displayLength = updateTranslationReceivedChars(saveStatus, currentLength);
+            saveStatus.setMessage("正在接收AI翻译响应... 已接收 " + displayLength + " 字");
             saveStatus.setStreaming(true);
-        });
+        }, false);
+    }
+
+    private int updateTranslationReceivedChars(ArticleSaveStatus saveStatus, Integer receivedLength) {
+        int safeReceivedLength = receivedLength == null ? 0 : Math.max(0, receivedLength);
+        int previousLength = saveStatus.getTranslationReceivedChars() == null
+                ? 0
+                : saveStatus.getTranslationReceivedChars();
+        int displayLength = Math.max(previousLength, safeReceivedLength);
+        saveStatus.setTranslationReceivedChars(displayLength);
+        return displayLength;
     }
 
     private void appendSummaryPreview(String taskId, String delta, Integer currentLength, String preview) {
@@ -686,7 +707,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             saveStatus.setSummaryMessage("正在流式生成摘要... 已接收 " + currentLength + " 字");
             saveStatus.setMessage(saveStatus.getSummaryMessage());
             saveStatus.setStreaming(true);
-        });
+        }, false);
     }
 
     private void applySummaryOutcome(String taskId, SummaryService.SummaryTaskResult summaryOutcome) {
@@ -783,6 +804,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return;
         }
 
+        if (shouldThrottleTaskEvent(taskId, eventName)) {
+            return;
+        }
+
         Map<String, Object> emittedPayload = new HashMap<>();
         if (payload != null) {
             emittedPayload.putAll(payload);
@@ -801,6 +826,36 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 removeEmitter(taskId, emitter);
             }
         }
+    }
+
+    private boolean shouldThrottleTaskEvent(String taskId, String eventName) {
+        if (!StringUtils.hasText(taskId) || !isHighFrequencyTaskEvent(eventName)) {
+            return false;
+        }
+
+        String throttleKey = taskId + ":" + eventName;
+        long now = System.currentTimeMillis();
+        Long lastEmitTime = TASK_EVENT_THROTTLE_TIMES.get(throttleKey);
+        if (lastEmitTime != null && now - lastEmitTime < 500L) {
+            return true;
+        }
+        TASK_EVENT_THROTTLE_TIMES.put(throttleKey, now);
+        return false;
+    }
+
+    private boolean isHighFrequencyTaskEvent(String eventName) {
+        return "translation_delta".equals(eventName)
+                || "title_delta".equals(eventName)
+                || "content_delta".equals(eventName)
+                || "summary_delta".equals(eventName);
+    }
+
+    private void clearTaskTransientState(String taskId) {
+        if (!StringUtils.hasText(taskId)) {
+            return;
+        }
+        String prefix = taskId + ":";
+        TASK_EVENT_THROTTLE_TIMES.keySet().removeIf(key -> key.startsWith(prefix));
     }
 
     private String generateAsyncTaskId(String prefix) {
@@ -889,6 +944,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
 
         ACTIVE_ASYNC_ARTICLE_TASKS.remove(dedupKey, taskId);
+        clearTaskTransientState(taskId);
     }
 
     private void removeEmitter(String taskId, SseEmitter emitter) {
@@ -920,6 +976,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         payload.put("articleId", status.getArticleId());
         payload.put("translationStatus", status.getTranslationStatus());
         payload.put("translationAttempt", status.getTranslationAttempt());
+        payload.put("translationReceivedChars", status.getTranslationReceivedChars());
         payload.put("streaming", status.getStreaming());
         payload.put("translatedTitlePreview", status.getTranslatedTitlePreview());
         payload.put("translatedContentPreview", status.getTranslatedContentPreview());
@@ -1205,12 +1262,17 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 }
                 case "title_delta" -> appendTranslationPreview(
                         taskId, "title", readString(safePayload.get("delta"), ""),
-                        readInteger(safePayload.get("currentLength"), 0));
+                        readInteger(safePayload.get("currentLength"), 0),
+                        readInteger(safePayload.get("receivedLength"),
+                                readInteger(safePayload.get("currentLength"), 0)));
                 case "content_delta" -> appendTranslationPreview(
                         taskId, "content", readString(safePayload.get("delta"), ""),
-                        readInteger(safePayload.get("currentLength"), 0));
+                        readInteger(safePayload.get("currentLength"), 0),
+                        readInteger(safePayload.get("receivedLength"),
+                                readInteger(safePayload.get("currentLength"), 0)));
                 case "translation_delta" -> updateTranslationRawProgress(
-                        taskId, readInteger(safePayload.get("currentLength"), 0));
+                        taskId, readInteger(safePayload.get("receivedLength"),
+                                readInteger(safePayload.get("currentLength"), 0)));
                 case "complete" -> {
                     updateTranslationStage(
                             taskId, "translating", "streaming",
@@ -1290,6 +1352,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         private Integer summaryReceivedChars;
         private String summaryPreview;
         private Integer translationAttempt;
+        private Integer translationReceivedChars;
         private Boolean streaming;
         private String translatedTitlePreview;
         private String translatedContentPreview;
@@ -1310,6 +1373,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             this.summaryReceivedChars = 0;
             this.summaryPreview = "";
             this.translationAttempt = 0;
+            this.translationReceivedChars = 0;
             this.streaming = false;
             this.translatedTitlePreview = "";
             this.translatedContentPreview = "";
@@ -1374,6 +1438,14 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         public void setTranslationAttempt(Integer translationAttempt) {
             this.translationAttempt = translationAttempt;
+        }
+
+        public Integer getTranslationReceivedChars() {
+            return translationReceivedChars;
+        }
+
+        public void setTranslationReceivedChars(Integer translationReceivedChars) {
+            this.translationReceivedChars = translationReceivedChars;
         }
 
         public String getSummaryStatus() {

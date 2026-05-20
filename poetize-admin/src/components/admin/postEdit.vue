@@ -650,6 +650,11 @@ const uploadPicture = () => import("../common/uploadPicture");
   };
 
   const DEFAULT_CONFIG_KEY = 'poetize_article_default_config';
+  const DRAFT_SNAPSHOT_INTERVAL = 5000;
+  const DRAFT_SNAPSHOT_RESCHEDULE_DELAY = 800;
+  const DRAFT_WS_UPDATE_FLUSH_DELAY = 350;
+  const DRAFT_WS_BACKPRESSURE_DELAY = 1000;
+  const DRAFT_WS_MAX_BUFFERED_AMOUNT = 512 * 1024;
 
   const getDefaultConfig = () => {
     try {
@@ -792,6 +797,11 @@ const uploadPicture = () => import("../common/uploadPicture");
         draftInviteAccepting: false,
         draftReady: false,
         draftSnapshotDirty: false,
+        draftSnapshotSaving: false,
+        draftSnapshotSaveQueued: false,
+        draftSnapshotSavePromise: null,
+        draftSnapshotQueuedTimer: null,
+        draftSnapshotVersion: 0,
         suppressNextDraftRouteReload: false,
         suppressNextIdRouteReload: false,
         skipDraftSync: false,
@@ -804,6 +814,8 @@ const uploadPicture = () => import("../common/uploadPicture");
         ydoc: null,
         yPersistence: null,
         draftWs: null,
+        draftPendingUpdates: [],
+        draftUpdateFlushTimer: null,
         draftMetaMap: null,
         draftTitleText: null,
         draftContentText: null,
@@ -1336,7 +1348,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         }
         this.draftSnapshotTimer = window.setInterval(() => {
           this.persistDraftSnapshot(false);
-        }, 5000);
+        }, DRAFT_SNAPSHOT_INTERVAL);
         this.openDraftWebSocket();
         this.draftReady = true;
       },
@@ -1373,6 +1385,13 @@ const uploadPicture = () => import("../common/uploadPicture");
           clearInterval(this.draftSnapshotTimer);
           this.draftSnapshotTimer = null;
         }
+        this.flushDraftUpdates();
+        this.clearDraftUpdateFlushTimer();
+        this.draftPendingUpdates = [];
+        this.draftSnapshotSaving = false;
+        this.draftSnapshotSaveQueued = false;
+        this.draftSnapshotSavePromise = null;
+        this.clearDraftSnapshotQueuedTimer();
         if (this.ydoc) {
           this.ydoc.off('update', this.handleDraftDocUpdate);
         }
@@ -1664,15 +1683,71 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       handleDraftDocUpdate(update, origin) {
         this.draftSnapshotDirty = true;
-        if (origin !== 'remote' && this.draftWs && this.draftWs.readyState === WebSocket.OPEN) {
+        this.draftSnapshotVersion += 1;
+        if (origin !== 'remote') {
+          this.queueDraftUpdate(update);
+          this.draftStatusText = '同步中';
+          this.draftStatusType = 'warning';
+        }
+      },
+      isDraftWebSocketWritable() {
+        return this.draftWs && this.draftWs.readyState === WebSocket.OPEN;
+      },
+      queueDraftUpdate(update) {
+        if (!update || !this.isDraftWebSocketWritable()) {
+          return;
+        }
+        this.draftPendingUpdates.push(update);
+        if (this.draftUpdateFlushTimer) {
+          return;
+        }
+        this.draftUpdateFlushTimer = window.setTimeout(() => {
+          this.flushDraftUpdates();
+        }, DRAFT_WS_UPDATE_FLUSH_DELAY);
+      },
+      clearDraftUpdateFlushTimer() {
+        if (this.draftUpdateFlushTimer) {
+          clearTimeout(this.draftUpdateFlushTimer);
+          this.draftUpdateFlushTimer = null;
+        }
+      },
+      scheduleDraftUpdateFlush(delay = DRAFT_WS_UPDATE_FLUSH_DELAY) {
+        this.clearDraftUpdateFlushTimer();
+        this.draftUpdateFlushTimer = window.setTimeout(() => {
+          this.flushDraftUpdates();
+        }, delay);
+      },
+      flushDraftUpdates() {
+        this.clearDraftUpdateFlushTimer();
+        if (!this.draftPendingUpdates.length) {
+          return;
+        }
+        if (!this.isDraftWebSocketWritable()) {
+          this.draftPendingUpdates = [];
+          return;
+        }
+
+        const pendingUpdates = this.draftPendingUpdates;
+        this.draftPendingUpdates = [];
+        const mergedUpdate = pendingUpdates.length === 1 ? pendingUpdates[0] : Y.mergeUpdates(pendingUpdates);
+
+        if (this.draftWs.bufferedAmount > DRAFT_WS_MAX_BUFFERED_AMOUNT) {
+          this.draftPendingUpdates = [mergedUpdate].concat(this.draftPendingUpdates);
+          this.draftStatusText = '协同同步排队中';
+          this.draftStatusType = 'warning';
+          this.scheduleDraftUpdateFlush(DRAFT_WS_BACKPRESSURE_DELAY);
+          return;
+        }
+
+        try {
           this.draftWs.send(JSON.stringify({
             type: 'state_update',
-            payload: uint8ArrayToBase64(update),
+            payload: uint8ArrayToBase64(mergedUpdate),
             draftId: this.draftId
           }));
-        }
-        if (origin !== 'remote') {
-          this.draftStatusText = '同步中';
+        } catch (error) {
+          this.draftPendingUpdates = [mergedUpdate].concat(this.draftPendingUpdates);
+          this.draftStatusText = '协同连接不稳定，仍会保存在本地';
           this.draftStatusType = 'warning';
         }
       },
@@ -1765,22 +1840,78 @@ const uploadPicture = () => import("../common/uploadPicture");
         if (!this.isDraftMode || !this.draftId || !this.ydoc || (!force && !this.draftSnapshotDirty)) {
           return;
         }
-        try {
-          const snapshotBase64 = uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
-          const res = await this.$http.post(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/snapshot`, {
-            titleCache: this.article.articleTitle || '未命名草稿',
-            snapshotBase64
-          }, true);
-          if (res.code === 200) {
-            this.draftSnapshotDirty = false;
-            this.draftLastSyncedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            this.draftStatusText = '草稿已保存';
-            this.draftStatusType = 'success';
+        if (this.draftSnapshotSaving) {
+          if (force && this.draftSnapshotSavePromise) {
+            await this.draftSnapshotSavePromise;
+            if (this.draftSnapshotDirty || this.draftSnapshotSaveQueued) {
+              return this.persistDraftSnapshot(true);
+            }
+            return;
           }
-        } catch (error) {
-          this.draftStatusText = '草稿保存失败，仅保留本地副本';
-          this.draftStatusType = 'danger';
+          this.draftSnapshotSaveQueued = true;
+          return this.draftSnapshotSavePromise;
         }
+
+        if (force) {
+          this.clearDraftSnapshotQueuedTimer();
+        }
+        this.draftSnapshotSaving = true;
+        this.draftSnapshotSaveQueued = false;
+        const savingVersion = this.draftSnapshotVersion;
+
+        const savePromise = (async () => {
+          try {
+            const snapshotBase64 = uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
+            const res = await this.$http.post(this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/snapshot`, {
+              titleCache: this.article.articleTitle || '未命名草稿',
+              snapshotBase64
+            }, true);
+            if (res.code === 200) {
+              if (this.draftSnapshotVersion === savingVersion) {
+                this.draftSnapshotDirty = false;
+                this.draftStatusText = '草稿已保存';
+                this.draftStatusType = 'success';
+              } else {
+                this.draftSnapshotDirty = true;
+                this.draftSnapshotSaveQueued = true;
+                this.draftStatusText = '同步中';
+                this.draftStatusType = 'warning';
+              }
+              this.draftLastSyncedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            }
+          } catch (error) {
+            this.draftStatusText = '草稿保存失败，仅保留本地副本';
+            this.draftStatusType = 'danger';
+          } finally {
+            this.draftSnapshotSaving = false;
+            if (this.draftSnapshotSaveQueued && this.isDraftMode && this.draftId && this.ydoc) {
+              this.draftSnapshotSaveQueued = false;
+              this.scheduleDraftSnapshotSave();
+            }
+          }
+        })();
+
+        this.draftSnapshotSavePromise = savePromise;
+        try {
+          return await savePromise;
+        } finally {
+          if (this.draftSnapshotSavePromise === savePromise) {
+            this.draftSnapshotSavePromise = null;
+          }
+        }
+      },
+      clearDraftSnapshotQueuedTimer() {
+        if (this.draftSnapshotQueuedTimer) {
+          clearTimeout(this.draftSnapshotQueuedTimer);
+          this.draftSnapshotQueuedTimer = null;
+        }
+      },
+      scheduleDraftSnapshotSave() {
+        this.clearDraftSnapshotQueuedTimer();
+        this.draftSnapshotQueuedTimer = window.setTimeout(() => {
+          this.draftSnapshotQueuedTimer = null;
+          this.persistDraftSnapshot(false);
+        }, DRAFT_SNAPSHOT_RESCHEDULE_DELAY);
       },
       async loadDraftCollaboratorOptions() {
         if (!this.isDraftMode) {

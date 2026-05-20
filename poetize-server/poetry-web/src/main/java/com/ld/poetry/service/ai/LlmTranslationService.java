@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * LLM 翻译与摘要服务
@@ -97,6 +98,7 @@ public class LlmTranslationService {
 
             final int maxAttempts = 3;
             Exception lastException = null;
+            AtomicInteger receivedChars = new AtomicInteger(0);
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
@@ -109,7 +111,8 @@ public class LlmTranslationService {
                     }
 
                     StreamingTranslationState state = streamArticleTranslationAttempt(
-                            chatModel, title, content, sourceLang, targetLang, config, progressListener);
+                            chatModel, title, content, sourceLang, targetLang, config,
+                            attempt, receivedChars, progressListener);
 
                     Map<String, String> result = validateStreamingTranslationState(state, title, content, targetLang);
                     if (result != null) {
@@ -118,6 +121,7 @@ public class LlmTranslationService {
                                     "attempt", attempt,
                                     "titleLength", state.title().length(),
                                     "contentLength", state.content().length(),
+                                    "receivedLength", receivedChars.get(),
                                     "message", "流式翻译完成"));
                         }
                         return result;
@@ -592,7 +596,7 @@ public class LlmTranslationService {
     // ==================== 翻译辅助方法 ====================
 
     private StreamingTranslationState streamArticleTranslationAttempt(ChatModel chatModel, String title, String content,
-            String sourceLang, String targetLang, SysAiConfig config,
+            String sourceLang, String targetLang, SysAiConfig config, int attempt, AtomicInteger receivedChars,
             TranslationService.TranslationProgressListener progressListener) {
         String prompt = buildArticleTranslationPrompt(title, content, sourceLang, targetLang, config);
         Prompt translationPrompt = new Prompt(List.of(new UserMessage(prompt)));
@@ -615,13 +619,17 @@ public class LlmTranslationService {
             }
 
             rawBuffer.append(text);
+            int receivedLength = receivedChars.addAndGet(text.length());
+            int responseLength = rawBuffer.length();
             StreamingTranslationView currentView = parseStreamingTranslationView(rawBuffer.toString());
             if (currentView.title().isEmpty() && currentView.content().isEmpty()) {
-                emitTranslationRawProgress(text, rawBuffer.length(), progressListener);
+                emitTranslationRawProgress(text, responseLength, receivedLength, attempt, progressListener);
             }
 
-            emitTranslationDelta("title_delta", previousView[0].title(), currentView.title(), progressListener);
-            emitTranslationDelta("content_delta", previousView[0].content(), currentView.content(), progressListener);
+            emitTranslationDelta("title_delta", previousView[0].title(), currentView.title(),
+                    responseLength, receivedLength, attempt, progressListener);
+            emitTranslationDelta("content_delta", previousView[0].content(), currentView.content(),
+                    responseLength, receivedLength, attempt, progressListener);
 
             previousView[0] = currentView;
         }).blockLast();
@@ -773,6 +781,7 @@ public class LlmTranslationService {
     }
 
     private void emitTranslationDelta(String eventName, String previous, String current,
+            int responseLength, int receivedLength, int attempt,
             TranslationService.TranslationProgressListener progressListener) {
         if (progressListener == null || current == null || current.isEmpty()) {
             return;
@@ -790,10 +799,13 @@ public class LlmTranslationService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("delta", delta);
         payload.put("currentLength", current.length());
+        payload.put("responseLength", responseLength);
+        payload.put("receivedLength", receivedLength);
+        payload.put("attempt", attempt);
         progressListener.onEvent(eventName, payload);
     }
 
-    private void emitTranslationRawProgress(String delta, int currentLength,
+    private void emitTranslationRawProgress(String delta, int currentLength, int receivedLength, int attempt,
             TranslationService.TranslationProgressListener progressListener) {
         if (progressListener == null || delta == null || delta.isEmpty()) {
             return;
@@ -801,7 +813,10 @@ public class LlmTranslationService {
         progressListener.onEvent("translation_delta", Map.of(
                 "delta", delta,
                 "currentLength", currentLength,
-                "message", "正在接收AI翻译响应... 已接收 " + currentLength + " 字"));
+                "responseLength", currentLength,
+                "receivedLength", receivedLength,
+                "attempt", attempt,
+                "message", "正在接收AI翻译响应... 已接收 " + receivedLength + " 字"));
     }
 
     private Map<String, String> validateStreamingTranslationState(StreamingTranslationState state,
