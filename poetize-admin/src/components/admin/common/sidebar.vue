@@ -329,6 +329,14 @@ export default {
   .sidebar-dark {
     background-color: #2d2d2d;
   }
+
+  .sidebar-dark .sidebar-el-menu {
+    border-right: none !important;
+  }
+
+  .sidebar-dark .sidebar-el-menu >>> .el-menu {
+    border-right: none !important;
+  }
   
   .collapse-dark {
     background-color: #2d2d2d !important;
