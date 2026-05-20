@@ -129,8 +129,8 @@
       <el-tabs id="field-main-visit" v-model="activeTab" style="margin-top: 15px; padding: 0 10px;">
         <!-- 总访问 -->
         <el-tab-pane label="总访问" name="total">
-          <div class="history-info" style="width: 100%; max-width: 640px; margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: space-around;">
-            <div style="margin-bottom: 20px; width: 100%; max-width: 300px;">
+          <div class="history-info history-info--total">
+            <div class="visit-table-panel">
               <div class="history-name">省份访问TOP10</div>
               <div>
                 <el-table :data="historyInfo.ip_history_province">
@@ -140,7 +140,7 @@
                 </el-table>
               </div>
             </div>
-            <div style="margin-bottom: 20px; width: 100%; max-width: 300px;">
+            <div class="visit-table-panel">
               <div class="history-name">IP访问TOP10</div>
               <div>
                 <el-table :data="historyInfo.ip_history_ip">
@@ -150,13 +150,52 @@
                 </el-table>
               </div>
             </div>
+            <div class="visit-table-panel visit-table-panel--ua">
+              <div class="history-name">UA访问TOP10</div>
+              <div>
+                <el-table :data="getUaRows('ua_history_top')">
+                  <el-table-column type="index" align="center" width="50"></el-table-column>
+                  <el-table-column align="center" label="类型" width="90">
+                    <template slot-scope="scope">
+                      <el-tag class="ua-type-tag" size="mini" :type="getUaTagType(scope.row.ua_type)">
+                        {{ scope.row.ua_type_label || '未知' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column align="center" label="客户端" min-width="130">
+                    <template slot-scope="scope">
+                      <el-tooltip :disabled="!scope.row.sample_ua" :content="scope.row.sample_ua" placement="top">
+                        <span class="ua-name-cell">{{ scope.row.ua_name || '未知客户端' }}</span>
+                      </el-tooltip>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="70"></el-table-column>
+                </el-table>
+              </div>
+            </div>
+            <div class="visit-table-panel visit-table-panel--article">
+              <div class="history-name">文章页面访问TOP10</div>
+              <div>
+                <el-table :data="getArticleRows('article_history_top')">
+                  <el-table-column type="index" align="center" width="50"></el-table-column>
+                  <el-table-column align="center" label="文章" min-width="160">
+                    <template slot-scope="scope">
+                      <el-tooltip :disabled="!scope.row.article_path" :content="scope.row.article_path" placement="top">
+                        <span class="article-title-cell">{{ scope.row.article_title || scope.row.article_token || '未知文章' }}</span>
+                      </el-tooltip>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="70"></el-table-column>
+                </el-table>
+              </div>
+            </div>
           </div>
         </el-tab-pane>
 
         <!-- 今日访问 -->
         <el-tab-pane label="今日访问" name="today">
-          <div class="history-info" style="width: 100%; max-width: 720px; margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: space-around;">
-            <div style="margin-bottom: 20px; width: 100%; max-width: 300px;">
+          <div class="history-info history-info--today">
+            <div class="visit-table-panel">
               <div class="history-name">今日访问省份统计</div>
               <div>
                 <el-table :data="historyInfo.province_today">
@@ -166,7 +205,7 @@
                 </el-table>
               </div>
             </div>
-            <div style="margin-bottom: 20px; width: 100%; max-width: 300px;">
+            <div class="visit-table-panel">
               <div class="history-name">今日访问用户</div>
               <div class="history-avatar">
                 <el-table :data="historyInfo.username_today">
@@ -180,13 +219,52 @@
                 </el-table>
               </div>
             </div>
+            <div class="visit-table-panel visit-table-panel--ua">
+              <div class="history-name">今日UA访问统计</div>
+              <div>
+                <el-table :data="getUaRows('ua_today')">
+                  <el-table-column type="index" align="center" width="50"></el-table-column>
+                  <el-table-column align="center" label="类型" width="90">
+                    <template slot-scope="scope">
+                      <el-tag class="ua-type-tag" size="mini" :type="getUaTagType(scope.row.ua_type)">
+                        {{ scope.row.ua_type_label || '未知' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column align="center" label="客户端" min-width="130">
+                    <template slot-scope="scope">
+                      <el-tooltip :disabled="!scope.row.sample_ua" :content="scope.row.sample_ua" placement="top">
+                        <span class="ua-name-cell">{{ scope.row.ua_name || '未知客户端' }}</span>
+                      </el-tooltip>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="70"></el-table-column>
+                </el-table>
+              </div>
+            </div>
+            <div class="visit-table-panel visit-table-panel--article">
+              <div class="history-name">今日文章页面访问统计</div>
+              <div>
+                <el-table :data="getArticleRows('article_today')">
+                  <el-table-column type="index" align="center" width="50"></el-table-column>
+                  <el-table-column align="center" label="文章" min-width="160">
+                    <template slot-scope="scope">
+                      <el-tooltip :disabled="!scope.row.article_path" :content="scope.row.article_path" placement="top">
+                        <span class="article-title-cell">{{ scope.row.article_title || scope.row.article_token || '未知文章' }}</span>
+                      </el-tooltip>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="70"></el-table-column>
+                </el-table>
+              </div>
+            </div>
           </div>
         </el-tab-pane>
 
         <!-- 昨日访问 -->
         <el-tab-pane label="昨日访问" name="yesterday">
-          <div class="history-info" style="width: 100%; max-width: 320px; margin-top: 20px;">
-            <div style="width: 100%;">
+          <div class="history-info history-info--yesterday">
+            <div class="visit-table-panel">
               <div class="history-name">昨日访问用户</div>
               <div class="history-avatar">
                 <el-table :data="historyInfo.username_yest">
@@ -197,6 +275,45 @@
                   </el-table-column>
                   <el-table-column prop="username" align="center" label="用户" min-width="100"></el-table-column>
                   <el-table-column prop="visitCount" align="center" label="次数" width="60"></el-table-column>
+                </el-table>
+              </div>
+            </div>
+            <div class="visit-table-panel visit-table-panel--ua">
+              <div class="history-name">昨日UA访问统计</div>
+              <div>
+                <el-table :data="getUaRows('ua_yest')">
+                  <el-table-column type="index" align="center" width="50"></el-table-column>
+                  <el-table-column align="center" label="类型" width="90">
+                    <template slot-scope="scope">
+                      <el-tag class="ua-type-tag" size="mini" :type="getUaTagType(scope.row.ua_type)">
+                        {{ scope.row.ua_type_label || '未知' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column align="center" label="客户端" min-width="130">
+                    <template slot-scope="scope">
+                      <el-tooltip :disabled="!scope.row.sample_ua" :content="scope.row.sample_ua" placement="top">
+                        <span class="ua-name-cell">{{ scope.row.ua_name || '未知客户端' }}</span>
+                      </el-tooltip>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="70"></el-table-column>
+                </el-table>
+              </div>
+            </div>
+            <div class="visit-table-panel visit-table-panel--article">
+              <div class="history-name">昨日文章页面访问统计</div>
+              <div>
+                <el-table :data="getArticleRows('article_yest')">
+                  <el-table-column type="index" align="center" width="50"></el-table-column>
+                  <el-table-column align="center" label="文章" min-width="160">
+                    <template slot-scope="scope">
+                      <el-tooltip :disabled="!scope.row.article_path" :content="scope.row.article_path" placement="top">
+                        <span class="article-title-cell">{{ scope.row.article_title || scope.row.article_token || '未知文章' }}</span>
+                      </el-tooltip>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="70"></el-table-column>
                 </el-table>
               </div>
             </div>
@@ -406,6 +523,27 @@ export default {
       };
       window.addEventListener('storage', this.themeListener);
     },
+
+    getUaRows(key) {
+      const rows = this.historyInfo && this.historyInfo[key];
+      return Array.isArray(rows) ? rows : [];
+    },
+
+    getArticleRows(key) {
+      const rows = this.historyInfo && this.historyInfo[key];
+      return Array.isArray(rows) ? rows : [];
+    },
+
+    getUaTagType(type) {
+      const tagTypes = {
+        search_engine: 'success',
+        crawler: 'warning',
+        mobile: '',
+        pc: 'info',
+        unknown: 'danger'
+      };
+      return tagTypes[type] || 'info';
+    },
     
     // 获取封禁IP列表
     getBlockedIps() {
@@ -509,8 +647,60 @@ export default {
 
   .history-info {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    gap: 20px;
+    width: 100%;
     text-align: center;
     margin: 20px auto 0;
+  }
+
+  .history-info--total {
+    max-width: 1360px;
+  }
+
+  .history-info--today {
+    max-width: 1400px;
+  }
+
+  .history-info--yesterday {
+    max-width: 1080px;
+  }
+
+  .visit-table-panel {
+    width: 100%;
+    max-width: 300px;
+    margin-bottom: 20px;
+  }
+
+  .visit-table-panel--ua {
+    max-width: 360px;
+  }
+
+  .visit-table-panel--article {
+    max-width: 360px;
+  }
+
+  .ua-name-cell {
+    display: inline-block;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  .article-title-cell {
+    display: inline-block;
+    max-width: 190px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  .ua-type-tag {
+    margin: 0;
   }
 
   /* 移动端表格适配 */
@@ -535,6 +725,14 @@ export default {
 
   .history-info >>> .el-table::before {
     height: unset;
+  }
+
+  #field-main-visit >>> #tab-total {
+    padding-left: 20px;
+  }
+
+  #field-main-visit >>> #tab-yesterday {
+    padding-right: 20px;
   }
 
   .stat-cards {
@@ -613,8 +811,8 @@ export default {
   }
 
   .main-dark-mode .stat-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #242526;
+    border: 1px solid #34383f;
   }
 
   .main-dark-mode .stat-value {
@@ -639,8 +837,8 @@ export default {
   }
 
   .main-dark-mode .dashboard-box-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #242526;
+    border: 1px solid #34383f;
   }
 
   .main-dark-mode .dashboard-box-header {
@@ -654,30 +852,45 @@ export default {
 
   /* 表格样式 */
   .main-dark-mode >>> .el-table {
-    background-color: transparent !important;
-    color: rgba(255, 255, 255, 0.9) !important;
+    overflow: hidden;
+    border-radius: 8px;
+    background-color: #202124 !important;
+    color: rgba(255, 255, 255, 0.88) !important;
+  }
+
+  .main-dark-mode >>> .el-table__header-wrapper,
+  .main-dark-mode >>> .el-table__body-wrapper {
+    background-color: #202124 !important;
   }
 
   .main-dark-mode >>> .el-table th,
+  .main-dark-mode >>> .el-table th.el-table__cell {
+    background-color: #282a2e !important;
+    color: rgba(255, 255, 255, 0.92) !important;
+    border-color: #3a3d43 !important;
+  }
+
   .main-dark-mode >>> .el-table tr,
-  .main-dark-mode >>> .el-table td,
-  .main-dark-mode >>> .el-table__body-wrapper .el-table__body .el-table__row .cell {
-    background-color: rgba(255, 255, 255, 0.05) !important;
-    color: rgba(255, 255, 255, 0.9) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
+  .main-dark-mode >>> .el-table td {
+    background-color: #202124 !important;
+    color: rgba(255, 255, 255, 0.86) !important;
+    border-color: #33363c !important;
   }
 
   .main-dark-mode >>> .el-table--enable-row-hover .el-table__body tr:hover > td {
-    background-color: rgba(255, 255, 255, 0.1) !important;
+    background-color: #2b3038 !important;
   }
 
-  .main-dark-mode >>> .el-table th.el-table__cell {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-    color: rgba(255, 255, 255, 0.9) !important;
+  .main-dark-mode >>> .el-table::before {
+    background-color: #33363c !important;
   }
 
   .main-dark-mode >>> .el-table .cell {
-    color: rgba(255, 255, 255, 0.9) !important;
+    color: rgba(255, 255, 255, 0.86) !important;
+  }
+
+  .main-dark-mode >>> .el-table__empty-text {
+    color: rgba(255, 255, 255, 0.46) !important;
   }
 
   /* 加载动画 */
@@ -702,13 +915,28 @@ export default {
   .main-dark-mode >>> .el-tabs__nav.is-top {
     background-color: transparent !important;
   }
+
+  .main-dark-mode >>> #tab-total.is-active {
+    background-color: rgba(64, 158, 255, 0.12) !important;
+    color: #409EFF !important;
+  }
   
   .main-dark-mode >>> .el-tabs__nav {
     border: none !important;
   }
   
   .main-dark-mode >>> .el-tabs__header {
-    border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+    background: transparent !important;
+    border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+    margin-bottom: 0;
+  }
+
+  .main-dark-mode >>> .el-tabs__content {
+    background-color: rgba(255, 255, 255, 0.035) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    padding: 18px 16px 22px;
   }
 
   .main-dark-mode >>> .el-tabs__item {
@@ -718,6 +946,10 @@ export default {
   .main-dark-mode >>> .el-tabs__item.is-active,
   .main-dark-mode >>> .el-tabs__item:hover {
     color: #409EFF !important;
+  }
+
+  .main-dark-mode >>> .el-tabs__item.is-active {
+    background-color: rgba(64, 158, 255, 0.1) !important;
   }
 
   .main-dark-mode >>> .el-tabs__nav-wrap::after {

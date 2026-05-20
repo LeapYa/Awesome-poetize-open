@@ -65,6 +65,18 @@ public class HistoryInfo implements Serializable {
     private String city;
 
     /**
+     * 页面URI
+     */
+    @TableField("page_uri")
+    private String pageUri;
+
+    /**
+     * User-Agent
+     */
+    @TableField("user_agent")
+    private String userAgent;
+
+    /**
      * 创建时间
      */
     @TableField("create_time")

@@ -18,6 +18,7 @@ services:
       - poetize_web_dist:/usr/share/nginx/html/poetize
       - poetize_admin_dist:/usr/share/nginx/html/admin
       - poetize_uploads:/usr/share/nginx/html/uploads
+      - poetize_nginx_logs:/var/log/nginx
       - ./docker/nginx/enable-https.sh:/enable-https.sh
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
@@ -159,6 +160,7 @@ services:
       - poetize_uploads:/app/static
       - poetize_web_dist:/app/web-dist
       - poetize_admin_dist:/app/admin-dist
+      - poetize_nginx_logs:/app/nginx-logs:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
@@ -313,4 +315,5 @@ volumes:
   poetize_web_dist:
   poetize_admin_dist:
   poetize_uploads:
+  poetize_nginx_logs:
   ollama_data:

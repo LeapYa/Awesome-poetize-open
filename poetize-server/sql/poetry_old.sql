@@ -240,8 +240,11 @@ CREATE TABLE `poetize`.`history_info` (
   `nation` varchar(64) DEFAULT NULL COMMENT '国家',
   `province` varchar(64) DEFAULT NULL COMMENT '省份',
   `city` varchar(64) DEFAULT NULL COMMENT '城市',
+  `page_uri` varchar(512) DEFAULT NULL COMMENT '页面URI',
+  `user_agent` varchar(512) DEFAULT NULL COMMENT 'User-Agent',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_history_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='历史信息';
 
 DROP TABLE IF EXISTS `poetize`.`sys_config`;

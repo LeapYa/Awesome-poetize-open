@@ -192,6 +192,14 @@ public class ScheduleTask {
                     historyInfo.setNation((String) record.get("nation"));
                     historyInfo.setProvince((String) record.get("province"));
                     historyInfo.setCity((String) record.get("city"));
+                    Object pageUriObj = record.get("pageUri");
+                    if (pageUriObj != null) {
+                        historyInfo.setPageUri(pageUriObj.toString());
+                    }
+                    Object userAgentObj = record.get("userAgent");
+                    if (userAgentObj != null) {
+                        historyInfo.setUserAgent(userAgentObj.toString());
+                    }
                     
                     // 设置创建时间
                     String createTimeStr = (String) record.get("createTime");

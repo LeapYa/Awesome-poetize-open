@@ -134,6 +134,29 @@ public class RedisUtil {
     }
 
     /**
+     * 不存在时写入缓存，并设置过期时间。
+     *
+     * @param key 键
+     * @param value 值
+     * @param time 时间(秒)
+     * @return true 表示本次写入成功，false 表示 key 已存在或写入失败
+     */
+    public boolean setIfAbsent(String key, Object value, long time) {
+        try {
+            Boolean success;
+            if (time > 0) {
+                success = redisTemplate.opsForValue().setIfAbsent(key, value, time, TimeUnit.SECONDS);
+            } else {
+                success = redisTemplate.opsForValue().setIfAbsent(key, value);
+            }
+            return Boolean.TRUE.equals(success);
+        } catch (Exception e) {
+            log.error("不存在时设置缓存失败，key: {}, value: {}, time: {}", key, value, time, e);
+            return false;
+        }
+    }
+
+    /**
      * 递增
      * @param key 键
      * @param delta 要增加几(大于0)

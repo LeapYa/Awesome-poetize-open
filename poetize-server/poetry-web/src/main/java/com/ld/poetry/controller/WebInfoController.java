@@ -556,6 +556,50 @@ public class WebInfoController {
             result.put(CommonConst.IP_HISTORY_IP, history.get(CommonConst.IP_HISTORY_IP));
             result.put(CommonConst.IP_HISTORY_COUNT, history.get(CommonConst.IP_HISTORY_COUNT));
 
+            String today = java.time.LocalDate.now().toString();
+            List<Map<String, Object>> unsyncedTodayRecords;
+            try {
+                unsyncedTodayRecords = cacheService.getUnsyncedDailyVisitRecords(today);
+            } catch (Exception e) {
+                log.error("获取今日未同步访问记录失败", e);
+                unsyncedTodayRecords = new ArrayList<>();
+            }
+
+            try {
+                result.put("ua_history_top", UserAgentClassifier.aggregateRawAndVisitRecords(
+                        historyInfoMapper.getHistoryByUserAgent(),
+                        unsyncedTodayRecords));
+            } catch (Exception e) {
+                log.error("获取总UA访问统计失败", e);
+                result.put("ua_history_top", new ArrayList<>());
+            }
+
+            try {
+                result.put("ua_yest", UserAgentClassifier.aggregateRawUserAgentCounts(
+                        historyInfoMapper.getHistoryByUserAgentYesterday()));
+            } catch (Exception e) {
+                log.error("获取昨日UA访问统计失败", e);
+                result.put("ua_yest", new ArrayList<>());
+            }
+
+            try {
+                result.put("article_history_top", buildArticleVisitStats(
+                        historyInfoMapper.getHistoryByArticlePageUri(),
+                        unsyncedTodayRecords));
+            } catch (Exception e) {
+                log.error("获取文章页面总访问统计失败", e);
+                result.put("article_history_top", new ArrayList<>());
+            }
+
+            try {
+                result.put("article_yest", buildArticleVisitStats(
+                        historyInfoMapper.getHistoryByArticlePageUriYesterday(),
+                        null));
+            } catch (Exception e) {
+                log.error("获取昨日文章页面访问统计失败", e);
+                result.put("article_yest", new ArrayList<>());
+            }
+
             // 处理24小时数据（昨日数据）
             List<Map<String, Object>> ipHistoryCount = (List<Map<String, Object>>) history
                     .get(CommonConst.IP_HISTORY_HOUR);
@@ -653,12 +697,16 @@ public class WebInfoController {
 
                 // 设置今日省份统计
                 result.put("province_today", todayStats.get("province_today"));
+                result.put("ua_today", todayStats.get("ua_today"));
+                result.put("article_today", buildArticleVisitStats(null, cacheService.getDailyVisitRecords(today)));
 
             } catch (Exception e) {
                 log.error("从Redis获取今日访问统计失败，使用默认值", e);
                 result.put("ip_count_today", 0L);
                 result.put("username_today", new ArrayList<>());
                 result.put("province_today", new ArrayList<>());
+                result.put("ua_today", new ArrayList<>());
+                result.put("article_today", new ArrayList<>());
             }
 
             // 统计各种总数
@@ -697,9 +745,185 @@ public class WebInfoController {
         defaultResult.put("ip_count_today", 0L);
         defaultResult.put("username_today", new ArrayList<>());
         defaultResult.put("province_today", new ArrayList<>());
+        defaultResult.put("ua_history_top", new ArrayList<>());
+        defaultResult.put("ua_today", new ArrayList<>());
+        defaultResult.put("ua_yest", new ArrayList<>());
+        defaultResult.put("article_history_top", new ArrayList<>());
+        defaultResult.put("article_today", new ArrayList<>());
+        defaultResult.put("article_yest", new ArrayList<>());
 
         log.info("返回默认历史统计结果");
         return defaultResult;
+    }
+
+    private List<Map<String, Object>> buildArticleVisitStats(List<Map<String, Object>> rawPageRows,
+                                                             List<Map<String, Object>> visitRecords) {
+        Map<String, ArticleVisitBucket> buckets = new HashMap<>();
+        addRawArticlePageCounts(buckets, rawPageRows);
+        addArticleVisitRecords(buckets, visitRecords);
+
+        if (buckets.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Map<String, Article> articlesByToken = loadArticlesByToken(buckets.keySet());
+        return buckets.values().stream()
+                .sorted((a, b) -> Long.compare(b.num, a.num))
+                .limit(10)
+                .map(bucket -> toArticleVisitRow(bucket, articlesByToken.get(bucket.token)))
+                .collect(Collectors.toList());
+    }
+
+    private void addRawArticlePageCounts(Map<String, ArticleVisitBucket> buckets, List<Map<String, Object>> rawPageRows) {
+        if (rawPageRows == null || rawPageRows.isEmpty()) {
+            return;
+        }
+
+        for (Map<String, Object> row : rawPageRows) {
+            if (row == null) continue;
+            Object pageUriObj = row.get("page_uri");
+            if (pageUriObj == null) {
+                pageUriObj = row.get("pageUri");
+            }
+            long count = toLong(row.get("num"));
+            if (pageUriObj != null && count > 0) {
+                mergeArticleVisitBucket(buckets, pageUriObj.toString(), count);
+            }
+        }
+    }
+
+    private void addArticleVisitRecords(Map<String, ArticleVisitBucket> buckets, List<Map<String, Object>> visitRecords) {
+        if (visitRecords == null || visitRecords.isEmpty()) {
+            return;
+        }
+
+        for (Map<String, Object> record : visitRecords) {
+            if (record == null) continue;
+            Object pageUriObj = record.get("pageUri");
+            if (pageUriObj == null) {
+                pageUriObj = record.get("page_uri");
+            }
+            if (pageUriObj != null) {
+                mergeArticleVisitBucket(buckets, pageUriObj.toString(), 1L);
+            }
+        }
+    }
+
+    private void mergeArticleVisitBucket(Map<String, ArticleVisitBucket> buckets, String pageUri, long count) {
+        String token = PageVisitUtils.extractArticleToken(pageUri);
+        if (token == null) {
+            return;
+        }
+
+        String path = PageVisitUtils.extractPath(pageUri);
+        ArticleVisitBucket bucket = buckets.computeIfAbsent(token, ignored -> new ArticleVisitBucket(token, path));
+        bucket.num += count;
+    }
+
+    private Map<String, Article> loadArticlesByToken(Set<String> tokens) {
+        Map<String, Article> articleMap = new HashMap<>();
+        if (tokens == null || tokens.isEmpty()) {
+            return articleMap;
+        }
+
+        List<Integer> ids = tokens.stream()
+                .filter(this::isPositiveInteger)
+                .map(Integer::valueOf)
+                .collect(Collectors.toList());
+        if (!ids.isEmpty()) {
+            try {
+                List<Article> articles = new LambdaQueryChainWrapper<>(articleMapper)
+                        .select(Article::getId, Article::getArticleTitle, Article::getArticleSlug, Article::getDeleted)
+                        .in(Article::getId, ids)
+                        .eq(Article::getDeleted, false)
+                        .list();
+                for (Article article : articles) {
+                    if (article == null) continue;
+                    articleMap.put(String.valueOf(article.getId()), article);
+                    if (StringUtils.hasText(article.getArticleSlug())) {
+                        articleMap.put(article.getArticleSlug(), article);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("按ID加载文章访问统计标题失败: {}", e.getMessage());
+            }
+        }
+
+        List<String> slugs = tokens.stream()
+                .filter(token -> !isPositiveInteger(token))
+                .collect(Collectors.toList());
+        if (!slugs.isEmpty()) {
+            try {
+                List<Article> articles = new LambdaQueryChainWrapper<>(articleMapper)
+                        .select(Article::getId, Article::getArticleTitle, Article::getArticleSlug, Article::getDeleted)
+                        .in(Article::getArticleSlug, slugs)
+                        .eq(Article::getDeleted, false)
+                        .list();
+                for (Article article : articles) {
+                    if (article != null && StringUtils.hasText(article.getArticleSlug())) {
+                        articleMap.put(article.getArticleSlug(), article);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("按别名加载文章访问统计标题失败: {}", e.getMessage());
+            }
+        }
+
+        return articleMap;
+    }
+
+    private Map<String, Object> toArticleVisitRow(ArticleVisitBucket bucket, Article article) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("article_token", bucket.token);
+        row.put("article_path", bucket.samplePath);
+        row.put("num", bucket.num);
+        if (article != null) {
+            row.put("article_id", article.getId());
+            row.put("article_title", StringUtils.hasText(article.getArticleTitle())
+                    ? article.getArticleTitle()
+                    : bucket.token);
+        } else {
+            row.put("article_title", bucket.token);
+        }
+        return row;
+    }
+
+    private long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    private boolean isPositiveInteger(String value) {
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static final class ArticleVisitBucket {
+        private final String token;
+        private final String samplePath;
+        private long num;
+
+        private ArticleVisitBucket(String token, String samplePath) {
+            this.token = token;
+            this.samplePath = samplePath;
+        }
     }
 
     /**
@@ -1179,6 +1403,14 @@ public class WebInfoController {
                     historyInfo.setNation((String) record.get("nation"));
                     historyInfo.setProvince((String) record.get("province"));
                     historyInfo.setCity((String) record.get("city"));
+                    Object pageUriObj = record.get("pageUri");
+                    if (pageUriObj != null) {
+                        historyInfo.setPageUri(pageUriObj.toString());
+                    }
+                    Object userAgentObj = record.get("userAgent");
+                    if (userAgentObj != null) {
+                        historyInfo.setUserAgent(userAgentObj.toString());
+                    }
 
                     // 设置创建时间
                     String createTimeStr = (String) record.get("createTime");

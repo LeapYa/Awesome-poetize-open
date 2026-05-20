@@ -241,6 +241,17 @@ public class CacheConstants {
      * 格式: poetize:visit:records:{date}
      */
     public static final String DAILY_VISIT_RECORDS_PREFIX = CACHE_PREFIX + "visit:records:";
+
+    /**
+     * 页面访问5分钟去重缓存键前缀
+     * 格式: poetize:visit:dedupe:{ipHash}:{uaHash}:{uriHash}
+     */
+    public static final String VISIT_DEDUPE_PREFIX = CACHE_PREFIX + "visit:dedupe:";
+
+    /**
+     * Nginx页面访问日志消费进度缓存键
+     */
+    public static final String NGINX_PAGE_VISIT_LOG_OFFSET_KEY = CACHE_PREFIX + "visit:nginx-log:offset";
     
     /**
      * IP今日访问标记缓存键前缀
@@ -609,6 +620,17 @@ public class CacheConstants {
      */
     public static String buildDailyVisitRecordsKey(String date) {
         return DAILY_VISIT_RECORDS_PREFIX + date;
+    }
+
+    /**
+     * 构建页面访问去重缓存键
+     * @param ipHash IP哈希
+     * @param uaHash UA哈希
+     * @param uriHash 页面URI哈希
+     * @return 缓存键
+     */
+    public static String buildVisitDedupeKey(String ipHash, String uaHash, String uriHash) {
+        return VISIT_DEDUPE_PREFIX + ipHash + ":" + uaHash + ":" + uriHash;
     }
     
     /**

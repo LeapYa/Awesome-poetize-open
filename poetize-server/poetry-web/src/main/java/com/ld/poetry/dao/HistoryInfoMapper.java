@@ -83,6 +83,52 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     List<Map<String, Object>> getHistoryByYesterday();
 
     /**
+     * UA访问TOP10原始统计
+     */
+    @Select("select user_agent, count(*) as num" +
+            " from history_info" +
+            " where user_agent is not null and user_agent != ''" +
+            " group by user_agent" +
+            " order by num desc" +
+            " limit 200")
+    List<Map<String, Object>> getHistoryByUserAgent();
+
+    /**
+     * 昨日UA访问原始统计
+     */
+    @Select("select user_agent, count(*) as num" +
+            " from history_info" +
+            " where user_agent is not null and user_agent != ''" +
+            " and date(create_time) = date_sub(curdate(), interval 1 day)" +
+            " group by user_agent" +
+            " order by num desc" +
+            " limit 200")
+    List<Map<String, Object>> getHistoryByUserAgentYesterday();
+
+    /**
+     * 文章页面访问原始统计
+     */
+    @Select("select page_uri, count(*) as num" +
+            " from history_info" +
+            " where page_uri is not null and page_uri != '' and page_uri like '/article/%'" +
+            " group by page_uri" +
+            " order by num desc" +
+            " limit 200")
+    List<Map<String, Object>> getHistoryByArticlePageUri();
+
+    /**
+     * 昨日文章页面访问原始统计
+     */
+    @Select("select page_uri, count(*) as num" +
+            " from history_info" +
+            " where page_uri is not null and page_uri != '' and page_uri like '/article/%'" +
+            " and date(create_time) = date_sub(curdate(), interval 1 day)" +
+            " group by page_uri" +
+            " order by num desc" +
+            " limit 200")
+    List<Map<String, Object>> getHistoryByArticlePageUriYesterday();
+
+    /**
      * 指定天数内的每日访问统计
      * @param days 需要统计的天数，最大 365
      * @return 每日唯一 IP 和总访问量

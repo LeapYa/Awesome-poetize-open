@@ -51,7 +51,16 @@
       </el-table-column>
       <el-table-column label="封面" align="center">
         <template slot-scope="scope">
-          <el-image lazy class="table-td-thumb" :src="scope.row.articleCover" fit="cover"></el-image>
+          <el-image
+            lazy
+            class="table-td-thumb"
+            :src="getArticleCoverUrl(scope.row)"
+            :preview-src-list="getArticleCoverPreviewList(scope.row)"
+            fit="cover">
+            <div slot="error" class="article-cover-fallback">
+              <span>{{ getArticleCoverFallbackText(scope.row) }}</span>
+            </div>
+          </el-image>
         </template>
       </el-table-column>
       <el-table-column label="是否启用评论" align="center">
@@ -681,6 +690,38 @@
               type: "error"
             });
           });
+      },
+      getArticleCoverUrl(article) {
+        const cover = article && article.articleCover ? String(article.articleCover).trim() : '';
+        return cover || this.getFallbackArticleCoverUrl(article);
+      },
+      getArticleCoverPreviewList(article) {
+        const url = this.getArticleCoverUrl(article);
+        return url ? [url] : [];
+      },
+      getFallbackArticleCoverUrl(article) {
+        const covers = Array.isArray(this.mainStore.webInfo?.randomCover)
+          ? this.mainStore.webInfo.randomCover.filter(item => item && String(item).trim())
+          : [];
+
+        if (covers.length > 0) {
+          return covers[this.getStableCoverIndex(article, covers.length)];
+        }
+
+        return '/assets/backgroundPicture.jpg';
+      },
+      getStableCoverIndex(article, length) {
+        if (!length) return 0;
+        const key = String(article?.id || article?.articleTitle || '');
+        let hash = 0;
+        for (let i = 0; i < key.length; i++) {
+          hash = ((hash << 5) - hash) + key.charCodeAt(i);
+          hash |= 0;
+        }
+        return Math.abs(hash) % length;
+      },
+      getArticleCoverFallbackText(article) {
+        return article?.articleTitle ? `「${article.articleTitle}」` : '暂无封面';
       },
       clearSearch() {
         this.pagination = {
@@ -2388,6 +2429,22 @@
     margin: auto;
     width: 40px;
     height: 40px;
+  }
+
+  .article-cover-fallback {
+    width: 100%;
+    height: 100%;
+    padding: 4px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--lightGreen);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1.2;
+    text-align: center;
+    word-break: break-word;
   }
 
   .pagination {

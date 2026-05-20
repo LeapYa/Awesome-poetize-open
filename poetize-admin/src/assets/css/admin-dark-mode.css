@@ -112,22 +112,36 @@ body.dark-mode .el-input-number__decrease:hover {
 body.dark-mode .el-table {
   background-color: #2d2d2d !important;
   color: #e0e0e0 !important;
+  border-color: #3a3a3a !important;
 }
 
 body.dark-mode .el-table th {
   background-color: #1a1a1a !important;
   color: #e0e0e0 !important;
-  border-bottom-color: #4a4a4a !important;
+  border-bottom-color: #3a3a3a !important;
 }
 
 body.dark-mode .el-table td {
-  border-bottom-color: #4a4a4a !important;
+  border-bottom-color: #3a3a3a !important;
   background-color: #2d2d2d !important;
   color: #e0e0e0 !important;
 }
 
 body.dark-mode .el-table tr {
   background-color: #2d2d2d !important;
+}
+
+body.dark-mode .el-table__header-wrapper,
+body.dark-mode .el-table__body-wrapper,
+body.dark-mode .el-table__footer-wrapper,
+body.dark-mode .el-table__header,
+body.dark-mode .el-table__body,
+body.dark-mode .el-table__footer {
+  background-color: #2d2d2d !important;
+}
+
+body.dark-mode .el-table__header th {
+  background-color: #1a1a1a !important;
 }
 
 body.dark-mode .el-table__body tr:hover > td {
@@ -144,13 +158,19 @@ body.dark-mode .el-table__empty-text {
 
 body.dark-mode .el-table--border,
 body.dark-mode .el-table--group {
-  border-color: #4a4a4a !important;
+  border-color: #3a3a3a !important;
+}
+
+body.dark-mode .el-table--border th,
+body.dark-mode .el-table--border td,
+body.dark-mode .el-table__body-wrapper .el-table--border.is-scrolling-left ~ .el-table__fixed {
+  border-right-color: #3a3a3a !important;
 }
 
 body.dark-mode .el-table--border::after,
 body.dark-mode .el-table--group::after,
 body.dark-mode .el-table::before {
-  background-color: #4a4a4a !important;
+  background-color: #3a3a3a !important;
 }
 
 body.dark-mode .el-table__fixed,
@@ -160,7 +180,23 @@ body.dark-mode .el-table__fixed-right {
 
 body.dark-mode .el-table__fixed::before,
 body.dark-mode .el-table__fixed-right::before {
-  background-color: #4a4a4a !important;
+  background-color: #3a3a3a !important;
+}
+
+body.dark-mode .el-table th.gutter,
+body.dark-mode .el-table colgroup.gutter,
+body.dark-mode .el-table__fixed-right-patch {
+  background-color: #1a1a1a !important;
+  border-color: #3a3a3a !important;
+}
+
+body.dark-mode .el-table__expanded-cell {
+  background-color: #242424 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .el-table .cell {
+  color: #e0e0e0 !important;
 }
 
 /* 表格中的操作按钮暗色模式 */
@@ -329,9 +365,72 @@ body.dark-mode .el-tabs__item.is-active {
   background-color: #2d2d2d !important;
 }
 
+body.dark-mode .el-tabs__nav-wrap::after {
+  background-color: #4a4a4a !important;
+}
+
+body.dark-mode .el-tabs__active-bar {
+  background-color: #409eff !important;
+}
+
+body.dark-mode .el-tabs--card > .el-tabs__header .el-tabs__nav,
+body.dark-mode .el-tabs--card > .el-tabs__header .el-tabs__item {
+  border-color: #4a4a4a !important;
+}
+
+body.dark-mode .el-tabs--card > .el-tabs__header .el-tabs__item.is-active {
+  border-bottom-color: #2d2d2d !important;
+}
+
 body.dark-mode .el-tabs__content {
   background-color: #2d2d2d !important;
   color: #e0e0e0 !important;
+}
+
+body.dark-mode .random-settings-tabs {
+  background-color: #2d2d2d !important;
+}
+
+body.dark-mode .random-settings-tabs .el-tabs__content {
+  background-color: #2d2d2d !important;
+}
+
+/* 字体性能优化 */
+body.dark-mode #field-font-optimization {
+  border-top-color: #4a4a4a !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #field-font-optimization h4,
+body.dark-mode #field-font-optimization .panel-title {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #field-font-optimization .glass-card {
+  background: #2d2d2d !important;
+  border-color: #4a4a4a !important;
+  box-shadow: none !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #field-font-optimization .glass-card:hover {
+  border-color: #409eff !important;
+  box-shadow: none !important;
+}
+
+body.dark-mode #field-font-optimization .status-indicator.is-empty,
+body.dark-mode #field-font-optimization .metric-item {
+  background: #1f1f1f !important;
+  border: 1px solid #4a4a4a !important;
+}
+
+body.dark-mode #field-font-optimization .metric-value {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #field-font-optimization .upload-text,
+body.dark-mode #field-font-optimization .result-stats {
+  color: #b8b8b8 !important;
 }
 
 /* 折叠面板暗色模式 */
@@ -358,6 +457,74 @@ body.dark-mode .el-collapse-item__content {
 
 body.dark-mode .el-collapse-item__arrow {
   color: #e0e0e0 !important;
+}
+
+/* 看板娘 AI 聊天配置折叠面板 */
+body.dark-mode .ai-config-collapse {
+  background-color: #2d2d2d !important;
+  border-color: #4a4a4a !important;
+}
+
+body.dark-mode .ai-config-collapse .el-collapse-item__header {
+  padding: 0 16px !important;
+}
+
+body.dark-mode .ai-config-collapse .el-collapse-item__content {
+  padding: 16px !important;
+}
+
+/* API 文档折叠面板 */
+body.dark-mode #field-api .api-enabled-panel .el-collapse {
+  background-color: #2d2d2d !important;
+  border-color: #4a4a4a !important;
+}
+
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__header {
+  padding: 0 16px !important;
+}
+
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__wrap,
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__content {
+  background-color: #242424 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__content {
+  padding: 16px !important;
+}
+
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__content > div {
+  background-color: #242424 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__content p,
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__content strong {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #field-api .api-enabled-panel .el-collapse-item__content code:not(pre code) {
+  background-color: #1f1f1f !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #4a4a4a !important;
+  border-radius: 4px !important;
+  padding: 1px 4px !important;
+}
+
+body.dark-mode #field-api .api-enabled-panel pre {
+  background-color: #1f1f1f !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #4a4a4a !important;
+}
+
+/* 外观/API 配置页隐藏悬浮看板娘，避免遮挡配置表单 */
+body.dark-mode:has(.ai-config-collapse) #waifu,
+body.dark-mode:has(.ai-config-collapse) #waifu-toggle,
+body.dark-mode:has(.ai-config-collapse) .ai-chat-button-wrapper,
+body.dark-mode:has(#field-api .api-enabled-panel) #waifu,
+body.dark-mode:has(#field-api .api-enabled-panel) #waifu-toggle,
+body.dark-mode:has(#field-api .api-enabled-panel) .ai-chat-button-wrapper {
+  display: none !important;
 }
 
 /* 排除 process-wrap 容器的暗色模式样式 */

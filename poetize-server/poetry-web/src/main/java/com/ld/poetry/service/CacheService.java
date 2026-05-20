@@ -9,8 +9,10 @@ import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.utils.RedisUtil;
+import com.ld.poetry.utils.PageVisitUtils;
 import com.ld.poetry.utils.SpringContextUtil;
 import com.ld.poetry.utils.TokenValidationUtil;
+import com.ld.poetry.utils.UserAgentClassifier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisCallback;
@@ -20,12 +22,14 @@ import org.springframework.data.redis.core.Cursor;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -1042,6 +1046,25 @@ public class CacheService {
     }
     
     // ================================ 访问统计Redis缓存方法 ================================
+
+    /**
+     * 标记页面访问去重窗口。
+     * 同一 IP + UA + 页面 URI 在 5 分钟内只记录一次，避免一次页面加载里的重复来源互相叠加。
+     */
+    public boolean tryMarkPageVisit(String ip, String pageUri, String userAgent) {
+        try {
+            String normalizedUri = PageVisitUtils.normalizeVisitUri(pageUri);
+            String key = CacheConstants.buildVisitDedupeKey(
+                    sha256Hex(normalizeDedupePart(ip)),
+                    sha256Hex(normalizeDedupePart(userAgent)),
+                    sha256Hex(normalizedUri)
+            );
+            return redisUtil.setIfAbsent(key, "1", CacheConstants.SHORT_EXPIRE_TIME);
+        } catch (Exception e) {
+            log.warn("页面访问去重失败，继续记录访问: {}", e.getMessage());
+            return true;
+        }
+    }
     
     /**
      * 记录访问信息到Redis（不立即写数据库）
@@ -1071,6 +1094,10 @@ public class CacheService {
                                    String pageUri, String userAgent, String referer, String acceptLanguage) {
         try {
             String today = java.time.LocalDate.now().toString();
+            String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
+            String safeUserAgent = limitText(userAgent, 512);
+            String safeReferer = limitText(referer, 512);
+            String safeAcceptLanguage = limitText(acceptLanguage, 128);
             
             // 将访问记录添加到当日记录集合中（每次访问都记录）
             String recordsKey = CacheConstants.buildDailyVisitRecordsKey(today);
@@ -1089,17 +1116,17 @@ public class CacheService {
             visitRecord.put("synced", false);
 
             // 用户请求元数据（可选，用于后续分析）
-            if (pageUri != null && !pageUri.isEmpty()) {
-                visitRecord.put("pageUri", pageUri);
+            if (normalizedPageUri != null && !normalizedPageUri.isEmpty()) {
+                visitRecord.put("pageUri", normalizedPageUri);
             }
-            if (userAgent != null && !userAgent.isEmpty()) {
-                visitRecord.put("userAgent", userAgent);
+            if (safeUserAgent != null && !safeUserAgent.isEmpty()) {
+                visitRecord.put("userAgent", safeUserAgent);
             }
-            if (referer != null && !referer.isEmpty()) {
-                visitRecord.put("referer", referer);
+            if (safeReferer != null && !safeReferer.isEmpty()) {
+                visitRecord.put("referer", safeReferer);
             }
-            if (acceptLanguage != null && !acceptLanguage.isEmpty()) {
-                visitRecord.put("acceptLanguage", acceptLanguage);
+            if (safeAcceptLanguage != null && !safeAcceptLanguage.isEmpty()) {
+                visitRecord.put("acceptLanguage", safeAcceptLanguage);
             }
             
             // 将记录序列化为JSON字符串并添加到Redis List中
@@ -1443,6 +1470,7 @@ public class CacheService {
                 result.put("ip_count_today", 0L);
                 result.put("username_today", new ArrayList<>());
                 result.put("province_today", new ArrayList<>());
+                result.put("ua_today", new ArrayList<>());
                 return result;
             }
             
@@ -1505,6 +1533,9 @@ public class CacheService {
                     .compareTo(Long.valueOf(o1.get("num").toString())))
                 .collect(java.util.stream.Collectors.toList());
             result.put("province_today", provinceToday);
+
+            // 4. 处理今日 UA 统计
+            result.put("ua_today", UserAgentClassifier.aggregateVisitRecords(todayRecords));
             
             log.info("获取今日访问统计: IP数量={}, 用户数量={}, 省份数量={}", 
                 ipCountToday, usernameToday.size(), provinceToday.size());
@@ -1514,9 +1545,37 @@ public class CacheService {
             result.put("ip_count_today", 0L);
             result.put("username_today", new ArrayList<>());
             result.put("province_today", new ArrayList<>());
+            result.put("ua_today", new ArrayList<>());
         }
         
         return result;
+    }
+
+    private String normalizeDedupePart(String value) {
+        if (value == null || value.isBlank()) {
+            return "-";
+        }
+        return value.trim();
+    }
+
+    private String limitText(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty() || "-".equals(trimmed)) {
+            return null;
+        }
+        return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            return Integer.toHexString(value.hashCode());
+        }
     }
 
     // ==================== 用户界面状态缓存方法 ====================

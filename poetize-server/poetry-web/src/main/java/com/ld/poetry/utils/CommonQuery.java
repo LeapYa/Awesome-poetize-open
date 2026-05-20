@@ -77,6 +77,11 @@ public class CommonQuery {
                 return;
             }
 
+            String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
+            if (!cacheService.tryMarkPageVisit(ip, normalizedPageUri, userAgent)) {
+                return;
+            }
+
             Integer userId = PoetryUtil.getUserId();
             String ipUser = ip + (userId != null ? "_" + userId.toString() : "");
 
@@ -99,7 +104,7 @@ public class CommonQuery {
 
                 // 记录访问信息到Redis（不立即写数据库）
                 cacheService.recordVisitToRedis(ip, userId, nation, province, city,
-                        pageUri, userAgent, referer, acceptLanguage);
+                        normalizedPageUri, userAgent, referer, acceptLanguage);
 
                 // log.info("[saveHistory] 访问记录已保存到Redis缓存，等待定时同步到数据库: {}", ipUser);
             });

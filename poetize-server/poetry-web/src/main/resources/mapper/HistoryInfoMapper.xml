@@ -10,20 +10,22 @@
         <result column="nation" property="nation"/>
         <result column="province" property="province"/>
         <result column="city" property="city"/>
+        <result column="page_uri" property="pageUri"/>
+        <result column="user_agent" property="userAgent"/>
         <result column="create_time" property="createTime"/>
     </resultMap>
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, user_id, ip, nation, province, city, create_time
+        id, user_id, ip, nation, province, city, page_uri, user_agent, create_time
     </sql>
 
     <!-- 批量插入访问记录 -->
     <insert id="batchInsert" parameterType="java.util.List">
-        INSERT INTO history_info (user_id, ip, nation, province, city, create_time)
+        INSERT INTO history_info (user_id, ip, nation, province, city, page_uri, user_agent, create_time)
         VALUES
         <foreach collection="list" item="item" separator=",">
-            (#{item.userId}, #{item.ip}, #{item.nation}, #{item.province}, #{item.city}, #{item.createTime})
+            (#{item.userId}, #{item.ip}, #{item.nation}, #{item.province}, #{item.city}, #{item.pageUri}, #{item.userAgent}, #{item.createTime})
         </foreach>
     </insert>
 
