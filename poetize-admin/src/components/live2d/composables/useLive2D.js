@@ -36,7 +36,10 @@ export function useLive2D() {
       }
 
       // 加载资源
-      await loadLive2DResources(constant.live2d_path)
+      const resourcesLoaded = await loadLive2DResources(constant.live2d_path)
+      if (!resourcesLoaded) {
+        throw new Error('Live2D运行库加载失败')
+      }
 
       // 加载模型列表
       await store.loadModelList()
@@ -121,7 +124,10 @@ export function useLive2D() {
       loading.value = true
       try {
         // 加载资源
-        await loadLive2DResources(constant.live2d_path)
+        const resourcesLoaded = await loadLive2DResources(constant.live2d_path)
+        if (!resourcesLoaded) {
+          throw new Error('Live2D运行库加载失败')
+        }
 
         // 加载模型列表
         await store.loadModelList()

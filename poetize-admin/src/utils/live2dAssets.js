@@ -8,6 +8,7 @@ const DEFAULT_LIVE2D_CDN_BASE_URLS = [
 
 const LAST_WORKING_LIVE2D_BASE_URL_KEY = 'live2d-working-base-url'
 const DEFAULT_MODEL_PROBE_TIMEOUT_MS = 12000
+const LOCAL_MODEL_PROBE_TIMEOUT_MS = 60000
 
 export function normalizeLive2DBaseUrl(baseUrl) {
   const fallback = constant.remoteLive2dApiPath || constant.cdnPath
@@ -24,8 +25,14 @@ export function buildLive2DModelUrl(baseUrl, modelPath) {
   return `${normalizeLive2DBaseUrl(baseUrl)}model/${cleanModelPath}/index.json`
 }
 
-export function getLive2DBaseUrlCandidates(preferredBaseUrl) {
+export function getLive2DBaseUrlCandidates(preferredBaseUrl, options = {}) {
   const preferred = normalizeLive2DBaseUrl(preferredBaseUrl)
+  const allowRemoteFallback = options.allowRemoteFallback !== false
+
+  if (!allowRemoteFallback && isLocalBaseUrl(preferred)) {
+    return [preferred]
+  }
+
   const saved = getSavedWorkingBaseUrl()
   const configuredUrls = [
     constant.remoteLive2dApiPath,
@@ -46,13 +53,19 @@ export function getLive2DBaseUrlCandidates(preferredBaseUrl) {
 }
 
 export async function resolveLive2DModelUrl(baseUrl, modelPath, options = {}) {
-  const timeoutMs = options.timeoutMs || DEFAULT_MODEL_PROBE_TIMEOUT_MS
-  const candidates = getLive2DBaseUrlCandidates(baseUrl)
+  const timeoutMs = options.timeoutMs || (
+    options.allowRemoteFallback === false ? LOCAL_MODEL_PROBE_TIMEOUT_MS : DEFAULT_MODEL_PROBE_TIMEOUT_MS
+  )
+  const candidates = getLive2DBaseUrlCandidates(baseUrl, options)
   const failures = []
 
   for (const candidate of candidates) {
     try {
       const modelUrl = buildLive2DModelUrl(candidate, modelPath)
+      if (options.skipValidation === true) {
+        saveWorkingBaseUrl(candidate)
+        return { baseUrl: candidate, modelUrl, failures }
+      }
       await assertLive2DModelLoadable(modelUrl, timeoutMs)
       saveWorkingBaseUrl(candidate)
       return { baseUrl: candidate, modelUrl, failures }
@@ -73,15 +86,18 @@ export async function resolveLive2DModelUrl(baseUrl, modelPath, options = {}) {
 }
 
 export async function preloadLive2DModel(baseUrl, modelPath, options = {}) {
-  const timeoutMs = options.timeoutMs || DEFAULT_MODEL_PROBE_TIMEOUT_MS
-  const candidates = getLive2DBaseUrlCandidates(baseUrl)
+  const timeoutMs = options.timeoutMs || (
+    options.allowRemoteFallback === false ? LOCAL_MODEL_PROBE_TIMEOUT_MS : DEFAULT_MODEL_PROBE_TIMEOUT_MS
+  )
+  const candidates = getLive2DBaseUrlCandidates(baseUrl, options)
   const onProgress = typeof options.onProgress === 'function'
     ? options.onProgress
     : () => {}
   const progressReporter = createStableProgressReporter(onProgress)
   const failures = []
 
-  for (const candidate of candidates) {
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index]
     const modelUrl = buildLive2DModelUrl(candidate, modelPath)
 
     try {
@@ -95,7 +111,9 @@ export async function preloadLive2DModel(baseUrl, modelPath, options = {}) {
         baseUrl: candidate,
         message: error?.message || String(error)
       })
-      progressReporter(15, '当前线路有点慢，正在换个入口')
+      if (index < candidates.length - 1) {
+        progressReporter(15, '当前线路有点慢，正在换个入口')
+      }
     }
   }
 
@@ -118,6 +136,8 @@ export async function fetchLive2DAssetStatus() {
 
   return {
     installed: false,
+    ready: false,
+    widgetRuntimeExists: false,
     localBaseUrl: constant.localLive2dApiPath,
     cdnBaseUrl: getDefaultLive2DBaseUrl(),
     modelBaseUrl: getDefaultLive2DBaseUrl()

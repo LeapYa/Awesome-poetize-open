@@ -42,6 +42,8 @@ public class Live2dAssetService {
     private static final String DEFAULT_DOWNLOAD_PROXY_URL = "https://ghproxy.com/";
     private static final String DEFAULT_CONNECTIVITY_CHECK_URL = "https://www.google.com/generate_204";
     private static final String TARGET_DIR_NAME = "live2d_api";
+    private static final String WIDGET_RUNTIME_PATH = "live2d-widget/dist/live2d.min.js";
+    private static final String WIDGET_BASE_URL = "/static/live2d-widget/dist/";
 
     private final Object installLock = new Object();
     private final ExecutorService installExecutor = Executors.newSingleThreadExecutor(runnable -> {
@@ -72,11 +74,16 @@ public class Live2dAssetService {
     private String cdnBaseUrl;
 
     public Map<String, Object> getStatus() {
-        Path targetDir = getTargetDir();
+        Path staticRoot = resolveStaticRoot();
+        Path targetDir = staticRoot.resolve(TARGET_DIR_NAME);
         boolean installed = isInstalled(targetDir);
+        boolean widgetRuntimeExists = isWidgetRuntimeInstalled(staticRoot);
 
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("installed", installed);
+        status.put("ready", installed && widgetRuntimeExists);
+        status.put("widgetRuntimeExists", widgetRuntimeExists);
+        status.put("widgetBaseUrl", WIDGET_BASE_URL);
         status.put("localBaseUrl", LOCAL_BASE_URL);
         status.put("cdnBaseUrl", normalizeBaseUrl(cdnBaseUrl, DEFAULT_CDN_BASE_URL));
         status.put("modelBaseUrl", installed ? LOCAL_BASE_URL : normalizeBaseUrl(cdnBaseUrl, DEFAULT_CDN_BASE_URL));
@@ -229,6 +236,10 @@ public class Live2dAssetService {
     private boolean isInstalled(Path targetDir) {
         return Files.isRegularFile(targetDir.resolve("model_list.json"))
                 && Files.isDirectory(targetDir.resolve("model"));
+    }
+
+    private boolean isWidgetRuntimeInstalled(Path staticRoot) {
+        return Files.isRegularFile(staticRoot.resolve(WIDGET_RUNTIME_PATH));
     }
 
     private void downloadArchive(Path zipFile, InstallTask task) throws IOException {

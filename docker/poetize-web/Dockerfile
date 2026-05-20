@@ -51,11 +51,9 @@ COPY poetize-web/ ./
 # 构建前端项目（限制内存使用以适应低配服务器）
 RUN NODE_OPTIONS="--max-old-space-size=1536 --max-semi-space-size=64" npm run build
 
-# 处理静态资源复制（Vite 构建时会自动将 public 内容搬运至 dist，此处仅作安全兼容性通过）
-# RUN if [ -d "public/static" ]; then \
-#       mkdir -p dist/static && \
-#       cp -rf public/static/* dist/static/ 2>/dev/null || true; \
-#     fi
+# 构建期校验 Live2D 运行库必须进入前端静态产物，避免线上把首页 HTML 当 JS 返回。
+RUN test -s dist/static/live2d-widget/dist/live2d.min.js && \
+    test -s dist/static/live2d-widget/dist/waifu.css
 
 # ========================================
 # 阶段 2: 运行阶段 - 只保留构建产物
@@ -79,7 +77,11 @@ COPY --from=builder /app/dist /build/dist
 CMD ["sh", "-c", "\
     echo '=== 博客前端部署：复制构建产物到 volume ===' && \
     mkdir -p /app/dist && \
-    cp -rf /build/dist/* /app/dist/ && \
+    rm -rf /app/dist/prerender && \
+    find /app/dist -maxdepth 1 -type f -name '*.gz' -delete && \
+    cp -a /build/dist/. /app/dist/ && \
+    test -s /app/dist/static/live2d-widget/dist/live2d.min.js && \
+    test -s /app/dist/static/live2d-widget/dist/waifu.css && \
     echo '=== 静态文件部署完成 ===' && \
     touch /app/dist/.ui_ready && \
     echo '=== 博客前端启动成功 ===' \

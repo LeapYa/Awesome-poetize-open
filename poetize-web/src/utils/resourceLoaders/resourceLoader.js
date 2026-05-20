@@ -19,11 +19,22 @@ export function isResourceLoaded(url, type) {
  * @param {string} type - 资源类型 'css' | 'js'
  * @returns {Promise<string>}
  */
-export function loadExternalResource(url, type) {
+export function loadExternalResource(url, type, options = {}) {
   return new Promise((resolve, reject) => {
+    const validate =
+      typeof options.validate === 'function' ? options.validate : null
+    const timeoutMs = options.timeoutMs || 8000
+
     // 检查是否已加载
     if (isResourceLoaded(url, type)) {
-      return resolve(url)
+      if (!validate) {
+        return resolve(url)
+      }
+
+      waitForResourceValidation(validate, timeoutMs)
+        .then(() => resolve(url))
+        .catch(reject)
+      return
     }
 
     let tag
@@ -41,7 +52,14 @@ export function loadExternalResource(url, type) {
     }
 
     tag.onload = () => {
-      resolve(url)
+      if (!validate) {
+        resolve(url)
+        return
+      }
+
+      waitForResourceValidation(validate, timeoutMs)
+        .then(() => resolve(url))
+        .catch(reject)
     }
 
     tag.onerror = () => {
@@ -51,6 +69,39 @@ export function loadExternalResource(url, type) {
 
     document.head.appendChild(tag)
   })
+}
+
+function waitForResourceValidation(validate, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now()
+
+    const check = () => {
+      try {
+        if (validate()) {
+          resolve()
+          return
+        }
+      } catch (error) {
+        reject(error)
+        return
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        reject(new Error('资源加载后未通过校验'))
+        return
+      }
+
+      window.setTimeout(check, 100)
+    }
+
+    check()
+  })
+}
+
+function removeResourceTag(url, type) {
+  const selector =
+    type === 'css' ? `link[href="${url}"]` : `script[src="${url}"]`
+  document.querySelector(selector)?.remove()
 }
 
 /**
@@ -134,17 +185,35 @@ export async function loadMermaidResources() {
  * @param {string} live2dPath - Live2D资源路径
  */
 export async function loadLive2DResources(live2dPath) {
-  const resources = [
-    { url: `${live2dPath}live2d.min.js`, type: 'js' },
-  ]
-
-  try {
-    await loadResources(resources)
+  if (isLive2DLoaded()) {
     return true
-  } catch (error) {
-    console.error('Live2D资源加载失败:', error)
-    return false
   }
+
+  const candidates = uniqueResourceUrls([
+    `${live2dPath}live2d.min.js`,
+    'https://cdn.jsdelivr.net/gh/stevenjoezhang/live2d-widget@latest/live2d.min.js',
+    'https://fastly.jsdelivr.net/gh/stevenjoezhang/live2d-widget@latest/live2d.min.js',
+    'https://gcore.jsdelivr.net/gh/stevenjoezhang/live2d-widget@latest/live2d.min.js'
+  ])
+
+  for (const url of candidates) {
+    try {
+      await loadExternalResource(url, 'js', {
+        validate: isLive2DLoaded,
+        timeoutMs: 8000
+      })
+      return true
+    } catch (error) {
+      removeResourceTag(url, 'js')
+      console.error(`Live2D资源加载失败: ${url}`, error)
+    }
+  }
+
+  return false
+}
+
+function uniqueResourceUrls(urls) {
+  return Array.from(new Set(urls.filter(Boolean)))
 }
 
 /**

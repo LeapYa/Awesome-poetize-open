@@ -1,7 +1,7 @@
 // POETIZE PWA Service Worker
 // 提供智能缓存和PWA功能
 
-const CACHE_NAME = 'pwa-cache-v1.0.0';
+const CACHE_NAME = 'pwa-cache-v1.0.1-live2d';
 
 // 需要预缓存的关键资源
 const PRECACHE_RESOURCES = [
@@ -55,6 +55,8 @@ self.addEventListener('fetch', event => {
     event.respondWith(handlePageRequest(request));
   } else if (isMutableDefaultIcon(request)) {
     event.respondWith(handleMutableDefaultIcon(request));
+  } else if (isLive2DResource(request)) {
+    event.respondWith(handleLive2DResource(request));
   } else if (isStaticAsset(request)) {
     event.respondWith(handleStaticAsset(request));
   } else if (isApiRequest(request)) {
@@ -87,6 +89,18 @@ function isMutableDefaultIcon(request) {
   return url.pathname === '/static/assets/poetize.jpg' || url.pathname === '/assets/poetize.jpg';
 }
 
+function isLive2DResource(request) {
+  const url = new URL(request.url);
+  return url.pathname.startsWith('/static/live2d_api/') ||
+    url.pathname.startsWith('/static/live2d-widget/');
+}
+
+function isHtmlFallbackResponse(request, response) {
+  const url = new URL(request.url);
+  const contentType = response.headers.get('content-type') || '';
+  return !url.pathname.endsWith('.html') && contentType.includes('text/html');
+}
+
 // 处理页面请求：网络优先
 async function handlePageRequest(request) {
   try {
@@ -110,7 +124,7 @@ async function handleStaticAsset(request) {
 
   try {
     const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
+    if (networkResponse.ok && !isHtmlFallbackResponse(request, networkResponse)) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
@@ -122,6 +136,22 @@ async function handleStaticAsset(request) {
       statusText: 'Service Unavailable',
       headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
     });
+  }
+}
+
+// Live2D 模型和运行库：网络优先，避免把旧的 HTML fallback 缓存成 JS/JSON/图片
+async function handleLive2DResource(request) {
+  try {
+    const networkResponse = await fetch(request, { cache: 'reload' });
+    if (networkResponse.ok && !isHtmlFallbackResponse(request, networkResponse)) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (error) {
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) return cachedResponse;
+    throw error;
   }
 }
 

@@ -81,15 +81,28 @@ export default {
           modelPath = models
         }
 
-        await store.loadAssetStatus()
-        const { baseUrl, modelUrl, failures } = await resolveLive2DModelUrl(store.modelBaseUrl, modelPath)
+        const assetStatus = await store.loadAssetStatus()
+        const useLocalModelOnly = assetStatus?.installed === true
+        const { baseUrl, modelUrl, failures } = await resolveLive2DModelUrl(
+          store.modelBaseUrl,
+          modelPath,
+          {
+            allowRemoteFallback: !useLocalModelOnly,
+            skipValidation: useLocalModelOnly,
+          }
+        )
 
         if (baseUrl !== store.modelBaseUrl) {
           store.modelBaseUrl = baseUrl
         }
 
         if (failures.length > 0) {
-          console.warn('Live2D模型资源已切换到可用CDN:', { baseUrl, failures })
+          console.warn(
+            useLocalModelOnly
+              ? 'Live2D本地模型预检查未完全通过，继续尝试本地加载:'
+              : 'Live2D模型资源已切换到可用CDN:',
+            { baseUrl, failures }
+          )
         }
 
         // 调用Live2D加载函数
@@ -114,7 +127,7 @@ export default {
       }
     }
 
-    const waitForRenderedFrame = (canvas, timeoutMs = 10000) => {
+    const waitForRenderedFrame = (canvas, timeoutMs = 60000) => {
       return new Promise((resolve) => {
         const startedAt = performance.now()
 

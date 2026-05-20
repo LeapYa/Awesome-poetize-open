@@ -800,12 +800,14 @@ export default {
       if (this.live2dAssetStatusLoading) return '检测中';
       if (this.live2dAssetTaskRunning) return '后台下载中';
       if (this.live2dInstallTaskState === 'failed') return '下载失败';
+      if (this.live2dAssetStatus?.installed && this.live2dAssetStatus?.widgetRuntimeExists === false) return '运行库缺失';
       return this.live2dAssetStatus?.installed ? '本地模型已安装' : '使用 CDN';
     },
     live2dAssetStatusTagType() {
       if (this.live2dAssetStatusLoading) return 'info';
       if (this.live2dAssetTaskRunning) return 'info';
       if (this.live2dInstallTaskState === 'failed') return 'danger';
+      if (this.live2dAssetStatus?.installed && this.live2dAssetStatus?.widgetRuntimeExists === false) return 'danger';
       return this.live2dAssetStatus?.installed ? 'success' : 'warning';
     },
     live2dAssetStatusDetail() {
@@ -817,6 +819,9 @@ export default {
       }
       if (this.live2dInstallTaskState === 'failed') {
         return this.live2dInstallTask.message || '下载失败，可刷新状态后重试。';
+      }
+      if (this.live2dAssetStatus.installed && this.live2dAssetStatus.widgetRuntimeExists === false) {
+        return '模型包已安装，但前端 Live2D 运行库缺失，请重新部署前端静态资源。';
       }
       if (this.live2dAssetStatus.installed) {
         return `本地资源约 ${this.formatSize(this.live2dAssetStatus.totalSize)}，前端优先读取本地。`;

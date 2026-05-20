@@ -84,6 +84,10 @@ export default {
       const style = {
         '--waifu-scale': 1,
         '--waifu-size': '280px',
+        left: '0px',
+        right: 'auto',
+        bottom: '0px',
+        top: 'auto',
       }
 
       // 如果有保存的X位置，使用保存的位置
@@ -237,11 +241,13 @@ export default {
           return
         }
 
-        await store.loadAssetStatus()
+        const assetStatus = await store.loadAssetStatus()
+        const useLocalModelOnly = assetStatus?.installed === true
         const { baseUrl, failures } = await preloadLive2DModel(
           store.modelBaseUrl,
           target.modelPath,
           {
+            allowRemoteFallback: !useLocalModelOnly,
             onProgress: (payload) => updateLoadingProgress(target, payload),
           }
         )
@@ -251,7 +257,12 @@ export default {
         }
 
         if (failures.length > 0) {
-          console.warn('Live2D预加载已切换到可用CDN:', { baseUrl, failures })
+          console.warn(
+            useLocalModelOnly
+              ? 'Live2D本地模型预加载失败，不切换CDN:'
+              : 'Live2D预加载已切换到可用CDN:',
+            { baseUrl, failures }
+          )
         }
 
         updateLoadingProgress(target, {
@@ -342,6 +353,10 @@ export default {
 }
 #waifu.live2d-widget {
   position: fixed;
+  left: 0;
+  right: auto;
+  bottom: 0;
+  top: auto;
   width: var(--waifu-size, 280px);
   height: var(--waifu-size, 280px);
   z-index: 999;
