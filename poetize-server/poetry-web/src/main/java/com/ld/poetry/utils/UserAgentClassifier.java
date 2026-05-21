@@ -31,6 +31,11 @@ public final class UserAgentClassifier {
             return new UaInfo("search_engine", "搜索引擎", searchEngine);
         }
 
+        String securityScanner = securityScannerName(lower);
+        if (securityScanner != null) {
+            return new UaInfo("scanner", "扫描器", securityScanner);
+        }
+
         String crawler = crawlerName(lower);
         if (crawler != null) {
             return new UaInfo("crawler", "爬虫", crawler);
@@ -155,6 +160,39 @@ public final class UserAgentClassifier {
         if (lower.contains("applebot")) return "Applebot";
         if (lower.contains("semrushbot")) return "SemrushBot";
         if (lower.contains("ahrefsbot")) return "AhrefsBot";
+        return null;
+    }
+
+    private static String securityScannerName(String lower) {
+        if (lower.contains("l9scan") || lower.contains("leakix")) return "LeakIX";
+        if (lower.contains("censysinspect") || lower.contains("censys")) return "Censys";
+        if (lower.contains("shodan")) return "Shodan";
+        if (lower.contains("internetdb")) return "InternetDB";
+        if (lower.contains("binaryedge")) return "BinaryEdge";
+        if (lower.contains("onyphe")) return "ONYPHE";
+        if (lower.contains("shadowserver")) return "Shadowserver";
+        if (lower.contains("zgrab")) return "ZGrab";
+        if (lower.contains("zmap")) return "ZMap";
+        if (lower.contains("masscan")) return "Masscan";
+        if (lower.contains("nuclei")) return "Nuclei";
+        if (lower.contains("nikto")) return "Nikto";
+        if (lower.contains("sqlmap")) return "sqlmap";
+        if (lower.contains("nmap")) return "Nmap";
+        if (lower.contains("gobuster")) return "Gobuster";
+        if (lower.contains("dirbuster")) return "DirBuster";
+        if (lower.contains("feroxbuster")) return "Feroxbuster";
+        if (lower.contains("wpscan")) return "WPScan";
+        if (lower.contains("openvas")) return "OpenVAS";
+        if (lower.contains("nessus")) return "Nessus";
+        if (lower.contains("acunetix")) return "Acunetix";
+        if (lower.contains("burpsuite")) return "Burp Suite";
+        if (lower.contains("appscan")) return "AppScan";
+        if (lower.contains("netsparker")) return "Netsparker";
+        if (lower.contains("whatweb")) return "WhatWeb";
+        if (lower.contains(" jaeles") || lower.startsWith("jaeles")) return "Jaeles";
+        if (lower.contains("ffuf")) return "ffuf";
+        if (lower.contains("dirb/") || lower.equals("dirb")) return "DIRB";
+        if (lower.contains("httpx")) return "ProjectDiscovery httpx";
         return null;
     }
 

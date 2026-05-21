@@ -714,6 +714,7 @@ export default {
     getUaTagType(type) {
       const tagTypes = {
         search_engine: 'success',
+        scanner: 'danger',
         crawler: 'warning',
         mobile: '',
         pc: 'info',
