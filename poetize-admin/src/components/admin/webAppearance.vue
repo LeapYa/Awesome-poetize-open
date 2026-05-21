@@ -592,6 +592,7 @@
 import { useMainStore } from '@/stores/main';
 import RandomSettings from './webEdit/RandomSettings.vue';
 import { getValidToken } from '@/utils/tokenExpireHandler';
+import { setAdminContentLoading } from '@/utils/sessionValidation';
 const uploadPicture = () => import('../common/uploadPicture');
 const AiModelConfig = () => import('./aiChat/AiModelConfig');
 const AiChatSettings = () => import('./aiChat/AiChatSettings');
@@ -653,6 +654,7 @@ export default {
   data() {
     return {
       mainStore: useMainStore(),
+      loading: false,
       webInfoId: null,
       randomAvatar: [],
       randomName: [],
@@ -937,21 +939,35 @@ export default {
     this.loadFontStatus();
   },
   beforeDestroy() {
+    this.setContentLoading(false);
     window.removeEventListener('resize', this.checkMobileView);
     this.stopLive2dAssetStatusPolling();
   },
   methods: {
+    setContentLoading(loading) {
+      if (this.loading === loading) {
+        return;
+      }
+      this.loading = loading;
+      setAdminContentLoading(loading);
+    },
+
     toPositiveInteger(value, fallback) {
       const parsed = parseInt(value, 10);
       return Number.isNaN(parsed) || parsed <= 0 ? fallback : parsed;
     },
 
     async initializeData() {
-      await Promise.allSettled([
-        this.getWebInfo(),
-        this.loadAiConfigs(),
-        this.loadMouseClickEffectPlugins()
-      ]);
+      this.setContentLoading(true);
+      try {
+        await Promise.allSettled([
+          this.getWebInfo(),
+          this.loadAiConfigs(),
+          this.loadMouseClickEffectPlugins()
+        ]);
+      } finally {
+        this.setContentLoading(false);
+      }
     },
     async getWebInfo() {
       try {

@@ -7,26 +7,26 @@
       :isBusy="showAuthGate || isRedirectingToLogin"
     ></sidebar>
     <div class="content-box">
-      <div class="content">
-        <div v-if="showAuthGate" class="auth-gate">
-          <div class="auth-gate-card">
-            <i class="el-icon-loading auth-gate-icon"></i>
-            <div class="auth-gate-title">{{ authGateTitle }}</div>
-            <div class="auth-gate-desc">{{ authGateDescription }}</div>
-          </div>
-        </div>
-        <div v-else class="content-stage">
+      <div class="content" ref="adminContent">
+        <div v-if="!showAuthGate" class="content-stage">
           <router-view></router-view>
         </div>
-        <transition name="el-fade-in-linear">
-          <div v-if="showNavigationOverlay && !showAuthGate" class="content-overlay">
-            <div class="content-overlay-chip">
-              <i class="el-icon-loading"></i>
-              <span>{{ navigationOverlayText }}</span>
-            </div>
-          </div>
-        </transition>
       </div>
+      <div v-if="showAuthGate" class="auth-gate">
+        <div class="auth-gate-card">
+          <i class="el-icon-loading auth-gate-icon"></i>
+          <div class="auth-gate-title">{{ authGateTitle }}</div>
+          <div class="auth-gate-desc">{{ authGateDescription }}</div>
+        </div>
+      </div>
+      <transition name="el-fade-in-linear">
+        <div v-if="showNavigationOverlay && !showAuthGate" class="content-overlay">
+          <div class="content-overlay-chip">
+            <i class="el-icon-loading"></i>
+            <span>{{ navigationOverlayText }}</span>
+          </div>
+        </div>
+      </transition>
     </div>
 
     <!-- Dynamic Guide Island -->
@@ -120,7 +120,11 @@
         return !this.canRenderProtectedContent;
       },
       showNavigationOverlay() {
-        return this.canRenderProtectedContent && (this.sessionState.navigationPending || this.authStatus === 'validating');
+        return this.canRenderProtectedContent && (
+          this.sessionState.navigationPending ||
+          this.sessionState.contentLoadingCount > 0 ||
+          this.authStatus === 'validating'
+        );
       },
       authGateTitle() {
         if (this.isRedirectingToLogin || this.authStatus === 'invalid') {
@@ -163,6 +167,8 @@
 
     watch: {
       '$route'(to, from) {
+        this.resetContentScroll();
+
         if (to.query.focus) {
           this.scrollToFocus(to.query.focus);
         }
@@ -206,6 +212,15 @@
     },
 
     methods: {
+      resetContentScroll() {
+        this.$nextTick(() => {
+          const content = this.$refs.adminContent;
+          if (content) {
+            content.scrollTop = 0;
+          }
+        });
+      },
+
       scrollToFocus(id) {
         const attemptScroll = (retryCount = 0) => {
           const el = document.getElementById(id);

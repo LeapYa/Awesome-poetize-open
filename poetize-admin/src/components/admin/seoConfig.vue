@@ -1190,6 +1190,7 @@ Sitemap: /sitemap.xml"
 <script>
 
   import { useMainStore } from '@/stores/main';
+  import { setAdminContentLoading } from '@/utils/sessionValidation';
 
 const uploadPicture = () => import("../common/uploadPicture");
 
@@ -1200,6 +1201,7 @@ export default {
   data() {
     return {
       initialLoad: true,
+      contentLoading: false,
       currentStoreType: null, // 添加当前存储类型属性
       isMobile: false, // 移动端检测
       isTouch: false, // 触摸设备检测
@@ -1321,6 +1323,8 @@ export default {
   },
   
   beforeDestroy() {
+    this.setContentLoading(false);
+
     // 移除文档点击事件监听器
     document.removeEventListener('click', this.handleDocumentClick);
     
@@ -1381,6 +1385,19 @@ export default {
   },
   
   methods: {
+    setContentLoading(loading) {
+      if (this.contentLoading === loading) {
+        return;
+      }
+      this.contentLoading = loading;
+      setAdminContentLoading(loading);
+    },
+
+    finishInitialLoad() {
+      this.initialLoad = false;
+      this.setContentLoading(false);
+    },
+
     normalizeSiteAddress(siteAddress) {
       if (!siteAddress || typeof siteAddress !== 'string') {
         return '';
@@ -1517,6 +1534,7 @@ export default {
     
     getSeoConfig() {
       try {
+        this.setContentLoading(true);
         this.$http.get(this.$constant.baseURL + '/admin/seo/getSeoConfig', {}, true)
           .then((res) => {
             
@@ -1532,7 +1550,7 @@ export default {
               // 使用Object.assign保持响应式，而不是直接替换对象
               Object.assign(this.seoConfig, config);
               this.$nextTick(() => {
-                this.initialLoad = false;
+                this.finishInitialLoad();
               });
             } else if (res && typeof res === 'object' && !res.hasOwnProperty('code')) {
               // 直接返回配置对象的情况（兼容性处理）
@@ -1544,13 +1562,13 @@ export default {
               
               Object.assign(this.seoConfig, config);
               this.$nextTick(() => {
-                this.initialLoad = false;
+                this.finishInitialLoad();
               });
             } else {
               console.error('获取SEO配置失败，响应数据异常:', res);
               this.$message.error(res?.message || '获取SEO配置失败');
               // 使用默认配置
-              this.initialLoad = false;
+              this.finishInitialLoad();
             }
           })
           .catch((error) => {
@@ -1558,13 +1576,13 @@ export default {
             console.error('错误详情:', error.response ? error.response.data : '无响应数据');
             this.$message.error('获取SEO配置失败: ' + (error.message || '网络连接问题'));
             // 使用默认配置
-            this.initialLoad = false;
+            this.finishInitialLoad();
           });
       } catch (e) {
         console.error('调用SEO配置API时出现异常:', e);
         this.$message.error('获取SEO配置时遇到问题，请检查网络连接');
         // 使用默认配置
-        this.initialLoad = false;
+        this.finishInitialLoad();
       }
     },
     

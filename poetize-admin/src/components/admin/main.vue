@@ -1,6 +1,6 @@
 <template>
   <div :class="{ 'main-dark-mode': isDarkMode }">
-    <div v-loading="loading">
+    <div>
       <el-tag effect="dark" class="my-tag">
         <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
           <path
@@ -480,6 +480,7 @@
 
 <script>
 import VisitStats from './visitStats.vue';
+import { setAdminContentLoading } from '@/utils/sessionValidation';
 
 export default {
   components: {
@@ -526,6 +527,8 @@ export default {
   },
 
   beforeDestroy() {
+    this.setContentLoading(false);
+
     // 清理全局事件监听
     if (this.themeChangeListener) {
       this.$root.$off('theme-changed', this.themeChangeListener);
@@ -538,7 +541,18 @@ export default {
   },
 
   methods: {
-    getHistoryInfo() {
+    setContentLoading(loading) {
+      if (this.loading === loading) {
+        return;
+      }
+      this.loading = loading;
+      setAdminContentLoading(loading);
+    },
+
+    getHistoryInfo(showLoading = true) {
+      if (showLoading) {
+        this.setContentLoading(true);
+      }
       this.$http.get(this.$constant.baseURL + "/webInfo/getHistoryInfo", {}, true)
         .then((res) => {
           if (!this.$common.isEmpty(res.data)) {
@@ -550,6 +564,11 @@ export default {
             message: error.message,
             type: "error"
           });
+        })
+        .finally(() => {
+          if (showLoading) {
+            this.setContentLoading(false);
+          }
         });
     },
     
@@ -565,7 +584,7 @@ export default {
               type: "success"
             });
             // 刷新完成后重新获取数据
-            this.getHistoryInfo();
+            this.getHistoryInfo(false);
           } else {
             this.$message({
               message: res.message || '刷新失败',
@@ -701,7 +720,7 @@ export default {
               type: 'success'
             });
             this.cleanDialogVisible = false;
-            this.getHistoryInfo();
+            this.getHistoryInfo(false);
             if (this.$refs.visitStatsChart && this.$refs.visitStatsChart.fetchVisitStats) {
               this.$refs.visitStatsChart.fetchVisitStats();
             }

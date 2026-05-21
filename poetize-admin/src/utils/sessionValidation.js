@@ -15,6 +15,7 @@ const sessionState = Vue.observable({
   verifiedAt: 0,
   inFlight: null,
   navigationPending: false,
+  contentLoadingCount: 0,
 })
 
 function clearValidatedUser() {
@@ -76,6 +77,7 @@ export function resetSessionValidation(options = {}) {
   sessionState.verifiedAt = 0
   sessionState.inFlight = null
   sessionState.navigationPending = false
+  sessionState.contentLoadingCount = 0
 
   if (clearStore) {
     clearValidatedUser()
@@ -98,6 +100,14 @@ export function beginSessionValidation() {
 
 export function setAdminNavigationPending(pending) {
   sessionState.navigationPending = pending
+}
+
+export function setAdminContentLoading(loading) {
+  if (loading) {
+    sessionState.contentLoadingCount += 1
+    return
+  }
+  sessionState.contentLoadingCount = Math.max(0, sessionState.contentLoadingCount - 1)
 }
 
 export function hasStoredSessionHint() {

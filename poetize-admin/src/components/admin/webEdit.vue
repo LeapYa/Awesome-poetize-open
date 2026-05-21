@@ -284,6 +284,7 @@
 
 <script>
     import { useMainStore } from '@/stores/main';
+    import { setAdminContentLoading } from '@/utils/sessionValidation';
 
 const uploadPicture = () => import( "../common/uploadPicture");
 
@@ -382,17 +383,29 @@ const uploadPicture = () => import( "../common/uploadPicture");
     },
 
     beforeDestroy() {
+      this.setContentLoading(false);
       // 移除监听器
       window.removeEventListener('resize', this.checkDeviceType);
     },
 
     methods: {
+      setContentLoading(loading) {
+        if (this.loading === loading) {
+          return;
+        }
+        this.loading = loading;
+        setAdminContentLoading(loading);
+      },
+
       // 新增：并行初始化所有数据
       async initializeData() {
+        this.setContentLoading(true);
         try {
           await this.getWebInfo();
         } catch (error) {
           console.error("初始化数据时出错:", error);
+        } finally {
+          this.setContentLoading(false);
         }
       },
 
