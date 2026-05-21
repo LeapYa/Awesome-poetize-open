@@ -20,6 +20,7 @@ import com.ld.poetry.dao.SeoSiteVerificationMapper;
 import com.ld.poetry.dao.SeoSocialMediaMapper;
 import com.ld.poetry.dao.SortMapper;
 import com.ld.poetry.dao.SysAiConfigMapper;
+import com.ld.poetry.dao.SysAuditLogMapper;
 import com.ld.poetry.dao.SysCaptchaConfigMapper;
 import com.ld.poetry.dao.SysConfigMapper;
 import com.ld.poetry.dao.SysMailConfigMapper;
@@ -60,6 +61,7 @@ public class MapperBeanConfig {
             SysPluginActiveMapper.class,
             SysPluginMapper.class,
             SysConfigMapper.class,
+            SysAuditLogMapper.class,
             SysMailConfigMapper.class,
             SysCaptchaConfigMapper.class,
             SeoSocialMediaMapper.class,
@@ -120,6 +122,8 @@ public class MapperBeanConfig {
     public SysPluginMapper sysPluginMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, SysPluginMapper.class); }
     @Bean
     public SysConfigMapper sysConfigMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, SysConfigMapper.class); }
+    @Bean
+    public SysAuditLogMapper sysAuditLogMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, SysAuditLogMapper.class); }
     @Bean
     public SysMailConfigMapper sysMailConfigMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, SysMailConfigMapper.class); }
     @Bean

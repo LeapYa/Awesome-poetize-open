@@ -1,5 +1,6 @@
 package com.ld.poetry.controller;
 
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
@@ -100,6 +101,7 @@ public class ThirdPartyOauthConfigController {
      */
     @LoginCheck(0)
     @PutMapping("/platform")
+    @AuditLog(action = "OAUTH_CONFIG_UPDATE", targetType = "OAUTH_CONFIG", targetIdParam = "platformType", summary = "更新第三方登录平台配置")
     public PoetryResult<ThirdPartyOauthConfig> updatePlatformConfig(@RequestBody ThirdPartyOauthConfig config) {
         try {
             PoetryResult<ThirdPartyOauthConfig> result = thirdPartyOauthConfigService.updatePlatformConfig(config);
@@ -116,6 +118,7 @@ public class ThirdPartyOauthConfigController {
      */
     @LoginCheck(0)
     @PutMapping("/batch")
+    @AuditLog(action = "OAUTH_CONFIG_BATCH_UPDATE", targetType = "OAUTH_CONFIG", summary = "批量更新第三方登录配置")
     public PoetryResult<Boolean> batchUpdateConfigs(@RequestBody List<ThirdPartyOauthConfig> configs) {
         try {
             PoetryResult<Boolean> result = thirdPartyOauthConfigService.batchUpdateConfigs(configs);
@@ -132,6 +135,7 @@ public class ThirdPartyOauthConfigController {
      */
     @LoginCheck(0)
     @PutMapping("/global-enabled/{enabled}")
+    @AuditLog(action = "OAUTH_CONFIG_GLOBAL_ENABLE", targetType = "OAUTH_CONFIG", targetIdParam = "enabled", summary = "更新第三方登录全局状态")
     public PoetryResult<Boolean> updateGlobalEnabled(@PathVariable Boolean enabled) {
         try {
             PoetryResult<Boolean> result = thirdPartyOauthConfigService.updateGlobalEnabled(enabled);
@@ -148,6 +152,7 @@ public class ThirdPartyOauthConfigController {
      */
     @LoginCheck(0)
     @PutMapping("/platform/{platformType}/enabled/{enabled}")
+    @AuditLog(action = "OAUTH_CONFIG_PLATFORM_ENABLE", targetType = "OAUTH_CONFIG", targetIdParam = "platformType", summary = "更新第三方登录平台状态")
     public PoetryResult<Boolean> updatePlatformEnabled(@PathVariable String platformType, @PathVariable Boolean enabled) {
         try {
             PoetryResult<Boolean> result = thirdPartyOauthConfigService.updatePlatformEnabled(platformType, enabled);
@@ -192,6 +197,7 @@ public class ThirdPartyOauthConfigController {
      */
     @LoginCheck(0)
     @PostMapping("/migrate/from-file")
+    @AuditLog(action = "OAUTH_CONFIG_MIGRATE_FILE", targetType = "OAUTH_CONFIG", summary = "从文件迁移第三方登录配置")
     public PoetryResult<Boolean> migrateFromJsonFile(@RequestParam String jsonFilePath) {
         try {
             PoetryResult<Boolean> result = thirdPartyOauthConfigService.migrateFromJsonFile(jsonFilePath);
@@ -208,6 +214,7 @@ public class ThirdPartyOauthConfigController {
      */
     @LoginCheck(0)
     @PostMapping("/migrate/from-json")
+    @AuditLog(action = "OAUTH_CONFIG_MIGRATE_JSON", targetType = "OAUTH_CONFIG", summary = "从JSON迁移第三方登录配置")
     public PoetryResult<Boolean> migrateFromJsonString(@RequestBody Map<String, Object> request) {
         try {
             String jsonString = (String) request.get("jsonString");
@@ -252,6 +259,7 @@ public class ThirdPartyOauthConfigController {
      */
     @LoginCheck(0)
     @PostMapping("/reset")
+    @AuditLog(action = "OAUTH_CONFIG_RESET", targetType = "OAUTH_CONFIG", summary = "重置第三方登录配置")
     public PoetryResult<Boolean> resetToDefault() {
         try {
             PoetryResult<Boolean> result = thirdPartyOauthConfigService.resetToDefault();

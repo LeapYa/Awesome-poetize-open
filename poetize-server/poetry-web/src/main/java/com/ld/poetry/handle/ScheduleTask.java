@@ -3,6 +3,7 @@ package com.ld.poetry.handle;
 import com.ld.poetry.dao.HistoryInfoMapper;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.service.CacheService;
+import com.ld.poetry.service.SysAuditLogService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -30,6 +31,9 @@ public class ScheduleTask {
     @Autowired
     private CacheService cacheService;
 
+    @Autowired
+    private SysAuditLogService sysAuditLogService;
+
     /**
      * 每天凌晨执行的完整清理和统计任务
      * 此时访问量统计会刷新，包括总访问量和今日访问量
@@ -38,6 +42,10 @@ public class ScheduleTask {
     public void cleanIpHistory() {
         try {
             log.info("====================开始执行每日访问记录同步和统计任务====================");
+            int removedAuditLogs = sysAuditLogService.cleanExpiredLogs(180);
+            if (removedAuditLogs > 0) {
+                log.info("已清理180天前后台审计日志: {} 条", removedAuditLogs);
+            }
             
             // 同步昨天的Redis访问记录到数据库
             syncVisitRecordsToDatabase();

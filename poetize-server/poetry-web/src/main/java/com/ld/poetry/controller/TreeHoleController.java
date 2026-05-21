@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.config.PoetryResult;
@@ -89,6 +90,7 @@ public class TreeHoleController {
      */
     @GetMapping("/deleteTreeHole")
     @LoginCheck(0)
+    @AuditLog(action = "TREE_HOLE_DELETE", targetType = "TREE_HOLE", targetIdParam = "id", summary = "删除留言")
     public PoetryResult deleteTreeHole(@RequestParam("id") Integer id) {
         treeHoleMapper.deleteById(id);
         return PoetryResult.success();

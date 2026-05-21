@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CacheConstants;
@@ -57,6 +58,7 @@ public class AdminUserController {
      */
     @GetMapping("/user/changeUserStatus")
     @LoginCheck(0)
+    @AuditLog(action = "USER_STATUS_CHANGE", targetType = "USER", targetIdParam = "userId", summary = "修改用户状态")
     public PoetryResult changeUserStatus(@RequestParam("userId") Integer userId, @RequestParam("flag") Boolean flag) {
         if (userId.intValue() == PoetryUtil.getAdminUser().getId().intValue()) {
             return PoetryResult.fail("站长状态不能修改！");
@@ -79,6 +81,7 @@ public class AdminUserController {
      */
     @GetMapping("/user/changeUserAdmire")
     @LoginCheck(0)
+    @AuditLog(action = "USER_ADMIRE_CHANGE", targetType = "USER", targetIdParam = "userId", summary = "修改用户赞赏信息")
     public PoetryResult changeUserAdmire(@RequestParam("userId") Integer userId,
             @RequestParam("admire") String admire) {
         userService.lambdaUpdate()
@@ -101,6 +104,7 @@ public class AdminUserController {
      */
     @GetMapping("/user/changeUserType")
     @LoginCheck(0)
+    @AuditLog(action = "USER_TYPE_CHANGE", targetType = "USER", targetIdParam = "userId", summary = "修改用户类型")
     public PoetryResult changeUserType(@RequestParam("userId") Integer userId,
             @RequestParam("userType") Integer userType) {
         if (userId.intValue() == PoetryUtil.getAdminUser().getId().intValue()) {
@@ -121,6 +125,7 @@ public class AdminUserController {
      */
     @GetMapping("/user/deleteUser")
     @LoginCheck(0)
+    @AuditLog(action = "USER_DELETE", targetType = "USER", targetIdParam = "userId", summary = "删除用户")
     public PoetryResult deleteUser(@RequestParam("userId") Integer userId) {
         if (userId == null) {
             return PoetryResult.fail(CodeMsg.PARAMETER_ERROR);

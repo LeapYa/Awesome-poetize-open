@@ -1,5 +1,6 @@
 package com.ld.poetry.controller;
 
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.dto.MailConfigDTO;
@@ -68,6 +69,7 @@ public class SysMailConfigController {
      */
     @PostMapping("/saveEmailConfigs")
     @LoginCheck(0)
+    @AuditLog(action = "MAIL_CONFIG_SAVE", targetType = "MAIL_CONFIG", summary = "保存邮件配置")
     public PoetryResult<Void> saveEmailConfigs(
             @RequestBody List<MailConfigDTO> configs,
             @RequestParam(value = "defaultIndex", required = false, defaultValue = "-1") Integer defaultIndex) {
@@ -96,6 +98,7 @@ public class SysMailConfigController {
      */
     @PostMapping("/testEmailConfig")
     @LoginCheck(0)
+    @AuditLog(action = "MAIL_CONFIG_TEST", targetType = "MAIL_CONFIG", summary = "测试邮件配置")
     public PoetryResult<Void> testEmailConfig(@RequestBody Map<String, Object> testData) {
         try {
             if (testData == null) {

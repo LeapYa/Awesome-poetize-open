@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CacheConstants;
@@ -88,6 +89,7 @@ public class FamilyController {
      */
     @GetMapping("/deleteFamily")
     @LoginCheck(0)
+    @AuditLog(action = "LOVE_DELETE", targetType = "LOVE", targetIdParam = "id", summary = "删除表白墙")
     public PoetryResult deleteFamily(@RequestParam("id") Integer id) {
         familyService.removeById(id);
 
@@ -184,6 +186,7 @@ public class FamilyController {
      */
     @GetMapping("/changeLoveStatus")
     @LoginCheck(0)
+    @AuditLog(action = "LOVE_STATUS_CHANGE", targetType = "LOVE", targetIdParam = "id", summary = "修改表白墙状态")
     public PoetryResult changeLoveStatus(@RequestParam("id") Integer id, @RequestParam("flag") Boolean flag) {
         familyService.lambdaUpdate().eq(Family::getId, id).set(Family::getStatus, flag).update();
 

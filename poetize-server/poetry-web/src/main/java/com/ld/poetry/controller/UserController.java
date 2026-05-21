@@ -9,6 +9,7 @@ import com.ld.poetry.entity.User;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.CaptchaService;
 import com.ld.poetry.service.MailService;
+import com.ld.poetry.service.SysAuditLogService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.enums.CodeMsg;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -56,6 +58,9 @@ public class UserController {
 
     @Autowired
     private AuthCookieUtil authCookieUtil;
+
+    @Autowired
+    private SysAuditLogService sysAuditLogService;
 
     /**
      * 用户名/密码注册
@@ -121,6 +126,7 @@ public class UserController {
                 // 使用安全的AES-GCM模式解密请求体
                 String decryptedData = CryptoUtil.decrypt(encryptedRequest.getData());
                 if (decryptedData == null) {
+                    recordPasswordLogin(false, account, null, "登录请求解密失败", "DECRYPT_FAILED", isAdmin);
                     return PoetryResult.fail("解密失败");
                 }
 
@@ -134,12 +140,14 @@ public class UserController {
                 verificationToken = (String) params.get("verificationToken");
             } catch (Exception e) {
                 log.error("解密登录请求失败", e);
+                recordPasswordLogin(false, account, null, "登录请求解密失败", "DECRYPT_EXCEPTION", isAdmin);
                 return PoetryResult.fail("请求解密失败");
             }
         }
 
         // 验证必要参数
         if (account == null || password == null) {
+            recordPasswordLogin(false, account, null, "登录参数不完整", "MISSING_ACCOUNT_OR_PASSWORD", isAdmin);
             return PoetryResult.fail("账号和密码不能为空");
         }
 
@@ -150,12 +158,14 @@ public class UserController {
             // 验证码开启时，必须提供有效token
             if (verificationToken == null || verificationToken.isEmpty()) {
                 log.warn("登录需要验证码但未提供token，拒绝请求");
+                recordPasswordLogin(false, account, null, "登录验证码未完成", "CAPTCHA_REQUIRED", isAdmin);
                 return PoetryResult.fail(CodeMsg.CAPTCHA_REQUIRED.getCode(), "请先完成验证码验证");
             }
 
             boolean isTokenValid = captchaService.verifyToken("login", verificationToken, null, null);
             if (!isTokenValid) {
                 log.warn("登录验证码token验证失败，拒绝登录请求");
+                recordPasswordLogin(false, account, null, "登录验证码验证失败", "CAPTCHA_INVALID", isAdmin);
                 return PoetryResult.fail(CodeMsg.CAPTCHA_INVALID.getCode(), "验证码验证失败，请重新验证后再试");
             }
             log.info("登录验证码token验证通过");
@@ -164,6 +174,11 @@ public class UserController {
         // 调用登录服务
         PoetryResult<UserVO> loginResult = userService.login(account, password, isAdmin);
         loginResult = attachCookieIfNeeded(loginResult, request, response);
+        if (loginResult.getCode() == 200 && loginResult.getData() != null) {
+            recordPasswordLogin(true, account, loginResult.getData(), "账号密码登录成功", "SUCCESS", isAdmin);
+        } else {
+            recordPasswordLogin(false, account, null, "账号密码登录失败", loginResult.getMessage(), isAdmin);
+        }
 
         // 如果登录成功，对响应数据进行加密
         if (loginResult.getCode() == 200 && loginResult.getData() != null) {
@@ -211,13 +226,16 @@ public class UserController {
     @GetMapping("/logout")
     @LoginCheck(allowExpired = true)
     public PoetryResult exit(HttpServletRequest request, HttpServletResponse response) {
+        User currentUser = PoetryUtil.getCurrentUser();
         try {
             PoetryResult result = userService.exit();
             authCookieUtil.clearAuthCookie(request, response);
+            recordLogout(true, currentUser, "退出登录成功", result.getMessage());
             return result;
         } catch (Exception e) {
             // 即使在异常情况下也返回成功，因为退出操作应该总是成功
             log.warn("退出登录过程中发生异常，但返回成功: {}", e.getMessage());
+            recordLogout(false, currentUser, "退出登录异常", e.getMessage());
             return PoetryResult.success("退出成功");
         }
     }
@@ -457,12 +475,14 @@ public class UserController {
             // 验证码开启时，必须提供有效token
             if (verificationToken == null || verificationToken.isEmpty()) {
                 log.warn("第三方登录需要验证码但未提供token，拒绝请求");
+                recordThirdLogin(false, thirdUserInfo, null, "第三方登录验证码未完成", "CAPTCHA_REQUIRED");
                 return PoetryResult.fail(CodeMsg.CAPTCHA_REQUIRED.getCode(), "请先完成验证码验证");
             }
 
             boolean isTokenValid = captchaService.verifyToken("login", verificationToken, null, null);
             if (!isTokenValid) {
                 log.warn("第三方登录验证码token验证失败，拒绝登录请求");
+                recordThirdLogin(false, thirdUserInfo, null, "第三方登录验证码验证失败", "CAPTCHA_INVALID");
                 return PoetryResult.fail(CodeMsg.CAPTCHA_INVALID.getCode(), "验证码验证失败，请重新验证后再试");
             }
             log.info("第三方登录验证码token验证通过");
@@ -474,7 +494,68 @@ public class UserController {
                 thirdUserInfo.getUsername(),
                 thirdUserInfo.getEmail(),
                 thirdUserInfo.getAvatar());
+        if (result.getCode() == 200 && result.getData() != null) {
+            recordThirdLogin(true, thirdUserInfo, result.getData(), "第三方登录成功", "SUCCESS");
+        } else {
+            recordThirdLogin(false, thirdUserInfo, null, "第三方登录失败", result.getMessage());
+        }
         return attachCookieIfNeeded(result, request, response);
+    }
+
+    private void recordPasswordLogin(boolean success, String account, UserVO userVO, String summary,
+                                     String reason, Boolean isAdmin) {
+        try {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("method", "PASSWORD");
+            detail.put("reason", reason);
+            detail.put("adminRequested", Boolean.TRUE.equals(isAdmin));
+            sysAuditLogService.recordLogin("PASSWORD_LOGIN", success, account,
+                    userVO == null ? null : userVO.getId(),
+                    userVO == null ? null : userVO.getUsername(),
+                    summary,
+                    detail);
+        } catch (Exception e) {
+            log.debug("记录账号密码登录审计日志失败: {}", e.getMessage());
+        }
+    }
+
+    private void recordThirdLogin(boolean success, UserVO thirdUserInfo, UserVO userVO, String summary, String reason) {
+        try {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("method", "THIRD_LOGIN");
+            detail.put("reason", reason);
+            detail.put("provider", thirdUserInfo == null ? null : thirdUserInfo.getPlatformType());
+            String account = null;
+            if (thirdUserInfo != null) {
+                account = thirdUserInfo.getEmail() != null ? thirdUserInfo.getEmail() : thirdUserInfo.getUsername();
+                if (account == null) {
+                    account = thirdUserInfo.getUid();
+                }
+            }
+            sysAuditLogService.recordLogin("THIRD_LOGIN", success, account,
+                    userVO == null ? null : userVO.getId(),
+                    userVO == null ? null : userVO.getUsername(),
+                    summary,
+                    detail);
+        } catch (Exception e) {
+            log.debug("记录第三方登录审计日志失败: {}", e.getMessage());
+        }
+    }
+
+    private void recordLogout(boolean success, User user, String summary, String reason) {
+        try {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("method", "LOGOUT");
+            detail.put("reason", reason);
+            sysAuditLogService.recordLogin("LOGOUT", success,
+                    user == null ? null : user.getUsername(),
+                    user == null ? null : user.getId(),
+                    user == null ? null : user.getUsername(),
+                    summary,
+                    detail);
+        } catch (Exception e) {
+            log.debug("记录退出登录审计日志失败: {}", e.getMessage());
+        }
     }
 
     private PoetryResult<UserVO> attachCookieIfNeeded(PoetryResult<UserVO> result,

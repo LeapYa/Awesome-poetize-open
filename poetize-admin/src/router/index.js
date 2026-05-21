@@ -100,6 +100,10 @@ const routes = [
       name: 'pluginManager',
       component: () => import('../components/admin/pluginManager')
     }, {
+      path: 'systemLog',
+      name: 'systemLog',
+      component: () => import('../components/admin/systemLog')
+    }, {
       path: 'translationModel',
       name: 'translationModel',
       component: () => import('../components/admin/translationModelManage.vue'),

@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.Article;
@@ -36,6 +37,7 @@ public class AdminCommentController {
      */
     @GetMapping("/comment/user/deleteComment")
     @LoginCheck(1)
+    @AuditLog(action = "COMMENT_DELETE", targetType = "COMMENT", targetIdParam = "id", summary = "删除评论")
     public PoetryResult userDeleteComment(@RequestParam("id") Integer id) {
         Comment comment = commentService.lambdaQuery().select(Comment::getSource, Comment::getType).eq(Comment::getId, id).one();
         if (comment == null) {
@@ -56,6 +58,7 @@ public class AdminCommentController {
      */
     @GetMapping("/comment/boss/deleteComment")
     @LoginCheck(1)
+    @AuditLog(action = "COMMENT_DELETE", targetType = "COMMENT", targetIdParam = "id", summary = "删除评论")
     public PoetryResult bossDeleteComment(@RequestParam("id") Integer id) {
         return commentService.deleteCommentById(id);
     }

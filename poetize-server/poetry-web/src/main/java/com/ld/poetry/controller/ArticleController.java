@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CacheConstants;
@@ -127,6 +128,7 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/saveArticle")
+    @AuditLog(action = "ARTICLE_CREATE", targetType = "ARTICLE", targetIdParam = "id", summary = "保存文章")
     public PoetryResult saveArticle(@Validated @RequestBody ArticleVO articleVO,
                                    @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                    @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
@@ -227,6 +229,7 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/saveArticleAsync")
+    @AuditLog(action = "ARTICLE_CREATE_ASYNC", targetType = "ARTICLE", targetIdParam = "id", summary = "异步保存文章")
     public PoetryResult<String> saveArticleAsync(@Validated @RequestBody ArticleVO articleVO,
                                                 @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                                 @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
@@ -366,6 +369,7 @@ public class ArticleController {
      */
     @GetMapping("/deleteArticle")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DELETE", targetType = "ARTICLE", targetIdParam = "id", summary = "删除文章")
     public PoetryResult deleteArticle(@RequestParam("id") Integer id) {
         // 在删除前先获取文章信息，以便获取分类ID用于预渲染
         Integer sortId = null;
@@ -423,6 +427,7 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/updateArticle")
+    @AuditLog(action = "ARTICLE_UPDATE", targetType = "ARTICLE", targetIdParam = "id", summary = "更新文章")
     public PoetryResult updateArticle(@Validated @RequestBody ArticleVO articleVO,
                                      @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                      @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
@@ -852,6 +857,7 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/updateArticleAsync")
+    @AuditLog(action = "ARTICLE_UPDATE_ASYNC", targetType = "ARTICLE", targetIdParam = "id", summary = "异步更新文章")
     public PoetryResult<String> updateArticleAsync(@Validated @RequestBody ArticleVO articleVO,
                                                   @RequestParam(value = "skipAiTranslation", required = false) Boolean skipAiTranslation,
                                                   @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,

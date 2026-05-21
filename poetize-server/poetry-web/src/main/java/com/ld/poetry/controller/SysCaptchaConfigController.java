@@ -1,5 +1,6 @@
 package com.ld.poetry.controller;
 
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.SysCaptchaConfigService;
@@ -46,6 +47,7 @@ public class SysCaptchaConfigController {
      */
     @PostMapping("/updateCaptchaConfig")
     @LoginCheck(0)
+    @AuditLog(action = "CAPTCHA_CONFIG_UPDATE", targetType = "WEB_INFO", summary = "更新验证码配置")
     public PoetryResult<Void> updateCaptchaConfig(@RequestBody Map<String, Object> config) {
         try {
             log.info("收到保存验证码配置请求");

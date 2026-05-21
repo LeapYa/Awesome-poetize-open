@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
@@ -109,6 +110,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/updateWebInfo")
+    @AuditLog(action = "WEB_INFO_UPDATE", targetType = "WEB_INFO", targetIdParam = "id", summary = "更新网站基础信息")
     public PoetryResult<WebInfo> updateWebInfo(@RequestBody Map<String, Object> params) {
         try {
             // 从Map中提取参数
@@ -229,6 +231,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/live2d/assets/install")
+    @AuditLog(action = "LIVE2D_ASSETS_INSTALL", targetType = "WEB_INFO", summary = "安装Live2D资源")
     public PoetryResult<Map<String, Object>> installLive2dAssets(@RequestBody(required = false) Map<String, Object> params) {
         try {
             boolean force = params != null && Boolean.TRUE.equals(params.get("force"));
@@ -244,6 +247,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/updateNotices")
+    @AuditLog(action = "WEB_NOTICE_UPDATE", targetType = "WEB_INFO", targetIdParam = "id", summary = "更新网站通知")
     public PoetryResult<String> updateNotices(@RequestBody Map<String, Object> request) {
         try {
             Integer id = (Integer) request.get("id");
@@ -273,6 +277,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/updateRandomName")
+    @AuditLog(action = "WEB_RANDOM_NAME_UPDATE", targetType = "WEB_INFO", targetIdParam = "id", summary = "更新随机名称")
     public PoetryResult<String> updateRandomName(@RequestBody Map<String, Object> request) {
         try {
             Integer id = (Integer) request.get("id");
@@ -302,6 +307,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/updateRandomAvatar")
+    @AuditLog(action = "WEB_RANDOM_AVATAR_UPDATE", targetType = "WEB_INFO", targetIdParam = "id", summary = "更新随机头像")
     public PoetryResult<String> updateRandomAvatar(@RequestBody Map<String, Object> request) {
         try {
             Integer id = (Integer) request.get("id");
@@ -331,6 +337,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/updateRandomCover")
+    @AuditLog(action = "WEB_RANDOM_COVER_UPDATE", targetType = "WEB_INFO", targetIdParam = "id", summary = "更新随机封面")
     public PoetryResult<String> updateRandomCover(@RequestBody Map<String, Object> request) {
         try {
             Integer id = (Integer) request.get("id");
@@ -516,6 +523,7 @@ public class WebInfoController {
      */
     @LoginCheck(1)
     @PostMapping("/cleanVisitData")
+    @AuditLog(action = "VISIT_DATA_CLEAN", targetType = "VISIT", targetIdParam = "targetIp", summary = "清理访问统计数据")
     public PoetryResult<Map<String, Object>> cleanVisitData(@RequestBody(required = false) Map<String, Object> params,
                                                             HttpServletRequest request) {
         try {
@@ -556,6 +564,7 @@ public class WebInfoController {
 
     @LoginCheck(0)
     @PostMapping("/updateThirdLoginConfig")
+    @AuditLog(action = "THIRD_LOGIN_CONFIG_UPDATE", targetType = "WEB_INFO", summary = "更新第三方登录配置")
     public PoetryResult<Object> updateThirdLoginConfig(@RequestBody Map<String, Object> config) {
         try {
             log.info("更新第三方登录配置: {}", config);
@@ -1078,6 +1087,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/saveApiConfig")
+    @AuditLog(action = "API_CONFIG_SAVE", targetType = "WEB_INFO", summary = "保存接口配置")
     public PoetryResult<String> saveApiConfig(@RequestBody Map<String, Object> apiConfig) {
         WebInfo webInfo = cacheService.getCachedWebInfo();
         if (webInfo == null) {
@@ -1131,6 +1141,7 @@ public class WebInfoController {
      */
     @LoginCheck(0)
     @PostMapping("/regenerateApiKey")
+    @AuditLog(action = "API_KEY_REGENERATE", targetType = "WEB_INFO", summary = "重新生成接口密钥")
     public PoetryResult<String> regenerateApiKey() {
         WebInfo webInfo = cacheService.getCachedWebInfo();
         if (webInfo == null) {
@@ -1312,6 +1323,7 @@ public class WebInfoController {
      */
     @LoginCheck(1)
     @PostMapping("/refreshHistoryCache")
+    @AuditLog(action = "VISIT_CACHE_REFRESH", targetType = "VISIT", summary = "刷新访问统计缓存")
     public PoetryResult<Map<String, Object>> refreshHistoryCache() {
         try {
             log.info("管理员手动刷新访问统计缓存");

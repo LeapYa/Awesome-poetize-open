@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.dao.LabelMapper;
@@ -63,6 +64,7 @@ public class SortLabelController {
      */
     @PostMapping("/saveSort")
     @LoginCheck(0)
+    @AuditLog(action = "SORT_SAVE", targetType = "SORT", targetIdParam = "id", summary = "新增分类")
     public PoetryResult saveSort(@RequestBody Sort sort) {
         // XSS过滤处理
         String filteredSortName = StringUtils.hasText(sort.getSortName()) ? XssFilterUtil.clean(sort.getSortName()) : null;
@@ -119,6 +121,7 @@ public class SortLabelController {
      */
     @GetMapping("/deleteSort")
     @LoginCheck(0)
+    @AuditLog(action = "SORT_DELETE", targetType = "SORT", targetIdParam = "id", summary = "删除分类")
     public PoetryResult deleteSort(@RequestParam("id") Integer id) {
         sortMapper.deleteById(id);
         log.info("分类删除成功，分类ID: {}", id);
@@ -148,6 +151,7 @@ public class SortLabelController {
      */
     @PostMapping("/updateSort")
     @LoginCheck(0)
+    @AuditLog(action = "SORT_UPDATE", targetType = "SORT", targetIdParam = "id", summary = "更新分类")
     public PoetryResult updateSort(@RequestBody Sort sort) {
         // XSS过滤处理
         String filteredSortName = StringUtils.hasText(sort.getSortName()) ? XssFilterUtil.clean(sort.getSortName()) : null;
@@ -210,6 +214,7 @@ public class SortLabelController {
      */
     @PostMapping("/saveLabel")
     @LoginCheck(0)
+    @AuditLog(action = "LABEL_SAVE", targetType = "LABEL", targetIdParam = "id", summary = "新增标签")
     public PoetryResult saveLabel(@RequestBody Label label) {
         // XSS过滤处理
         String filteredLabelName = StringUtils.hasText(label.getLabelName()) ? XssFilterUtil.clean(label.getLabelName()) : null;
@@ -259,6 +264,7 @@ public class SortLabelController {
      */
     @GetMapping("/deleteLabel")
     @LoginCheck(0)
+    @AuditLog(action = "LABEL_DELETE", targetType = "LABEL", targetIdParam = "id", summary = "删除标签")
     public PoetryResult deleteLabel(@RequestParam("id") Integer id) {
         // 先获取标签信息以获得分类ID
         Label label = labelMapper.selectById(id);
@@ -293,6 +299,7 @@ public class SortLabelController {
      */
     @PostMapping("/updateLabel")
     @LoginCheck(0)
+    @AuditLog(action = "LABEL_UPDATE", targetType = "LABEL", targetIdParam = "id", summary = "更新标签")
     public PoetryResult updateLabel(@RequestBody Label label) {
         Label existingLabelRecord = labelMapper.selectById(label.getId());
 

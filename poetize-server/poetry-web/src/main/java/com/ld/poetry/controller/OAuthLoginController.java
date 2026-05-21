@@ -8,6 +8,7 @@ import com.ld.poetry.oauth.exception.OAuthException;
 import com.ld.poetry.oauth.providers.TwitterOAuthProvider;
 import com.ld.poetry.oauth.state.OAuthAuthCodeService;
 import com.ld.poetry.oauth.state.OAuthStateService;
+import com.ld.poetry.service.SysAuditLogService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.utils.AuthCookieUtil;
 import com.ld.poetry.vo.UserVO;
@@ -22,6 +23,7 @@ import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -51,6 +53,9 @@ public class OAuthLoginController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private SysAuditLogService sysAuditLogService;
 
     /**
      * OAuth登录入口
@@ -280,6 +285,7 @@ public class OAuthLoginController {
                 StringBuilder redirectUrl = new StringBuilder("/?code=").append(authCode);
 
                 log.info("OAuth登录成功: provider={}, userId={}", provider, userVO.getId());
+                recordOAuthLogin(true, provider, userVO, "OAuth登录成功", "SUCCESS");
                 response.sendRedirect(redirectUrl.toString());
 
             } else {
@@ -297,9 +303,27 @@ public class OAuthLoginController {
      * 重定向到错误页面（使用相对路径）
      */
     private void redirectToError(HttpServletResponse response, String error, String provider) throws IOException {
+        recordOAuthLogin(false, provider, null, "OAuth登录失败", error);
         String errorUrl = "/oauth-callback?error=" + URLEncoder.encode(error, StandardCharsets.UTF_8.name())
                 + "&platform=" + provider;
         response.sendRedirect(errorUrl);
+    }
+
+    private void recordOAuthLogin(boolean success, String provider, UserVO userVO, String summary, String reason) {
+        try {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("method", "OAUTH");
+            detail.put("provider", provider);
+            detail.put("reason", reason);
+            sysAuditLogService.recordLogin("OAUTH_LOGIN", success,
+                    userVO == null ? provider : userVO.getEmail() != null ? userVO.getEmail() : userVO.getUsername(),
+                    userVO == null ? null : userVO.getId(),
+                    userVO == null ? null : userVO.getUsername(),
+                    summary,
+                    detail);
+        } catch (Exception e) {
+            log.debug("记录OAuth登录审计日志失败: {}", e.getMessage());
+        }
     }
 
     /**

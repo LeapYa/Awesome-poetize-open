@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.dao.SysPluginActiveMapper;
@@ -233,6 +234,7 @@ public class SysPluginController {
      */
     @LoginCheck(0)
     @PostMapping("/setActivePlugin")
+    @AuditLog(action = "PLUGIN_ACTIVE_SET", targetType = "PLUGIN", targetIdParam = "pluginKey", summary = "设置激活插件")
     public PoetryResult<Void> setActivePlugin(@RequestBody Map<String, String> params) {
         String pluginType = params.get("pluginType");
         String pluginKey = params.get("pluginKey");
@@ -254,6 +256,7 @@ public class SysPluginController {
      */
     @LoginCheck(0)
     @PostMapping("/addPlugin")
+    @AuditLog(action = "PLUGIN_ADD", targetType = "PLUGIN", targetIdParam = "pluginKey", summary = "新增插件")
     public PoetryResult<SysPlugin> addPlugin(@RequestBody SysPlugin plugin) {
         // 参数验证
         if (!StringUtils.hasText(plugin.getPluginType())) {
@@ -304,6 +307,7 @@ public class SysPluginController {
      */
     @LoginCheck(0)
     @PostMapping("/updatePlugin")
+    @AuditLog(action = "PLUGIN_UPDATE", targetType = "PLUGIN", targetIdParam = "id", summary = "更新插件")
     public PoetryResult<SysPlugin> updatePlugin(@RequestBody SysPlugin plugin) {
         if (plugin.getId() == null) {
             return PoetryResult.fail("插件ID不能为空");
@@ -336,6 +340,7 @@ public class SysPluginController {
      */
     @LoginCheck(0)
     @PostMapping("/deletePlugin")
+    @AuditLog(action = "PLUGIN_DELETE", targetType = "PLUGIN", targetIdParam = "id", summary = "删除插件")
     public PoetryResult<Void> deletePlugin(@RequestBody Map<String, Integer> params) {
         Integer id = params.get("id");
         if (id == null) {
@@ -373,6 +378,7 @@ public class SysPluginController {
      */
     @LoginCheck(0)
     @PostMapping("/togglePluginStatus")
+    @AuditLog(action = "PLUGIN_STATUS_TOGGLE", targetType = "PLUGIN", targetIdParam = "id", summary = "切换插件状态")
     public PoetryResult<Void> togglePluginStatus(@RequestBody Map<String, Object> params) {
         Integer id = (Integer) params.get("id");
         Boolean enabled = (Boolean) params.get("enabled");

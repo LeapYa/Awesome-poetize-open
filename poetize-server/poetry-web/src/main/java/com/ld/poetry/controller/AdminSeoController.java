@@ -1,5 +1,6 @@
 package com.ld.poetry.controller;
 
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.SeoConfigService;
@@ -120,6 +121,7 @@ public class AdminSeoController {
      */
     @PostMapping("/updateSeoConfig")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_CONFIG_UPDATE", targetType = "SEO", summary = "更新SEO配置")
     public PoetryResult<Boolean> updateSeoConfig(@RequestBody Map<String, Object> configData) {
         try {
             boolean success = seoConfigService.updateSeoConfigFromJson(configData);
@@ -162,6 +164,7 @@ public class AdminSeoController {
      */
     @PostMapping("/updateEnableStatus")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_ENABLE_UPDATE", targetType = "SEO", summary = "更新SEO启用状态")
     public PoetryResult<Boolean> updateEnableStatus(@RequestBody Map<String, Object> data) {
         try {
             Object enableObj = data.get("enable");
@@ -192,6 +195,7 @@ public class AdminSeoController {
      */
     @PostMapping("/clearCache")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_CACHE_CLEAR", targetType = "SEO", summary = "清理SEO缓存")
     public PoetryResult<Boolean> clearCache() {
         try {
             clearSeoCache();
@@ -207,6 +211,7 @@ public class AdminSeoController {
      */
     @PostMapping("/clearArticleCache")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_ARTICLE_CACHE_CLEAR", targetType = "ARTICLE", targetIdParam = "articleId", summary = "清理文章SEO缓存")
     public PoetryResult<Boolean> clearArticleCache(@RequestBody Map<String, Object> data) {
         try {
             Object articleIdObj = data.get("articleId");
@@ -226,6 +231,7 @@ public class AdminSeoController {
      */
     @PostMapping("/clearArticlesCache")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_ARTICLES_CACHE_CLEAR", targetType = "SEO", summary = "批量清理文章SEO缓存")
     public PoetryResult<Boolean> clearArticlesCache(@RequestBody Map<String, Object> data) {
         try {
             Object articleIdsObj = data.get("articleIds");
@@ -273,6 +279,7 @@ public class AdminSeoController {
      */
     @PostMapping("/processImage")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_IMAGE_PROCESS", targetType = "SEO", summary = "处理SEO图片")
     public PoetryResult<Map<String, Object>> processImage(
             @RequestParam("image") MultipartFile imageFile,
             @RequestParam(value = "target_type", defaultValue = "logo") String targetType,
@@ -312,6 +319,7 @@ public class AdminSeoController {
      */
     @PostMapping("/batchProcessIcons")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_ICONS_BATCH_PROCESS", targetType = "SEO", summary = "批量处理SEO图标")
     public PoetryResult<Map<String, Object>> batchProcessIcons(
             @RequestParam("image") MultipartFile imageFile,
             @RequestParam(value = "iconTypes", required = false) java.util.List<String> iconTypes) {
@@ -350,6 +358,7 @@ public class AdminSeoController {
      */
     @PostMapping("/replacePoetizeIcon")
     @LoginCheck(1)
+    @AuditLog(action = "SEO_POETIZE_ICON_REPLACE", targetType = "SEO", summary = "替换默认图标")
     public PoetryResult<String> replacePoetizeIcon(@RequestParam("image") MultipartFile imageFile) {
         try {
             if (imageFile == null || imageFile.isEmpty()) {

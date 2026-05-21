@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.ArticleDraftService;
@@ -34,12 +35,14 @@ public class ArticleDraftController {
 
     @PostMapping("/create")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_CREATE", targetType = "ARTICLE_DRAFT", summary = "创建文章草稿")
     public PoetryResult<ArticleDraftDetailVO> create() {
         return articleDraftService.createDraft();
     }
 
     @PostMapping("/revision/{articleId}")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_REVISION", targetType = "ARTICLE", targetIdParam = "articleId", summary = "创建文章修订草稿")
     public PoetryResult<ArticleDraftDetailVO> revision(@PathVariable Integer articleId) {
         return articleDraftService.createOrGetRevisionDraft(articleId);
     }
@@ -64,6 +67,7 @@ public class ArticleDraftController {
 
     @PutMapping("/{draftId}/collaborators")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_COLLABORATORS_REPLACE", targetType = "ARTICLE_DRAFT", targetIdParam = "draftId", summary = "更新草稿协作者")
     public PoetryResult<List<ArticleDraftCollaboratorVO>> replaceCollaborators(@PathVariable String draftId,
                                                                               @RequestBody ReplaceCollaboratorsRequest request) {
         return articleDraftService.replaceCollaborators(draftId, request == null ? null : request.getCollaboratorIds());
@@ -71,6 +75,7 @@ public class ArticleDraftController {
 
     @PostMapping("/{draftId}/snapshot")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_SNAPSHOT_SAVE", targetType = "ARTICLE_DRAFT", targetIdParam = "draftId", summary = "保存草稿快照")
     public PoetryResult<Boolean> saveSnapshot(@PathVariable String draftId,
                                               @RequestBody ArticleDraftSnapshotRequest request) {
         return articleDraftService.saveSnapshot(draftId, request);
@@ -78,12 +83,14 @@ public class ArticleDraftController {
 
     @PostMapping("/{draftId}/invite")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_INVITE_CREATE", targetType = "ARTICLE_DRAFT", targetIdParam = "draftId", summary = "创建草稿邀请")
     public PoetryResult<ArticleDraftInviteVO> createInvite(@PathVariable String draftId) {
         return articleDraftService.createInvite(draftId);
     }
 
     @DeleteMapping("/{draftId}/invite")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_INVITE_REVOKE", targetType = "ARTICLE_DRAFT", targetIdParam = "draftId", summary = "撤销草稿邀请")
     public PoetryResult<Boolean> revokeInvite(@PathVariable String draftId) {
         return articleDraftService.revokeInvite(draftId);
     }
@@ -97,6 +104,7 @@ public class ArticleDraftController {
 
     @PostMapping("/{draftId}/publish")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_PUBLISH", targetType = "ARTICLE_DRAFT", targetIdParam = "draftId", summary = "发布文章草稿")
     public PoetryResult<Integer> publish(@PathVariable String draftId,
                                          @RequestBody ArticleDraftPublishRequest request) {
         return articleDraftService.publishDraft(draftId, request);
@@ -104,6 +112,7 @@ public class ArticleDraftController {
 
     @PostMapping("/{draftId}/publishAsync")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_PUBLISH_ASYNC", targetType = "ARTICLE_DRAFT", targetIdParam = "draftId", summary = "异步发布文章草稿")
     public PoetryResult<String> publishAsync(@PathVariable String draftId,
                                              @RequestBody ArticleDraftPublishRequest request) {
         return articleDraftService.publishDraftAsync(draftId, request);
@@ -111,6 +120,7 @@ public class ArticleDraftController {
 
     @DeleteMapping("/{draftId}")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_DRAFT_DELETE", targetType = "ARTICLE_DRAFT", targetIdParam = "draftId", summary = "删除文章草稿")
     public PoetryResult<Boolean> delete(@PathVariable String draftId) {
         return articleDraftService.deleteDraft(draftId);
     }

@@ -3,6 +3,7 @@ package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
@@ -146,6 +147,7 @@ public class ResourceController {
      */
     @PostMapping("/saveResource")
     @LoginCheck
+    @AuditLog(action = "RESOURCE_SAVE", targetType = "RESOURCE", targetIdParam = "path", summary = "保存资源信息")
     public PoetryResult saveResource(@RequestBody Resource resource) {
         if (!StringUtils.hasText(resource.getType()) || !StringUtils.hasText(resource.getPath())) {
             return PoetryResult.fail("资源类型和资源路径不能为空！");
@@ -204,6 +206,7 @@ public class ResourceController {
     @PostMapping("/upload")
     @LoginCheck
     @Transactional(rollbackFor = Exception.class)
+    @AuditLog(action = "RESOURCE_UPLOAD", targetType = "RESOURCE", targetIdParam = "relativePath", summary = "上传资源")
     public synchronized PoetryResult<String> upload(@RequestParam("file") MultipartFile file, FileVO fileVO) {
         if (file == null || !StringUtils.hasText(fileVO.getType()) || !StringUtils.hasText(fileVO.getRelativePath())) {
             return PoetryResult.fail("文件和资源类型和资源路径不能为空！");
@@ -382,6 +385,7 @@ public class ResourceController {
     @PostMapping("/uploadImageWithCompress")
     @LoginCheck
     @Transactional(rollbackFor = Exception.class)
+    @AuditLog(action = "RESOURCE_IMAGE_UPLOAD", targetType = "RESOURCE", targetIdParam = "relativePath", summary = "上传压缩图片")
     public synchronized PoetryResult<Object> uploadImageWithCompress(
             @RequestParam("file") MultipartFile file,
             FileVO fileVO,
@@ -507,6 +511,7 @@ public class ResourceController {
      */
     @PostMapping("/uploadWaifuPreview")
     @LoginCheck(0)
+    @AuditLog(action = "RESOURCE_WAIFU_PREVIEW_UPLOAD", targetType = "RESOURCE", summary = "上传看板娘预览图")
     public PoetryResult<String> uploadWaifuPreview(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             return PoetryResult.fail("请选择要上传的图片！");
@@ -555,6 +560,7 @@ public class ResourceController {
      */
     @PostMapping("/deleteResource")
     @LoginCheck(0)
+    @AuditLog(action = "RESOURCE_DELETE", targetType = "RESOURCE", targetIdParam = "path", summary = "删除资源")
     public PoetryResult deleteResource(@RequestParam("path") String path) {
         Resource resource = resourceService.lambdaQuery().select(Resource::getStoreType).eq(Resource::getPath, path).one();
         if (resource == null) {
@@ -571,6 +577,7 @@ public class ResourceController {
      */
     @PostMapping("/replaceResource")
     @LoginCheck(0)
+    @AuditLog(action = "RESOURCE_REPLACE", targetType = "RESOURCE", targetIdParam = "id", summary = "替换资源")
     public PoetryResult<Resource> replaceResource(@RequestParam("id") Integer id,
                                                   @RequestParam("expectedPath") String expectedPath,
                                                   @RequestParam("file") MultipartFile file) {
@@ -644,6 +651,7 @@ public class ResourceController {
     @PostMapping("/mergeChunks")
     @LoginCheck
     @Transactional(rollbackFor = Exception.class)
+    @AuditLog(action = "RESOURCE_CHUNKS_MERGE", targetType = "RESOURCE", targetIdParam = "relativePath", summary = "合并分片上传资源")
     public synchronized PoetryResult<String> mergeChunks(@RequestParam("uploadId") String uploadId,
                                                          @RequestParam("totalChunks") int totalChunks,
                                                          @RequestParam("originalName") String originalName,
@@ -920,6 +928,7 @@ public class ResourceController {
      */
     @GetMapping("/changeResourceStatus")
     @LoginCheck(0)
+    @AuditLog(action = "RESOURCE_STATUS_CHANGE", targetType = "RESOURCE", targetIdParam = "id", summary = "修改资源状态")
     public PoetryResult changeResourceStatus(@RequestParam("id") Integer id, @RequestParam("flag") Boolean flag) {
         resourceService.lambdaUpdate().eq(Resource::getId, id).set(Resource::getStatus, flag).update();
         return PoetryResult.success();

@@ -658,6 +658,21 @@ body.dark-mode .el-date-editor .el-input__inner {
   color: #e0e0e0 !important;
 }
 
+body.dark-mode .el-date-editor .el-range-input {
+  background-color: transparent !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .el-date-editor .el-range-input::placeholder {
+  color: #8a8a8a !important;
+}
+
+body.dark-mode .el-date-editor .el-range-separator,
+body.dark-mode .el-date-editor .el-range__icon,
+body.dark-mode .el-date-editor .el-range__close-icon {
+  color: #8a8a8a !important;
+}
+
 body.dark-mode .el-date-editor .el-input__prefix,
 body.dark-mode .el-date-editor .el-input__suffix {
   color: #8a8a8a !important;

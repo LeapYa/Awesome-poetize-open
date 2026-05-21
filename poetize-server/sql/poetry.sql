@@ -234,9 +234,9 @@ CREATE TABLE `poetize`.`resource` (
 DROP TABLE IF EXISTS `poetize`.`history_info`;
 
 CREATE TABLE `poetize`.`history_info` (
-  `id` int NOT NULL AUTO_INCREMENT COMMENT 'id',
-  `user_id` int DEFAULT NULL COMMENT '用户ID',
-  `ip` varchar(128) NOT NULL COMMENT 'ip',
+    `id` int NOT NULL AUTO_INCREMENT COMMENT 'id',
+    `user_id` int DEFAULT NULL COMMENT '用户ID',
+    `ip` varchar(128) NOT NULL COMMENT 'ip',
   `nation` varchar(64) DEFAULT NULL COMMENT '国家',
   `province` varchar(64) DEFAULT NULL COMMENT '省份',
   `city` varchar(64) DEFAULT NULL COMMENT '城市',
@@ -244,13 +244,40 @@ CREATE TABLE `poetize`.`history_info` (
   `user_agent` varchar(512) DEFAULT NULL COMMENT 'User-Agent',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  KEY `idx_history_create_time` (`create_time`)
+    KEY `idx_history_create_time` (`create_time`)
 ) ENGINE=RocksDB DEFAULT CHARSET=utf8mb4 COMMENT='历史信息';
+
+DROP TABLE IF EXISTS `poetize`.`sys_audit_log`;
+
+CREATE TABLE `poetize`.`sys_audit_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `log_type` varchar(32) NOT NULL COMMENT '日志类型 LOGIN/SECURITY/OPERATION',
+  `action` varchar(64) NOT NULL COMMENT '操作动作',
+  `success` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否成功[0:否,1:是]',
+  `masked_account` varchar(128) DEFAULT NULL COMMENT '脱敏账号',
+  `user_id` int DEFAULT NULL COMMENT '用户ID',
+  `username` varchar(64) DEFAULT NULL COMMENT '用户名',
+  `ip` varchar(128) DEFAULT NULL COMMENT 'IP地址',
+  `location` varchar(128) DEFAULT NULL COMMENT '地理位置',
+  `user_agent` varchar(512) DEFAULT NULL COMMENT 'User-Agent',
+  `request_uri` varchar(512) DEFAULT NULL COMMENT '请求路径',
+  `target_type` varchar(64) DEFAULT NULL COMMENT '目标对象类型',
+  `target_id` varchar(128) DEFAULT NULL COMMENT '目标对象ID',
+  `summary` varchar(512) DEFAULT NULL COMMENT '摘要',
+  `detail` json DEFAULT NULL COMMENT '脱敏详情JSON',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_create_time` (`create_time`),
+  KEY `idx_audit_type_time` (`log_type`, `create_time`),
+  KEY `idx_audit_success_time` (`success`, `create_time`),
+  KEY `idx_audit_user_time` (`user_id`, `create_time`),
+  KEY `idx_audit_ip_time` (`ip`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台审计日志表';
 
 DROP TABLE IF EXISTS `poetize`.`sys_config`;
 
 CREATE TABLE `poetize`.`sys_config` (
-  `id` int NOT NULL AUTO_INCREMENT COMMENT 'id',
+    `id` int NOT NULL AUTO_INCREMENT COMMENT 'id',
   `config_name` varchar(128) NOT NULL COMMENT '名称',
   `config_key` varchar(64) NOT NULL COMMENT '键名',
   `config_value` text DEFAULT NULL COMMENT '键值',

@@ -166,6 +166,11 @@ export default {
           click: function() {
             this.goToSeoConfig();
           }
+        }, {
+          icon: "el-icon-document-checked",
+          index: "/systemLog",
+          title: "系统日志",
+          requiredUserType: 0  // 仅站长可访问
         }]
       }
     },

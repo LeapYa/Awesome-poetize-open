@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.SysConfig;
@@ -70,6 +71,7 @@ public class SysConfigController {
      */
     @PostMapping("/saveOrUpdateConfig")
     @LoginCheck(0)
+    @AuditLog(action = "SYS_CONFIG_SAVE", targetType = "SYS_CONFIG", targetIdParam = "configKey", summary = "保存系统配置")
     public PoetryResult saveConfig(@RequestBody SysConfig sysConfig) {
         if (!StringUtils.hasText(sysConfig.getConfigName()) ||
                 !StringUtils.hasText(sysConfig.getConfigKey()) ||
@@ -132,6 +134,7 @@ public class SysConfigController {
      */
     @GetMapping("/deleteConfig")
     @LoginCheck(0)
+    @AuditLog(action = "SYS_CONFIG_DELETE", targetType = "SYS_CONFIG", targetIdParam = "id", summary = "删除系统配置")
     public PoetryResult deleteConfig(@RequestParam("id") Integer id) {
         // 获取要删除的配置信息
         SysConfig config = sysConfigService.getById(id);

@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.*;
@@ -72,6 +73,7 @@ public class AdminArticleController {
      */
     @GetMapping("/article/changeArticleStatus")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_STATUS_CHANGE", targetType = "ARTICLE", targetIdParam = "articleId", summary = "修改文章状态")
     public PoetryResult changeArticleStatus(@RequestParam("articleId") Integer articleId,
                                             @RequestParam(value = "viewStatus", required = false) Boolean viewStatus,
                                             @RequestParam(value = "commentStatus", required = false) Boolean commentStatus,
@@ -137,6 +139,7 @@ public class AdminArticleController {
      */
     @PostMapping("/article/generateAllSummaries") 
     @LoginCheck(0)  // Boss权限
+    @AuditLog(action = "ARTICLE_SUMMARY_BATCH_GENERATE", targetType = "ARTICLE", summary = "批量生成文章摘要")
     public PoetryResult generateAllSummaries() {
         try {
             // 查找所有没有摘要的文章
@@ -181,6 +184,7 @@ public class AdminArticleController {
      */
     @PostMapping("/article/deleteTranslation")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_TRANSLATION_DELETE", targetType = "ARTICLE", targetIdParam = "articleId", summary = "删除文章翻译")
     public PoetryResult deleteArticleTranslation(@RequestBody Map<String, Object> requestData) {
         Integer articleId = (Integer) requestData.get("articleId");
         String language = (String) requestData.get("language");
@@ -224,6 +228,7 @@ public class AdminArticleController {
      */
     @PostMapping("/article/deleteAllTranslations")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_TRANSLATION_DELETE_ALL", targetType = "ARTICLE", targetIdParam = "articleId", summary = "删除文章全部翻译")
     public PoetryResult deleteAllArticleTranslations(@RequestBody Map<String, Object> requestData) {
         Integer articleId = (Integer) requestData.get("articleId");
         
@@ -262,6 +267,7 @@ public class AdminArticleController {
      */
     @PostMapping("/article/regenerateTranslations")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_TRANSLATION_REGENERATE", targetType = "ARTICLE", targetIdParam = "articleId", summary = "重新生成文章翻译")
     public PoetryResult regenerateArticleTranslations(@RequestParam("articleId") Integer articleId) {
         try {
             // 验证文章所有权
@@ -298,6 +304,7 @@ public class AdminArticleController {
      */
     @PostMapping("/article/updateSitemap")
     @LoginCheck(1)
+    @AuditLog(action = "ARTICLE_SITEMAP_UPDATE", targetType = "ARTICLE", targetIdParam = "articleId", summary = "更新文章Sitemap")
     public PoetryResult updateArticleSitemap(@RequestBody Map<String, Object> requestData) {
         try {
             Integer articleId = (Integer) requestData.get("articleId");

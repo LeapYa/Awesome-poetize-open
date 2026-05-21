@@ -8,6 +8,7 @@ import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.handle.PoetryLoginException;
 import com.ld.poetry.handle.PoetryRuntimeException;
 import com.ld.poetry.service.CacheService;
+import com.ld.poetry.service.SysAuditLogService;
 import com.ld.poetry.utils.*;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -19,6 +20,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -34,6 +37,9 @@ public class LoginCheckAspect {
     
     @Autowired
     private LockManager lockManager;
+
+    @Autowired
+    private SysAuditLogService sysAuditLogService;
     
     /**
      * 管理员请求日志限流缓存
@@ -67,6 +73,8 @@ public class LoginCheckAspect {
         String token = PoetryUtil.getTokenWithoutBearer();
         if (!StringUtils.hasText(token)) {
             log.warn("Token为空，登录已过期");
+            recordSecurityEvent("AUTH_REQUIRED", null, "未登录访问受保护接口", requestURI,
+                    "TOKEN_EMPTY", loginCheck.value(), null);
             throw new PoetryLoginException(CodeMsg.LOGIN_EXPIRED.getMsg());
         }
 
@@ -79,6 +87,8 @@ public class LoginCheckAspect {
                 return joinPoint.proceed();
             }
             log.warn("Token无效或已过期: prefix={}", TokenValidationUtil.getTokenPrefix(token));
+            recordSecurityEvent("TOKEN_EXPIRED", null, "Token无效或已过期", requestURI,
+                    "TOKEN_INVALID_OR_EXPIRED", loginCheck.value(), null);
             throw new PoetryLoginException(CodeMsg.LOGIN_EXPIRED.getMsg());
         }
 
@@ -87,6 +97,8 @@ public class LoginCheckAspect {
             if (loginCheck.value() == PoetryEnum.USER_TYPE_ADMIN.getCode() || loginCheck.value() == PoetryEnum.USER_TYPE_DEV.getCode()) {
                 log.warn("普通用户尝试访问管理员接口 - 用户: {}, IP: {}, token前缀: {}",
                     user.getUsername(), clientIp, TokenValidationUtil.getTokenPrefix(token));
+                recordSecurityEvent("PERMISSION_DENIED", user, "普通用户尝试访问管理员接口", requestURI,
+                        "USER_TOKEN_FOR_ADMIN_API", loginCheck.value(), user.getUserType());
                 return PoetryResult.fail("请输入管理员账号！");
             }
         } else if (TokenValidationUtil.isAdminToken(token)) {
@@ -101,6 +113,8 @@ public class LoginCheckAspect {
                     user.getUserType() != PoetryEnum.USER_TYPE_DEV.getCode()) {
                     log.warn("非管理员用户尝试访问管理员接口 - 用户: {}, userType: {}, IP: {}",
                             user.getUsername(), user.getUserType(), clientIp);
+                    recordSecurityEvent("PERMISSION_DENIED", user, "非管理员用户尝试访问管理员接口", requestURI,
+                            "ADMIN_ROLE_REQUIRED", loginCheck.value(), user.getUserType());
                     return PoetryResult.fail("请输入管理员账号！");
                 }
                 log.info("管理员用户访问管理员接口 - 用户: {}, userType: {}, IP: {}",
@@ -109,11 +123,15 @@ public class LoginCheckAspect {
         } else {
             log.warn("无效的token类型或格式 - IP: {}, token前缀: {}, token长度: {}",
                 clientIp, TokenValidationUtil.getTokenPrefix(token), token.length());
+            recordSecurityEvent("INVALID_TOKEN", user, "无效的Token类型或格式", requestURI,
+                    "TOKEN_TYPE_INVALID", loginCheck.value(), user.getUserType());
             throw new PoetryLoginException(CodeMsg.NOT_LOGIN.getMsg());
         }
 
         if (loginCheck.value() < user.getUserType()) {
             log.warn("用户权限不足 - 需要权限: {}, 当前权限: {}", loginCheck.value(), user.getUserType());
+            recordSecurityEvent("PERMISSION_DENIED", user, "用户权限不足", requestURI,
+                    "USER_TYPE_TOO_LOW", loginCheck.value(), user.getUserType());
             throw new PoetryRuntimeException("权限不足！");
         }
 
@@ -199,6 +217,25 @@ public class LoginCheckAspect {
                 long fiveMinutesAgo = now - TimeUnit.MINUTES.toMillis(5);
                 adminLogThrottle.entrySet().removeIf(entry -> entry.getValue() < fiveMinutesAgo);
             }
+        }
+    }
+
+    private void recordSecurityEvent(String action, User user, String summary, String requestURI,
+                                     String reason, Integer requiredUserType, Integer actualUserType) {
+        try {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("reason", reason);
+            detail.put("requestUri", requestURI);
+            detail.put("requiredUserType", requiredUserType);
+            detail.put("actualUserType", actualUserType);
+            sysAuditLogService.recordSecurity(action, false,
+                    user == null ? null : user.getUsername(),
+                    user == null ? null : user.getId(),
+                    user == null ? null : user.getUsername(),
+                    summary,
+                    detail);
+        } catch (Exception e) {
+            log.debug("记录安全审计日志失败: action={}, error={}", action, e.getMessage());
         }
     }
 }
