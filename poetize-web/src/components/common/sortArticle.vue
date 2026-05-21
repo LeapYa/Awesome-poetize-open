@@ -144,7 +144,7 @@
         <!-- 分类 标签 -->
         <div class="sort-label">
           <span
-            style="margin-right: 12px"
+            class="sort-label-chip sort-label-chip--sort"
             @click.stop="$router.push('/sort/' + article.sortId)"
           >
             <svg
@@ -174,9 +174,10 @@
                 fill="#FFA86A"
               ></path>
             </svg>
-            {{ article.sort.sortName }}
+            <span class="sort-label-text">{{ article.sort.sortName }}</span>
           </span>
           <span
+            class="sort-label-chip sort-label-chip--label"
             @click.stop="
               $router.push(
                 '/sort/' + article.sortId + '?labelId=' + article.labelId
@@ -198,7 +199,7 @@
                 fill="#FFE37B"
               ></path>
             </svg>
-            {{ article.label.labelName }}
+            <span class="sort-label-text">{{ article.label.labelName }}</span>
           </span>
         </div>
       </div>
@@ -285,7 +286,7 @@ export default {
 .recent-post-item-post {
   width: 100%;
   height: 180px;
-  padding: 10px 15px;
+  padding: 10px 15px 40px;
 }
 .recent-post-item-post h3 {
   white-space: nowrap;
@@ -314,18 +315,55 @@ export default {
 .sort-label {
   position: absolute;
   bottom: 10px;
+  left: 15px;
+  right: 15px;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12px;
+  height: 24px;
+  overflow: hidden;
 }
-.sort-label span {
+.sort-label-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   padding: 2px 4px;
   background-color: var(--maxLightGray);
   border-radius: 3px;
   font-size: 14px;
+  line-height: 20px;
   color: var(--greyFont);
   transition: color 0.3s ease;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.sort-label span:hover {
+.sort-label-chip svg {
+  flex: 0 0 auto;
+  margin-right: 4px;
+}
+.sort-label-chip--sort {
+  flex: 0 0 auto;
+  max-width: none;
+}
+.sort-label-chip--sort .sort-label-text {
+  overflow: visible;
+  text-overflow: clip;
+}
+.sort-label-chip--label {
+  flex: 0 1 auto;
+}
+.sort-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sort-label-chip:hover {
   background-color: var(--themeBackground);
   color: var(--white);
 }
