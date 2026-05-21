@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-05-17
+## 修改时间: 2026-05-21
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.11.13
+## 版本: 1.11.14
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.11.13"
+POETIZE_VERSION="1.11.14"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -421,9 +421,9 @@ emit_embedded_core_script() {
             cat <<'__POETIZE_EMBEDDED_DEPLOY_CORE_SH_2047F65599A6__'
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-03-07
+## 修改时间: 2026-05-21
 ## 描述: 部署 POETIZE 博客系统安装脚本
-## 版本: 1.15.5
+## 版本: 1.15.6
 
 # 定义颜色
 RED='\033[0;31m'
@@ -436,10 +436,53 @@ NC='\033[0m'
 # 自动确认模式（后台运行时自动回答yes）
 AUTO_YES=${AUTO_YES:-false}
 
+remember_project_dir() {
+  local target_dir="${1:-}"
+  local resolved_dir=""
+
+  if [ -z "$target_dir" ]; then
+    target_dir="$(pwd -P 2>/dev/null || pwd 2>/dev/null || printf ".")"
+  fi
+
+  resolved_dir="$(cd "$target_dir" 2>/dev/null && pwd -P)" || return 1
+  POETIZE_PROJECT_DIR="$resolved_dir"
+  export POETIZE_PROJECT_DIR
+  return 0
+}
+
 get_safe_pwd() {
   pwd -P 2>/dev/null && return 0
   pwd 2>/dev/null && return 0
-  printf "%s\n" "${PWD:-.}"
+
+  if [ -n "$POETIZE_PROJECT_DIR" ] && [ -d "$POETIZE_PROJECT_DIR" ]; then
+    printf "%s\n" "$POETIZE_PROJECT_DIR"
+    return 0
+  fi
+
+  if [ -n "$HOME" ] && [ -d "$HOME" ]; then
+    printf "%s\n" "$HOME"
+    return 0
+  fi
+
+  printf "/\n"
+}
+
+ensure_accessible_workdir() {
+  pwd -P >/dev/null 2>&1 && return 0
+
+  local fallback_dir
+  fallback_dir="$(get_safe_pwd)"
+  cd "$fallback_dir" 2>/dev/null || cd / 2>/dev/null || return 1
+  warning "检测到当前目录已失效，已自动切换到: $(get_safe_pwd)"
+}
+
+ensure_project_workdir() {
+  if [ -n "$POETIZE_PROJECT_DIR" ] && [ -d "$POETIZE_PROJECT_DIR" ]; then
+    cd "$POETIZE_PROJECT_DIR" 2>/dev/null || return 1
+    return 0
+  fi
+
+  ensure_accessible_workdir
 }
 
 # 函数：自动确认提示
@@ -5912,6 +5955,7 @@ handle_https_port_mapping() {
 # 构建和启动Docker服务
 start_services_with_diagnostics() {
   info "启动Docker服务..."
+  remember_project_dir "$(get_safe_pwd)" 2>/dev/null || true
   
   # 根据HTTPS配置处理端口映射
   handle_https_port_mapping
@@ -5958,6 +6002,14 @@ start_services_with_diagnostics() {
   
   while [ $retry_count -lt $max_retries ]; do
     retry_count=$((retry_count + 1))
+
+    if ! ensure_project_workdir; then
+      final_error_kind="workdir_missing"
+      final_error_recoverable=false
+      START_RESULT=1
+      warning "项目工作目录不可访问，已停止重试"
+      break
+    fi
     
     if [ "${POETIZE_UPDATE_MODE:-false}" = "true" ]; then
       # 先单独启动 MySQL 并执行 schema 迁移，防止 Java 因旧 schema 反复重启
@@ -7774,6 +7826,13 @@ load_offline_images() {
 
 # 安全地运行Docker Compose命令，确保参数正确传递
 run_docker_compose() {
+    ensure_project_workdir || {
+      LAST_DOCKER_COMPOSE_ERROR_KIND="workdir_missing"
+      LAST_DOCKER_COMPOSE_ERROR_RECOVERABLE=false
+      error "项目工作目录不可访问，无法执行 Docker Compose"
+      return 1
+    }
+
     # 构建compose命令数组，自动探测版本，并根据需要加sudo
     local compose_cmd=()
     local capture_output=false
@@ -7891,6 +7950,9 @@ classify_last_compose_failure() {
   elif echo "$log_text" | grep -Eiq 'no space left on device|ENOSPC'; then
     LAST_DOCKER_COMPOSE_ERROR_KIND="disk_full"
     LAST_DOCKER_COMPOSE_ERROR_RECOVERABLE=false
+  elif echo "$log_text" | grep -Eiq 'getwd: no such file or directory|current working directory.*deleted|current directory.*deleted'; then
+    LAST_DOCKER_COMPOSE_ERROR_KIND="workdir_missing"
+    LAST_DOCKER_COMPOSE_ERROR_RECOVERABLE=false
   elif echo "$log_text" | grep -Eiq 'pull access denied|TLS handshake timeout|i/o timeout|context deadline exceeded|connection reset by peer|temporary failure in name resolution'; then
     LAST_DOCKER_COMPOSE_ERROR_KIND="network"
     LAST_DOCKER_COMPOSE_ERROR_RECOVERABLE=true
@@ -7915,6 +7977,7 @@ print_compose_failure_guidance() {
   local kind="$1"
   local log_text=""
   local port=""
+  local project_dir_hint="${POETIZE_PROJECT_DIR:-/root/awesome-poetize-open}"
 
   log_text="$(get_last_compose_error_text)"
 
@@ -7952,6 +8015,13 @@ print_compose_failure_guidance() {
       info "  1. 先检查磁盘空间和 inode: df -h && df -i"
       info "  2. 如确认空间不足，再清理 Docker 资源: sudo docker system prune -af"
       info "  3. 如果磁盘空间比较小，建议扩容后重试"
+      ;;
+    workdir_missing)
+      error "检测到安装脚本所在工作目录已失效，Docker Compose 无法读取当前目录"
+      info "处理建议："
+      info "  1. 重新进入项目目录后再执行安装: cd $project_dir_hint && ./poetize install"
+      info "  2. 如通过全局命令执行，先确认项目目录仍存在: ls -la $project_dir_hint"
+      info "  3. 新版本脚本会在 Compose 调用前自动切回项目绝对路径，避免此类重试误判"
       ;;
     network)
       error "检测到镜像拉取或网络连接异常，重试可能恢复"
@@ -8802,6 +8872,7 @@ EOF
   # 创建项目目录并移动文件
   if [ -d "$extract_dir" ]; then
     cd "$extract_dir"
+    remember_project_dir "$(pwd)" 2>/dev/null || true
     info "已进入项目目录: $(pwd)"
     
     # 加载配置库（现在在项目目录中了）
@@ -8966,6 +9037,7 @@ prepare_project_directory_for_install() {
 
   if check_project_environment; then
     info "检测到当前目录已在博客项目中，使用当前目录继续安装..."
+    remember_project_dir "$(pwd)" 2>/dev/null || true
     info "当前目录: $(pwd)"
     return 0
   fi
@@ -8977,6 +9049,7 @@ prepare_project_directory_for_install() {
       error "进入项目目录失败: $project_dir"
       return 1
     }
+    remember_project_dir "$project_dir" 2>/dev/null || true
     seed_reinstall_db_credentials
     info "当前目录: $(pwd)"
     return 0
@@ -12516,6 +12589,10 @@ run_core_script() {
     }
 
     chmod +x "$core_script" 2>/dev/null || true
+    if [ -f "docker-compose.yml" ] && [ -f "poetize" ]; then
+        set_project_context "$(get_safe_pwd)" 2>/dev/null || true
+        export POETIZE_PROJECT_DIR POETIZE_PROJECT_PARENT_DIR POETIZE_PROJECT_NAME
+    fi
     bash "$core_script" "$@"
 }
 
