@@ -87,7 +87,7 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
                                 String summary, Map<String, Object> detail) {
         User user = PoetryUtil.getCurrentUser();
         record(StringUtils.hasText(logType) ? logType : "OPERATION", action, success,
-                user == null ? null : user.getUsername(),
+                null,
                 user == null ? null : user.getId(),
                 user == null ? null : user.getUsername(),
                 targetType, targetId, summary, detail);
@@ -116,7 +116,11 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
             auditLog.setLogType(limit(logType, 32));
             auditLog.setAction(limit(action, 64));
             auditLog.setSuccess(success);
-            auditLog.setMaskedAccount(limit(maskAccount(account), 128));
+            String loginAccount = normalizeAccount(account);
+            if (sameText(loginAccount, username)) {
+                loginAccount = null;
+            }
+            auditLog.setMaskedAccount(limit(loginAccount, 128));
             auditLog.setUserId(userId);
             auditLog.setUsername(limit(username, 64));
             auditLog.setIp(limit(ip, 128));
@@ -200,34 +204,15 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
                 || lowerKey.contains("verification");
     }
 
-    private String maskAccount(String account) {
+    private String normalizeAccount(String account) {
         if (!StringUtils.hasText(account)) {
             return null;
         }
-        String text = account.trim();
-        if (text.contains("@")) {
-            String[] parts = text.split("@", 2);
-            String prefix = parts[0];
-            String suffix = parts.length > 1 ? parts[1] : "";
-            return maskName(prefix) + "@" + suffix;
-        }
-        if (text.matches("^1[3-9]\\d{9}$")) {
-            return text.substring(0, 3) + "****" + text.substring(7);
-        }
-        return maskName(text);
+        return account.trim();
     }
 
-    private String maskName(String value) {
-        if (!StringUtils.hasText(value)) {
-            return null;
-        }
-        if (value.length() <= 2) {
-            return value.charAt(0) + "*";
-        }
-        if (value.length() <= 4) {
-            return value.charAt(0) + "**" + value.charAt(value.length() - 1);
-        }
-        return value.substring(0, 2) + "***" + value.substring(value.length() - 2);
+    private boolean sameText(String left, String right) {
+        return StringUtils.hasText(left) && StringUtils.hasText(right) && left.trim().equalsIgnoreCase(right.trim());
     }
 
     private String limit(String value, int maxLength) {

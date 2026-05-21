@@ -10,7 +10,7 @@
         <el-option label="成功" :value="true"></el-option>
         <el-option label="失败" :value="false"></el-option>
       </el-select>
-      <el-input v-model="filters.searchKey" placeholder="账号/用户名" class="handle-input mrb10"></el-input>
+      <el-input v-model="filters.searchKey" placeholder="操作者/登录账号" class="handle-input mrb10"></el-input>
       <el-input v-model="filters.ip" placeholder="IP 地址" class="handle-input mrb10"></el-input>
       <el-date-picker
         v-model="filters.timeRange"
@@ -47,9 +47,9 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="用户/账号" min-width="140" show-overflow-tooltip>
+      <el-table-column label="操作者/登录账号" min-width="160" show-overflow-tooltip>
         <template slot-scope="scope">
-          {{ formatPrincipal(scope.row) || '-' }}
+          {{ formatPrincipal(scope.row) }}
         </template>
       </el-table-column>
       <el-table-column label="IP/地区" min-width="160" show-overflow-tooltip>
@@ -106,8 +106,9 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="操作">{{ getActionLabel(currentLog.action) }}</el-descriptions-item>
-          <el-descriptions-item label="用户">{{ formatPrincipal(currentLog) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="操作者">{{ formatActor(currentLog) }}</el-descriptions-item>
           <el-descriptions-item label="用户 ID">{{ currentLog.userId || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="登录账号">{{ formatLoginAccount(currentLog) }}</el-descriptions-item>
           <el-descriptions-item label="IP">{{ currentLog.ip || '-' }}</el-descriptions-item>
           <el-descriptions-item label="地区">{{ currentLog.location || '-' }}</el-descriptions-item>
           <el-descriptions-item label="请求路径" :span="2">{{ currentLog.requestUri || '-' }}</el-descriptions-item>
@@ -115,7 +116,7 @@
           <el-descriptions-item label="摘要" :span="2">{{ currentLog.summary || '-' }}</el-descriptions-item>
           <el-descriptions-item label="User-Agent" :span="2">{{ currentLog.userAgent || '-' }}</el-descriptions-item>
         </el-descriptions>
-        <div class="detail-title">脱敏详情</div>
+        <div class="detail-title">操作详情</div>
         <pre class="detail-json" v-text="formatDetail(currentLog.detail)"></pre>
       </div>
       <span slot="footer" class="dialog-footer">
@@ -312,14 +313,57 @@ export default {
     getActionLabel(action) {
       return this.actionLabels[action] || action || '-';
     },
+    formatActor(row) {
+      if (!row) {
+        return '-';
+      }
+      return row.username || this.getLoginAccount(row) || '-';
+    },
     formatPrincipal(row) {
       if (!row) {
+        return '-';
+      }
+      const username = row.username || '';
+      const account = this.getLoginAccount(row);
+      if (username && account) {
+        return username + ' / ' + account;
+      }
+      return username || account || '-';
+    },
+    formatLoginAccount(row) {
+      return this.getLoginAccount(row) || '-';
+    },
+    getLoginAccount(row) {
+      if (!row || !row.maskedAccount) {
         return '';
       }
-      if (row.username && row.maskedAccount) {
-        return row.username + ' / ' + row.maskedAccount;
+      const account = String(row.maskedAccount).trim();
+      if (!account) {
+        return '';
       }
-      return row.username || row.maskedAccount || '';
+      if (row.username && account.toLowerCase() === row.username.toLowerCase()) {
+        return '';
+      }
+      if (row.username && this.isLegacyMaskedUsername(account, row.username)) {
+        return '';
+      }
+      if (row.username && row.logType === 'OPERATION') {
+        return '';
+      }
+      return account;
+    },
+    isLegacyMaskedUsername(account, username) {
+      const value = String(username || '').trim();
+      if (!account || !value) {
+        return false;
+      }
+      if (value.length <= 2) {
+        return account === value.charAt(0) + '*';
+      }
+      if (value.length <= 4) {
+        return account === value.charAt(0) + '**' + value.charAt(value.length - 1);
+      }
+      return account === value.substring(0, 2) + '***' + value.substring(value.length - 2);
     },
     formatTarget(row) {
       if (!row) {
