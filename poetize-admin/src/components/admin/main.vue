@@ -14,16 +14,28 @@
       </el-tag>
       <!-- 总览 -->
       <div id="field-main-stats" style="margin-top: 20px; padding: 0 10px;">
-        <div class="history-title" style="margin-bottom: 20px;">
-          总览
-          <el-button type="text"
-                     style="float: right; margin-top: -5px; color: #409EFF;"
-                     @click="refreshHistoryCache"
-                     :loading="refreshing"
-                     title="刷新统计数据">
-            <i class="el-icon-refresh"></i>
-            {{ refreshing ? '刷新中...' : '刷新' }}
-          </el-button>
+        <div class="history-title-bar">
+          <div class="history-title">
+            总览
+          </div>
+          <div class="history-actions">
+            <el-button type="text"
+                       class="history-action-button"
+                       @click="openCleanVisitDialog"
+                       :loading="cleaningVisitData"
+                       title="清理指定IP的访问统计">
+              <i class="el-icon-delete"></i>
+              清理访问数据
+            </el-button>
+            <el-button type="text"
+                       class="history-action-button"
+                       @click="refreshHistoryCache"
+                       :loading="refreshing"
+                       title="刷新统计数据">
+              <i class="el-icon-refresh"></i>
+              {{ refreshing ? '刷新中...' : '刷新' }}
+            </el-button>
+          </div>
         </div>
 
         <el-row :gutter="20" class="stat-cards">
@@ -388,6 +400,57 @@
         </div>
       </el-card>
 
+      <el-dialog
+        title="清理访问数据"
+        :visible.sync="cleanDialogVisible"
+        width="520px"
+        :close-on-click-modal="!cleaningVisitData"
+        :close-on-press-escape="!cleaningVisitData">
+        <el-form label-width="95px" class="clean-visit-form">
+          <el-form-item label="清理对象">
+            <el-radio-group v-model="cleanVisitForm.targetType" @change="handleCleanTargetChange">
+              <el-radio label="current">当前 IP</el-radio>
+              <el-radio label="manual">指定 IP</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="cleanVisitForm.targetType === 'current'" label="当前 IP">
+            <div class="current-ip-line">
+              <el-tag v-if="currentVisitIp" type="info" class="clean-ip-tag">{{ currentVisitIp }}</el-tag>
+              <span v-else class="clean-ip-empty">{{ loadingCurrentIp ? '识别中...' : '未识别到有效IP' }}</span>
+              <el-button type="text"
+                         class="clean-ip-refresh"
+                         :loading="loadingCurrentIp"
+                         @click="fetchCurrentVisitIp">
+                刷新
+              </el-button>
+            </div>
+          </el-form-item>
+          <el-form-item v-else label="指定 IP">
+            <el-input
+              v-model.trim="cleanVisitForm.ip"
+              placeholder="请输入要清理的 IP"
+              clearable>
+            </el-input>
+          </el-form-item>
+          <el-form-item label="后续统计">
+            <el-checkbox v-model="cleanVisitForm.addToIgnore">
+              同时加入忽略名单，以后不再统计这个 IP
+            </el-checkbox>
+          </el-form-item>
+          <el-alert
+            class="clean-visit-alert"
+            type="warning"
+            show-icon
+            :closable="false"
+            title="该操作会删除数据库历史记录，并清理最近 7 天 Redis 访问记录，执行后不可恢复。">
+          </el-alert>
+        </el-form>
+        <span slot="footer" class="dialog-footer">
+          <el-button @click="cleanDialogVisible = false" :disabled="cleaningVisitData">取消</el-button>
+          <el-button type="danger" @click="confirmCleanVisitData" :loading="cleaningVisitData">确认清理</el-button>
+        </span>
+      </el-dialog>
+
     </div>
   </div>
 </template>
@@ -408,7 +471,16 @@ export default {
       blockedIps: [],
       loadingBlockedIps: false,
       unblockingIps: {},
-      activeTab: 'total'
+      activeTab: 'total',
+      cleanDialogVisible: false,
+      currentVisitIp: '',
+      loadingCurrentIp: false,
+      cleaningVisitData: false,
+      cleanVisitForm: {
+        targetType: 'current',
+        ip: '',
+        addToIgnore: false
+      }
     }
   },
 
@@ -485,6 +557,111 @@ export default {
         .finally(() => {
           this.refreshing = false;
         });
+    },
+
+    openCleanVisitDialog() {
+      this.cleanVisitForm = {
+        targetType: 'current',
+        ip: '',
+        addToIgnore: false
+      };
+      this.cleanDialogVisible = true;
+      this.fetchCurrentVisitIp();
+    },
+
+    handleCleanTargetChange(targetType) {
+      if (targetType === 'current' && !this.currentVisitIp) {
+        this.fetchCurrentVisitIp();
+      }
+    },
+
+    fetchCurrentVisitIp() {
+      if (this.loadingCurrentIp) return;
+
+      this.loadingCurrentIp = true;
+      this.$http.get(this.$constant.baseURL + "/webInfo/getCurrentVisitIp", {}, true)
+        .then((res) => {
+          const data = res.data || {};
+          this.currentVisitIp = data.valid ? (data.ip || '') : '';
+          if (!data.valid) {
+            this.$message({
+              message: '当前请求未识别到可清理的有效 IP，可以切换为指定 IP',
+              type: 'warning'
+            });
+          }
+        })
+        .catch((error) => {
+          this.currentVisitIp = '';
+          this.$message({
+            message: error.message || '获取当前 IP 失败',
+            type: 'error'
+          });
+        })
+        .finally(() => {
+          this.loadingCurrentIp = false;
+        });
+    },
+
+    getCleanTargetIp() {
+      if (this.cleanVisitForm.targetType === 'current') {
+        return (this.currentVisitIp || '').trim();
+      }
+      return (this.cleanVisitForm.ip || '').trim();
+    },
+
+    confirmCleanVisitData() {
+      if (this.cleaningVisitData) return;
+
+      const targetIp = this.getCleanTargetIp();
+      if (!targetIp) {
+        this.$message({
+          message: '请先选择或输入要清理的 IP',
+          type: 'warning'
+        });
+        return;
+      }
+
+      const ignoreText = this.cleanVisitForm.addToIgnore ? '，并加入忽略名单' : '';
+      this.$confirm(`确定要清理 IP「${targetIp}」的访问统计${ignoreText}吗？该操作不可恢复。`, '确认清理', {
+        confirmButtonText: '确认清理',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        this.cleaningVisitData = true;
+        const payload = {
+          useCurrentIp: this.cleanVisitForm.targetType === 'current',
+          ip: this.cleanVisitForm.targetType === 'manual' ? targetIp : '',
+          addToIgnore: this.cleanVisitForm.addToIgnore
+        };
+
+        this.$http.post(this.$constant.baseURL + "/webInfo/cleanVisitData", payload, true)
+          .then((res) => {
+            const data = res.data || {};
+            const ignoreResult = data.addedToIgnore
+              ? '，已加入忽略名单'
+              : (data.ignoreRequested && data.alreadyIgnored ? '，已在忽略名单中' : '');
+            this.$message({
+              message: `清理完成：数据库 ${data.deletedDbCount || 0} 条，Redis ${data.removedRedisCount || 0} 条${ignoreResult}`,
+              type: 'success'
+            });
+            this.cleanDialogVisible = false;
+            this.getHistoryInfo();
+            if (this.$refs.visitStatsChart && this.$refs.visitStatsChart.fetchVisitStats) {
+              this.$refs.visitStatsChart.fetchVisitStats();
+            }
+          })
+          .catch((error) => {
+            this.$message({
+              message: error.message || '清理访问数据失败',
+              type: 'error'
+            });
+          })
+          .finally(() => {
+            this.cleaningVisitData = false;
+          });
+      }).catch(() => {
+        // 取消操作
+      });
     },
     
     // 更新主题状态
@@ -636,6 +813,57 @@ export default {
     border-radius: 5px;
   }
 
+  .history-title-bar {
+    position: relative;
+    min-height: 55px;
+    margin-bottom: 20px;
+  }
+
+  .history-title-bar .history-title {
+    margin-bottom: 0;
+  }
+
+  .history-actions {
+    position: absolute;
+    top: 15px;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .history-action-button {
+    color: #409EFF;
+    padding: 0;
+  }
+
+  .clean-visit-form {
+    padding-right: 10px;
+  }
+
+  .current-ip-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+  }
+
+  .clean-ip-tag {
+    margin: 0;
+  }
+
+  .clean-ip-empty {
+    color: #909399;
+  }
+
+  .clean-ip-refresh {
+    padding: 0;
+  }
+
+  .clean-visit-alert {
+    margin-top: 6px;
+  }
+
   .history-name {
     font-size: 18px;
     font-weight: bold;
@@ -712,6 +940,17 @@ export default {
     
     .history-info > div {
       margin-right: 0 !important;
+    }
+
+    .history-title-bar {
+      padding-bottom: 30px;
+    }
+
+    .history-actions {
+      top: 58px;
+      left: 0;
+      right: 0;
+      justify-content: center;
     }
   }
 

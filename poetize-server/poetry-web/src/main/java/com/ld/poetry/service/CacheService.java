@@ -1,11 +1,14 @@
 package com.ld.poetry.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.HistoryInfoMapper;
+import com.ld.poetry.dao.SysConfigMapper;
 import com.ld.poetry.dao.WebInfoMapper;
 import com.ld.poetry.entity.Article;
+import com.ld.poetry.entity.SysConfig;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.utils.RedisUtil;
@@ -31,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +49,9 @@ import java.util.Set;
 @Service
 @Slf4j
 public class CacheService {
+    private static final String VISIT_IGNORE_IP_CONFIG_KEY = "visit.ignore.ips";
+    private static final String VISIT_IGNORE_IP_CONFIG_TYPE = "1";
+    private static final int DAILY_VISIT_RECORD_RETENTION_DAYS = 7;
 
     @Autowired
     private RedisUtil redisUtil;
@@ -54,6 +61,9 @@ public class CacheService {
     
     @Autowired
     private HistoryInfoMapper historyInfoMapper;
+
+    @Autowired
+    private SysConfigMapper sysConfigMapper;
 
     // ================================ 用户缓存 ================================
 
@@ -444,6 +454,119 @@ public class CacheService {
             String key = CacheConstants.buildSysConfigKey(configKey);
             redisUtil.del(key);
         }
+    }
+
+    /**
+     * 规范化访问统计使用的IP值。
+     */
+    public String normalizeVisitIp(String ip) {
+        if (ip == null) {
+            return "";
+        }
+        String normalizedIp = ip.trim();
+        if (normalizedIp.contains(",")) {
+            normalizedIp = normalizedIp.split(",")[0].trim();
+        }
+        return normalizedIp;
+    }
+
+    /**
+     * 判断访问统计是否应忽略指定IP。
+     */
+    public boolean isVisitIpIgnored(String ip) {
+        String normalizedIp = normalizeVisitIp(ip);
+        return !normalizedIp.isEmpty() && getVisitIgnoreIps().contains(normalizedIp);
+    }
+
+    /**
+     * 添加访问统计忽略IP。
+     * @return true 表示本次新增，false 表示已存在或IP为空
+     */
+    public boolean addVisitIgnoreIp(String ip) {
+        String normalizedIp = normalizeVisitIp(ip);
+        if (normalizedIp.isEmpty()) {
+            return false;
+        }
+
+        Set<String> ignoreIps = new LinkedHashSet<>(getVisitIgnoreIps());
+        boolean added = ignoreIps.add(normalizedIp);
+        if (added) {
+            saveVisitIgnoreIps(ignoreIps);
+        }
+        return added;
+    }
+
+    /**
+     * 获取访问统计忽略IP列表。
+     */
+    public Set<String> getVisitIgnoreIps() {
+        try {
+            String configValue = getCachedSysConfig(VISIT_IGNORE_IP_CONFIG_KEY);
+            if (configValue == null) {
+                SysConfig config = sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfig>()
+                        .eq(SysConfig::getConfigKey, VISIT_IGNORE_IP_CONFIG_KEY)
+                        .eq(SysConfig::getConfigType, VISIT_IGNORE_IP_CONFIG_TYPE)
+                        .last("limit 1"));
+                configValue = config != null ? config.getConfigValue() : "";
+                cacheSysConfig(VISIT_IGNORE_IP_CONFIG_KEY, configValue == null ? "" : configValue);
+            }
+            return parseVisitIgnoreIps(configValue);
+        } catch (Exception e) {
+            log.error("获取访问统计忽略IP失败", e);
+            return new LinkedHashSet<>();
+        }
+    }
+
+    private void saveVisitIgnoreIps(Set<String> ignoreIps) {
+        String configValue = com.alibaba.fastjson.JSON.toJSONString(new ArrayList<>(ignoreIps));
+        SysConfig config = sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfig>()
+                .eq(SysConfig::getConfigKey, VISIT_IGNORE_IP_CONFIG_KEY)
+                .eq(SysConfig::getConfigType, VISIT_IGNORE_IP_CONFIG_TYPE)
+                .last("limit 1"));
+
+        if (config == null) {
+            config = new SysConfig();
+            config.setConfigName("访问统计忽略IP列表");
+            config.setConfigKey(VISIT_IGNORE_IP_CONFIG_KEY);
+            config.setConfigValue(configValue);
+            config.setConfigType(VISIT_IGNORE_IP_CONFIG_TYPE);
+            sysConfigMapper.insert(config);
+        } else {
+            config.setConfigValue(configValue);
+            sysConfigMapper.updateById(config);
+        }
+        cacheSysConfig(VISIT_IGNORE_IP_CONFIG_KEY, configValue);
+    }
+
+    private Set<String> parseVisitIgnoreIps(String configValue) {
+        Set<String> ignoreIps = new LinkedHashSet<>();
+        if (configValue == null || configValue.trim().isEmpty()) {
+            return ignoreIps;
+        }
+
+        try {
+            List<String> parsedIps = com.alibaba.fastjson.JSON.parseArray(configValue, String.class);
+            if (parsedIps != null) {
+                for (String ip : parsedIps) {
+                    String normalizedIp = normalizeVisitIp(ip);
+                    if (!normalizedIp.isEmpty()) {
+                        ignoreIps.add(normalizedIp);
+                    }
+                }
+                return ignoreIps;
+            }
+        } catch (Exception e) {
+            log.warn("访问统计忽略IP配置不是JSON数组，尝试按分隔符解析");
+        }
+
+        String[] rawIps = configValue.split("[,;\\r\\n]+");
+        for (String rawIp : rawIps) {
+            String normalizedIp = normalizeVisitIp(rawIp);
+            if (!normalizedIp.isEmpty()) {
+                ignoreIps.add(normalizedIp);
+            }
+        }
+        return ignoreIps;
     }
 
     /**
@@ -1095,6 +1218,9 @@ public class CacheService {
         try {
             String today = java.time.LocalDate.now().toString();
             String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
+            String safeNation = normalizeLocationField(nation);
+            String safeProvince = normalizeLocationField(province);
+            String safeCity = normalizeLocationField(city);
             String safeUserAgent = limitText(userAgent, 512);
             String safeReferer = limitText(referer, 512);
             String safeAcceptLanguage = limitText(acceptLanguage, 128);
@@ -1106,9 +1232,9 @@ public class CacheService {
             java.util.Map<String, Object> visitRecord = new java.util.HashMap<>();
             visitRecord.put("ip", ip);
             visitRecord.put("userId", userId);
-            visitRecord.put("nation", nation);
-            visitRecord.put("province", province);
-            visitRecord.put("city", city);
+            visitRecord.put("nation", safeNation);
+            visitRecord.put("province", safeProvince);
+            visitRecord.put("city", safeCity);
             // 使用数据库兼容的时间格式 yyyy-MM-dd HH:mm:ss
             java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
             visitRecord.put("createTime", java.time.LocalDateTime.now().format(formatter));
@@ -1187,6 +1313,79 @@ public class CacheService {
             log.info("已清空{}的访问记录缓存", date);
         } catch (Exception e) {
             log.error("清空每日访问记录缓存失败: date={}", date, e);
+        }
+    }
+
+    /**
+     * 删除最近若干天Redis访问记录中的指定IP。
+     */
+    public int removeRecentVisitRecordsByIp(String ip, int days) {
+        String normalizedIp = normalizeVisitIp(ip);
+        if (normalizedIp.isEmpty()) {
+            return 0;
+        }
+
+        int safeDays = Math.max(1, Math.min(days, DAILY_VISIT_RECORD_RETENTION_DAYS));
+        int removedCount = 0;
+        LocalDate today = LocalDate.now();
+        for (int i = 0; i < safeDays; i++) {
+            removedCount += removeDailyVisitRecordsByIp(today.minusDays(i).toString(), normalizedIp);
+        }
+        return removedCount;
+    }
+
+    /**
+     * 删除指定日期Redis访问记录中的指定IP。
+     */
+    @SuppressWarnings("unchecked")
+    public int removeDailyVisitRecordsByIp(String date, String ip) {
+        String normalizedIp = normalizeVisitIp(ip);
+        if (normalizedIp.isEmpty()) {
+            return 0;
+        }
+
+        try {
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date);
+            List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
+            if (recordJsonList == null || recordJsonList.isEmpty()) {
+                return 0;
+            }
+
+            int removedCount = 0;
+            List<String> retainedRecords = new ArrayList<>();
+            for (Object recordJson : recordJsonList) {
+                if (recordJson == null) {
+                    continue;
+                }
+                String recordText = recordJson.toString();
+                try {
+                    Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordText, Map.class);
+                    String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
+                    if (normalizedIp.equals(recordIp)) {
+                        removedCount++;
+                    } else {
+                        retainedRecords.add(recordText);
+                    }
+                } catch (Exception e) {
+                    log.warn("解析访问记录JSON失败，清理IP时保留原记录: {}", recordJson, e);
+                    retainedRecords.add(recordText);
+                }
+            }
+
+            if (removedCount > 0) {
+                redisUtil.del(recordsKey);
+                for (String retainedRecord : retainedRecords) {
+                    redisUtil.lSet(recordsKey, retainedRecord);
+                }
+                if (!retainedRecords.isEmpty()) {
+                    redisUtil.expire(recordsKey, DAILY_VISIT_RECORD_RETENTION_DAYS * 24 * 3600);
+                }
+                log.info("已从{}的Redis访问记录中删除IP {} 的 {} 条记录", date, normalizedIp, removedCount);
+            }
+            return removedCount;
+        } catch (Exception e) {
+            log.error("删除每日访问记录中的指定IP失败: date={}, ip={}", date, normalizedIp, e);
+            return 0;
         }
     }
 
@@ -1517,7 +1716,7 @@ public class CacheService {
             // 3. 处理今日省份统计
             List<Map<String, Object>> provinceToday = todayRecords.stream()
                 .map(record -> (String) record.get("province"))
-                .filter(java.util.Objects::nonNull)
+                .filter(this::isValidProvinceForStats)
                 .collect(java.util.stream.Collectors.groupingBy(
                     province -> province, 
                     java.util.stream.Collectors.counting()
@@ -1567,6 +1766,28 @@ public class CacheService {
             return null;
         }
         return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
+    }
+
+    private String normalizeLocationField(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()
+                || "0".equals(trimmed)
+                || "-".equals(trimmed)
+                || "未知".equals(trimmed)
+                || "unknown".equalsIgnoreCase(trimmed)
+                || "reserved".equalsIgnoreCase(trimmed)
+                || "null".equalsIgnoreCase(trimmed)
+                || "undefined".equalsIgnoreCase(trimmed)) {
+            return null;
+        }
+        return trimmed;
+    }
+
+    private boolean isValidProvinceForStats(String province) {
+        return normalizeLocationField(province) != null;
     }
 
     private String sha256Hex(String value) {

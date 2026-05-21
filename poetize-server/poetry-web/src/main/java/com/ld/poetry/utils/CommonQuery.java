@@ -72,18 +72,23 @@ public class CommonQuery {
      */
     public void saveHistory(String ip, String pageUri, String userAgent, String referer, String acceptLanguage) {
         try {
+            String normalizedIp = cacheService.normalizeVisitIp(ip);
             // 过滤无效IP，避免记录Docker内部IP和无效地址
-            if (ip == null || ip.isEmpty() || "unknown".equals(ip) || isInvalidIP(ip)) {
+            if (normalizedIp.isEmpty() || "unknown".equals(normalizedIp) || isInvalidIP(normalizedIp)) {
+                return;
+            }
+
+            if (cacheService.isVisitIpIgnored(normalizedIp)) {
                 return;
             }
 
             String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
-            if (!cacheService.tryMarkPageVisit(ip, normalizedPageUri, userAgent)) {
+            if (!cacheService.tryMarkPageVisit(normalizedIp, normalizedPageUri, userAgent)) {
                 return;
             }
 
             Integer userId = PoetryUtil.getUserId();
-            String ipUser = ip + (userId != null ? "_" + userId.toString() : "");
+            String ipUser = normalizedIp + (userId != null ? "_" + userId.toString() : "");
 
             // 记录每次访问 - 使用 LockManager 替代 String.intern()，避免内存泄漏
             lockManager.executeWithLock("saveHistory:" + ipUser, () -> {
@@ -93,17 +98,17 @@ public class CommonQuery {
                 String nation = null, province = null, city = null;
                 if (ip2RegionProvider != null && ip2RegionProvider.isAvailable()) {
                     try {
-                        String[] detail = ip2RegionProvider.resolveLocationDetail(ip);
+                        String[] detail = ip2RegionProvider.resolveLocationDetail(normalizedIp);
                         nation = detail[0];    // 国家（如 "中国"、"美国"）
                         province = detail[1];  // 省份（如 "广东"、"加利福尼亚"）
                         city = detail[2];      // 城市（如 "深圳"、"洛杉矶"）
                     } catch (Exception e) {
-                        log.warn("[saveHistory] IP地理位置解析失败: {}, 错误: {}", ip, e.getMessage());
+                        log.warn("[saveHistory] IP地理位置解析失败: {}, 错误: {}", normalizedIp, e.getMessage());
                     }
                 }
 
                 // 记录访问信息到Redis（不立即写数据库）
-                cacheService.recordVisitToRedis(ip, userId, nation, province, city,
+                cacheService.recordVisitToRedis(normalizedIp, userId, nation, province, city,
                         normalizedPageUri, userAgent, referer, acceptLanguage);
 
                 // log.info("[saveHistory] 访问记录已保存到Redis缓存，等待定时同步到数据库: {}", ipUser);

@@ -294,24 +294,24 @@ public class Ip2RegionProvider implements IpLocationProvider {
             String[] regions = searchResult.split("\\|");
             if (regions.length < 4) return result;
 
-            String country = regions[0];
-            String province = regions[2];
-            String city = regions[3];
+            String country = normalizeRegionValue(regions[0]);
+            String province = normalizeRegionValue(regions[2]);
+            String city = normalizeRegionValue(regions[3]);
 
             // 国家
-            if (StringUtils.hasText(country) && !"0".equals(country)) {
+            if (StringUtils.hasText(country)) {
                 result[0] = country;
             }
 
             // 省份（如果没有具体省份，用国家名兜底，确保省份统计不为空）
-            if (StringUtils.hasText(province) && !"0".equals(province)) {
+            if (StringUtils.hasText(province)) {
                 result[1] = province.replaceAll("省|市|自治区|特别行政区|壮族|回族|维吾尔", "");
             } else if (result[0] != null) {
                 result[1] = result[0];
             }
 
             // 城市
-            if (StringUtils.hasText(city) && !"0".equals(city)) {
+            if (StringUtils.hasText(city)) {
                 result[2] = city.replaceAll("市|地区|自治州|盟", "");
             }
         } catch (Exception e) {
@@ -375,6 +375,23 @@ public class Ip2RegionProvider implements IpLocationProvider {
         return ip.contains(":") && !ip.contains(".");
     }
 
+    private String normalizeRegionValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if ("0".equals(trimmed)
+                || "未知".equals(trimmed)
+                || "unknown".equalsIgnoreCase(trimmed)
+                || "reserved".equalsIgnoreCase(trimmed)
+                || "null".equalsIgnoreCase(trimmed)
+                || "undefined".equalsIgnoreCase(trimmed)
+                || "-".equals(trimmed)) {
+            return null;
+        }
+        return trimmed;
+    }
+
     /**
      * 解析IP2Region响应结果
      * IP2Region格式: 国家|区域|省份|城市|ISP
@@ -386,16 +403,16 @@ public class Ip2RegionProvider implements IpLocationProvider {
         try {
             String[] regions = searchResult.split("\\|");
             if (regions.length >= 4) {
-                String country = regions[0];
-                String province = regions[2];
+                String country = normalizeRegionValue(regions[0]);
+                String province = normalizeRegionValue(regions[2]);
 
                 // 如果不是中国，直接返回国家名
-                if (!"中国".equals(country) && !"0".equals(country)) {
+                if (StringUtils.hasText(country) && !"中国".equals(country)) {
                     return country;
                 }
 
                 // 中国地区处理
-                if (StringUtils.hasText(province) && !"0".equals(province)) {
+                if (StringUtils.hasText(province)) {
                     // 特殊地区处理
                     if ("香港".equals(province)) {
                         return "中国香港";
@@ -409,7 +426,9 @@ public class Ip2RegionProvider implements IpLocationProvider {
                     }
                 }
 
-                return "中国";
+                if ("中国".equals(country)) {
+                    return "中国";
+                }
             }
         } catch (Exception e) {
             log.warn("解析IP2Region响应失败: {}", e.getMessage());

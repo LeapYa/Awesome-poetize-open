@@ -22,6 +22,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -495,6 +496,64 @@ public class WebInfoController {
         return PoetryResult.success(result);
     }
 
+    /**
+     * 获取当前管理员请求IP，用于访问统计清理。
+     */
+    @LoginCheck(1)
+    @GetMapping("/getCurrentVisitIp")
+    public PoetryResult<Map<String, Object>> getCurrentVisitIp(HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        String currentIp = cacheService.normalizeVisitIp(PoetryUtil.getIpAddr(request));
+        result.put("ip", currentIp);
+        result.put("valid", isValidVisitCleanIp(currentIp));
+        result.put("ignored", cacheService.isVisitIpIgnored(currentIp));
+        result.put("timestamp", System.currentTimeMillis());
+        return PoetryResult.success(result);
+    }
+
+    /**
+     * 清理指定IP的访问统计数据，可选择同时加入忽略名单。
+     */
+    @LoginCheck(1)
+    @PostMapping("/cleanVisitData")
+    public PoetryResult<Map<String, Object>> cleanVisitData(@RequestBody(required = false) Map<String, Object> params,
+                                                            HttpServletRequest request) {
+        try {
+            Map<String, Object> safeParams = params != null ? params : Collections.emptyMap();
+            String targetIp = resolveCleanVisitIp(safeParams, request);
+            if (!isValidVisitCleanIp(targetIp)) {
+                return PoetryResult.fail("无法识别有效IP，请确认后重试");
+            }
+
+            boolean addToIgnore = isTruthy(safeParams.get("addToIgnore"));
+            boolean wasIgnored = cacheService.isVisitIpIgnored(targetIp);
+
+            int deletedDbCount = historyInfoMapper.deleteByIp(targetIp);
+            int removedRedisCount = cacheService.removeRecentVisitRecordsByIp(targetIp, 7);
+
+            boolean addedToIgnore = false;
+            if (addToIgnore) {
+                addedToIgnore = cacheService.addVisitIgnoreIp(targetIp);
+            }
+
+            cacheService.refreshLocationStatisticsCache();
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("ip", targetIp);
+            result.put("deletedDbCount", deletedDbCount);
+            result.put("removedRedisCount", removedRedisCount);
+            result.put("totalRemovedCount", deletedDbCount + removedRedisCount);
+            result.put("addedToIgnore", addedToIgnore);
+            result.put("alreadyIgnored", wasIgnored || (addToIgnore && !addedToIgnore));
+            result.put("ignoreRequested", addToIgnore);
+            result.put("cleanTime", System.currentTimeMillis());
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("清理访问统计数据失败", e);
+            return PoetryResult.fail("清理访问统计数据失败: " + e.getMessage());
+        }
+    }
+
     @LoginCheck(0)
     @PostMapping("/updateThirdLoginConfig")
     public PoetryResult<Object> updateThirdLoginConfig(@RequestBody Map<String, Object> config) {
@@ -552,7 +611,7 @@ public class WebInfoController {
             }
 
             // 从缓存中获取历史数据（getCachedIpHistoryStatisticsSafely已确保非null）
-            result.put(CommonConst.IP_HISTORY_PROVINCE, history.get(CommonConst.IP_HISTORY_PROVINCE));
+            result.put(CommonConst.IP_HISTORY_PROVINCE, filterProvinceStatistics(history.get(CommonConst.IP_HISTORY_PROVINCE)));
             result.put(CommonConst.IP_HISTORY_IP, history.get(CommonConst.IP_HISTORY_IP));
             result.put(CommonConst.IP_HISTORY_COUNT, history.get(CommonConst.IP_HISTORY_COUNT));
 
@@ -1367,6 +1426,72 @@ public class WebInfoController {
             log.error("获取第三方登录状态失败", e);
             return PoetryResult.fail("获取第三方登录状态失败: " + e.getMessage());
         }
+    }
+
+    private String resolveCleanVisitIp(Map<String, Object> params, HttpServletRequest request) {
+        boolean useCurrentIp = isTruthy(params.get("useCurrentIp"));
+        Object rawIp = useCurrentIp ? PoetryUtil.getIpAddr(request) : params.get("ip");
+        return cacheService.normalizeVisitIp(rawIp != null ? rawIp.toString() : "");
+    }
+
+    private boolean isValidVisitCleanIp(String ip) {
+        if (!StringUtils.hasText(ip)) {
+            return false;
+        }
+        String normalizedIp = ip.trim();
+        return !"unknown".equalsIgnoreCase(normalizedIp)
+                && !"null".equalsIgnoreCase(normalizedIp)
+                && !"undefined".equalsIgnoreCase(normalizedIp)
+                && !"-".equals(normalizedIp)
+                && !"localhost".equalsIgnoreCase(normalizedIp)
+                && IpUtil.isValidIpFormat(normalizedIp);
+    }
+
+    private boolean isTruthy(Object value) {
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return value != null && "true".equalsIgnoreCase(value.toString());
+    }
+
+    private List<Map<String, Object>> filterProvinceStatistics(Object provinceStats) {
+        if (!(provinceStats instanceof List<?> rawList)) {
+            return new ArrayList<>();
+        }
+
+        List<Map<String, Object>> filteredStats = new ArrayList<>();
+        for (Object item : rawList) {
+            if (!(item instanceof Map<?, ?> rawMap)) {
+                continue;
+            }
+            Object province = rawMap.get("province");
+            if (!isValidProvinceName(province)) {
+                continue;
+            }
+            Map<String, Object> stat = new HashMap<>();
+            rawMap.forEach((key, value) -> {
+                if (key != null) {
+                    stat.put(key.toString(), value);
+                }
+            });
+            filteredStats.add(stat);
+        }
+        return filteredStats;
+    }
+
+    private boolean isValidProvinceName(Object province) {
+        if (province == null) {
+            return false;
+        }
+        String normalizedProvince = province.toString().trim();
+        return StringUtils.hasText(normalizedProvince)
+                && !"0".equals(normalizedProvince)
+                && !"未知".equals(normalizedProvince)
+                && !"unknown".equalsIgnoreCase(normalizedProvince)
+                && !"reserved".equalsIgnoreCase(normalizedProvince)
+                && !"null".equalsIgnoreCase(normalizedProvince)
+                && !"undefined".equalsIgnoreCase(normalizedProvince)
+                && !"-".equals(normalizedProvince);
     }
 
     /**

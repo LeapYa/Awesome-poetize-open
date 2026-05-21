@@ -2,6 +2,7 @@ package com.ld.poetry.dao;
 
 import com.ld.poetry.entity.HistoryInfo;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Param;
@@ -33,6 +34,9 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     @Select("select province, count(distinct ip) as num" +
             " from history_info" +
             " where province is not null and province != ''" +
+            " and province != '0'" +
+            " and province != '未知'" +
+            " and lower(province) not in ('reserved', 'unknown', 'null')" +
             " group by province" +
             " order by num desc" +
             " limit 10")
@@ -47,6 +51,12 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
             " order by num desc" +
             " limit 10")
     List<Map<String, Object>> getHistoryByIp();
+
+    /**
+     * 删除指定IP的访问历史
+     */
+    @Delete("delete from history_info where ip = #{ip}")
+    int deleteByIp(@Param("ip") String ip);
 
     /**
      * 访问24小时内的数据
