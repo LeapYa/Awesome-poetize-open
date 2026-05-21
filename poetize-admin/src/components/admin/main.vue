@@ -143,11 +143,11 @@
         <el-tab-pane label="总访问" name="total">
           <div class="history-info history-info--total">
             <div class="visit-table-panel">
-              <div class="history-name">省份访问TOP10</div>
+              <div class="history-name">省份/国家访问TOP10</div>
               <div>
                 <el-table :data="historyInfo.ip_history_province">
                   <el-table-column type="index" align="center" width="60"></el-table-column>
-                  <el-table-column prop="province" align="center" label="省份" min-width="120"></el-table-column>
+                  <el-table-column prop="province" align="center" label="省份/国家" min-width="120"></el-table-column>
                   <el-table-column prop="num" align="center" label="数量" width="80"></el-table-column>
                 </el-table>
               </div>
@@ -208,11 +208,11 @@
         <el-tab-pane label="今日访问" name="today">
           <div class="history-info history-info--today">
             <div class="visit-table-panel">
-              <div class="history-name">今日访问省份统计</div>
+              <div class="history-name">今日访问省份/国家统计</div>
               <div>
                 <el-table :data="historyInfo.province_today">
                   <el-table-column type="index" align="center" width="60"></el-table-column>
-                  <el-table-column prop="province" align="center" label="省份" min-width="120"></el-table-column>
+                  <el-table-column prop="province" align="center" label="省份/国家" min-width="120"></el-table-column>
                   <el-table-column prop="num" align="center" label="数量" width="80"></el-table-column>
                 </el-table>
               </div>

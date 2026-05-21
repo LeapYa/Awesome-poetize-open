@@ -16,6 +16,7 @@ import com.ld.poetry.utils.PageVisitUtils;
 import com.ld.poetry.utils.SpringContextUtil;
 import com.ld.poetry.utils.TokenValidationUtil;
 import com.ld.poetry.utils.UserAgentClassifier;
+import com.ld.poetry.utils.VisitRegionNormalizer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisCallback;
@@ -37,6 +38,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -1218,9 +1220,17 @@ public class CacheService {
         try {
             String today = java.time.LocalDate.now().toString();
             String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
-            String safeNation = normalizeLocationField(nation);
-            String safeProvince = normalizeLocationField(province);
             String safeCity = normalizeLocationField(city);
+            String safeNation = Optional.ofNullable(VisitRegionNormalizer.normalizeCountryName(nation))
+                    .orElseGet(() -> {
+                        String normalizedNation = normalizeLocationField(nation);
+                        return normalizedNation != null ? normalizedNation : VisitRegionNormalizer.UNKNOWN_REGION;
+                    });
+            String safeProvince = VisitRegionNormalizer.resolveProvinceOrCountry(
+                    safeNation != null ? safeNation : nation,
+                    province,
+                    safeCity
+            );
             String safeUserAgent = limitText(userAgent, 512);
             String safeReferer = limitText(referer, 512);
             String safeAcceptLanguage = limitText(acceptLanguage, 128);
@@ -1715,8 +1725,12 @@ public class CacheService {
             
             // 3. 处理今日省份统计
             List<Map<String, Object>> provinceToday = todayRecords.stream()
-                .map(record -> (String) record.get("province"))
-                .filter(this::isValidProvinceForStats)
+                .map(record -> VisitRegionNormalizer.resolveProvinceOrCountry(
+                    record.get("nation"),
+                    record.get("province"),
+                    record.get("city")
+                ))
+                .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.groupingBy(
                     province -> province, 
                     java.util.stream.Collectors.counting()
@@ -1784,10 +1798,6 @@ public class CacheService {
             return null;
         }
         return trimmed;
-    }
-
-    private boolean isValidProvinceForStats(String province) {
-        return normalizeLocationField(province) != null;
     }
 
     private String sha256Hex(String value) {

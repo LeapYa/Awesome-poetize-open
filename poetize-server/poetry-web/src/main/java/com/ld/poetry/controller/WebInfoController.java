@@ -619,8 +619,8 @@ public class WebInfoController {
                 }
             }
 
-            // 从缓存中获取历史数据（getCachedIpHistoryStatisticsSafely已确保非null）
-            result.put(CommonConst.IP_HISTORY_PROVINCE, filterProvinceStatistics(history.get(CommonConst.IP_HISTORY_PROVINCE)));
+            // 省份/国家统计需要使用最新口径，避免旧缓存继续显示英文城市或遗漏国外国家。
+            result.put(CommonConst.IP_HISTORY_PROVINCE, getFreshProvinceStatistics(history));
             result.put(CommonConst.IP_HISTORY_IP, history.get(CommonConst.IP_HISTORY_IP));
             result.put(CommonConst.IP_HISTORY_COUNT, history.get(CommonConst.IP_HISTORY_COUNT));
 
@@ -1467,43 +1467,19 @@ public class WebInfoController {
     }
 
     private List<Map<String, Object>> filterProvinceStatistics(Object provinceStats) {
-        if (!(provinceStats instanceof List<?> rawList)) {
-            return new ArrayList<>();
-        }
-
-        List<Map<String, Object>> filteredStats = new ArrayList<>();
-        for (Object item : rawList) {
-            if (!(item instanceof Map<?, ?> rawMap)) {
-                continue;
-            }
-            Object province = rawMap.get("province");
-            if (!isValidProvinceName(province)) {
-                continue;
-            }
-            Map<String, Object> stat = new HashMap<>();
-            rawMap.forEach((key, value) -> {
-                if (key != null) {
-                    stat.put(key.toString(), value);
-                }
-            });
-            filteredStats.add(stat);
-        }
-        return filteredStats;
+        return new ArrayList<>(VisitRegionNormalizer.normalizeProvinceStatistics(provinceStats));
     }
 
-    private boolean isValidProvinceName(Object province) {
-        if (province == null) {
-            return false;
+    private List<Map<String, Object>> getFreshProvinceStatistics(Map<String, Object> cachedHistory) {
+        try {
+            List<Map<String, Object>> provinceStats = filterProvinceStatistics(historyInfoMapper.getHistoryByProvince());
+            if (!provinceStats.isEmpty()) {
+                return provinceStats;
+            }
+        } catch (Exception e) {
+            log.error("获取省份/国家访问统计失败，回退到缓存", e);
         }
-        String normalizedProvince = province.toString().trim();
-        return StringUtils.hasText(normalizedProvince)
-                && !"0".equals(normalizedProvince)
-                && !"未知".equals(normalizedProvince)
-                && !"unknown".equalsIgnoreCase(normalizedProvince)
-                && !"reserved".equalsIgnoreCase(normalizedProvince)
-                && !"null".equalsIgnoreCase(normalizedProvince)
-                && !"undefined".equalsIgnoreCase(normalizedProvince)
-                && !"-".equals(normalizedProvince);
+        return filterProvinceStatistics(cachedHistory.get(CommonConst.IP_HISTORY_PROVINCE));
     }
 
     /**

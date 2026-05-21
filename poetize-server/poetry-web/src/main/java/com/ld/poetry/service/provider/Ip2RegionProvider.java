@@ -1,5 +1,6 @@
 package com.ld.poetry.service.provider;
 
+import com.ld.poetry.utils.VisitRegionNormalizer;
 import lombok.extern.slf4j.Slf4j;
 import org.lionsoul.ip2region.xdb.LongByteArray;
 import org.lionsoul.ip2region.xdb.Searcher;
@@ -294,7 +295,10 @@ public class Ip2RegionProvider implements IpLocationProvider {
             String[] regions = searchResult.split("\\|");
             if (regions.length < 4) return result;
 
-            String country = normalizeRegionValue(regions[0]);
+            String country = VisitRegionNormalizer.normalizeCountryName(regions[0]);
+            if (!StringUtils.hasText(country)) {
+                country = normalizeRegionValue(regions[0]);
+            }
             String province = normalizeRegionValue(regions[2]);
             String city = normalizeRegionValue(regions[3]);
 
@@ -303,8 +307,10 @@ public class Ip2RegionProvider implements IpLocationProvider {
                 result[0] = country;
             }
 
-            // 省份（如果没有具体省份，用国家名兜底，确保省份统计不为空）
-            if (StringUtils.hasText(province)) {
+            // 省份/国家统计口径：国内保留省份，国外统一落到中文国家。
+            if (StringUtils.hasText(country) && !VisitRegionNormalizer.isChina(country)) {
+                result[1] = country;
+            } else if (StringUtils.hasText(province)) {
                 result[1] = province.replaceAll("省|市|自治区|特别行政区|壮族|回族|维吾尔", "");
             } else if (result[0] != null) {
                 result[1] = result[0];
@@ -403,7 +409,10 @@ public class Ip2RegionProvider implements IpLocationProvider {
         try {
             String[] regions = searchResult.split("\\|");
             if (regions.length >= 4) {
-                String country = normalizeRegionValue(regions[0]);
+                String country = VisitRegionNormalizer.normalizeCountryName(regions[0]);
+                if (!StringUtils.hasText(country)) {
+                    country = normalizeRegionValue(regions[0]);
+                }
                 String province = normalizeRegionValue(regions[2]);
 
                 // 如果不是中国，直接返回国家名

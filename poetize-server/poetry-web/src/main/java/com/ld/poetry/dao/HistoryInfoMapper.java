@@ -29,15 +29,28 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     int batchInsert(@Param("list") List<HistoryInfo> historyInfoList);
 
     /**
-     * 访问IP最多的10个省
+     * 访问次数最多的10个省份/国家
      */
-    @Select("select province, count(distinct ip) as num" +
+    @Select("select region as province, count(*) as num" +
+            " from (" +
+            " select case" +
+            " when nation is not null and trim(nation) != ''" +
+            "   and trim(nation) not in ('0', '-', '未知')" +
+            "   and lower(trim(nation)) not in ('reserved', 'unknown', 'null', 'undefined', 'china', 'cn', 'chn', 'prc')" +
+            "   and trim(nation) != '中国' then trim(nation)" +
+            " when province is not null and trim(province) != ''" +
+            "   and trim(province) not in ('0', '-', '未知')" +
+            "   and lower(trim(province)) not in ('reserved', 'unknown', 'null', 'undefined') then trim(province)" +
+            " when nation is not null and trim(nation) != ''" +
+            "   and trim(nation) not in ('0', '-', '未知')" +
+            "   and lower(trim(nation)) not in ('reserved', 'unknown', 'null', 'undefined') then trim(nation)" +
+            " when city is not null and trim(city) != ''" +
+            "   and trim(city) not in ('0', '-', '未知')" +
+            "   and lower(trim(city)) not in ('reserved', 'unknown', 'null', 'undefined') then trim(city)" +
+            " else '未知' end as region" +
             " from history_info" +
-            " where province is not null and province != ''" +
-            " and province != '0'" +
-            " and province != '未知'" +
-            " and lower(province) not in ('reserved', 'unknown', 'null')" +
-            " group by province" +
+            " ) t" +
+            " group by region" +
             " order by num desc" +
             " limit 10")
     List<Map<String, Object>> getHistoryByProvince();
