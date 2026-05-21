@@ -26,6 +26,59 @@ success() { echo -e "${GREEN}[成功]${NC} $1"; }
 error() { echo -e "${RED}[失败]${NC} $1"; }
 warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
 
+get_github_repo_url() {
+    echo "https://github.com/LeapYa/awesome-poetize-open.git"
+}
+
+get_gitee_repo_url() {
+    echo "https://gitee.com/leapya/poetize.git"
+}
+
+git_remote_available() {
+    local repo_url="$1"
+    [ -n "$repo_url" ] || return 1
+
+    if command -v timeout &>/dev/null; then
+        timeout 12 git ls-remote --heads "$repo_url" main >/dev/null 2>&1
+    else
+        git ls-remote --heads "$repo_url" main >/dev/null 2>&1
+    fi
+}
+
+get_git_repo_candidates() {
+    local github_url
+    local gitee_url
+    local preferred_url
+    local fallback_url
+
+    github_url=$(get_github_repo_url)
+    gitee_url=$(get_gitee_repo_url)
+
+    if [ -n "${POETIZE_GIT_URL:-}" ]; then
+        echo "$POETIZE_GIT_URL"
+        return 0
+    fi
+
+    if is_china_environment; then
+        preferred_url="$gitee_url"
+        fallback_url="$github_url"
+    else
+        preferred_url="$github_url"
+        fallback_url="$gitee_url"
+    fi
+
+    if git_remote_available "$preferred_url"; then
+        echo "$preferred_url"
+        echo "$fallback_url"
+    elif git_remote_available "$fallback_url"; then
+        echo "$fallback_url"
+        echo "$preferred_url"
+    else
+        echo "$preferred_url"
+        echo "$fallback_url"
+    fi
+}
+
 set_https_failure_state() {
     HTTPS_FAILURE_REASON="$1"
     HTTPS_FAILURE_DETAIL="$2"
