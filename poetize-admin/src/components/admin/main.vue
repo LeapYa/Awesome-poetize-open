@@ -407,42 +407,65 @@
         :close-on-click-modal="!cleaningVisitData"
         :close-on-press-escape="!cleaningVisitData">
         <el-form label-width="95px" class="clean-visit-form">
-          <el-form-item label="清理对象">
-            <el-radio-group v-model="cleanVisitForm.targetType" @change="handleCleanTargetChange">
-              <el-radio label="current">当前 IP</el-radio>
-              <el-radio label="manual">指定 IP</el-radio>
+          <el-form-item label="清理类型">
+            <el-radio-group
+              v-model="cleanVisitForm.cleanType"
+              size="small"
+              @change="handleCleanTypeChange">
+              <el-radio-button label="ip">IP</el-radio-button>
+              <el-radio-button label="ua">UA</el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="cleanVisitForm.targetType === 'current'" label="当前 IP">
-            <div class="current-ip-line">
-              <el-tag v-if="currentVisitIp" type="info" class="clean-ip-tag">{{ currentVisitIp }}</el-tag>
-              <span v-else class="clean-ip-empty">{{ loadingCurrentIp ? '识别中...' : '未识别到有效IP' }}</span>
-              <el-button type="text"
-                         class="clean-ip-refresh"
-                         :loading="loadingCurrentIp"
-                         @click="fetchCurrentVisitIp">
-                刷新
-              </el-button>
-            </div>
-          </el-form-item>
-          <el-form-item v-else label="指定 IP">
+          <template v-if="cleanVisitForm.cleanType === 'ip'">
+            <el-form-item label="清理对象">
+              <el-radio-group v-model="cleanVisitForm.targetType" @change="handleCleanTargetChange">
+                <el-radio label="current">当前 IP</el-radio>
+                <el-radio label="manual">指定 IP</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="cleanVisitForm.targetType === 'current'" label="当前 IP">
+              <div class="current-ip-line">
+                <el-tag v-if="currentVisitIp" type="info" class="clean-ip-tag">{{ currentVisitIp }}</el-tag>
+                <span v-else class="clean-ip-empty">{{ loadingCurrentIp ? '识别中...' : '未识别到有效IP' }}</span>
+                <el-button type="text"
+                           class="clean-ip-refresh"
+                           :loading="loadingCurrentIp"
+                           @click="fetchCurrentVisitIp">
+                  刷新
+                </el-button>
+              </div>
+            </el-form-item>
+            <el-form-item v-else label="指定 IP">
+              <el-input
+                v-model.trim="cleanVisitForm.ip"
+                placeholder="请输入要清理的 IP"
+                clearable>
+              </el-input>
+            </el-form-item>
+            <el-form-item label="后续统计">
+              <el-checkbox v-model="cleanVisitForm.addToIgnore">
+                同时加入忽略名单，以后不再统计这个 IP
+              </el-checkbox>
+            </el-form-item>
+          </template>
+          <el-form-item v-else label="UA">
             <el-input
-              v-model.trim="cleanVisitForm.ip"
-              placeholder="请输入要清理的 IP"
-              clearable>
+              v-model.trim="cleanVisitForm.userAgent"
+              type="textarea"
+              :rows="4"
+              maxlength="512"
+              show-word-limit
+              placeholder="粘贴完整 User-Agent">
             </el-input>
-          </el-form-item>
-          <el-form-item label="后续统计">
-            <el-checkbox v-model="cleanVisitForm.addToIgnore">
-              同时加入忽略名单，以后不再统计这个 IP
-            </el-checkbox>
           </el-form-item>
           <el-alert
             class="clean-visit-alert"
             type="warning"
             show-icon
             :closable="false"
-            title="该操作会删除数据库历史记录，并清理最近 7 天 Redis 访问记录，执行后不可恢复。">
+            :title="cleanVisitForm.cleanType === 'ua'
+              ? '该操作会删除匹配 UA 的数据库历史记录，并清理最近 7 天 Redis 访问记录，执行后不可恢复。'
+              : '该操作会删除数据库历史记录，并清理最近 7 天 Redis 访问记录，执行后不可恢复。'">
           </el-alert>
         </el-form>
         <span slot="footer" class="dialog-footer">
@@ -477,8 +500,10 @@ export default {
       loadingCurrentIp: false,
       cleaningVisitData: false,
       cleanVisitForm: {
+        cleanType: 'ip',
         targetType: 'current',
         ip: '',
+        userAgent: '',
         addToIgnore: false
       }
     }
@@ -561,12 +586,20 @@ export default {
 
     openCleanVisitDialog() {
       this.cleanVisitForm = {
+        cleanType: 'ip',
         targetType: 'current',
         ip: '',
+        userAgent: '',
         addToIgnore: false
       };
       this.cleanDialogVisible = true;
       this.fetchCurrentVisitIp();
+    },
+
+    handleCleanTypeChange(cleanType) {
+      if (cleanType === 'ip' && this.cleanVisitForm.targetType === 'current' && !this.currentVisitIp) {
+        this.fetchCurrentVisitIp();
+      }
     },
 
     handleCleanTargetChange(targetType) {
@@ -609,30 +642,53 @@ export default {
       return (this.cleanVisitForm.ip || '').trim();
     },
 
+    getCleanTargetValue() {
+      if (this.cleanVisitForm.cleanType === 'ua') {
+        return (this.cleanVisitForm.userAgent || '').trim();
+      }
+      return this.getCleanTargetIp();
+    },
+
+    formatCleanTargetValue(value) {
+      if (!value || value.length <= 80) {
+        return value;
+      }
+      return value.slice(0, 80) + '...';
+    },
+
     confirmCleanVisitData() {
       if (this.cleaningVisitData) return;
 
-      const targetIp = this.getCleanTargetIp();
-      if (!targetIp) {
+      const cleanType = this.cleanVisitForm.cleanType || 'ip';
+      const targetValue = this.getCleanTargetValue();
+      const targetLabel = cleanType === 'ua' ? 'UA' : 'IP';
+      const displayTargetValue = this.formatCleanTargetValue(targetValue);
+      if (!targetValue) {
         this.$message({
-          message: '请先选择或输入要清理的 IP',
+          message: `请先输入要清理的 ${targetLabel}`,
           type: 'warning'
         });
         return;
       }
 
-      const ignoreText = this.cleanVisitForm.addToIgnore ? '，并加入忽略名单' : '';
-      this.$confirm(`确定要清理 IP「${targetIp}」的访问统计${ignoreText}吗？该操作不可恢复。`, '确认清理', {
+      const ignoreText = cleanType === 'ip' && this.cleanVisitForm.addToIgnore ? '，并加入忽略名单' : '';
+      this.$confirm(`确定要清理 ${targetLabel}「${displayTargetValue}」的访问统计${ignoreText}吗？该操作不可恢复。`, '确认清理', {
         confirmButtonText: '确认清理',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
         this.cleaningVisitData = true;
         const payload = {
-          useCurrentIp: this.cleanVisitForm.targetType === 'current',
-          ip: this.cleanVisitForm.targetType === 'manual' ? targetIp : '',
-          addToIgnore: this.cleanVisitForm.addToIgnore
+          cleanType,
+          targetValue
         };
+        if (cleanType === 'ua') {
+          payload.userAgent = targetValue;
+        } else {
+          payload.useCurrentIp = this.cleanVisitForm.targetType === 'current';
+          payload.ip = this.cleanVisitForm.targetType === 'manual' ? targetValue : '';
+          payload.addToIgnore = this.cleanVisitForm.addToIgnore;
+        }
 
         this.$http.post(this.$constant.baseURL + "/webInfo/cleanVisitData", payload, true)
           .then((res) => {
@@ -641,7 +697,7 @@ export default {
               ? '，已加入忽略名单'
               : (data.ignoreRequested && data.alreadyIgnored ? '，已在忽略名单中' : '');
             this.$message({
-              message: `清理完成：数据库 ${data.deletedDbCount || 0} 条，Redis ${data.removedRedisCount || 0} 条${ignoreResult}`,
+              message: `清理完成：数据库 ${data.deletedDbCount || 0} 条，Redis ${data.removedRedisCount || 0} 条${cleanType === 'ip' ? ignoreResult : ''}`,
               type: 'success'
             });
             this.cleanDialogVisible = false;

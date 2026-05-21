@@ -103,6 +103,12 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     int deleteByIpSince(@Param("ip") String ip, @Param("since") LocalDateTime since);
 
     /**
+     * 删除指定User-Agent的访问历史。
+     */
+    @Delete("delete from history_info where user_agent = #{userAgent}")
+    int deleteByUserAgent(@Param("userAgent") String userAgent);
+
+    /**
      * 访问24小时内的数据
      */
     default List<Map<String, Object>> getHistoryBy24Hour() {

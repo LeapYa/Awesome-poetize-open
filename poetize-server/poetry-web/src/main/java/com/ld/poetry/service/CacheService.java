@@ -475,6 +475,14 @@ public class CacheService {
     }
 
     /**
+     * 标准化访问记录中的User-Agent，保持与写入Redis/数据库时一致。
+     */
+    public String normalizeVisitUserAgent(String userAgent) {
+        String normalizedUserAgent = limitText(userAgent, 512);
+        return normalizedUserAgent == null ? "" : normalizedUserAgent;
+    }
+
+    /**
      * 判断访问统计是否应忽略指定IP。
      */
     public boolean isVisitIpIgnored(String ip) {
@@ -1413,6 +1421,24 @@ public class CacheService {
     }
 
     /**
+     * 删除最近若干天Redis访问记录中的指定User-Agent。
+     */
+    public int removeRecentVisitRecordsByUserAgent(String userAgent, int days) {
+        String normalizedUserAgent = normalizeVisitUserAgent(userAgent);
+        if (normalizedUserAgent.isEmpty()) {
+            return 0;
+        }
+
+        int safeDays = Math.max(1, Math.min(days, DAILY_VISIT_RECORD_RETENTION_DAYS));
+        int removedCount = 0;
+        LocalDate today = LocalDate.now();
+        for (int i = 0; i < safeDays; i++) {
+            removedCount += removeDailyVisitRecordsByUserAgent(today.minusDays(i).toString(), normalizedUserAgent);
+        }
+        return removedCount;
+    }
+
+    /**
      * 删除最近若干分钟内Redis访问记录中的指定IP。
      */
     public int removeRecentVisitRecordsByIpSince(String ip, LocalDateTime since) {
@@ -1481,6 +1507,63 @@ public class CacheService {
             return removedCount;
         } catch (Exception e) {
             log.error("删除每日访问记录中的指定IP失败: date={}, ip={}", date, normalizedIp, e);
+            return 0;
+        }
+    }
+
+    /**
+     * 删除指定日期Redis访问记录中的指定User-Agent。
+     */
+    @SuppressWarnings("unchecked")
+    public int removeDailyVisitRecordsByUserAgent(String date, String userAgent) {
+        String normalizedUserAgent = normalizeVisitUserAgent(userAgent);
+        if (normalizedUserAgent.isEmpty()) {
+            return 0;
+        }
+
+        try {
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date);
+            List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
+            if (recordJsonList == null || recordJsonList.isEmpty()) {
+                return 0;
+            }
+
+            int removedCount = 0;
+            List<String> retainedRecords = new ArrayList<>();
+            for (Object recordJson : recordJsonList) {
+                if (recordJson == null) {
+                    continue;
+                }
+                String recordText = recordJson.toString();
+                try {
+                    Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordText, Map.class);
+                    Object userAgentObj = record != null ? Optional.ofNullable(record.get("userAgent"))
+                            .orElse(record.get("user_agent")) : null;
+                    String recordUserAgent = normalizeVisitUserAgent(userAgentObj != null ? userAgentObj.toString() : "");
+                    if (normalizedUserAgent.equals(recordUserAgent)) {
+                        removedCount++;
+                    } else {
+                        retainedRecords.add(recordText);
+                    }
+                } catch (Exception e) {
+                    log.warn("解析访问记录JSON失败，清理UA时保留原记录: {}", recordJson, e);
+                    retainedRecords.add(recordText);
+                }
+            }
+
+            if (removedCount > 0) {
+                redisUtil.del(recordsKey);
+                for (String retainedRecord : retainedRecords) {
+                    redisUtil.lSet(recordsKey, retainedRecord);
+                }
+                if (!retainedRecords.isEmpty()) {
+                    redisUtil.expire(recordsKey, DAILY_VISIT_RECORD_RETENTION_DAYS * 24 * 3600);
+                }
+                log.info("已从{}的Redis访问记录中删除UA {} 的 {} 条记录", date, normalizedUserAgent, removedCount);
+            }
+            return removedCount;
+        } catch (Exception e) {
+            log.error("删除每日访问记录中的指定UA失败: date={}, userAgent={}", date, normalizedUserAgent, e);
             return 0;
         }
     }

@@ -519,15 +519,20 @@ public class WebInfoController {
     }
 
     /**
-     * 清理指定IP的访问统计数据，可选择同时加入忽略名单。
+     * 清理指定IP或User-Agent的访问统计数据。
      */
     @LoginCheck(1)
     @PostMapping("/cleanVisitData")
-    @AuditLog(action = "VISIT_DATA_CLEAN", targetType = "VISIT", targetIdParam = "targetIp", summary = "清理访问统计数据")
+    @AuditLog(action = "VISIT_DATA_CLEAN", targetType = "VISIT", targetIdParam = "targetValue", summary = "清理访问统计数据")
     public PoetryResult<Map<String, Object>> cleanVisitData(@RequestBody(required = false) Map<String, Object> params,
                                                             HttpServletRequest request) {
         try {
             Map<String, Object> safeParams = params != null ? params : Collections.emptyMap();
+            String cleanType = resolveCleanVisitType(safeParams);
+            if ("ua".equals(cleanType)) {
+                return cleanVisitDataByUserAgent(safeParams);
+            }
+
             String targetIp = resolveCleanVisitIp(safeParams, request);
             if (!isValidVisitCleanIp(targetIp)) {
                 return PoetryResult.fail("无法识别有效IP，请确认后重试");
@@ -547,6 +552,8 @@ public class WebInfoController {
             cacheService.refreshLocationStatisticsCache();
 
             Map<String, Object> result = new HashMap<>();
+            result.put("cleanType", "ip");
+            result.put("targetValue", targetIp);
             result.put("ip", targetIp);
             result.put("deletedDbCount", deletedDbCount);
             result.put("removedRedisCount", removedRedisCount);
@@ -560,6 +567,31 @@ public class WebInfoController {
             log.error("清理访问统计数据失败", e);
             return PoetryResult.fail("清理访问统计数据失败: " + e.getMessage());
         }
+    }
+
+    private PoetryResult<Map<String, Object>> cleanVisitDataByUserAgent(Map<String, Object> params) {
+        String targetUserAgent = resolveCleanVisitUserAgent(params);
+        if (!StringUtils.hasText(targetUserAgent)) {
+            return PoetryResult.fail("请输入要清理的UA");
+        }
+
+        int deletedDbCount = historyInfoMapper.deleteByUserAgent(targetUserAgent);
+        int removedRedisCount = cacheService.removeRecentVisitRecordsByUserAgent(targetUserAgent, 7);
+
+        cacheService.refreshLocationStatisticsCache();
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("cleanType", "ua");
+        result.put("targetValue", targetUserAgent);
+        result.put("userAgent", targetUserAgent);
+        result.put("deletedDbCount", deletedDbCount);
+        result.put("removedRedisCount", removedRedisCount);
+        result.put("totalRemovedCount", deletedDbCount + removedRedisCount);
+        result.put("addedToIgnore", false);
+        result.put("alreadyIgnored", false);
+        result.put("ignoreRequested", false);
+        result.put("cleanTime", System.currentTimeMillis());
+        return PoetryResult.success(result);
     }
 
     @LoginCheck(0)
@@ -1465,8 +1497,23 @@ public class WebInfoController {
 
     private String resolveCleanVisitIp(Map<String, Object> params, HttpServletRequest request) {
         boolean useCurrentIp = isTruthy(params.get("useCurrentIp"));
-        Object rawIp = useCurrentIp ? PoetryUtil.getIpAddr(request) : params.get("ip");
+        Object rawIp = useCurrentIp ? PoetryUtil.getIpAddr(request)
+                : Optional.ofNullable(params.get("ip")).orElse(params.get("targetValue"));
         return cacheService.normalizeVisitIp(rawIp != null ? rawIp.toString() : "");
+    }
+
+    private String resolveCleanVisitType(Map<String, Object> params) {
+        Object cleanType = params.get("cleanType");
+        if (cleanType != null && "ua".equalsIgnoreCase(cleanType.toString().trim())) {
+            return "ua";
+        }
+        return "ip";
+    }
+
+    private String resolveCleanVisitUserAgent(Map<String, Object> params) {
+        Object rawUserAgent = Optional.ofNullable(params.get("userAgent"))
+                .orElse(Optional.ofNullable(params.get("ua")).orElse(params.get("targetValue")));
+        return cacheService.normalizeVisitUserAgent(rawUserAgent != null ? rawUserAgent.toString() : "");
     }
 
     private boolean isValidVisitCleanIp(String ip) {
