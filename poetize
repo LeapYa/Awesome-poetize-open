@@ -6017,6 +6017,95 @@ handle_https_port_mapping() {
   fi
 }
 
+resolve_db_root_password() {
+    local mariadb_container="${1:-}"
+    local env_password=""
+    local config_password=""
+    local container_password=""
+    local candidates=()
+    local candidate=""
+    local env_key=""
+
+    add_db_password_candidate() {
+        local new_candidate="$1"
+        local existing=""
+
+        [ -n "$new_candidate" ] || return 0
+        for existing in "${candidates[@]}"; do
+            if [ "$existing" = "$new_candidate" ]; then
+                return 0
+            fi
+        done
+        candidates+=("$new_candidate")
+    }
+
+    if [ -f ".env" ]; then
+        for env_key in DB_ROOT_PASSWORD MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD; do
+            if type read_env_config &>/dev/null; then
+                env_password=$(read_env_config "$env_key" "")
+            else
+                env_password=$(grep "^${env_key}=" ".env" 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
+            fi
+            add_db_password_candidate "$env_password"
+        done
+    fi
+
+    if [ -f ".config/db_credentials.txt" ]; then
+        config_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | head -n 1 | cut -d':' -f2- | tr -d ' \r')
+        add_db_password_candidate "$config_password"
+    fi
+
+    if [ -n "$mariadb_container" ]; then
+        for env_key in MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD DB_ROOT_PASSWORD; do
+            container_password=$(sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null | grep "^${env_key}=" | tail -n 1 | cut -d'=' -f2- | tr -d '\r')
+            add_db_password_candidate "$container_password"
+        done
+        add_db_password_candidate "root123"
+    fi
+
+    if [ ${#candidates[@]} -eq 0 ]; then
+        return 1
+    fi
+
+    if [ -n "$mariadb_container" ]; then
+        for candidate in "${candidates[@]}"; do
+            if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$candidate" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" -N -e "SELECT 1" >/dev/null 2>&1'; then
+                printf "%s\n" "$candidate"
+                return 0
+            fi
+        done
+
+        warning "未能验证数据库ROOT密码，优先使用当前项目配置继续尝试" >&2
+    fi
+
+    printf "%s\n" "${candidates[0]}"
+}
+
+SQL_EXEC_LAST_ERROR=""
+
+execute_sql_file_in_container() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_file="$3"
+    local error_file=""
+
+    SQL_EXEC_LAST_ERROR=""
+    error_file=$(mktemp 2>/dev/null || printf "/tmp/poetize-sql-error-%s.log" "$$")
+
+    if sudo docker exec -i -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" \
+        sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize' < "$sql_file" 2>"$error_file"; then
+        rm -f "$error_file"
+        return 0
+    fi
+
+    if [ -f "$error_file" ]; then
+        SQL_EXEC_LAST_ERROR=$(tail -n 20 "$error_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')
+        rm -f "$error_file"
+    fi
+
+    return 1
+}
+
 # 构建和启动Docker服务
 start_services_with_diagnostics() {
   info "启动Docker服务..."
@@ -6116,11 +6205,19 @@ start_services_with_diagnostics() {
           if [ "$_health" = "healthy" ]; then
               info "数据库已就绪，开始执行迁移脚本..."
               local _root_pwd=""
+              local _sql_dir="poetize-server/sql"
+              if [ -f "lib/config.sh" ]; then
+                  source "lib/config.sh" 2>/dev/null || true
+              fi
               _root_pwd=$(resolve_db_root_password "$_db_ctn" 2>/dev/null || true)
               
-              if [ -n "$_root_pwd" ] && [ -d "poetize-server/sql" ]; then
+              if [ -z "$_root_pwd" ]; then
+                  warning "未找到数据库根密码，跳过预迁移脚本执行"
+              elif [ ! -d "$_sql_dir" ]; then
+                  warning "未找到 SQL 目录: $_sql_dir，跳过预迁移脚本执行"
+              else
                   # 手动展开的 execute_additional_sql_scripts
-                  local sql_files=$(find poetize-server/sql -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
+                  local sql_files=$(find "$_sql_dir" -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
                   if [ -n "$sql_files" ]; then
                       local has_migrations=false
                       if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$_root_pwd" "$_db_ctn" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -e "SELECT 1 FROM db_migrations LIMIT 1"' 2>/dev/null | grep -q "1"; then
@@ -6156,9 +6253,9 @@ start_services_with_diagnostics() {
                               fi
                           fi
                       done <<< "$sql_files"
+                  else
+                      info "未找到需要预执行的迁移脚本"
                   fi
-              else
-                  warning "未找到数据库根密码或 sql 目录，跳过预迁移脚本执行"
               fi
           else
               warning "等待数据库就绪超时，跳过预迁移"
@@ -13750,6 +13847,7 @@ resolve_db_root_password() {
     local container_password=""
     local candidates=()
     local candidate=""
+    local env_key=""
 
     add_db_password_candidate() {
         local new_candidate="$1"
@@ -13764,19 +13862,28 @@ resolve_db_root_password() {
         candidates+=("$new_candidate")
     }
 
-    if [ -f ".env" ] && type read_env_config &>/dev/null; then
-        env_password=$(read_env_config "DB_ROOT_PASSWORD" "")
-        add_db_password_candidate "$env_password"
+    if [ -f ".env" ]; then
+        for env_key in DB_ROOT_PASSWORD MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD; do
+            if type read_env_config &>/dev/null; then
+                env_password=$(read_env_config "$env_key" "")
+            else
+                env_password=$(grep "^${env_key}=" ".env" 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
+            fi
+            add_db_password_candidate "$env_password"
+        done
     fi
 
     if [ -f ".config/db_credentials.txt" ]; then
-        config_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+        config_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | head -n 1 | cut -d':' -f2- | tr -d ' \r')
         add_db_password_candidate "$config_password"
     fi
 
     if [ -n "$mariadb_container" ]; then
-        container_password=$(sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null | grep '^MARIADB_ROOT_PASSWORD=' | tail -n 1 | cut -d'=' -f2- | tr -d '\r')
-        add_db_password_candidate "$container_password"
+        for env_key in MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD DB_ROOT_PASSWORD; do
+            container_password=$(sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null | grep "^${env_key}=" | tail -n 1 | cut -d'=' -f2- | tr -d '\r')
+            add_db_password_candidate "$container_password"
+        done
+        add_db_password_candidate "root123"
     fi
 
     if [ ${#candidates[@]} -eq 0 ]; then
@@ -13791,7 +13898,7 @@ resolve_db_root_password() {
             fi
         done
 
-        warning "未能验证数据库ROOT密码，优先使用当前项目配置继续尝试"
+        warning "未能验证数据库ROOT密码，优先使用当前项目配置继续尝试" >&2
     fi
 
     printf "%s\n" "${candidates[0]}"
@@ -14110,6 +14217,14 @@ perform_backup_operations() {
     # 7. 备份nginx配置中的域名信息
     info "备份域名配置信息..."
     local extracted_domains=$(extract_domains_from_nginx_config 2>/dev/null || echo "")
+    if [ -z "$extracted_domains" ] && [ -f ".env" ]; then
+        extracted_domains=$(read_env_file_value "PRIMARY_DOMAIN" ".env" 2>/dev/null || true)
+        if [ -n "$extracted_domains" ] && [ "$extracted_domains" != "example.com" ]; then
+            info "从 .env 读取到域名配置: $extracted_domains"
+        else
+            extracted_domains=""
+        fi
+    fi
     if [ -n "$extracted_domains" ]; then
         echo "$extracted_domains" > "$backup_dir/domains.txt"
         success "域名配置备份完成: $extracted_domains"
@@ -14640,15 +14755,30 @@ EOF
     # 构建poetize系统安装命令
     local domains=""
     local backup_domains_file="$BACKUP_DIR/domains.txt"
+    local env_domain=""
     
     # 从备份中读取域名，如果没有备份则从当前配置中提取
     if [ -f "$backup_domains_file" ]; then
-        domains=$(cat "$backup_domains_file" 2>/dev/null)
-        info "从备份中读取到域名: $domains"
-    else
+        domains=$(tr '\n' ' ' < "$backup_domains_file" 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        if [ -n "$domains" ]; then
+            info "从备份中读取到域名: $domains"
+        else
+            info "域名备份文件为空，尝试从当前配置读取"
+        fi
+    fi
+
+    if [ -z "$domains" ]; then
         domains=$(extract_domains_from_nginx_config 2>/dev/null || echo "")
         if [ -n "$domains" ]; then
             info "从当前配置中提取到域名: $domains"
+        fi
+    fi
+
+    if [ -z "$domains" ] && [ -f ".env" ]; then
+        env_domain=$(read_env_file_value "PRIMARY_DOMAIN" ".env" 2>/dev/null || true)
+        if [ -n "$env_domain" ] && [ "$env_domain" != "example.com" ]; then
+            domains="$env_domain"
+            info "从 .env 读取到域名: $domains"
         fi
     fi
     
@@ -14677,13 +14807,25 @@ EOF
             else
                 http_port=""
             fi
-        else
-            info "未找到端口配置备份，将使用默认80端口"
+        fi
+        if [ -z "$http_port" ] && [ -f ".env" ]; then
+            http_port=$(read_env_file_value "HTTP_PORT" ".env" 2>/dev/null || true)
+            if [ -n "$http_port" ] && [ "$http_port" != "80" ]; then
+                info "从 .env 读取到HTTP端口: $http_port"
+            else
+                http_port=""
+            fi
+        fi
+        if [ -z "$http_port" ]; then
+            info "未找到非默认HTTP端口配置，将使用默认80端口"
         fi
         
         # 为每个域名添加-d参数（支持 域名:端口 格式）
         for domain in $domains; do
-            if [ -n "$http_port" ] && [ "$http_port" != "80" ]; then
+            if [[ "$domain" =~ ^[^:]+:[0-9]+$ ]]; then
+                deploy_cmd="$deploy_cmd -d $domain"
+                info "使用域名和端口: $domain"
+            elif [ -n "$http_port" ] && [ "$http_port" != "80" ]; then
                 # 为域名添加自定义端口
                 deploy_cmd="$deploy_cmd -d ${domain}:${http_port}"
                 info "使用域名和端口: ${domain}:${http_port}"
