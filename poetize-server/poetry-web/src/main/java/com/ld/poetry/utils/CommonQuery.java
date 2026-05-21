@@ -5,6 +5,7 @@ import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.*;
 import com.ld.poetry.entity.*;
+import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.service.provider.Ip2RegionProvider;
@@ -78,6 +79,12 @@ public class CommonQuery {
                 return;
             }
 
+            User currentUser = PoetryUtil.getCurrentUser();
+            if (isVisitStatisticsOwner(currentUser)) {
+                cacheService.addVisitIgnoreIp(normalizedIp);
+                return;
+            }
+
             if (cacheService.isVisitIpIgnored(normalizedIp)) {
                 return;
             }
@@ -116,6 +123,13 @@ public class CommonQuery {
         } catch (Exception e) {
             log.error("[saveHistory] 保存访问记录时发生异常: {}", e.getMessage(), e);
         }
+    }
+
+    private boolean isVisitStatisticsOwner(User user) {
+        return user != null
+                && user.getUserType() != null
+                && (user.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode()
+                || user.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode());
     }
 
     /**

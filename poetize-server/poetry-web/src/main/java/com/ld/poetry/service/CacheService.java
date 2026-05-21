@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -54,6 +55,7 @@ public class CacheService {
     private static final String VISIT_IGNORE_IP_CONFIG_KEY = "visit.ignore.ips";
     private static final String VISIT_IGNORE_IP_CONFIG_TYPE = "1";
     private static final int DAILY_VISIT_RECORD_RETENTION_DAYS = 7;
+    private static final DateTimeFormatter VISIT_RECORD_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Autowired
     private RedisUtil redisUtil;
@@ -517,6 +519,63 @@ public class CacheService {
             log.error("获取访问统计忽略IP失败", e);
             return new LinkedHashSet<>();
         }
+    }
+
+    /**
+     * 获取访问统计忽略IP列表，供动态SQL安全绑定。
+     */
+    public List<String> getVisitIgnoreIpList() {
+        return new ArrayList<>(getVisitIgnoreIps());
+    }
+
+    /**
+     * 站长/管理员登录成功后，自动把当前IP加入访问统计忽略名单，并清理登录前短时间窗口内的访问记录。
+     */
+    public Map<String, Object> ignoreVisitIpAndCleanRecent(String ip, int minutes) {
+        String normalizedIp = normalizeVisitIp(ip);
+        Map<String, Object> result = new HashMap<>();
+        result.put("ip", normalizedIp);
+        result.put("valid", !normalizedIp.isEmpty());
+        result.put("addedToIgnore", false);
+        result.put("alreadyIgnored", false);
+        result.put("deletedDbCount", 0);
+        result.put("removedRedisCount", 0);
+
+        if (normalizedIp.isEmpty()) {
+            return result;
+        }
+
+        boolean wasIgnored = isVisitIpIgnored(normalizedIp);
+        boolean added = addVisitIgnoreIp(normalizedIp);
+        int safeMinutes = Math.max(1, minutes);
+        LocalDateTime since = LocalDateTime.now().minusMinutes(safeMinutes);
+        int deletedDbCount = 0;
+        int removedRedisCount = 0;
+
+        try {
+            deletedDbCount = historyInfoMapper.deleteByIpSince(normalizedIp, since);
+        } catch (Exception e) {
+            log.warn("清理站长IP最近数据库访问记录失败: ip={}, since={}", normalizedIp, since, e);
+        }
+
+        try {
+            removedRedisCount = removeRecentVisitRecordsByIpSince(normalizedIp, since);
+        } catch (Exception e) {
+            log.warn("清理站长IP最近Redis访问记录失败: ip={}, since={}", normalizedIp, since, e);
+        }
+
+        if (added || wasIgnored || deletedDbCount > 0 || removedRedisCount > 0) {
+            refreshLocationStatisticsCache();
+        }
+
+        result.put("addedToIgnore", added);
+        result.put("alreadyIgnored", wasIgnored || !added);
+        result.put("deletedDbCount", deletedDbCount);
+        result.put("removedRedisCount", removedRedisCount);
+        result.put("totalRemovedCount", deletedDbCount + removedRedisCount);
+        result.put("windowMinutes", safeMinutes);
+        log.info("站长IP访问统计过滤完成: {}", result);
+        return result;
     }
 
     private void saveVisitIgnoreIps(Set<String> ignoreIps) {
@@ -1218,6 +1277,11 @@ public class CacheService {
     public void recordVisitToRedis(String ip, Integer userId, String nation, String province, String city,
                                    String pageUri, String userAgent, String referer, String acceptLanguage) {
         try {
+            String normalizedIp = normalizeVisitIp(ip);
+            if (normalizedIp.isEmpty() || isVisitIpIgnored(normalizedIp)) {
+                return;
+            }
+
             String today = java.time.LocalDate.now().toString();
             String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
             String safeCity = normalizeLocationField(city);
@@ -1240,7 +1304,7 @@ public class CacheService {
             
             // 构建访问记录JSON
             java.util.Map<String, Object> visitRecord = new java.util.HashMap<>();
-            visitRecord.put("ip", ip);
+            visitRecord.put("ip", normalizedIp);
             visitRecord.put("userId", userId);
             visitRecord.put("nation", safeNation);
             visitRecord.put("province", safeProvince);
@@ -1291,12 +1355,16 @@ public class CacheService {
             java.util.List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
             
             java.util.List<java.util.Map<String, Object>> records = new java.util.ArrayList<>();
+            Set<String> ignoredIps = getVisitIgnoreIps();
             
             if (recordJsonList != null) {
                 for (Object recordJson : recordJsonList) {
                     try {
                         java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
-                        records.add(record);
+                        String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
+                        if (!ignoredIps.contains(recordIp)) {
+                            records.add(record);
+                        }
                     } catch (Exception e) {
                         log.warn("解析访问记录JSON失败: {}", recordJson, e);
                     }
@@ -1340,6 +1408,24 @@ public class CacheService {
         LocalDate today = LocalDate.now();
         for (int i = 0; i < safeDays; i++) {
             removedCount += removeDailyVisitRecordsByIp(today.minusDays(i).toString(), normalizedIp);
+        }
+        return removedCount;
+    }
+
+    /**
+     * 删除最近若干分钟内Redis访问记录中的指定IP。
+     */
+    public int removeRecentVisitRecordsByIpSince(String ip, LocalDateTime since) {
+        String normalizedIp = normalizeVisitIp(ip);
+        if (normalizedIp.isEmpty() || since == null) {
+            return 0;
+        }
+
+        int removedCount = 0;
+        LocalDate today = LocalDate.now();
+        LocalDate sinceDate = since.toLocalDate();
+        for (LocalDate date = sinceDate; !date.isAfter(today); date = date.plusDays(1)) {
+            removedCount += removeDailyVisitRecordsByIpSince(date.toString(), normalizedIp, since);
         }
         return removedCount;
     }
@@ -1400,6 +1486,62 @@ public class CacheService {
     }
 
     /**
+     * 删除指定日期Redis访问记录中某个时间点之后的指定IP。
+     */
+    @SuppressWarnings("unchecked")
+    public int removeDailyVisitRecordsByIpSince(String date, String ip, LocalDateTime since) {
+        String normalizedIp = normalizeVisitIp(ip);
+        if (normalizedIp.isEmpty() || since == null) {
+            return 0;
+        }
+
+        try {
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date);
+            List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
+            if (recordJsonList == null || recordJsonList.isEmpty()) {
+                return 0;
+            }
+
+            int removedCount = 0;
+            List<String> retainedRecords = new ArrayList<>();
+            for (Object recordJson : recordJsonList) {
+                if (recordJson == null) {
+                    continue;
+                }
+                String recordText = recordJson.toString();
+                try {
+                    Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordText, Map.class);
+                    String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
+                    LocalDateTime recordTime = resolveVisitRecordTime(record);
+                    if (normalizedIp.equals(recordIp) && recordTime != null && !recordTime.isBefore(since)) {
+                        removedCount++;
+                    } else {
+                        retainedRecords.add(recordText);
+                    }
+                } catch (Exception e) {
+                    log.warn("解析访问记录JSON失败，按时间清理IP时保留原记录: {}", recordJson, e);
+                    retainedRecords.add(recordText);
+                }
+            }
+
+            if (removedCount > 0) {
+                redisUtil.del(recordsKey);
+                for (String retainedRecord : retainedRecords) {
+                    redisUtil.lSet(recordsKey, retainedRecord);
+                }
+                if (!retainedRecords.isEmpty()) {
+                    redisUtil.expire(recordsKey, DAILY_VISIT_RECORD_RETENTION_DAYS * 24 * 3600);
+                }
+                log.info("已从{}的Redis访问记录中删除IP {} 在 {} 后的 {} 条记录", date, normalizedIp, since, removedCount);
+            }
+            return removedCount;
+        } catch (Exception e) {
+            log.error("按时间删除每日访问记录中的指定IP失败: date={}, ip={}, since={}", date, normalizedIp, since, e);
+            return 0;
+        }
+    }
+
+    /**
      * 获取指定日期的未同步访问记录
      * @param date 日期（格式：yyyy-MM-dd）
      * @return 未同步的访问记录列表
@@ -1411,11 +1553,16 @@ public class CacheService {
             java.util.List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
             
             java.util.List<java.util.Map<String, Object>> unsyncedRecords = new java.util.ArrayList<>();
+            Set<String> ignoredIps = getVisitIgnoreIps();
             
             if (recordJsonList != null) {
                 for (Object recordJson : recordJsonList) {
                     try {
                         java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
+                        String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
+                        if (ignoredIps.contains(recordIp)) {
+                            continue;
+                        }
                         // 只返回未同步的记录
                         Boolean synced = (Boolean) record.get("synced");
                         if (synced == null || !synced) {
@@ -1505,8 +1652,9 @@ public class CacheService {
             
             // 1. 获取数据库的历史统计（省份、IP统计）
             try {
-                List<Map<String, Object>> provinceStats = historyInfoMapper.getHistoryByProvince();
-                List<Map<String, Object>> ipStats = historyInfoMapper.getHistoryByIp();
+                List<String> ignoredIps = getVisitIgnoreIpList();
+                List<Map<String, Object>> provinceStats = historyInfoMapper.getHistoryByProvince(ignoredIps);
+                List<Map<String, Object>> ipStats = historyInfoMapper.getHistoryByIp(ignoredIps);
                 
                 statistics.put(CommonConst.IP_HISTORY_PROVINCE, provinceStats != null ? provinceStats : new ArrayList<>());
                 statistics.put(CommonConst.IP_HISTORY_IP, ipStats != null ? ipStats : new ArrayList<>());
@@ -1533,7 +1681,7 @@ public class CacheService {
             // 3. 计算总访问量（仅统计数据库数据）
             try {
                 // 只获取数据库总数，不再统计Redis实时数据
-                Long dbCount = historyInfoMapper.getHistoryCount();
+                Long dbCount = historyInfoMapper.getHistoryCount(getVisitIgnoreIpList());
                 long totalCount = dbCount != null ? dbCount : 0;
                 
                 statistics.put(CommonConst.IP_HISTORY_COUNT, totalCount);
@@ -1569,28 +1717,28 @@ public class CacheService {
         Map<String, Object> statistics = new HashMap<>();
         
         try {
-            statistics.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince());
+            statistics.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince(getVisitIgnoreIpList()));
         } catch (Exception e) {
             log.error("数据库省份统计查询失败", e);
             statistics.put(CommonConst.IP_HISTORY_PROVINCE, new ArrayList<>());
         }
         
         try {
-            statistics.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
+            statistics.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp(getVisitIgnoreIpList()));
         } catch (Exception e) {
             log.error("数据库IP统计查询失败", e);
             statistics.put(CommonConst.IP_HISTORY_IP, new ArrayList<>());
         }
         
         try {
-            statistics.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryByYesterday());
+            statistics.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryByYesterday(getVisitIgnoreIpList()));
         } catch (Exception e) {
             log.error("数据库昨日访问统计查询失败", e);
             statistics.put(CommonConst.IP_HISTORY_HOUR, new ArrayList<>());
         }
         
         try {
-            Long totalCount = historyInfoMapper.getHistoryCount();
+            Long totalCount = historyInfoMapper.getHistoryCount(getVisitIgnoreIpList());
             statistics.put(CommonConst.IP_HISTORY_COUNT, totalCount != null ? totalCount : 0L);
         } catch (Exception e) {
             log.error("数据库总访问量查询失败", e);
@@ -1605,7 +1753,7 @@ public class CacheService {
      */
     private List<Map<String, Object>> getYesterdayStatisticsFromDatabase() {
         try {
-            List<Map<String, Object>> yesterdayRecords = historyInfoMapper.getHistoryByYesterday();
+            List<Map<String, Object>> yesterdayRecords = historyInfoMapper.getHistoryByYesterday(getVisitIgnoreIpList());
             return yesterdayRecords != null ? yesterdayRecords : new ArrayList<>();
         } catch (Exception e) {
             log.error("获取昨日访问统计失败", e);
@@ -1798,6 +1946,33 @@ public class CacheService {
             return null;
         }
         return trimmed;
+    }
+
+    private LocalDateTime resolveVisitRecordTime(Map<String, Object> record) {
+        if (record == null) {
+            return null;
+        }
+
+        Object createTime = record.get("createTime");
+        if (createTime != null) {
+            try {
+                return LocalDateTime.parse(createTime.toString(), VISIT_RECORD_TIME_FORMATTER);
+            } catch (Exception e) {
+                log.warn("解析访问记录createTime失败: {}", createTime);
+            }
+        }
+
+        Object timestamp = record.get("timestamp");
+        if (timestamp != null) {
+            try {
+                long millis = Long.parseLong(timestamp.toString());
+                return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault());
+            } catch (Exception e) {
+                log.warn("解析访问记录timestamp失败: {}", timestamp);
+            }
+        }
+
+        return null;
     }
 
     private String sha256Hex(String value) {

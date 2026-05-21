@@ -138,11 +138,12 @@ public class PoetryApplicationRunner implements ApplicationRunner {
                 .collect(Collectors.toList())));
 
         // IP 统计汇总
+        List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
         Map<String, Object> history = new HashMap<>();
-        history.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince());
-        history.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
-        history.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryBy24Hour());
-        history.put(CommonConst.IP_HISTORY_COUNT, historyInfoMapper.getHistoryCount());
+        history.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince(ignoredIps));
+        history.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp(ignoredIps));
+        history.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryBy24Hour(ignoredIps));
+        history.put(CommonConst.IP_HISTORY_COUNT, historyInfoMapper.getHistoryCount(ignoredIps));
         cacheService.cacheIpHistoryStatistics(history);
     }
 }

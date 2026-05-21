@@ -85,24 +85,25 @@ public class ScheduleTask {
      */
     private void refreshStatisticsCache() {
         try (var scope = StructuredTaskScope.open()) {
+            List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
             // Fork 省份统计查询
             Subtask<List<Map<String, Object>>> provinceTask = scope.fork(() -> 
-                historyInfoMapper.getHistoryByProvince()
+                historyInfoMapper.getHistoryByProvince(ignoredIps)
             );
             
             // Fork IP统计查询
             Subtask<List<Map<String, Object>>> ipTask = scope.fork(() -> 
-                historyInfoMapper.getHistoryByIp()
+                historyInfoMapper.getHistoryByIp(ignoredIps)
             );
             
             // Fork 小时统计查询
             Subtask<List<Map<String, Object>>> hourTask = scope.fork(() -> 
-                historyInfoMapper.getHistoryBy24Hour()
+                historyInfoMapper.getHistoryBy24Hour(ignoredIps)
             );
             
             // Fork 总数查询
             Subtask<Long> countTask = scope.fork(() -> 
-                historyInfoMapper.getHistoryCount()
+                historyInfoMapper.getHistoryCount(ignoredIps)
             );
             
             // 等待所有查询完成

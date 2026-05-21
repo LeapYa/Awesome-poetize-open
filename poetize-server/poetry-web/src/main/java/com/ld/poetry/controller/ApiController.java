@@ -576,7 +576,7 @@ public class ApiController {
                 return PoetryResult.fail("days 仅支持 7 或 30");
             }
 
-            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days);
+            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days, cacheService.getVisitIgnoreIpList());
             if (dbStats == null) {
                 dbStats = new ArrayList<>();
             }
@@ -1701,12 +1701,16 @@ public class ApiController {
 
             Set<String> uniqueIps = new HashSet<>();
             int totalVisits = 0;
+            Set<String> ignoredIps = cacheService.getVisitIgnoreIps();
 
             for (Object record : todayRecords) {
                 try {
                     Object visitRecordObject = JSON.parseObject(String.valueOf(record), Map.class);
                     Map<String, Object> visitRecord = toObjectMap(visitRecordObject);
-                    String ip = valueAsString(visitRecord.get("ip"));
+                    String ip = cacheService.normalizeVisitIp(valueAsString(visitRecord.get("ip")));
+                    if (ignoredIps.contains(ip)) {
+                        continue;
+                    }
                     if (StringUtils.hasText(ip)) {
                         uniqueIps.add(ip);
                         totalVisits++;

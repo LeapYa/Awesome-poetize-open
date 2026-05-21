@@ -470,7 +470,7 @@ public class WebInfoController {
 
             // 获取今日访问量（从数据库获取）
             try {
-                Long todayVisitCount = historyInfoMapper.getTodayHistoryCount();
+                Long todayVisitCount = historyInfoMapper.getTodayHistoryCount(cacheService.getVisitIgnoreIpList());
                 result.setHistoryDayCount(String.valueOf(todayVisitCount != null ? todayVisitCount : 0));
             } catch (Exception e) {
                 log.warn("获取数据库今日访问量失败，使用默认值0", e);
@@ -603,10 +603,11 @@ public class WebInfoController {
                 try {
                     // 主动刷新缓存
                     Map<String, Object> refreshedHistory = new HashMap<>();
-                    refreshedHistory.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince());
-                    refreshedHistory.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
-                    refreshedHistory.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryByYesterday());
-                    refreshedHistory.put(CommonConst.IP_HISTORY_COUNT, historyInfoMapper.getHistoryCount());
+                    List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
+                    refreshedHistory.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince(ignoredIps));
+                    refreshedHistory.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp(ignoredIps));
+                    refreshedHistory.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryByYesterday(ignoredIps));
+                    refreshedHistory.put(CommonConst.IP_HISTORY_COUNT, historyInfoMapper.getHistoryCount(ignoredIps));
 
                     // 缓存新数据
                     cacheService.cacheIpHistoryStatistics(refreshedHistory);
@@ -619,10 +620,22 @@ public class WebInfoController {
                 }
             }
 
-            // 省份/国家统计需要使用最新口径，避免旧缓存继续显示英文城市或遗漏国外国家。
+            List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
+            // 访问统计需要使用最新口径，避免旧缓存继续显示已忽略的站长IP。
             result.put(CommonConst.IP_HISTORY_PROVINCE, getFreshProvinceStatistics(history));
-            result.put(CommonConst.IP_HISTORY_IP, history.get(CommonConst.IP_HISTORY_IP));
-            result.put(CommonConst.IP_HISTORY_COUNT, history.get(CommonConst.IP_HISTORY_COUNT));
+            try {
+                result.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp(ignoredIps));
+            } catch (Exception e) {
+                log.error("获取IP访问统计失败，回退到缓存", e);
+                result.put(CommonConst.IP_HISTORY_IP, history.get(CommonConst.IP_HISTORY_IP));
+            }
+            try {
+                Long historyCount = historyInfoMapper.getHistoryCount(ignoredIps);
+                result.put(CommonConst.IP_HISTORY_COUNT, historyCount != null ? historyCount : 0L);
+            } catch (Exception e) {
+                log.error("获取总访问量失败，回退到缓存", e);
+                result.put(CommonConst.IP_HISTORY_COUNT, history.get(CommonConst.IP_HISTORY_COUNT));
+            }
 
             String today = java.time.LocalDate.now().toString();
             List<Map<String, Object>> unsyncedTodayRecords;
@@ -635,7 +648,7 @@ public class WebInfoController {
 
             try {
                 result.put("ua_history_top", UserAgentClassifier.aggregateRawAndVisitRecords(
-                        historyInfoMapper.getHistoryByUserAgent(),
+                        historyInfoMapper.getHistoryByUserAgent(cacheService.getVisitIgnoreIpList()),
                         unsyncedTodayRecords));
             } catch (Exception e) {
                 log.error("获取总UA访问统计失败", e);
@@ -644,7 +657,7 @@ public class WebInfoController {
 
             try {
                 result.put("ua_yest", UserAgentClassifier.aggregateRawUserAgentCounts(
-                        historyInfoMapper.getHistoryByUserAgentYesterday()));
+                        historyInfoMapper.getHistoryByUserAgentYesterday(cacheService.getVisitIgnoreIpList())));
             } catch (Exception e) {
                 log.error("获取昨日UA访问统计失败", e);
                 result.put("ua_yest", new ArrayList<>());
@@ -652,7 +665,7 @@ public class WebInfoController {
 
             try {
                 result.put("article_history_top", buildArticleVisitStats(
-                        historyInfoMapper.getHistoryByArticlePageUri(),
+                        historyInfoMapper.getHistoryByArticlePageUri(cacheService.getVisitIgnoreIpList()),
                         unsyncedTodayRecords));
             } catch (Exception e) {
                 log.error("获取文章页面总访问统计失败", e);
@@ -661,7 +674,7 @@ public class WebInfoController {
 
             try {
                 result.put("article_yest", buildArticleVisitStats(
-                        historyInfoMapper.getHistoryByArticlePageUriYesterday(),
+                        historyInfoMapper.getHistoryByArticlePageUriYesterday(cacheService.getVisitIgnoreIpList()),
                         null));
             } catch (Exception e) {
                 log.error("获取昨日文章页面访问统计失败", e);
@@ -671,6 +684,11 @@ public class WebInfoController {
             // 处理24小时数据（昨日数据）
             List<Map<String, Object>> ipHistoryCount = (List<Map<String, Object>>) history
                     .get(CommonConst.IP_HISTORY_HOUR);
+            try {
+                ipHistoryCount = historyInfoMapper.getHistoryByYesterday(ignoredIps);
+            } catch (Exception e) {
+                log.error("获取昨日访问记录失败，回退到缓存", e);
+            }
 
             if (ipHistoryCount != null && !ipHistoryCount.isEmpty()) {
                 result.put("ip_count_yest", ipHistoryCount.stream()
@@ -1194,7 +1212,7 @@ public class WebInfoController {
 
         try {
             // 1. 获取数据库中的历史数据（不包括今天）
-            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days);
+            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days, cacheService.getVisitIgnoreIpList());
             if (dbStats == null) {
                 dbStats = new ArrayList<>();
             }
@@ -1251,12 +1269,17 @@ public class WebInfoController {
             // 统计今日数据
             Set<String> uniqueIps = new HashSet<>();
             int totalVisits = 0;
+            Set<String> ignoredIps = cacheService.getVisitIgnoreIps();
 
             for (Object record : todayRecords) {
                 try {
                     // 将JSON字符串解析为Map对象
                     Map<String, Object> visitRecord = JSON.parseObject(record.toString(), Map.class);
-                    String ip = (String) visitRecord.get("ip");
+                    Object ipValue = visitRecord.get("ip");
+                    String ip = cacheService.normalizeVisitIp(ipValue != null ? ipValue.toString() : "");
+                    if (ignoredIps.contains(ip)) {
+                        continue;
+                    }
                     if (ip != null && !ip.isEmpty()) {
                         uniqueIps.add(ip);
                         totalVisits++;
@@ -1472,10 +1495,7 @@ public class WebInfoController {
 
     private List<Map<String, Object>> getFreshProvinceStatistics(Map<String, Object> cachedHistory) {
         try {
-            List<Map<String, Object>> provinceStats = filterProvinceStatistics(historyInfoMapper.getHistoryByProvince());
-            if (!provinceStats.isEmpty()) {
-                return provinceStats;
-            }
+            return filterProvinceStatistics(historyInfoMapper.getHistoryByProvince(cacheService.getVisitIgnoreIpList()));
         } catch (Exception e) {
             log.error("获取省份/国家访问统计失败，回退到缓存", e);
         }
