@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2026-05-21
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.11.14
+## 版本: 1.11.15
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.11.14"
+POETIZE_VERSION="1.11.15"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -423,7 +423,7 @@ emit_embedded_core_script() {
 ## 作者: LeapYa
 ## 修改时间: 2026-05-21
 ## 描述: 部署 POETIZE 博客系统安装脚本
-## 版本: 1.15.6
+## 版本: 1.15.7
 
 # 定义颜色
 RED='\033[0;31m'
@@ -602,6 +602,8 @@ LAST_DOCKER_COMPOSE_ERROR_FILE=""
 LAST_DOCKER_COMPOSE_ERROR_KIND=""
 LAST_DOCKER_COMPOSE_ERROR_RECOVERABLE=true
 POETIZE_ISSUES_URL="https://github.com/LeapYa/awesome-poetize-open/issues"
+HTTPS_FAILURE_REASON=""
+HTTPS_FAILURE_DETAIL=""
 
 # 版本控制变量
 DEPLOY_VERSION=""            # 用户指定的版本标签
@@ -657,6 +659,16 @@ info() { echo -e "${BLUE}[信息]${NC} $1"; }
 success() { echo -e "${GREEN}[成功]${NC} $1"; }
 error() { echo -e "${RED}[失败]${NC} $1"; }
 warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
+
+set_https_failure_state() {
+  HTTPS_FAILURE_REASON="$1"
+  HTTPS_FAILURE_DETAIL="$2"
+}
+
+clear_https_failure_state() {
+  HTTPS_FAILURE_REASON=""
+  HTTPS_FAILURE_DETAIL=""
+}
 
 # 检测是否在WSL环境中
 is_wsl() {
