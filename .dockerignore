@@ -37,6 +37,8 @@ temp/
 # Node.js (会在构建时重新安装)
 **/node_modules/
 **/dist/
+!poetize-web/public/static/live2d-widget/dist/
+!poetize-web/public/static/live2d-widget/dist/**
 **/.cache/
 **/.npm/
 **/.yarn/
