@@ -74,8 +74,8 @@ public class CommonQuery {
     public void saveHistory(String ip, String pageUri, String userAgent, String referer, String acceptLanguage) {
         try {
             String normalizedIp = cacheService.normalizeVisitIp(ip);
-            // 过滤无效IP，避免记录Docker内部IP和无效地址
-            if (normalizedIp.isEmpty() || "unknown".equals(normalizedIp) || isInvalidIP(normalizedIp)) {
+            // 访问统计只记录公网可路由IP，避免Docker网关、内网地址和保留地址污染地域统计。
+            if (normalizedIp.isEmpty() || "unknown".equals(normalizedIp) || !IpUtil.isPublicRoutableIp(normalizedIp)) {
                 return;
             }
 
@@ -130,100 +130,6 @@ public class CommonQuery {
                 && user.getUserType() != null
                 && (user.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode()
                 || user.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode());
-    }
-
-    /**
-     * 判断是否为无效IP地址
-     * 在开发环境下放宽IP过滤条件，允许内网IP访问统计
-     */
-    private boolean isInvalidIP(String ip) {
-        if (ip == null || ip.isEmpty()) {
-            return true;
-        }
-
-        ip = ip.trim();
-
-        // IPv4本地回环地址
-        if (ip.equals("127.0.0.1") || ip.equals("localhost")) {
-            return true;
-        }
-
-        // IPv6本地回环地址
-        if (ip.equals("::1") || ip.equals("0:0:0:0:0:0:0:1") ||
-                ip.equalsIgnoreCase("localhost")) {
-            return true;
-        }
-
-        // 其他明确无效的IP
-        if (ip.equals("unknown") || ip.equals("0.0.0.0") || ip.equals("null") ||
-                ip.equals("-") || ip.equals("undefined")) {
-            return true;
-        }
-
-        // 在开发/测试环境下，允许内网IP进行访问统计
-        // 检查是否为有效的IP格式
-        if (!isValidIpFormat(ip)) {
-            return true;
-        }
-
-        // 生产环境下可以考虑过滤内网IP，但开发环境需要统计
-        // 注释掉严格的内网IP过滤，允许所有有效格式的IP
-        // if (ip.startsWith("172.") || ip.startsWith("10.") ||
-        // ip.startsWith("192.168.")) {
-        // return true;
-        // }
-
-        return false;
-    }
-
-    /**
-     * 验证IP格式是否有效（支持IPv4和IPv6）
-     */
-    private boolean isValidIpFormat(String ip) {
-        if (ip == null || ip.trim().isEmpty()) {
-            return false;
-        }
-
-        ip = ip.trim();
-
-        // 使用Java内置的InetAddress来验证IP格式
-        try {
-            java.net.InetAddress.getByName(ip);
-            return true;
-        } catch (java.net.UnknownHostException e) {
-            // 如果InetAddress无法解析，再尝试手动验证IPv4格式
-            return isValidIPv4(ip);
-        }
-    }
-
-    /**
-     * 验证IPv4格式
-     */
-    private boolean isValidIPv4(String ip) {
-        if (ip == null || ip.trim().isEmpty()) {
-            return false;
-        }
-
-        String[] parts = ip.split("\\.");
-        if (parts.length != 4) {
-            return false;
-        }
-
-        try {
-            for (String part : parts) {
-                int num = Integer.parseInt(part);
-                if (num < 0 || num > 255) {
-                    return false;
-                }
-                // 检查前导零（除了"0"本身）
-                if (part.length() > 1 && part.startsWith("0")) {
-                    return false;
-                }
-            }
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
-        }
     }
 
     public User getUser(Integer userId) {

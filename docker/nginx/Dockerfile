@@ -166,10 +166,11 @@ COPY --from=builder /usr/local/openresty/nginx/modules/ /usr/local/openresty/ngi
 # COPY --from=builder /usr/local/openresty/lualib/ /usr/local/openresty/lualib/
 
 # 创建配置目录
-RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d
+RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d /usr/local/openresty/nginx/conf/security
 
 # 复制自定义配置
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
+COPY spoofed-ip-headers.conf /usr/local/openresty/nginx/conf/security/spoofed-ip-headers.conf
 
 # 复制配置模板文件
 COPY default.http.conf /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template

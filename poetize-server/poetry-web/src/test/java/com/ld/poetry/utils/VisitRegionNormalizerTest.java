@@ -27,6 +27,7 @@ class VisitRegionNormalizerTest {
     void keepsUnresolvedAndReservedVisitsAsUnknown() {
         assertEquals("未知", VisitRegionNormalizer.resolveProvinceOrCountry(null, null, null));
         assertEquals("未知", VisitRegionNormalizer.resolveProvinceOrCountry("Reserved", "0", "-"));
+        assertEquals("未知", VisitRegionNormalizer.resolveProvinceOrCountry(null, "内网IP", null));
     }
 
     @Test

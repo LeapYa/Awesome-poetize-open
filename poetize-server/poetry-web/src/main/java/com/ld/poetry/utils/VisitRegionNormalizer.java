@@ -18,7 +18,7 @@ public final class VisitRegionNormalizer {
     public static final String UNKNOWN_REGION = "未知";
     private static final Locale ZH_CN = Locale.SIMPLIFIED_CHINESE;
     private static final Set<String> INVALID_VALUES = Set.of(
-            "0", "-", "unknown", "reserved", "null", "undefined", "未知"
+            "0", "-", "unknown", "reserved", "null", "undefined", "未知", "内网IP", "内网ip"
     );
     private static final Set<String> CHINA_NAMES = Set.of(
             "中国", "china", "cn", "chn", "prc", "people s republic of china", "people's republic of china"

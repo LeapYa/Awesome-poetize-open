@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.utils.CommonQuery;
+import com.ld.poetry.utils.IpUtil;
 import com.ld.poetry.utils.PageVisitUtils;
 import com.ld.poetry.utils.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -97,9 +98,9 @@ public class NginxPageVisitLogConsumer {
                 return;
             }
 
-            String clientIp = firstForwardedIp(json.getString("xff"));
-            if (!hasText(clientIp)) {
-                clientIp = json.getString("ip");
+            String clientIp = IpUtil.extractPublicIpFromForwardedFor(json.getString("xff"));
+            if (!hasText(clientIp) && IpUtil.isPublicRoutableIp(json.getString("ip"))) {
+                clientIp = json.getString("ip").trim();
             }
             if (!hasText(clientIp)) {
                 return;
@@ -131,14 +132,6 @@ public class NginxPageVisitLogConsumer {
 
     private void saveOffset(long offset) {
         redisUtil.set(CacheConstants.NGINX_PAGE_VISIT_LOG_OFFSET_KEY, offset, CacheConstants.PERMANENT_EXPIRE_TIME);
-    }
-
-    private String firstForwardedIp(String xff) {
-        if (!hasText(xff) || "-".equals(xff.trim())) {
-            return null;
-        }
-        int comma = xff.indexOf(',');
-        return comma >= 0 ? xff.substring(0, comma).trim() : xff.trim();
     }
 
     private String blankToNull(String value) {

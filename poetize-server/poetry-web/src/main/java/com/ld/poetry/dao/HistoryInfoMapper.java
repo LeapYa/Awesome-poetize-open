@@ -41,18 +41,18 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
             " from (" +
             " select case" +
             " when nation is not null and trim(nation) != ''" +
-            "   and trim(nation) not in ('0', '-', '未知')" +
-            "   and lower(trim(nation)) not in ('reserved', 'unknown', 'null', 'undefined', 'china', 'cn', 'chn', 'prc')" +
+            "   and trim(nation) not in ('0', '-', '未知', '内网IP')" +
+            "   and lower(trim(nation)) not in ('reserved', 'unknown', 'null', 'undefined', '内网ip', 'china', 'cn', 'chn', 'prc')" +
             "   and trim(nation) != '中国' then trim(nation)" +
             " when province is not null and trim(province) != ''" +
-            "   and trim(province) not in ('0', '-', '未知')" +
-            "   and lower(trim(province)) not in ('reserved', 'unknown', 'null', 'undefined') then trim(province)" +
+            "   and trim(province) not in ('0', '-', '未知', '内网IP')" +
+            "   and lower(trim(province)) not in ('reserved', 'unknown', 'null', 'undefined', '内网ip') then trim(province)" +
             " when nation is not null and trim(nation) != ''" +
-            "   and trim(nation) not in ('0', '-', '未知')" +
-            "   and lower(trim(nation)) not in ('reserved', 'unknown', 'null', 'undefined') then trim(nation)" +
+            "   and trim(nation) not in ('0', '-', '未知', '内网IP')" +
+            "   and lower(trim(nation)) not in ('reserved', 'unknown', 'null', 'undefined', '内网ip') then trim(nation)" +
             " when city is not null and trim(city) != ''" +
-            "   and trim(city) not in ('0', '-', '未知')" +
-            "   and lower(trim(city)) not in ('reserved', 'unknown', 'null', 'undefined') then trim(city)" +
+            "   and trim(city) not in ('0', '-', '未知', '内网IP')" +
+            "   and lower(trim(city)) not in ('reserved', 'unknown', 'null', 'undefined', '内网ip') then trim(city)" +
             " else '未知' end as region" +
             " from history_info" +
             " <where>" +

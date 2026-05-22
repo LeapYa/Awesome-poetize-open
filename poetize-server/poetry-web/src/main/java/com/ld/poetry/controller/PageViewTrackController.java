@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.utils.CommonQuery;
+import com.ld.poetry.utils.IpUtil;
 import com.ld.poetry.utils.PageVisitUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,7 +41,7 @@ public class PageViewTrackController {
         }
 
         // 获取客户端 IP
-        String clientIp = getClientIp(request);
+        String clientIp = IpUtil.getClientPublicIp(request);
 
         String referer = request.getHeader("Referer");
         String lang = request.getHeader("Accept-Language");
@@ -54,19 +55,5 @@ public class PageViewTrackController {
         }
 
         return PoetryResult.success();
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String clientIp = request.getHeader("X-Real-IP");
-        if (clientIp == null || clientIp.isEmpty()) {
-            clientIp = request.getHeader("X-Forwarded-For");
-            if (clientIp != null && clientIp.contains(",")) {
-                clientIp = clientIp.split(",")[0].trim();
-            }
-        }
-        if (clientIp == null || clientIp.isEmpty()) {
-            clientIp = request.getRemoteAddr();
-        }
-        return clientIp;
     }
 }

@@ -207,6 +207,8 @@ git clone https://github.com/LeapYa/awesome-poetize-open.git && cd awesome-poeti
 | 宝塔面板部署（不用 Docker） | 已安装宝塔面板，使用 Web 界面部署 | [宝塔部署教程](docs/宝塔部署教程.md) |
 | 免费部署（零成本） | 无服务器，利用 Render + Vercel 等免费平台 | [免费部署教程](docs/免费部署教程.md) |
 
+> **使用 1Panel / 宝塔等面板做外层反向代理？** 本项目的 `poetize-nginx` 容器已内置 IP 头伪造防护（公网直连携带 `X-Real-IP` 会被拒绝），使用 `poetize install` 部署时自动生效。如果你在外层再套了一层反代（如 1Panel OpenResty），只要反代到 `poetize-nginx` 走内网通信就没问题——1Panel 等通用反代默认不会过滤伪造 IP 头，但安全层由 `poetize-nginx` 负责。不要绕过 `poetize-nginx` 直接暴露 Java 服务，否则会失去防护。更多配置细节见[高级功能 - 外部反向代理注意事项](#使用外部反向代理1panel--宝塔--自建-nginx的安全注意事项)。
+
 ### 3.访问方式
 
 部署完成后，可通过以下地址访问系统功能：
@@ -421,6 +423,23 @@ bash <(curl -sL install.leapya.com)
 | 容器＋挂载 Socket | ✅ 推荐 | 防污染宿主机环境的最佳方式 |
 | 容器＋--privileged（DinD） | ⚠️ 可尝试 | 不如挂 Socket 稳定，有安全风险 |
 | 普通容器（无 Socket，无特权） | ❌ 不可行 | Docker 守护进程无法启动 |
+
+#### 使用外部反向代理（1Panel / 宝塔 / 自建 Nginx）的安全注意事项
+
+本项目的 `poetize-nginx` 容器内置了 IP 头伪造防护：公网客户端直连时携带 `X-Real-IP` 会被拒绝（返回 400），只有来自内网/容器网络的反向代理传入的 IP 头才会被信任。使用 `poetize install` 脚本部署时该机制自动生效。
+
+如果你在 `poetize-nginx` 外层套了反代（1Panel OpenResty、宝塔 Nginx 等），注意：
+
+- ✅ **外层反代与 `poetize-nginx` 走内网** — 正常工作，无需额外配置。1Panel 等通用反代默认不会主动过滤伪造 IP 头，但没关系，安全过滤由 `poetize-nginx` 在应用层完成。
+- ⚠️ **外层反代直接暴露公网** — 需在外层反代配置 `set_real_ip_from`（内网段）+ `real_ip_recursive on`，确保 `X-Forwarded-For` 链路干净：
+  ```nginx
+  set_real_ip_from 10.0.0.0/8;
+  set_real_ip_from 172.16.0.0/12;
+  set_real_ip_from 192.168.0.0/16;
+  real_ip_header X-Forwarded-For;
+  real_ip_recursive on;
+  ```
+- ❌ **不要绕过 `poetize-nginx` 直接暴露 Java 服务** — 会失去防伪造保护，访问统计地域数据可能被污染。
 
 ## 🤖 OpenClaw 博客自动化
 

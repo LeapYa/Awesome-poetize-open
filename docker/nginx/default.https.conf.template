@@ -111,6 +111,8 @@ server {
     listen 80;
     server_name example.com www.example.com;
 
+    include /usr/local/openresty/nginx/conf/security/spoofed-ip-headers.conf;
+
     location ^~ /.well-known/acme-challenge/ {
         root /usr/share/nginx/html;
         allow all;
@@ -127,6 +129,8 @@ server {
     http2 on;  # 显式启用HTTP/2
     http3 on;  # 启用HTTP/3
     server_name example.com www.example.com;
+
+    include /usr/local/openresty/nginx/conf/security/spoofed-ip-headers.conf;
     
     # 设置访问日志路径
     access_log /var/log/nginx/access.log main;
@@ -196,8 +200,8 @@ server {
     location ^~ /api/ {
         proxy_pass http://poetize-java/;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         
         # WebSocket支持
@@ -213,8 +217,8 @@ server {
     location ~ ^/user/(login|register|logout|updateUserInfo|getCode|getCodeForBind|updateUserSecretInfo|bindingUserSecretInfo|getUserInfo|listUser|saveUser|updatePassword|updateAdminInfo|deleteUsers|getAdminUserInfo|updateAdminConfig) {
         proxy_pass http://poetize-java;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_http_version 1.1;
         proxy_read_timeout 900s;
@@ -225,8 +229,8 @@ server {
     location ^~ /python/ {
         proxy_pass http://poetize-java/;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         
         proxy_http_version 1.1;
@@ -241,8 +245,8 @@ server {
         
         proxy_pass http://poetize-java;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_redirect off;
     }
@@ -254,8 +258,8 @@ server {
         
         proxy_pass http://poetize-java;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_redirect off;
     }
@@ -264,8 +268,8 @@ server {
     location = /manifest.json {
         proxy_pass http://poetize-java/seo/manifest.json;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         add_header Cache-Control "no-cache";
     }
@@ -274,8 +278,8 @@ server {
     location = /favicon.ico {
         proxy_pass http://poetize-java/seo/favicon.ico;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         add_header Cache-Control "public, max-age=3600";
     }
@@ -283,8 +287,8 @@ server {
     location = /robots.txt {
         proxy_pass http://poetize-java/seo/robots.txt;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         add_header Cache-Control "public, max-age=3600";
     }
@@ -295,8 +299,8 @@ server {
     location ~ "^/([a-zA-Z0-9\-]{8,128})\.txt$" {
         proxy_pass http://poetize-java/$1.txt;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         add_header Cache-Control "public, max-age=86400";
     }
@@ -318,8 +322,8 @@ server {
         proxy_set_header    Upgrade $http_upgrade;
         proxy_set_header    Connection "upgrade";
         proxy_set_header    Host $host;
-        proxy_set_header    X-Real-IP $remote_addr;
-        proxy_set_header    X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header    X-Real-IP $real_client_ip;
+        proxy_set_header    X-Forwarded-For $forwarded_for_chain;
         proxy_set_header    X-Forwarded-Proto $scheme;
         proxy_read_timeout  600s;
     }
@@ -402,8 +406,8 @@ server {
         rewrite ^/internal_proxy(/.*)$ $1 break;
         proxy_pass http://poetize-java;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         try_files $uri $uri/ /index.html;
     }
@@ -814,8 +818,8 @@ server {
     location /sitemap.xml {
         proxy_pass http://poetize-java;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $real_client_ip;
+        proxy_set_header X-Forwarded-For $forwarded_for_chain;
         proxy_set_header X-Forwarded-Proto $scheme;
         
         # sitemap缓存设置

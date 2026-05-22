@@ -3,6 +3,8 @@ package com.ld.poetry.utils;
 import lombok.extern.slf4j.Slf4j;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -54,30 +56,32 @@ public class IpUtil {
         
         return RetryUtil.executeWithRetry(() -> {
             try {
-                // 按优先级顺序尝试获取IP地址
-                String[] headerNames = {
-                    "X-Forwarded-For",
-                    "X-Real-IP",
-                    "X-Original-Forwarded-For",
-                    "Proxy-Client-IP",
-                    "WL-Proxy-Client-IP",
-                    "HTTP_CLIENT_IP",
-                    "HTTP_X_FORWARDED_FOR",
-                    "CF-Connecting-IP",  // Cloudflare
-                    "True-Client-IP",    // Akamai
-                    "X-Cluster-Client-IP" // 集群环境
-                };
-                
-                for (String headerName : headerNames) {
-                    String ip = extractValidIpFromHeader(request, headerName);
-                    if (ip != null) {
-                        successCount.incrementAndGet();
-                        return ip;
+                String remoteAddr = request.getRemoteAddr();
+                if (isTrustedForwardedProxyAddress(remoteAddr)) {
+                    // 按优先级顺序尝试获取IP地址
+                    String[] headerNames = {
+                        "X-Forwarded-For",
+                        "X-Real-IP",
+                        "X-Original-Forwarded-For",
+                        "Proxy-Client-IP",
+                        "WL-Proxy-Client-IP",
+                        "HTTP_CLIENT_IP",
+                        "HTTP_X_FORWARDED_FOR",
+                        "CF-Connecting-IP",  // Cloudflare
+                        "True-Client-IP",    // Akamai
+                        "X-Cluster-Client-IP" // 集群环境
+                    };
+
+                    for (String headerName : headerNames) {
+                        String ip = extractClientIpFromHeader(request, headerName, false);
+                        if (ip != null) {
+                            successCount.incrementAndGet();
+                            return ip;
+                        }
                     }
                 }
                 
                 // 最后尝试getRemoteAddr()
-                String remoteAddr = request.getRemoteAddr();
                 if (isValidPublicIp(remoteAddr)) {
                     successCount.incrementAndGet();
                     return remoteAddr;
@@ -102,43 +106,79 @@ public class IpUtil {
             }
         }, 3, 100, "获取客户端IP");
     }
+
+    /**
+     * 获取访问统计使用的公网客户端IP。
+     * <p>
+     * 该方法只返回公网可路由IP，避免把Docker网关、内网地址、回环地址、保留地址或伪造的
+     * X-Forwarded-For 前缀写入访问统计。
+     * </p>
+     */
+    public static String getClientPublicIp(HttpServletRequest request) {
+        if (request == null) {
+            return "unknown";
+        }
+
+        String remoteAddr = request.getRemoteAddr();
+        if (isTrustedForwardedProxyAddress(remoteAddr)) {
+            String[] headerNames = {
+                    "X-Forwarded-For",
+                    "X-Real-IP",
+                    "X-Original-Forwarded-For",
+                    "CF-Connecting-IP",
+                    "True-Client-IP"
+            };
+
+            for (String headerName : headerNames) {
+                String ip = extractClientIpFromHeader(request, headerName, true);
+                if (ip != null) {
+                    return ip;
+                }
+            }
+        }
+
+        return isPublicRoutableIp(remoteAddr) ? remoteAddr.trim() : "unknown";
+    }
+
+    /**
+     * 从X-Forwarded-For链路中提取最靠近可信代理侧的公网IP。
+     */
+    public static String extractPublicIpFromForwardedFor(String forwardedFor) {
+        return extractIpFromHeaderValue(forwardedFor, true);
+    }
     
     /**
      * 从请求头中提取有效的IP地址
      */
-    private static String extractValidIpFromHeader(HttpServletRequest request, String headerName) {
+    private static String extractClientIpFromHeader(HttpServletRequest request, String headerName, boolean publicOnly) {
         String headerValue = request.getHeader(headerName);
+        return extractIpFromHeaderValue(headerValue, publicOnly);
+    }
+
+    private static String extractIpFromHeaderValue(String headerValue, boolean publicOnly) {
         if (!isValidHeaderValue(headerValue)) {
             return null;
         }
-        
-        // 处理多个IP的情况（通常用逗号分隔）
-        if (headerValue.contains(",")) {
-            String[] ips = headerValue.split(",");
-            for (String ip : ips) {
-                ip = ip.trim();
-                if (isValidPublicIp(ip)) {
-                    return ip;
-                }
-            }
-            // 如果没有公网IP，返回第一个有效格式的IP
-            for (String ip : ips) {
-                ip = ip.trim();
-                if (isValidIpFormat(ip)) {
-                    return ip;
-                }
-            }
-        } else {
-            // 单个IP的情况
-            String ip = headerValue.trim();
-            if (isValidPublicIp(ip)) {
+
+        String[] ips = headerValue.split(",");
+        for (int i = ips.length - 1; i >= 0; i--) {
+            String ip = ips[i].trim();
+            if (isPublicRoutableIp(ip)) {
                 return ip;
             }
+        }
+
+        if (publicOnly) {
+            return null;
+        }
+
+        for (int i = ips.length - 1; i >= 0; i--) {
+            String ip = ips[i].trim();
             if (isValidIpFormat(ip)) {
                 return ip;
             }
         }
-        
+
         return null;
     }
     
@@ -187,64 +227,119 @@ public class IpUtil {
      * 验证是否为有效的公网IP
      */
     public static boolean isValidPublicIp(String ip) {
-        if (!isValidIpFormat(ip)) {
+        return isPublicRoutableIp(ip);
+    }
+
+    /**
+     * 判断IP是否为公网可路由地址。
+     */
+    public static boolean isPublicRoutableIp(String ip) {
+        if (!isValidIpLiteral(ip)) {
             return false;
         }
-        
-        return !isInternalIp(ip);
-    }
-    
-    /**
-     * 判断是否为内网IP
-     */
-    public static boolean isInternalIp(String ip) {
-        if (ip == null || ip.trim().isEmpty()) {
-            return true;
-        }
-        
-        ip = ip.trim();
-        
-        // 本地回环地址
-        if ("127.0.0.1".equals(ip) || "localhost".equals(ip) || 
-            "0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
-            return true;
-        }
-        
-        // 私有IP地址段
-        if (ip.startsWith("192.168.") || 
-            ip.startsWith("10.") || 
-            (ip.startsWith("172.") && isInRange172(ip)) ||
-            ip.startsWith("169.254.")) { // 链路本地地址
-            return true;
-        }
-        
-        // Docker默认网络
-        if (ip.startsWith("172.17.") || ip.startsWith("172.18.")) {
-            return true;
-        }
-        
-        // 其他无效IP
-        if ("unknown".equals(ip) || "0.0.0.0".equals(ip) || "255.255.255.255".equals(ip)) {
-            return true;
-        }
-        
-        return false;
-    }
-    
-    /**
-     * 检查是否在172.16.0.0-172.31.255.255范围内
-     */
-    private static boolean isInRange172(String ip) {
+
         try {
-            String[] parts = ip.split("\\.");
-            if (parts.length >= 2) {
-                int second = Integer.parseInt(parts[1]);
-                return second >= 16 && second <= 31;
+            InetAddress inetAddress = InetAddress.getByName(ip.trim());
+            if (inetAddress.isAnyLocalAddress()
+                    || inetAddress.isLoopbackAddress()
+                    || inetAddress.isLinkLocalAddress()
+                    || inetAddress.isSiteLocalAddress()
+                    || inetAddress.isMulticastAddress()) {
+                return false;
             }
-        } catch (NumberFormatException e) {
-            // 忽略解析错误
+
+            if (inetAddress instanceof Inet4Address) {
+                return isPublicRoutableIpv4(inetAddress.getAddress());
+            }
+
+            if (inetAddress instanceof Inet6Address) {
+                return isPublicRoutableIpv6(inetAddress.getAddress());
+            }
+
+            return false;
+        } catch (UnknownHostException e) {
+            return false;
         }
-        return false;
+    }
+    
+    /**
+     * 判断是否为内网IP。
+     *
+     * @deprecated 语义已变更为 {@code !isPublicRoutableIp(ip)}，对非法 IP 字符串的返回值与旧版不同。
+     *             新代码请直接使用 {@link #isPublicRoutableIp(String)} 判断是否为公网可路由地址。
+     */
+    @Deprecated
+    public static boolean isInternalIp(String ip) {
+        return !isPublicRoutableIp(ip);
+    }
+
+    private static boolean isTrustedForwardedProxyAddress(String ip) {
+        return isValidIpLiteral(ip) && !isPublicRoutableIp(ip);
+    }
+
+    private static boolean isPublicRoutableIpv4(byte[] address) {
+        int first = address[0] & 0xFF;
+        int second = address[1] & 0xFF;
+        int third = address[2] & 0xFF;
+
+        if (first == 0 || first == 10 || first == 127) {
+            return false;
+        }
+        if (first == 100 && second >= 64 && second <= 127) {
+            return false;
+        }
+        if (first == 169 && second == 254) {
+            return false;
+        }
+        if (first == 172 && second >= 16 && second <= 31) {
+            return false;
+        }
+        if (first == 192 && second == 0 && (third == 0 || third == 2)) {
+            // 192.0.0.0/24 (IANA Special-Purpose) 和 192.0.2.0/24 (TEST-NET-1, RFC 5737)
+            return false;
+        }
+        if (first == 192 && second == 168) {
+            return false;
+        }
+        if (first == 198 && (second == 18 || second == 19)) {
+            return false;
+        }
+        if (first == 198 && second == 51 && third == 100) {
+            return false;
+        }
+        if (first == 203 && second == 0 && third == 113) {
+            return false;
+        }
+        if (first >= 224) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static boolean isPublicRoutableIpv6(byte[] address) {
+        int first = address[0] & 0xFF;
+        int second = address[1] & 0xFF;
+        int third = address[2] & 0xFF;
+        int fourth = address[3] & 0xFF;
+
+        // ULA fc00::/7
+        if ((first & 0xFE) == 0xFC) {
+            return false;
+        }
+        // Documentation 2001:DB8::/32 (RFC 3849)
+        if (first == 0x20 && second == 0x01 && third == 0x0D && fourth == 0xB8) {
+            return false;
+        }
+        // Teredo 2001:0000::/32 (RFC 4380) — 隧道封装地址，实际源 IP 不直接可路由
+        if (first == 0x20 && second == 0x01 && third == 0x00 && fourth == 0x00) {
+            return false;
+        }
+        // 6to4 2002::/16 (RFC 3056) — 隧道封装地址
+        if (first == 0x20 && second == 0x02) {
+            return false;
+        }
+        return true;
     }
     
     /**
