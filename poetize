@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-05-21
+## 修改时间: 2026-05-22
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.11.15
+## 版本: 1.11.17
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,12 +13,13 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.11.15"
+POETIZE_VERSION="1.11.19"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
 HTTPS_FAILURE_REASON=""
 HTTPS_FAILURE_DETAIL=""
+RESOLVED_LATEST_POETIZE_SCRIPT=""
 
 # 函数
 info() { echo -e "${BLUE}[信息]${NC} $1"; }
@@ -830,22 +831,38 @@ mark_all_migrations_as_executed() {
     return 0
   fi
   
-  # 获取数据库密码
-  local db_root_password=""
-  if [ -f ".config/db_credentials.txt" ]; then
-    db_root_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
-  fi
-  
-  if [ -z "$db_root_password" ]; then
-    warning "无法获取数据库密码，跳过迁移版本标记"
-    return 1
-  fi
-  
   # 查找MariaDB容器
-  local mariadb_container=$(docker ps --format "{{.Names}}" | grep -E "mariadb|mysql" | head -1)
+  local mariadb_container=""
+  if type resolve_compose_container_name >/dev/null 2>&1; then
+    mariadb_container=$(resolve_compose_container_name "mysql" 2>/dev/null || true)
+  fi
+  if [ -z "$mariadb_container" ] && type run_docker_compose >/dev/null 2>&1; then
+    local container_id=""
+    container_id=$(run_docker_compose ps -q mysql 2>/dev/null | head -1 || true)
+    if [ -n "$container_id" ]; then
+      mariadb_container=$(sudo docker inspect --format='{{.Name}}' "$container_id" 2>/dev/null | sed 's#^/##')
+    fi
+  fi
+  if [ -z "$mariadb_container" ]; then
+    mariadb_container=$(docker ps --format "{{.Names}}" | grep -Ei "mariadb|mysql" | head -1)
+  fi
   if [ -z "$mariadb_container" ]; then
     warning "未找到数据库容器，跳过迁移版本标记"
-    return 1
+    return 0
+  fi
+
+  # 获取数据库密码
+  local db_root_password=""
+  if type resolve_db_root_password >/dev/null 2>&1; then
+    db_root_password=$(resolve_db_root_password "$mariadb_container" 2>/dev/null || true)
+  fi
+  if [ -z "$db_root_password" ] && [ -f ".config/db_credentials.txt" ]; then
+    db_root_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | head -n 1 | cut -d':' -f2- | tr -d ' \r')
+  fi
+
+  if [ -z "$db_root_password" ]; then
+    warning "无法获取数据库密码，跳过迁移版本标记"
+    return 0
   fi
   
   # 等待数据库就绪
@@ -856,14 +873,16 @@ mark_all_migrations_as_executed() {
     wait_count=$((wait_count + 2))
     if [ $wait_count -ge $max_wait ]; then
       warning "等待数据库就绪超时，跳过迁移版本标记"
-      return 1
+      return 0
     fi
   done
   
-  # 检查 db_migrations 表是否存在
-  if ! docker exec "$mariadb_container" mariadb -u root -p"$db_root_password" poetize -N -e "SELECT 1 FROM db_migrations LIMIT 1" &>/dev/null; then
+  # 检查 db_migrations 表是否存在（表可能存在但还没有任何记录）
+  local migrations_table_exists
+  migrations_table_exists=$(docker exec "$mariadb_container" mariadb -u root -p"$db_root_password" poetize -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'db_migrations';" 2>/dev/null | tr -d '[:space:]')
+  if [ "$migrations_table_exists" != "1" ]; then
     warning "db_migrations 表不存在，跳过迁移版本标记"
-    return 1
+    return 0
   fi
   
   # 检查 db_migrations 表是否有记录（判断是新安装还是升级）
@@ -877,25 +896,45 @@ mark_all_migrations_as_executed() {
   info "检测到空的迁移记录表，这是新安装，标记所有脚本为已执行..."
   
   # 查找所有迁移脚本并标记为已执行
-  if [ -d "poetize-server/sql" ]; then
-    local sql_files=$(find poetize-server/sql -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
-    local count=0
-    
-    while IFS= read -r sql_file; do
-      [ -z "$sql_file" ] && continue
-      [ ! -f "$sql_file" ] && continue
-      
-      local version=$(basename "$sql_file" .sql)
-      
-      # 插入版本记录（如果不存在）
-      docker exec "$mariadb_container" mariadb -u root -p"$db_root_password" poetize -e \
-        "INSERT IGNORE INTO db_migrations (version, description, success) VALUES ('$version', '新安装时自动标记', 1)" 2>/dev/null
-      
-      count=$((count + 1))
-    done <<< "$sql_files"
-    
-    success "已标记 $count 个迁移脚本为已执行（新安装）"
+  local sql_dir=""
+  if type resolve_sql_scripts_dir >/dev/null 2>&1; then
+    sql_dir=$(resolve_sql_scripts_dir 2>/dev/null || true)
   fi
+  if [ -z "$sql_dir" ] && [ -d "poetize-server/sql" ]; then
+    sql_dir="poetize-server/sql"
+  fi
+  if [ -z "$sql_dir" ]; then
+    warning "找不到 SQL 脚本目录，跳过迁移版本标记"
+    return 0
+  fi
+
+  local sql_files=$(find "$sql_dir" -maxdepth 1 -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
+  local count=0
+  local failed_count=0
+    
+  while IFS= read -r sql_file; do
+    [ -z "$sql_file" ] && continue
+    [ ! -f "$sql_file" ] && continue
+
+    local version=$(basename "$sql_file" .sql)
+    local recorded=""
+
+    if type record_sql_migration >/dev/null 2>&1; then
+      record_sql_migration "$mariadb_container" "$db_root_password" "$version" "新安装时自动标记" 0 1 || failed_count=$((failed_count + 1))
+    else
+      docker exec "$mariadb_container" mariadb -u root -p"$db_root_password" poetize -e \
+        "INSERT INTO db_migrations (version, description, success) VALUES ('$version', '新安装时自动标记', 1) ON DUPLICATE KEY UPDATE description=VALUES(description), success=VALUES(success), executed_at=CURRENT_TIMESTAMP" 2>/dev/null || failed_count=$((failed_count + 1))
+    fi
+    recorded=$(docker exec "$mariadb_container" mariadb -u root -p"$db_root_password" poetize -N -B -e "SELECT COUNT(*) FROM db_migrations WHERE version = '$version' AND success = 1;" 2>/dev/null | tr -d '[:space:]')
+    if [ "$recorded" = "1" ]; then
+      count=$((count + 1))
+    fi
+  done <<< "$sql_files"
+
+  if [ "$failed_count" -gt 0 ]; then
+    warning "迁移版本标记有 $failed_count 个脚本写入失败"
+  fi
+  success "已标记 $count 个迁移脚本为已执行（新安装）"
 }
 
 # 打印部署汇总信息
@@ -6020,8 +6059,10 @@ handle_https_port_mapping() {
 resolve_db_root_password() {
     local mariadb_container="${1:-}"
     local env_password=""
+    local env_file=""
     local config_password=""
     local container_password=""
+    local container_env=""
     local candidates=()
     local candidate=""
     local env_key=""
@@ -6039,16 +6080,17 @@ resolve_db_root_password() {
         candidates+=("$new_candidate")
     }
 
-    if [ -f ".env" ]; then
+    for env_file in .env; do
+        [ -f "$env_file" ] || continue
         for env_key in DB_ROOT_PASSWORD MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD; do
             if type read_env_config &>/dev/null; then
-                env_password=$(read_env_config "$env_key" "")
+                env_password=$(ENV_FILE="$env_file" read_env_config "$env_key" "")
             else
-                env_password=$(grep "^${env_key}=" ".env" 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
+                env_password=$(grep "^${env_key}=" "$env_file" 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
             fi
             add_db_password_candidate "$env_password"
         done
-    fi
+    done
 
     if [ -f ".config/db_credentials.txt" ]; then
         config_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | head -n 1 | cut -d':' -f2- | tr -d ' \r')
@@ -6056,8 +6098,9 @@ resolve_db_root_password() {
     fi
 
     if [ -n "$mariadb_container" ]; then
+        container_env=$(sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null || docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null || true)
         for env_key in MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD DB_ROOT_PASSWORD; do
-            container_password=$(sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null | grep "^${env_key}=" | tail -n 1 | cut -d'=' -f2- | tr -d '\r')
+            container_password=$(printf "%s\n" "$container_env" | grep "^${env_key}=" | tail -n 1 | cut -d'=' -f2- | tr -d '\r')
             add_db_password_candidate "$container_password"
         done
         add_db_password_candidate "root123"
@@ -6069,7 +6112,8 @@ resolve_db_root_password() {
 
     if [ -n "$mariadb_container" ]; then
         for candidate in "${candidates[@]}"; do
-            if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$candidate" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" -N -e "SELECT 1" >/dev/null 2>&1'; then
+            if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$candidate" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" -N -e "SELECT 1" >/dev/null 2>&1 ||
+                docker exec -e POETIZE_DB_ROOT_PASSWORD="$candidate" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" -N -e "SELECT 1" >/dev/null 2>&1; then
                 printf "%s\n" "$candidate"
                 return 0
             fi
@@ -6081,6 +6125,17 @@ resolve_db_root_password() {
     printf "%s\n" "${candidates[0]}"
 }
 
+resolve_sql_scripts_dir() {
+    local sql_dir=""
+    for sql_dir in poetize-server/sql poetize-web/sql sql; do
+        if [ -d "$sql_dir" ]; then
+            printf "%s\n" "$sql_dir"
+            return 0
+        fi
+    done
+    return 1
+}
+
 SQL_EXEC_LAST_ERROR=""
 
 execute_sql_file_in_container() {
@@ -6088,21 +6143,219 @@ execute_sql_file_in_container() {
     local db_root_password="$2"
     local sql_file="$3"
     local error_file=""
+    local output_file=""
+    local docker_cmd=(docker)
+
+    if command -v sudo >/dev/null 2>&1; then
+        docker_cmd=(sudo docker)
+    fi
 
     SQL_EXEC_LAST_ERROR=""
     error_file=$(mktemp 2>/dev/null || printf "/tmp/poetize-sql-error-%s.log" "$$")
+    output_file=$(mktemp 2>/dev/null || printf "/tmp/poetize-sql-output-%s.log" "$$")
 
-    if sudo docker exec -i -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" \
-        sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize' < "$sql_file" 2>"$error_file"; then
-        rm -f "$error_file"
+    if "${docker_cmd[@]}" exec -i -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" \
+        sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize' < "$sql_file" >"$output_file" 2>"$error_file"; then
+        rm -f "$error_file" "$output_file"
         return 0
     fi
 
     if [ -f "$error_file" ]; then
         SQL_EXEC_LAST_ERROR=$(tail -n 20 "$error_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')
-        rm -f "$error_file"
+    fi
+    if [ -z "$SQL_EXEC_LAST_ERROR" ] && [ -f "$output_file" ]; then
+        SQL_EXEC_LAST_ERROR=$(tail -n 20 "$output_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')
+    fi
+    rm -f "$error_file" "$output_file"
+
+    return 1
+}
+
+sql_exec_query_in_container() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local query="$3"
+    local docker_cmd=(docker)
+
+    if command -v sudo >/dev/null 2>&1; then
+        docker_cmd=(sudo docker)
     fi
 
+    "${docker_cmd[@]}" exec \
+        -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" \
+        -e POETIZE_SQL_QUERY="$query" \
+        "$mariadb_container" \
+        sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -B -e "$POETIZE_SQL_QUERY"' 2>/dev/null
+}
+
+sql_migrations_table_exists() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local exists
+
+    exists=$(sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'db_migrations';" | tr -d '[:space:]')
+    [ "$exists" = "1" ]
+}
+
+record_sql_migration() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local version="$3"
+    local description="$4"
+    local execution_time_ms="${5:-0}"
+    local success_flag="${6:-1}"
+    local safe_description="${description//\'/\'\'}"
+
+    sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "INSERT INTO db_migrations (version, description, execution_time_ms, success) VALUES ('$version', '$safe_description', $execution_time_ms, $success_flag) ON DUPLICATE KEY UPDATE description=VALUES(description), execution_time_ms=VALUES(execution_time_ms), success=VALUES(success), executed_at=CURRENT_TIMESTAMP;" >/dev/null 2>&1
+}
+
+ensure_db_migrations_table() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_dir="$3"
+    local init_sql=""
+
+    if sql_migrations_table_exists "$mariadb_container" "$db_root_password"; then
+        return 0
+    fi
+
+    warning "db_migrations 表不存在，即将创建..."
+    init_sql=$(find "$sql_dir" -maxdepth 1 -name "000000000000.sql" -type f | head -1)
+    if [ -n "$init_sql" ]; then
+        if execute_sql_file_in_container "$mariadb_container" "$db_root_password" "$init_sql"; then
+            success "已执行初始化脚本: $init_sql"
+            return 0
+        fi
+        warning "初始化脚本执行失败，将尝试手动创建 db_migrations 表"
+    fi
+
+    if sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "CREATE TABLE IF NOT EXISTS db_migrations (id int NOT NULL AUTO_INCREMENT COMMENT '主键ID', version varchar(20) NOT NULL COMMENT '版本号', description varchar(200) DEFAULT NULL COMMENT '迁移说明', executed_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '执行时间', execution_time_ms int DEFAULT NULL COMMENT '执行耗时', success tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否执行成功', PRIMARY KEY (id), UNIQUE KEY uk_version (version)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库迁移版本记录表';" >/dev/null 2>&1; then
+        record_sql_migration "$mariadb_container" "$db_root_password" "000000000000" "数据库迁移版本管理表初始化" 0 1
+        success "已手动创建 db_migrations 表"
+        return 0
+    fi
+
+    return 1
+}
+
+sql_migration_success_count() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local version="$3"
+
+    sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "SELECT COUNT(*) FROM db_migrations WHERE version = '$version' AND success = 1;" | tr -d '[:space:]'
+}
+
+print_sql_migration_row() {
+    local version="$1"
+    local status="$2"
+    printf "%-44s %s\n" "$version" "$status"
+}
+
+sync_sql_migration_scripts() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_dir="$3"
+    local description="${4:-自动执行}"
+    local sql_files=()
+    local sql_file=""
+    local total_count=0
+    local done_count=0
+    local new_exec_count=0
+    local fail_count=0
+
+    while IFS= read -r sql_file; do
+        [ -z "$sql_file" ] && continue
+        sql_files+=("$sql_file")
+    done < <(find "$sql_dir" -maxdepth 1 -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
+
+    total_count=${#sql_files[@]}
+    if [ "$total_count" -eq 0 ]; then
+        info "目录 $sql_dir 下没有找到需要处理的 SQL 脚本"
+        return 0
+    fi
+
+    info "找到 $total_count 个 SQL 脚本"
+    ensure_db_migrations_table "$mariadb_container" "$db_root_password" "$sql_dir" || {
+        warning "db_migrations 表创建失败，跳过预迁移脚本执行"
+        return 1
+    }
+
+    printf "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+    printf "%-44s %s\n" "SQL 脚本" "状态"
+    printf "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+    for sql_file in "${sql_files[@]}"; do
+        local version
+        local already_executed
+        local start_time
+        local end_time
+        local exec_time
+
+        version=$(basename "$sql_file" .sql)
+        already_executed=$(sql_migration_success_count "$mariadb_container" "$db_root_password" "$version")
+        if [ "$already_executed" = "1" ]; then
+            done_count=$((done_count + 1))
+            print_sql_migration_row "$version" "已执行"
+            continue
+        fi
+
+        start_time=$(date +%s%3N 2>/dev/null || date +%s)
+        if execute_sql_file_in_container "$mariadb_container" "$db_root_password" "$sql_file"; then
+            end_time=$(date +%s%3N 2>/dev/null || date +%s)
+            exec_time=$((end_time - start_time))
+            record_sql_migration "$mariadb_container" "$db_root_password" "$version" "$description" "$exec_time" 1
+            done_count=$((done_count + 1))
+            new_exec_count=$((new_exec_count + 1))
+            print_sql_migration_row "$version" "待执行 ... 成功 (${exec_time}ms)"
+        else
+            record_sql_migration "$mariadb_container" "$db_root_password" "$version" "执行失败" 0 0
+            fail_count=$((fail_count + 1))
+            print_sql_migration_row "$version" "待执行 ... 失败"
+            if [ -n "$SQL_EXEC_LAST_ERROR" ]; then
+                warning "  错误摘要: $SQL_EXEC_LAST_ERROR"
+            fi
+        fi
+    done
+
+    printf "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+    info "总计: $total_count | 已执行: $done_count | 本次新执行: $new_exec_count | 失败: $fail_count"
+    success "SQL 脚本同步完成"
+}
+
+restore_update_database_dump_if_needed() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_dir="$3"
+    local dump_sql="$sql_dir/poetry.sql"
+    local current_success_count=""
+
+    [ "${POETIZE_UPDATE_MODE:-false}" = "true" ] || return 0
+    [ -f "$dump_sql" ] || return 0
+    grep -Eq 'INSERT INTO `?db_migrations`?' "$dump_sql" 2>/dev/null || return 0
+
+    current_success_count=$(sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "SELECT COUNT(*) FROM db_migrations WHERE success = 1;" | tr -d '[:space:]')
+    current_success_count="${current_success_count:-0}"
+
+    if [ "$current_success_count" != "0" ]; then
+        return 0
+    fi
+
+    info "检测到数据库未加载备份迁移记录，正在导入备份数据库快照..."
+    if execute_sql_file_in_container "$mariadb_container" "$db_root_password" "$dump_sql"; then
+        success "备份数据库快照已导入，继续执行增量迁移检查"
+        return 0
+    fi
+
+    warning "备份数据库快照导入失败，跳过预迁移以避免重复执行历史 SQL"
+    if [ -n "$SQL_EXEC_LAST_ERROR" ]; then
+        warning "  错误摘要: $SQL_EXEC_LAST_ERROR"
+    fi
     return 1
 }
 
@@ -6168,6 +6421,10 @@ start_services_with_diagnostics() {
     if [ "${POETIZE_UPDATE_MODE:-false}" = "true" ]; then
       # 先单独启动 MySQL 并执行 schema 迁移，防止 Java 因旧 schema 反复重启
       info "【更新模式】提前启动数据库并执行 schema 迁移，防止 Java 反复重启..."
+      if [ -f "poetize-server/sql/poetry.sql" ]; then
+        info "【更新模式】提前重建数据库镜像，确保 init.sql 使用本次备份快照..."
+        run_docker_compose build $BUILD_ARGS mysql || warning "数据库镜像提前重建失败，将继续尝试启动并用备份快照兜底"
+      fi
       run_docker_compose up -d mysql 2>/dev/null || true
 
       local _wait=0
@@ -6205,56 +6462,21 @@ start_services_with_diagnostics() {
           if [ "$_health" = "healthy" ]; then
               info "数据库已就绪，开始执行迁移脚本..."
               local _root_pwd=""
-              local _sql_dir="poetize-server/sql"
+              local _sql_dir=""
               if [ -f "lib/config.sh" ]; then
                   source "lib/config.sh" 2>/dev/null || true
               fi
               _root_pwd=$(resolve_db_root_password "$_db_ctn" 2>/dev/null || true)
-              
+              _sql_dir=$(resolve_sql_scripts_dir 2>/dev/null || true)
+
               if [ -z "$_root_pwd" ]; then
-                  warning "未找到数据库根密码，跳过预迁移脚本执行"
-              elif [ ! -d "$_sql_dir" ]; then
-                  warning "未找到 SQL 目录: $_sql_dir，跳过预迁移脚本执行"
+                  warning "未找到数据库根密码（找过: .env, .config/db_credentials.txt, 容器环境变量），跳过预迁移脚本执行"
+              elif [ -z "$_sql_dir" ]; then
+                  warning "找不到 SQL 脚本目录（找过: poetize-server/sql, poetize-web/sql, sql），跳过预迁移脚本执行"
               else
-                  # 手动展开的 execute_additional_sql_scripts
-                  local sql_files=$(find "$_sql_dir" -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
-                  if [ -n "$sql_files" ]; then
-                      local has_migrations=false
-                      if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$_root_pwd" "$_db_ctn" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -e "SELECT 1 FROM db_migrations LIMIT 1"' 2>/dev/null | grep -q "1"; then
-                          has_migrations=true
-                      fi
-                      
-                      while IFS= read -r sql_file; do
-                          [ -z "$sql_file" ] && continue
-                          local v_name=$(basename "$sql_file" .sql)
-                          if [ "$has_migrations" = true ]; then
-                              local already_exe=$(sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$_root_pwd" "$_db_ctn" sh -lc "mariadb -u root -p\"\$POETIZE_DB_ROOT_PASSWORD\" poetize -N -e \"SELECT COUNT(*) FROM db_migrations WHERE version='$v_name' AND success=1\"" 2>/dev/null | tr -d '[:space:]')
-                              if [ "$already_exe" = "1" ]; then
-                                  info "跳过: $sql_file (已执行)"
-                                  continue
-                              fi
-                          fi
-                          
-                          info "提前执行迁移脚本: $sql_file"
-                          if execute_sql_file_in_container "$_db_ctn" "$_root_pwd" "$sql_file"; then
-                              if [ "$v_name" = "000000000000" ] && [ "$has_migrations" = false ]; then
-                                  if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$_root_pwd" "$_db_ctn" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -e "SELECT 1 FROM db_migrations LIMIT 1"' 2>/dev/null | grep -q "1"; then
-                                      has_migrations=true
-                                  fi
-                              fi
-                              if [ "$has_migrations" = true ]; then
-                                  sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$_root_pwd" "$_db_ctn" sh -lc "mariadb -u root -p\"\$POETIZE_DB_ROOT_PASSWORD\" poetize -e \"INSERT IGNORE INTO db_migrations (version, description, execution_time_ms, success) VALUES ('$v_name', '预执行', 100, 1)\"" 2>/dev/null
-                              fi
-                              success "SQL迁移脚本执行成功: $sql_file"
-                          else
-                              warning "SQL迁移脚本执行失败: $sql_file"
-                              if [ -n "$SQL_EXEC_LAST_ERROR" ]; then
-                                  warning "数据库错误: $SQL_EXEC_LAST_ERROR"
-                              fi
-                          fi
-                      done <<< "$sql_files"
-                  else
-                      info "未找到需要预执行的迁移脚本"
+                  info "预迁移 SQL 脚本目录: $_sql_dir"
+                  if restore_update_database_dump_if_needed "$_db_ctn" "$_root_pwd" "$_sql_dir"; then
+                      sync_sql_migration_scripts "$_db_ctn" "$_root_pwd" "$_sql_dir" "预执行"
                   fi
               fi
           else
@@ -13843,8 +14065,10 @@ resolve_service_volume_name() {
 resolve_db_root_password() {
     local mariadb_container="${1:-}"
     local env_password=""
+    local env_file=""
     local config_password=""
     local container_password=""
+    local container_env=""
     local candidates=()
     local candidate=""
     local env_key=""
@@ -13862,16 +14086,17 @@ resolve_db_root_password() {
         candidates+=("$new_candidate")
     }
 
-    if [ -f ".env" ]; then
+    for env_file in .env; do
+        [ -f "$env_file" ] || continue
         for env_key in DB_ROOT_PASSWORD MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD; do
             if type read_env_config &>/dev/null; then
-                env_password=$(read_env_config "$env_key" "")
+                env_password=$(ENV_FILE="$env_file" read_env_config "$env_key" "")
             else
-                env_password=$(grep "^${env_key}=" ".env" 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
+                env_password=$(grep "^${env_key}=" "$env_file" 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
             fi
             add_db_password_candidate "$env_password"
         done
-    fi
+    done
 
     if [ -f ".config/db_credentials.txt" ]; then
         config_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | head -n 1 | cut -d':' -f2- | tr -d ' \r')
@@ -13879,8 +14104,9 @@ resolve_db_root_password() {
     fi
 
     if [ -n "$mariadb_container" ]; then
+        container_env=$(sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null || docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null || true)
         for env_key in MARIADB_ROOT_PASSWORD MYSQL_ROOT_PASSWORD DB_ROOT_PASSWORD; do
-            container_password=$(sudo docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$mariadb_container" 2>/dev/null | grep "^${env_key}=" | tail -n 1 | cut -d'=' -f2- | tr -d '\r')
+            container_password=$(printf "%s\n" "$container_env" | grep "^${env_key}=" | tail -n 1 | cut -d'=' -f2- | tr -d '\r')
             add_db_password_candidate "$container_password"
         done
         add_db_password_candidate "root123"
@@ -13892,7 +14118,8 @@ resolve_db_root_password() {
 
     if [ -n "$mariadb_container" ]; then
         for candidate in "${candidates[@]}"; do
-            if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$candidate" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" -N -e "SELECT 1" >/dev/null 2>&1'; then
+            if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$candidate" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" -N -e "SELECT 1" >/dev/null 2>&1 ||
+                docker exec -e POETIZE_DB_ROOT_PASSWORD="$candidate" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" -N -e "SELECT 1" >/dev/null 2>&1; then
                 printf "%s\n" "$candidate"
                 return 0
             fi
@@ -13904,6 +14131,17 @@ resolve_db_root_password() {
     printf "%s\n" "${candidates[0]}"
 }
 
+resolve_sql_scripts_dir() {
+    local sql_dir=""
+    for sql_dir in poetize-server/sql poetize-web/sql sql; do
+        if [ -d "$sql_dir" ]; then
+            printf "%s\n" "$sql_dir"
+            return 0
+        fi
+    done
+    return 1
+}
+
 SQL_EXEC_LAST_ERROR=""
 
 execute_sql_file_in_container() {
@@ -13911,22 +14149,253 @@ execute_sql_file_in_container() {
     local db_root_password="$2"
     local sql_file="$3"
     local error_file=""
+    local output_file=""
+    local docker_cmd=(docker)
+
+    if command -v sudo >/dev/null 2>&1; then
+        docker_cmd=(sudo docker)
+    fi
 
     SQL_EXEC_LAST_ERROR=""
     error_file=$(mktemp 2>/dev/null || printf "/tmp/poetize-sql-error-%s.log" "$$")
+    output_file=$(mktemp 2>/dev/null || printf "/tmp/poetize-sql-output-%s.log" "$$")
 
-    if sudo docker exec -i -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" \
-        sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize' < "$sql_file" 2>"$error_file"; then
-        rm -f "$error_file"
+    if "${docker_cmd[@]}" exec -i -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" \
+        sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize' < "$sql_file" >"$output_file" 2>"$error_file"; then
+        rm -f "$error_file" "$output_file"
         return 0
     fi
 
     if [ -f "$error_file" ]; then
         SQL_EXEC_LAST_ERROR=$(tail -n 20 "$error_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')
-        rm -f "$error_file"
+    fi
+    if [ -z "$SQL_EXEC_LAST_ERROR" ] && [ -f "$output_file" ]; then
+        SQL_EXEC_LAST_ERROR=$(tail -n 20 "$output_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')
+    fi
+    rm -f "$error_file" "$output_file"
+
+    return 1
+}
+
+sql_exec_query_in_container() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local query="$3"
+    local docker_cmd=(docker)
+
+    if command -v sudo >/dev/null 2>&1; then
+        docker_cmd=(sudo docker)
+    fi
+
+    "${docker_cmd[@]}" exec \
+        -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" \
+        -e POETIZE_SQL_QUERY="$query" \
+        "$mariadb_container" \
+        sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -B -e "$POETIZE_SQL_QUERY"' 2>/dev/null
+}
+
+sql_migrations_table_exists() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local exists
+
+    exists=$(sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'db_migrations';" | tr -d '[:space:]')
+    [ "$exists" = "1" ]
+}
+
+record_sql_migration() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local version="$3"
+    local description="$4"
+    local execution_time_ms="${5:-0}"
+    local success_flag="${6:-1}"
+    local safe_description="${description//\'/\'\'}"
+
+    sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "INSERT INTO db_migrations (version, description, execution_time_ms, success) VALUES ('$version', '$safe_description', $execution_time_ms, $success_flag) ON DUPLICATE KEY UPDATE description=VALUES(description), execution_time_ms=VALUES(execution_time_ms), success=VALUES(success), executed_at=CURRENT_TIMESTAMP;" >/dev/null 2>&1
+}
+
+ensure_db_migrations_table() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_dir="$3"
+    local init_sql=""
+
+    if sql_migrations_table_exists "$mariadb_container" "$db_root_password"; then
+        return 0
+    fi
+
+    warning "db_migrations 表不存在，即将创建..."
+    init_sql=$(find "$sql_dir" -maxdepth 1 -name "000000000000.sql" -type f | head -1)
+    if [ -n "$init_sql" ]; then
+        if execute_sql_file_in_container "$mariadb_container" "$db_root_password" "$init_sql"; then
+            success "已执行初始化脚本: $init_sql"
+            return 0
+        fi
+        warning "初始化脚本执行失败，将尝试手动创建 db_migrations 表"
+    fi
+
+    if sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "CREATE TABLE IF NOT EXISTS db_migrations (id int NOT NULL AUTO_INCREMENT COMMENT '主键ID', version varchar(20) NOT NULL COMMENT '版本号', description varchar(200) DEFAULT NULL COMMENT '迁移说明', executed_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '执行时间', execution_time_ms int DEFAULT NULL COMMENT '执行耗时', success tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否执行成功', PRIMARY KEY (id), UNIQUE KEY uk_version (version)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库迁移版本记录表';" >/dev/null 2>&1; then
+        record_sql_migration "$mariadb_container" "$db_root_password" "000000000000" "数据库迁移版本管理表初始化" 0 1
+        success "已手动创建 db_migrations 表"
+        return 0
     fi
 
     return 1
+}
+
+sql_migration_success_count() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local version="$3"
+
+    sql_exec_query_in_container "$mariadb_container" "$db_root_password" \
+        "SELECT COUNT(*) FROM db_migrations WHERE version = '$version' AND success = 1;" | tr -d '[:space:]'
+}
+
+print_sql_migration_row() {
+    local version="$1"
+    local status="$2"
+    printf "%-44s %s\n" "$version" "$status"
+}
+
+sync_sql_migration_scripts() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_dir="$3"
+    local description="${4:-自动执行}"
+    local sql_files=()
+    local sql_file=""
+    local total_count=0
+    local done_count=0
+    local new_exec_count=0
+    local fail_count=0
+
+    while IFS= read -r sql_file; do
+        [ -z "$sql_file" ] && continue
+        sql_files+=("$sql_file")
+    done < <(find "$sql_dir" -maxdepth 1 -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
+
+    total_count=${#sql_files[@]}
+    if [ "$total_count" -eq 0 ]; then
+        info "目录 $sql_dir 下没有找到需要处理的 SQL 脚本"
+        return 0
+    fi
+
+    info "找到 $total_count 个 SQL 脚本"
+    ensure_db_migrations_table "$mariadb_container" "$db_root_password" "$sql_dir" || {
+        warning "db_migrations 表创建失败，跳过 SQL 脚本执行"
+        return 1
+    }
+
+    printf "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+    printf "%-44s %s\n" "SQL 脚本" "状态"
+    printf "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+    for sql_file in "${sql_files[@]}"; do
+        local version
+        local already_executed
+        local start_time
+        local end_time
+        local exec_time
+
+        version=$(basename "$sql_file" .sql)
+        already_executed=$(sql_migration_success_count "$mariadb_container" "$db_root_password" "$version")
+        if [ "$already_executed" = "1" ]; then
+            done_count=$((done_count + 1))
+            print_sql_migration_row "$version" "已执行"
+            continue
+        fi
+
+        start_time=$(date +%s%3N 2>/dev/null || date +%s)
+        if execute_sql_file_in_container "$mariadb_container" "$db_root_password" "$sql_file"; then
+            end_time=$(date +%s%3N 2>/dev/null || date +%s)
+            exec_time=$((end_time - start_time))
+            record_sql_migration "$mariadb_container" "$db_root_password" "$version" "$description" "$exec_time" 1
+            done_count=$((done_count + 1))
+            new_exec_count=$((new_exec_count + 1))
+            print_sql_migration_row "$version" "待执行 ... 成功 (${exec_time}ms)"
+        else
+            record_sql_migration "$mariadb_container" "$db_root_password" "$version" "执行失败" 0 0
+            fail_count=$((fail_count + 1))
+            print_sql_migration_row "$version" "待执行 ... 失败"
+            if [ -n "$SQL_EXEC_LAST_ERROR" ]; then
+                warning "  错误摘要: $SQL_EXEC_LAST_ERROR"
+            fi
+        fi
+    done
+
+    printf "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+    info "总计: $total_count | 已执行: $done_count | 本次新执行: $new_exec_count | 失败: $fail_count"
+    success "SQL 脚本同步完成"
+}
+
+backfill_sql_migration_success_records() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_dir="$3"
+    local description="${4:-当前版本基线标记}"
+    local sql_files=()
+    local sql_file=""
+    local total_count=0
+    local already_count=0
+    local marked_count=0
+    local failed_count=0
+
+    while IFS= read -r sql_file; do
+        [ -z "$sql_file" ] && continue
+        sql_files+=("$sql_file")
+    done < <(find "$sql_dir" -maxdepth 1 -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
+
+    total_count=${#sql_files[@]}
+    if [ "$total_count" -eq 0 ]; then
+        info "目录 $sql_dir 下没有找到需要标记的 SQL 脚本"
+        return 0
+    fi
+
+    ensure_db_migrations_table "$mariadb_container" "$db_root_password" "$sql_dir" || return 1
+
+    for sql_file in "${sql_files[@]}"; do
+        local version
+        local already_executed
+
+        version=$(basename "$sql_file" .sql)
+        already_executed=$(sql_migration_success_count "$mariadb_container" "$db_root_password" "$version")
+        if [ "$already_executed" = "1" ]; then
+            already_count=$((already_count + 1))
+            continue
+        fi
+
+        record_sql_migration "$mariadb_container" "$db_root_password" "$version" "$description" 0 1
+        already_executed=$(sql_migration_success_count "$mariadb_container" "$db_root_password" "$version")
+        if [ "$already_executed" = "1" ]; then
+            marked_count=$((marked_count + 1))
+        else
+            failed_count=$((failed_count + 1))
+        fi
+    done
+
+    info "当前版本迁移记录: 总计: $total_count | 已有成功记录: $already_count | 本次补齐: $marked_count | 失败: $failed_count"
+    [ "$failed_count" -eq 0 ]
+}
+
+prepare_migration_records_for_backup() {
+    local mariadb_container="$1"
+    local db_root_password="$2"
+    local sql_dir=""
+
+    info "更新备份前检查迁移版本记录..."
+    sql_dir=$(resolve_sql_scripts_dir 2>/dev/null || true)
+    if [ -z "$sql_dir" ]; then
+        warning "找不到 SQL 脚本目录（找过: poetize-server/sql, poetize-web/sql, sql），无法补齐迁移记录"
+        return 1
+    fi
+
+    info "当前版本 SQL 脚本目录: $sql_dir"
+    backfill_sql_migration_success_records "$mariadb_container" "$db_root_password" "$sql_dir" "升级备份前基线标记"
 }
 
 resolve_redis_password() {
@@ -14151,6 +14620,10 @@ perform_backup_operations() {
     fi
     if [ -n "$mariadb_container" ] && [ -n "$db_root_password" ]; then
         info "使用MariaDB容器: $mariadb_container"
+        if ! prepare_migration_records_for_backup "$mariadb_container" "$db_root_password"; then
+            error "迁移版本记录补齐失败，已停止数据库备份，避免升级时重复执行历史 SQL"
+            return 1
+        fi
         if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc 'mariadb-dump -u root -p"$POETIZE_DB_ROOT_PASSWORD" --single-transaction --routines --triggers --databases poetize' > "$backup_dir/poetry.sql"; then
             success "数据库备份完成"
         else
@@ -14505,11 +14978,46 @@ poetize_runtime_matches() {
     return 0
 }
 
+resolve_latest_poetize_script_for_update() {
+    local temp_update_dir="$1"
+    local latest_poetize="$temp_update_dir/poetize"
+    local install_url="${POETIZE_INSTALL_SCRIPT_URL:-https://install.leapya.com}"
+    RESOLVED_LATEST_POETIZE_SCRIPT=""
+
+    info "下载动态 poetize 脚本用于自更新检查: $install_url"
+    if command -v curl >/dev/null 2>&1 && curl -fsSL "$install_url" -o "$latest_poetize" 2>/dev/null; then
+        if grep -q '^POETIZE_VERSION=' "$latest_poetize" 2>/dev/null && grep -q 'dispatch_command' "$latest_poetize" 2>/dev/null; then
+            chmod +x "$latest_poetize" 2>/dev/null || true
+            RESOLVED_LATEST_POETIZE_SCRIPT="$latest_poetize"
+            return 0
+        fi
+        warning "动态 poetize 脚本校验失败，将尝试目标版本脚本"
+        rm -f "$latest_poetize" 2>/dev/null || true
+    else
+        warning "动态 poetize 脚本下载失败，将尝试目标版本脚本"
+    fi
+
+    info "预拉取目标版本的poetize脚本用于自更新检查..."
+    if ! git clone --depth 1 $RESOLVED_BRANCH_OPT "$RESOLVED_GIT_URL" "$temp_update_dir/project" >/dev/null 2>&1; then
+        warning "无法预拉取目标版本代码，跳过poetize命令自更新检查"
+        return 1
+    fi
+
+    if [ ! -f "$temp_update_dir/project/poetize" ]; then
+        warning "目标版本中未找到poetize脚本，跳过命令自更新检查"
+        return 1
+    fi
+
+    RESOLVED_LATEST_POETIZE_SCRIPT="$temp_update_dir/project/poetize"
+    return 0
+}
+
 # 检查更新流程是否需要先自更新 poetize 命令
 ensure_latest_poetize_for_update() {
     local raw_update_arg="${1:-}"
     local current_poetize="/usr/local/bin/poetize"
     local temp_update_dir="/tmp/poetize_self_update_$$"
+    local latest_poetize=""
 
     if [ "${POETIZE_SKIP_SELF_UPDATE:-false}" = "true" ]; then
         return 0
@@ -14519,27 +15027,28 @@ ensure_latest_poetize_for_update() {
     ensure_update_dependencies
     resolve_update_source
 
-    info "预拉取目标版本的poetize脚本用于自更新检查..."
     rm -rf "$temp_update_dir"
-    if ! git clone --depth 1 $RESOLVED_BRANCH_OPT "$RESOLVED_GIT_URL" "$temp_update_dir" >/dev/null 2>&1; then
-        warning "无法预拉取目标版本代码，跳过poetize命令自更新检查"
+    mkdir -p "$temp_update_dir" || {
+        warning "无法创建poetize自更新临时目录，跳过自更新检查"
         return 0
-    fi
+    }
 
-    if [ ! -f "$temp_update_dir/poetize" ]; then
-        warning "目标版本中未找到poetize脚本，跳过命令自更新检查"
+    if resolve_latest_poetize_script_for_update "$temp_update_dir"; then
+        latest_poetize="$RESOLVED_LATEST_POETIZE_SCRIPT"
+    fi
+    if [ -z "$latest_poetize" ] || [ ! -f "$latest_poetize" ]; then
         rm -rf "$temp_update_dir"
         return 0
     fi
 
-    if poetize_runtime_matches "$temp_update_dir/poetize"; then
-        info "poetize命令已是目标版本，继续执行更新"
+    if poetize_runtime_matches "$latest_poetize"; then
+        info "poetize命令已是最新动态版本，继续执行更新"
         rm -rf "$temp_update_dir"
         return 0
     fi
 
-    info "检测到目标版本的poetize命令有更新，正在先升级升级器本身..."
-    install_poetize_command_from_project "$temp_update_dir/poetize" || {
+    info "检测到poetize命令有更新，正在先升级升级器本身..."
+    install_poetize_command_from_project "$latest_poetize" || {
         rm -rf "$temp_update_dir"
         error "poetize命令自动更新失败"
         exit 1
@@ -14585,121 +15094,33 @@ update_poetize_command() {
 # 支持版本跟踪：如果 db_migrations 表存在，只执行未记录的脚本
 execute_additional_sql_scripts() {
     info "检查并执行新增的SQL脚本..."
-    
-    # 获取数据库连接信息
     local mariadb_container=$(resolve_compose_container_name "mysql" 2>/dev/null || true)
     local db_root_password=""
+    local sql_dir=""
+
     if [ -n "$mariadb_container" ]; then
         db_root_password=$(resolve_db_root_password "$mariadb_container" 2>/dev/null || true)
     fi
-    
+
+    if [ -z "$mariadb_container" ]; then
+        warning "未找到MariaDB容器，跳过额外SQL脚本执行"
+        return 1
+    fi
+
     if [ -z "$db_root_password" ]; then
         warning "无法获取数据库密码，跳过额外SQL脚本执行"
         return 1
     fi
 
     info "额外SQL脚本目标数据库容器: $mariadb_container"
-    
-    # 等待数据库容器启动
-    info "等待数据库容器启动..."
-    sleep 15
-    
-    if [ -z "$mariadb_container" ]; then
-        warning "未找到MariaDB容器，跳过额外SQL脚本执行"
+
+    sql_dir=$(resolve_sql_scripts_dir 2>/dev/null || true)
+    if [ -z "$sql_dir" ]; then
+        warning "找不到 SQL 脚本目录（找过: poetize-server/sql, poetize-web/sql, sql），跳过额外SQL脚本执行"
         return 1
     fi
-    
-    # 查找poetize-server/sql目录下除poetry.sql和poetry_old.sql外的所有.sql文件
-    if [ -d "poetize-server/sql" ]; then
-        local sql_files=$(find poetize-server/sql -name "*.sql" -not -name "poetry.sql" -not -name "poetry_old.sql" -type f | sort)
-        
-        if [ -z "$sql_files" ]; then
-            info "未找到需要执行的额外SQL脚本"
-            return 0
-        fi
-        
-        # 检查 db_migrations 表是否存在
-        local has_migrations_table=false
-        if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -e "SELECT 1 FROM db_migrations LIMIT 1"' 2>/dev/null | grep -q "1"; then
-            has_migrations_table=true
-            info "检测到版本跟踪表，将只执行未记录的脚本"
-        fi
-        
-        # 统计待执行脚本数量
-        local total_count=0
-        local skip_count=0
-        local exec_count=0
-        local fail_count=0
-        
-        # 第一遍：统计
-        while IFS= read -r sql_file; do
-            [ -z "$sql_file" ] && continue
-            total_count=$((total_count + 1))
-        done <<< "$sql_files"
-        
-        info "发现 $total_count 个SQL脚本"
-        
-        # 第二遍：执行
-        while IFS= read -r sql_file; do
-            [ -z "$sql_file" ] && continue
-            [ ! -f "$sql_file" ] && continue
-            
-            # 提取版本号（文件名不含路径和.sql后缀）
-            local version=$(basename "$sql_file" .sql)
-            
-            # 如果有版本跟踪表，检查是否已执行
-            if [ "$has_migrations_table" = true ]; then
-                local already_executed=$(sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc "mariadb -u root -p\"\$POETIZE_DB_ROOT_PASSWORD\" poetize -N -e \"SELECT COUNT(*) FROM db_migrations WHERE version='$version' AND success=1\"" 2>/dev/null | tr -d '[:space:]')
-                if [ "$already_executed" = "1" ]; then
-                    skip_count=$((skip_count + 1))
-                    info "跳过: $sql_file (已执行)"
-                    continue
-                fi
-            fi
-            
-            # 执行SQL脚本
-            info "执行SQL脚本: $sql_file"
-            local start_time=$(date +%s%3N 2>/dev/null || date +%s)
-            
-            if execute_sql_file_in_container "$mariadb_container" "$db_root_password" "$sql_file"; then
-                local end_time=$(date +%s%3N 2>/dev/null || date +%s)
-                local exec_time=$((end_time - start_time))
-                
-                # 如果刚执行的是版本表初始化脚本，重新检查表是否存在
-                if [ "$version" = "000000000000" ] && [ "$has_migrations_table" = false ]; then
-                    if sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc 'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -e "SELECT 1 FROM db_migrations LIMIT 1"' 2>/dev/null | grep -q "1"; then
-                        has_migrations_table=true
-                        info "版本跟踪表已创建，后续脚本执行将被记录"
-                    fi
-                fi
-                
-                # 记录到版本表（如果表存在）
-                if [ "$has_migrations_table" = true ]; then
-                    sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc "mariadb -u root -p\"\$POETIZE_DB_ROOT_PASSWORD\" poetize -e \"INSERT IGNORE INTO db_migrations (version, description, execution_time_ms, success) VALUES ('$version', '自动执行', $exec_time, 1)\"" 2>/dev/null
-                fi
-                
-                success "SQL脚本执行成功: $sql_file (${exec_time}ms)"
-                exec_count=$((exec_count + 1))
-            else
-                # 记录失败（如果表存在）
-                if [ "$has_migrations_table" = true ]; then
-                    sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc "mariadb -u root -p\"\$POETIZE_DB_ROOT_PASSWORD\" poetize -e \"INSERT IGNORE INTO db_migrations (version, description, success) VALUES ('$version', '执行失败', 0)\"" 2>/dev/null
-                fi
-                
-                warning "SQL脚本执行失败: $sql_file"
-                if [ -n "$SQL_EXEC_LAST_ERROR" ]; then
-                    warning "数据库错误: $SQL_EXEC_LAST_ERROR"
-                fi
-                fail_count=$((fail_count + 1))
-            fi
-        done <<< "$sql_files"
-        
-        # 输出统计信息
-        info "SQL脚本执行统计: 总计=$total_count, 执行=$exec_count, 跳过=$skip_count, 失败/已存在=$fail_count"
-        success "额外SQL脚本执行完成"
-    else
-        warning "poetize-server/sql目录不存在，跳过额外SQL脚本执行"
-    fi
+
+    sync_sql_migration_scripts "$mariadb_container" "$db_root_password" "$sql_dir" "自动执行"
 }
 
 # 重新安装最新系统
@@ -14787,6 +15208,9 @@ EOF
     if [ -f "deploy.sh" ]; then
         info "检测到 deploy.sh，当前版本为旧版结构，使用 deploy.sh 进行安装"
         deploy_cmd="sudo chmod +x deploy.sh && sudo POETIZE_UPDATE_MODE=true ./deploy.sh"
+    elif [ -x "/usr/local/bin/poetize" ]; then
+        info "使用全局动态 poetize 命令进行安装，避免退回目标版本内置的旧升级器逻辑"
+        deploy_cmd="sudo POETIZE_UPDATE_MODE=true /usr/local/bin/poetize install"
     elif [ -f "poetize" ]; then
         deploy_cmd="sudo chmod +x poetize && sudo POETIZE_UPDATE_MODE=true ./poetize install"
     else
