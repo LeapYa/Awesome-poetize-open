@@ -5,6 +5,66 @@
 import { defineStore } from 'pinia'
 import constant from '@/utils/constant'
 
+const DEFAULT_AI_CHAT_CONFIG = {
+  enabled: false,
+  configured: false,
+  chat_name: 'AI助手',
+  chat_avatar: '',
+  welcome_message: '你好！我是你的AI助手，有什么可以帮助你的吗？',
+  placeholder_text: '输入你想说的话...',
+  theme_color: '#4facfe',
+  streaming_enabled: false,
+  enable_streaming: false,
+  enable_typing_indicator: true,
+  show_timestamp: true,
+  require_login: false,
+  max_message_length: 500,
+  max_conversation_length: 20,
+  rate_limit: 20,
+}
+
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key)
+
+const pickConfigValue = (config, snakeKey, camelKey, fallback) => {
+  if (hasOwn(config, snakeKey)) {
+    return config[snakeKey] ?? fallback
+  }
+  if (hasOwn(config, camelKey)) {
+    return config[camelKey] ?? fallback
+  }
+  return fallback
+}
+
+const normalizeAIChatConfig = (config = {}) => {
+  if (!config || typeof config !== 'object') {
+    return { ...DEFAULT_AI_CHAT_CONFIG }
+  }
+
+  const normalized = {
+    ...DEFAULT_AI_CHAT_CONFIG,
+    ...config,
+    chat_name: pickConfigValue(config, 'chat_name', 'chatName', DEFAULT_AI_CHAT_CONFIG.chat_name),
+    chat_avatar: pickConfigValue(config, 'chat_avatar', 'chatAvatar', DEFAULT_AI_CHAT_CONFIG.chat_avatar),
+    welcome_message: pickConfigValue(config, 'welcome_message', 'welcomeMessage', DEFAULT_AI_CHAT_CONFIG.welcome_message),
+    placeholder_text: pickConfigValue(config, 'placeholder_text', 'placeholderText', DEFAULT_AI_CHAT_CONFIG.placeholder_text),
+    theme_color: pickConfigValue(config, 'theme_color', 'themeColor', DEFAULT_AI_CHAT_CONFIG.theme_color),
+    streaming_enabled: pickConfigValue(config, 'streaming_enabled', 'enableStreaming', DEFAULT_AI_CHAT_CONFIG.streaming_enabled),
+    enable_streaming: pickConfigValue(config, 'enable_streaming', 'enableStreaming', DEFAULT_AI_CHAT_CONFIG.enable_streaming),
+    enable_typing_indicator: pickConfigValue(config, 'enable_typing_indicator', 'enableTypingIndicator', DEFAULT_AI_CHAT_CONFIG.enable_typing_indicator),
+    show_timestamp: pickConfigValue(config, 'show_timestamp', 'showTimestamp', DEFAULT_AI_CHAT_CONFIG.show_timestamp),
+    require_login: pickConfigValue(config, 'require_login', 'requireLogin', DEFAULT_AI_CHAT_CONFIG.require_login),
+    max_message_length: pickConfigValue(config, 'max_message_length', 'maxMessageLength', DEFAULT_AI_CHAT_CONFIG.max_message_length),
+    max_conversation_length: pickConfigValue(config, 'max_conversation_length', 'maxConversationLength', DEFAULT_AI_CHAT_CONFIG.max_conversation_length),
+    rate_limit: pickConfigValue(config, 'rate_limit', 'rateLimit', DEFAULT_AI_CHAT_CONFIG.rate_limit),
+  }
+
+  if (!hasOwn(config, 'enable_streaming') && hasOwn(config, 'streaming_enabled')) {
+    normalized.enable_streaming = config.streaming_enabled
+  }
+
+  return normalized
+}
+
 export const useAIChatStore = defineStore('aiChat', {
   state: () => ({
     messages: [],
@@ -73,8 +133,14 @@ export const useAIChatStore = defineStore('aiChat', {
     },
 
     lightInit() {
+      if (!this.configLoaded) {
+        this.restoreCachedConfig()
+      }
       this.restoreHistory()
       this.checkUserLogin()
+      this.loadConfig().catch((error) => {
+        console.warn('轻量加载AI聊天配置失败:', error)
+      })
     },
 
     addWelcomeMessage() {
@@ -99,7 +165,7 @@ export const useAIChatStore = defineStore('aiChat', {
         if (response.ok) {
           const result = await response.json()
           if (result.code === 200 && result.data) {
-            this.config = result.data
+            this.config = normalizeAIChatConfig(result.data)
             this.configLoaded = true
             localStorage.setItem('ai_chat_config', JSON.stringify(this.config))
           } else {
@@ -108,27 +174,33 @@ export const useAIChatStore = defineStore('aiChat', {
         } else {
           throw new Error('配置加载失败')
         }
-      } catch (error) {
-        const cached = localStorage.getItem('ai_chat_config')
-        if (cached) {
-          this.config = JSON.parse(cached)
+      } catch {
+        if (this.restoreCachedConfig()) {
           this.configLoaded = true
         } else {
-          this.config = {
-            chat_name: 'AI助手',
-            chat_avatar: '',
-            welcome_message: '你好！我是你的AI助手，有什么可以帮助你的吗？',
-            placeholder_text: '输入你想说的话...',
-            theme_color: '#4facfe',
-            enable_streaming: false,
-            enable_typing_indicator: true,
-            show_timestamp: true,
-            require_login: false,
-            max_message_length: 500,
-            rate_limit: 20,
-          }
+          this.config = { ...DEFAULT_AI_CHAT_CONFIG }
           this.configLoaded = true
         }
+      }
+    },
+
+    async refreshConfig() {
+      this.configLoaded = false
+      await this.loadConfig()
+    },
+
+    restoreCachedConfig() {
+      try {
+        const cached = localStorage.getItem('ai_chat_config')
+        if (!cached) {
+          return false
+        }
+
+        this.config = normalizeAIChatConfig(JSON.parse(cached))
+        return true
+      } catch {
+        localStorage.removeItem('ai_chat_config')
+        return false
       }
     },
 

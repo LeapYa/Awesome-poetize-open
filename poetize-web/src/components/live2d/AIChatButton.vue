@@ -11,15 +11,17 @@
         @touchstart.stop="handleTouchStart"
       >
         <img
+          v-if="!avatarLoadFailed"
           class="ai-avatar-icon"
           :src="chatAvatarUrl"
           :alt="config?.chat_name || 'AI助手'"
           draggable="false"
+          @error="handleAvatarError"
         />
         <!-- 亮色模式图标 -->
         <svg
-          v-if="!isDarkMode"
-          class="ai-icon"
+          v-if="avatarLoadFailed && !isDarkMode"
+          class="ai-icon avatar-fallback-icon"
           viewBox="0 0 1024 1024"
           xmlns="http://www.w3.org/2000/svg"
         >
@@ -30,8 +32,8 @@
         </svg>
         <!-- 暗色模式图标（白色） -->
         <svg
-          v-else
-          class="ai-icon"
+          v-else-if="avatarLoadFailed"
+          class="ai-icon avatar-fallback-icon"
           viewBox="0 0 1024 1024"
           xmlns="http://www.w3.org/2000/svg"
         >
@@ -47,7 +49,7 @@
 
 <script>
 import { $on, $off, $once, $emit } from '../../utils/gogocodeTransfer'
-import { computed, onMounted, onUnmounted, ref, getCurrentInstance } from 'vue'
+import { computed, onMounted, onUnmounted, ref, getCurrentInstance, watch } from 'vue'
 import { useLive2DStore } from '@/stores/live2d'
 import { useAIChatStore } from '@/stores/aiChat'
 import { getAiAvatarUrl } from '@/utils/ai-avatar'
@@ -60,6 +62,7 @@ export default {
     const live2dStore = useLive2DStore()
     const aiChatStore = useAIChatStore()
     const buttonRef = ref(null) // 实际上是wrapper的ref
+    const avatarLoadFailed = ref(false)
 
     // 拖拽状态
     const isDragging = ref(false)
@@ -106,9 +109,24 @@ export default {
     // 计算属性
     const showChat = computed(() => live2dStore.showChat)
     const config = computed(() => aiChatStore.config)
+    const chatAvatar = computed(() => {
+      if (!config.value) return ''
+      if (Object.prototype.hasOwnProperty.call(config.value, 'chat_avatar')) {
+        return config.value.chat_avatar || ''
+      }
+      return config.value.chatAvatar || ''
+    })
     const chatAvatarUrl = computed(() =>
-      getAiAvatarUrl(config.value?.chat_avatar)
+      getAiAvatarUrl(chatAvatar.value)
     )
+
+    watch(chatAvatarUrl, () => {
+      avatarLoadFailed.value = false
+    })
+
+    const handleAvatarError = () => {
+      avatarLoadFailed.value = true
+    }
 
     // 按钮位置样式
     const buttonStyle = computed(() => {
@@ -330,11 +348,13 @@ export default {
       showChat,
       config,
       chatAvatarUrl,
+      avatarLoadFailed,
       isDragging,
       isDarkMode,
       buttonStyle,
       handleMouseDown,
       handleTouchStart,
+      handleAvatarError,
     }
   },
 }
@@ -413,6 +433,9 @@ export default {
   width: 28px;
   height: 28px;
   transition: transform 0.3s ease;
+}
+.avatar-fallback-icon {
+  display: block;
 }
 .ai-chat-button:hover:not(.dragging) .ai-avatar-icon {
   transform: scale(1.2);

@@ -1552,6 +1552,7 @@ export default {
         if (response.code === 200) {
           if (showMsg) this.$message.success('AI聊天配置保存成功');
           await this.loadAiConfigs();
+          await this.refreshAiChatRuntimeConfig();
           return true;
         } else {
           if (showMsg) this.$message.error(response.message || 'AI聊天配置保存失败');
@@ -1563,6 +1564,15 @@ export default {
         return false;
       } finally {
         this.savingAiConfigs = false;
+      }
+    },
+    async refreshAiChatRuntimeConfig() {
+      try {
+        const { useAIChatStore } = await import('@/stores/aiChat');
+        const aiChatStore = useAIChatStore();
+        await aiChatStore.refreshConfig();
+      } catch (error) {
+        console.warn('刷新AI聊天运行时配置失败:', error);
       }
     },
     exportAiConfig() {

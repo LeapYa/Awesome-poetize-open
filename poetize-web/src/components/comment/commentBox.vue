@@ -157,8 +157,17 @@ export default {
         'AI助手'
       )
     },
+    aiCommentMentionEnabled() {
+      return (
+        this.mainStore.webInfo?.enableWaifu === true &&
+        this.aiChatStore.config?.enabled === true
+      )
+    },
     commentPlaceholder() {
-      return `写下点什么... 或者@${this.botMentionName}`
+      if (!this.aiCommentMentionEnabled) {
+        return '说点什么...'
+      }
+      return `说点什么... 想让 AI 回你？试试 @${this.botMentionName}`
     },
     botMentionAvatar() {
       const config = this.aiChatStore.config
@@ -183,6 +192,11 @@ export default {
   watch: {
     botMentionAvatar() {
       this.botMentionAvatarBroken = false
+    },
+    aiCommentMentionEnabled(enabled) {
+      if (!enabled) {
+        this.hideMentionPanel()
+      }
     },
   },
   mounted() {
@@ -326,6 +340,11 @@ export default {
     },
 
     updateMentionPanel() {
+      if (!this.aiCommentMentionEnabled) {
+        this.hideMentionPanel()
+        return
+      }
+
       const trigger = this.getMentionTrigger()
       if (!trigger) {
         this.hideMentionPanel()
@@ -370,6 +389,11 @@ export default {
     },
 
     selectBotMention() {
+      if (!this.aiCommentMentionEnabled) {
+        this.hideMentionPanel()
+        return
+      }
+
       const trigger = this.mentionTriggerRange || this.getMentionTrigger()
       if (!trigger || !trigger.node || !trigger.node.parentNode) {
         this.hideMentionPanel()
