@@ -171,4 +171,22 @@ class ResourceControllerTest {
         verifyNoInteractions(fileSecurityValidator);
         verifyNoInteractions(fileStorageService);
     }
+
+    @Test
+    void uploadWaifuPreviewShouldRejectSvgThroughSecurityValidator() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "preview.svg",
+                "image/svg+xml",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".getBytes());
+        when(fileSecurityValidator.validateFile(file, "preview.svg", "image/svg+xml"))
+                .thenReturn(FileSecurityValidator.ValidationResult.fail("不支持的文件类型: SVG图片存在脚本执行风险"));
+
+        PoetryResult<String> result = controller.uploadWaifuPreview(file);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("图片安全校验失败").contains("SVG");
+        verify(fileSecurityValidator).validateFile(file, "preview.svg", "image/svg+xml");
+        verifyNoInteractions(fileStorageService);
+    }
 }

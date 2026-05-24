@@ -7,6 +7,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * 文件安全验证工具类
@@ -17,12 +19,29 @@ import java.util.Arrays;
 @Component
 public class FileSecurityValidator {
 
+    private static final Set<String> DISALLOWED_SVG_EXTENSIONS = Set.of("svg", "svgz");
+    private static final Set<String> DISALLOWED_SVG_CONTENT_TYPES = Set.of(
+            "image/svg+xml",
+            "image/svg",
+            "application/svg+xml"
+    );
+    private static final Set<String> DISALLOWED_ACTIVE_EXTENSIONS = Set.of(
+            "html", "htm", "xhtml", "xml",
+            "js", "jse", "mjs", "cjs",
+            "php", "php3", "php4", "php5", "phtml", "phar",
+            "jsp", "jspx", "jsf", "jspa", "jhtml",
+            "asp", "aspx", "asa", "asax", "ascx", "ashx", "asmx",
+            "exe", "dll", "bat", "cmd", "com", "msi", "scr",
+            "vbs", "vbe", "wsf", "wsh", "ps1", "sh", "bash", "zsh",
+            "jar", "class"
+    );
+
     // 文件类型枚举
     public enum FileType {
-        IMAGE("image", 100) { // 增加到100字节以支持SVG的XML声明
+        IMAGE("image", 16) {
             @Override
             public boolean validateMagicNumber(byte[] header) {
-                return isJpeg(header) || isPng(header) || isGif(header) || isBmp(header) || isWebp(header) || isTiff(header) || isSvg(header) || isIco(header);
+                return isJpeg(header) || isPng(header) || isGif(header) || isBmp(header) || isWebp(header) || isTiff(header) || isIco(header);
             }
 
             @Override
@@ -71,9 +90,6 @@ public class FileSecurityValidator {
         private static final byte[] BMP_HEADER = {0x42, 0x4D};
         private static final byte[] WEBP_HEADER = {0x52, 0x49, 0x46, 0x46};
         private static final byte[] ICO_HEADER = {0x00, 0x00, 0x01, 0x00};
-        // SVG - 支持两种格式：直接以<svg开头，或以<?xml开头
-        private static final byte[] SVG_HEADER = {0x3C, 0x73, 0x76, 0x67}; // "<svg"
-        private static final byte[] SVG_XML_HEADER = {0x3C, 0x3F, 0x78, 0x6D, 0x6C}; // "<?xml"
         // TIFF
         private static final byte[] TIFF_BE_HEADER = {0x4D, 0x4D, 0x00, 0x2A}; // TIFF Big Endian
         private static final byte[] TIFF_LE_HEADER = {0x49, 0x49, 0x2A, 0x00}; // TIFF Little Endian
@@ -130,25 +146,6 @@ public class FileSecurityValidator {
         private static boolean isTiff(byte[] header) {
             return matches(header, TIFF_BE_HEADER) || matches(header, TIFF_LE_HEADER);
         }
-        // SVG验证 - 支持两种格式
-        private static boolean isSvg(byte[] header) {
-            // 检查是否以<svg开头
-            if (matches(header, SVG_HEADER)) {
-                return true;
-            }
-            // 检查是否以<?xml开头，并且后续包含<svg
-            if (matches(header, SVG_XML_HEADER) && header.length >= 100) {
-                // 在前100个字节中查找<svg标签（更宽泛的搜索）
-                for (int i = 5; i < Math.min(100, header.length - 3); i++) {
-                    if (header[i] == 0x3C && header[i+1] == 0x73 &&
-                        header[i+2] == 0x76 && header[i+3] == 0x67) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
         // 视频验证
         private static boolean isMp4(byte[] header) {
             return matchesAt(header, 4, FTYP_HEADER)
@@ -216,11 +213,19 @@ public class FileSecurityValidator {
                 return ValidationResult.fail("文件必须包含扩展名");
             }
 
+            String normalizedContentType = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+            if (isDisallowedSvgContent(extension, normalizedContentType)) {
+                return ValidationResult.fail("不支持的文件类型: SVG图片存在脚本执行风险，请转换为PNG、JPG或WebP后上传");
+            }
+            if (DISALLOWED_ACTIVE_EXTENSIONS.contains(extension)) {
+                return ValidationResult.fail("不支持的文件类型: " + extension);
+            }
+
             // 4. 自动识别文件类型并验证
-            FileType detectedType = detectFileType(contentType);
+            FileType detectedType = detectFileType(normalizedContentType);
             if (detectedType != null) {
                 // 已知文件类型 - 执行严格验证
-                if (!isContentTypeMatchExtension(contentType, extension, detectedType)) {
+                if (!isContentTypeMatchExtension(normalizedContentType, extension, detectedType)) {
                     return ValidationResult.fail("Content-Type与文件扩展名不匹配");
                 }
 
@@ -279,7 +284,6 @@ public class FileSecurityValidator {
             if (contentType.startsWith("image/x-icon") || contentType.startsWith("image/vnd.microsoft.icon") || contentType.startsWith("image/ico")) return extension.equals("ico");
             if (contentType.startsWith("image/tiff")) return extension.equals("tiff") || extension.equals("tif");
             if (contentType.startsWith("image/x-photoshop")) return extension.equals("psd");
-            if (contentType.startsWith("image/svg+xml")) return extension.equals("svg");
         } else if (type == FileType.VIDEO) {
             if (contentType.startsWith("video/mp4")) return extension.equals("mp4");
             if (contentType.startsWith("video/avi")) return extension.equals("avi");
@@ -333,6 +337,11 @@ public class FileSecurityValidator {
      */
     private boolean hasText(String str) {
         return str != null && !str.trim().isEmpty();
+    }
+
+    private boolean isDisallowedSvgContent(String extension, String contentType) {
+        return DISALLOWED_SVG_EXTENSIONS.contains(extension)
+                || DISALLOWED_SVG_CONTENT_TYPES.stream().anyMatch(contentType::startsWith);
     }
 
     /**

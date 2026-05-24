@@ -154,31 +154,18 @@ class ImageFormatSupportIntegrationTest {
     }
 
     @Test
-    @DisplayName("测试完整流程：SVG格式（直接存储）")
-    void testCompleteSvgFlow() throws IOException {
+    @DisplayName("测试安全：SVG格式上传应在验证阶段拒绝")
+    void testSvgUploadRejectedBeforeCompression() {
         String svgContent = createTestSvgContent();
         byte[] svgBytes = svgContent.getBytes();
 
         MultipartFile file = createMultipartFile("test.svg", "image/svg+xml", svgBytes);
 
-        // 验证SVG格式
         FileSecurityValidator.ValidationResult validationResult = validator.validateFile(
             file, file.getOriginalFilename(), file.getContentType()
         );
-        assertTrue(validationResult.isSuccess(), "SVG文件验证应该通过");
-
-        // 压缩 - SVG应该直接存储，不压缩
-        ImageCompressUtil.CompressResult compressResult = ImageCompressUtil.smartCompress(file);
-        assertNotNull(compressResult, "SVG压缩结果不应为null");
-        assertEquals(0, compressResult.getCompressionRatio(),
-                "SVG压缩率应该为0（不压缩）");
-        assertEquals(svgBytes.length, compressResult.getData().length,
-                "SVG数据长度应该保持不变");
-        assertEquals("image/svg+xml", compressResult.getContentType(),
-                "Content-Type应该保持为image/svg+xml");
-
-        lastCompressionResult = compressResult;
-        System.out.println("SVG测试：直接存储，原始大小=" + svgBytes.length + "字节");
+        assertFalse(validationResult.isSuccess(), "SVG文件应该在上传验证阶段被拒绝");
+        assertTrue(validationResult.getMessage().contains("SVG"), "拒绝原因应该说明SVG风险");
     }
 
     @Test

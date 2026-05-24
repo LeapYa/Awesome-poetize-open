@@ -37,4 +37,25 @@ public class XssFilterUtilTest {
         String actual = XssFilterUtil.cleanWithBasicFormat(input);
         assertEquals(expected, actual, "BASIC_FORMAT_POLICY should allow basic tags.");
     }
+
+    @Test
+    public void testCleanDoesNotReviveEncodedHtmlTags() {
+        String input = "&lt;img src=x onerror=alert(1)&gt;";
+
+        String actual = XssFilterUtil.clean(input);
+
+        assertFalse(actual.contains("<img"), "Encoded tags must not be unescaped into live HTML.");
+        assertTrue(actual.contains("&lt;img"), "Encoded tags should remain encoded for v-html rendering.");
+    }
+
+    @Test
+    public void testBasicFormatDoesNotReviveEncodedHtmlTags() {
+        String input = "&lt;img src=x onerror=alert(1)&gt;<b>ok</b>";
+
+        String actual = XssFilterUtil.cleanWithBasicFormat(input);
+
+        assertFalse(actual.contains("<img"), "Encoded disallowed tags must not become live HTML.");
+        assertTrue(actual.contains("&lt;img"), "Encoded disallowed tags should remain encoded.");
+        assertTrue(actual.contains("<b>ok</b>"), "Allowed formatting tags should still be preserved.");
+    }
 }

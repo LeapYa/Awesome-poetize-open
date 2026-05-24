@@ -3,6 +3,33 @@
  * 用于处理聊天消息的预览显示，正确处理表情符号和文本混合内容
  */
 
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+function isSafeImageUrl(value = '') {
+  const url = String(value).trim();
+  if (!url || /[\u0000-\u001F\u007F\s"'<>`]/.test(url)) {
+    return false;
+  }
+
+  const protocolMatch = url.match(/^([a-z][a-z0-9+.-]*):/i);
+  if (protocolMatch) {
+    return ['http:', 'https:'].includes(protocolMatch[1].toLowerCase() + ':');
+  }
+
+  return true;
+}
+
+function parseInertHtml(content) {
+  return new DOMParser().parseFromString(String(content), 'text/html').body;
+}
+
 /**
  * 获取消息预览HTML（保留表情图标）
  * @param {string} content - 消息内容（可能包含HTML标签）
@@ -10,10 +37,7 @@
  */
 export function getMessagePreview(content) {
   if (!content) return '';
-  
-  // 创建临时DOM元素来解析HTML
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = content;
+  const parsedBody = parseInertHtml(content);
   
   let previewHtml = '';
   let textLength = 0;
@@ -31,12 +55,12 @@ export function getMessagePreview(content) {
       // 文本节点
       const text = node.textContent;
       const remainingLength = maxLength - textLength;
-      
+
       if (text.length <= remainingLength) {
-        previewHtml += text;
+        previewHtml += escapeHtml(text);
         textLength += text.length;
       } else {
-        previewHtml += text.substr(0, remainingLength);
+        previewHtml += escapeHtml(text.substr(0, remainingLength));
         textLength = maxLength;
         hasMoreContent = true; // 文本被截断，标记有更多内容
       }
@@ -46,11 +70,11 @@ export function getMessagePreview(content) {
         const src = node.getAttribute('src');
         const title = node.getAttribute('title');
         
-        if (src && src.includes('emoji/q')) {
+        if (src && src.includes('emoji/q') && isSafeImageUrl(src)) {
           // 检查是否还有足够空间显示表情
           if (textLength + 2 <= maxLength) {
             // 表情符号，保留img标签，调整大小适配列表
-            previewHtml += `<img src="${src}" ${title ? `title="${title}"` : ''} style="width: 20px; height: 20px; vertical-align: middle; margin: 0 2px;">`;
+            previewHtml += `<img src="${escapeHtml(src)}" ${title ? `title="${escapeHtml(title)}"` : ''} style="width: 20px; height: 20px; vertical-align: middle; margin: 0 2px;">`;
             textLength += 2; // 表情算2个字符长度（因为表情占用空间较大）
           } else {
             hasMoreContent = true; // 表情显示不下，标记有更多内容
@@ -82,7 +106,7 @@ export function getMessagePreview(content) {
   }
   
   // 处理所有子节点
-  for (let child of tempDiv.childNodes) {
+  for (let child of parsedBody.childNodes) {
     if (textLength >= maxLength) {
       hasMoreContent = true;
       break;
@@ -124,12 +148,11 @@ export function hasEmoji(content) {
 export function isImageMessage(content) {
   if (!content) return false;
   
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = content;
+  const parsedBody = parseInertHtml(content);
   
   // 检查是否只包含图片标签，没有其他文本内容
-  const textContent = tempDiv.textContent || tempDiv.innerText || '';
-  const hasImages = content.includes('<img');
+  const textContent = parsedBody.textContent || '';
+  const hasImages = parsedBody.querySelector('img') !== null;
   
   return hasImages && textContent.trim() === '';
 }
@@ -143,10 +166,9 @@ export function getEmojisFromMessage(content) {
   if (!content) return [];
   
   const emojis = [];
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = content;
+  const parsedBody = parseInertHtml(content);
   
-  const images = tempDiv.querySelectorAll('img');
+  const images = parsedBody.querySelectorAll('img');
   images.forEach(img => {
     const src = img.getAttribute('src');
     const title = img.getAttribute('title');

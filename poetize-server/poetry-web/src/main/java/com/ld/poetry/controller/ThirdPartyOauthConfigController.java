@@ -4,6 +4,7 @@ import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
+import com.ld.poetry.entity.dto.ThirdPartyOauthPublicConfigDTO;
 import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import com.ld.poetry.service.ai.rag.RagSyncService;
 import lombok.extern.slf4j.Slf4j;
@@ -52,11 +53,12 @@ public class ThirdPartyOauthConfigController {
     /**
      * 获取启用的第三方登录配置
      */
+    @LoginCheck(0)
     @GetMapping("/enabled")
-    public PoetryResult<List<ThirdPartyOauthConfig>> getEnabledConfigs() {
+    public PoetryResult<List<ThirdPartyOauthPublicConfigDTO>> getEnabledConfigs() {
         try {
             List<ThirdPartyOauthConfig> configs = thirdPartyOauthConfigService.getEnabledConfigs();
-            return PoetryResult.success(configs);
+            return PoetryResult.success(toPublicConfigs(configs));
         } catch (Exception e) {
             log.error("获取启用的第三方登录配置失败", e);
             return PoetryResult.fail("获取启用配置失败: " + e.getMessage());
@@ -66,11 +68,12 @@ public class ThirdPartyOauthConfigController {
     /**
      * 获取激活的第三方登录配置（全局启用且平台启用）
      */
+    @LoginCheck(0)
     @GetMapping("/active")
-    public PoetryResult<List<ThirdPartyOauthConfig>> getActiveConfigs() {
+    public PoetryResult<List<ThirdPartyOauthPublicConfigDTO>> getActiveConfigs() {
         try {
             List<ThirdPartyOauthConfig> configs = thirdPartyOauthConfigService.getActiveConfigs();
-            return PoetryResult.success(configs);
+            return PoetryResult.success(toPublicConfigs(configs));
         } catch (Exception e) {
             log.error("获取激活的第三方登录配置失败", e);
             return PoetryResult.fail("获取激活配置失败: " + e.getMessage());
@@ -283,6 +286,12 @@ public class ThirdPartyOauthConfigController {
             log.error("导出配置失败", e);
             return PoetryResult.fail("导出配置失败: " + e.getMessage());
         }
+    }
+
+    private List<ThirdPartyOauthPublicConfigDTO> toPublicConfigs(List<ThirdPartyOauthConfig> configs) {
+        return configs.stream()
+                .map(ThirdPartyOauthPublicConfigDTO::from)
+                .toList();
     }
 
     private void syncOauthIfSuccessful(boolean success) {

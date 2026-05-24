@@ -115,22 +115,21 @@ class FileSecurityValidatorTest {
     }
 
     @Test
-    @DisplayName("测试SVG文件验证 - 以<svg开头")
+    @DisplayName("测试SVG文件验证 - 以<svg开头应拒绝")
     void testSvgValidation() {
-        // SVG魔数: 3C 73 76 67 (<svg) (至少16字节)
         byte[] svgHeader = {0x3C, 0x73, 0x76, 0x67, 0x20, 0x78, 0x6D, 0x6C, 0x6E, 0x73, 0x3D, 0x22, 0x68, 0x74, 0x74, 0x70};
         FileSecurityValidator.ValidationResult result = validator.validateFile(
             createMockFile("test.svg", "image/svg+xml", svgHeader),
             "test.svg",
             "image/svg+xml"
         );
-        assertTrue(result.isSuccess(), "SVG文件验证应该通过");
+        assertFalse(result.isSuccess(), "SVG文件应该被拒绝");
+        assertTrue(result.getMessage().contains("SVG"), "拒绝原因应该说明SVG风险");
     }
 
     @Test
-    @DisplayName("测试SVG文件验证 - 以<?xml开头")
+    @DisplayName("测试SVG文件验证 - 以<?xml开头应拒绝")
     void testSvgValidationWithXmlHeader() {
-        // SVG with XML header - 创建一个完整的SVG内容
         String svgContent = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"100\"><rect width=\"100\" height=\"100\" fill=\"red\"/></svg>";
         byte[] svgBytes = svgContent.getBytes();
 
@@ -140,7 +139,36 @@ class FileSecurityValidatorTest {
             "image/svg+xml"
         );
 
-        assertTrue(result.isSuccess(), "带XML声明的SVG文件验证应该通过，实际消息: " + result.getMessage());
+        assertFalse(result.isSuccess(), "带XML声明的SVG文件应该被拒绝");
+        assertTrue(result.getMessage().contains("SVG"), "拒绝原因应该说明SVG风险");
+    }
+
+    @Test
+    @DisplayName("测试SVG Content-Type伪装成PNG扩展名应拒绝")
+    void testSvgContentTypeWithPngExtensionRejected() {
+        byte[] svgHeader = {0x3C, 0x73, 0x76, 0x67, 0x20, 0x78, 0x6D, 0x6C, 0x6E, 0x73, 0x3D, 0x22, 0x68, 0x74, 0x74, 0x70};
+        FileSecurityValidator.ValidationResult result = validator.validateFile(
+            createMockFile("test.png", "image/svg+xml", svgHeader),
+            "test.png",
+            "image/svg+xml"
+        );
+
+        assertFalse(result.isSuccess(), "SVG Content-Type即使扩展名伪装成PNG也应该被拒绝");
+        assertTrue(result.getMessage().contains("SVG"), "拒绝原因应该说明SVG风险");
+    }
+
+    @Test
+    @DisplayName("测试SVG扩展名伪装成通用Content-Type应拒绝")
+    void testSvgExtensionWithGenericContentTypeRejected() {
+        byte[] svgHeader = {0x3C, 0x73, 0x76, 0x67, 0x20, 0x78, 0x6D, 0x6C, 0x6E, 0x73, 0x3D, 0x22, 0x68, 0x74, 0x74, 0x70};
+        FileSecurityValidator.ValidationResult result = validator.validateFile(
+            createMockFile("test.svg", "application/octet-stream", svgHeader),
+            "test.svg",
+            "application/octet-stream"
+        );
+
+        assertFalse(result.isSuccess(), "SVG扩展名即使伪装成通用Content-Type也应该被拒绝");
+        assertTrue(result.getMessage().contains("SVG"), "拒绝原因应该说明SVG风险");
     }
 
     @Test
@@ -228,6 +256,20 @@ class FileSecurityValidatorTest {
             "image/jpeg"
         );
         assertFalse(result.isSuccess(), "无效的JPEG魔数应该被拒绝");
+    }
+
+    @Test
+    @DisplayName("测试大小写变体Content-Type不能绕过魔数验证")
+    void testUppercaseImageContentTypeStillValidatesMagicNumber() {
+        byte[] invalidHeader = {0x00, 0x00, 0x00, 0x00};
+        FileSecurityValidator.ValidationResult result = validator.validateFile(
+            createMockFile("test.jpg", "IMAGE/JPEG", invalidHeader),
+            "test.jpg",
+            "IMAGE/JPEG"
+        );
+        assertFalse(result.isSuccess(), "大小写变体Content-Type仍应执行图片魔数校验");
+        assertTrue(result.getMessage().contains("图片文件格式验证失败"),
+                "应返回图片魔数校验失败信息");
     }
 
     @Test

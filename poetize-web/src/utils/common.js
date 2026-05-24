@@ -4,6 +4,33 @@ import { getDefaultAvatar, getAvatarUrl } from './default-avatar'
 import { getAiDefaultAvatar, getAiAvatarUrl } from './ai-avatar'
 import constant from './constant'
 
+function escapeHtmlText(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
+function escapeHtmlAttribute(value = '') {
+  return escapeHtmlText(value)
+}
+
+function isSafeImageUrl(value = '') {
+  const url = String(value).trim()
+  if (!url || /[\u0000-\u001F\u007F\s"'<>`]/.test(url)) {
+    return false
+  }
+
+  const protocolMatch = url.match(/^([a-z][a-z0-9+.-]*):/i)
+  if (protocolMatch) {
+    return ['http:', 'https:'].includes(protocolMatch[1].toLowerCase() + ':')
+  }
+
+  return true
+}
+
 export default {
   /**
    * 获取默认头像
@@ -64,15 +91,18 @@ export default {
           'emoji/q' +
           (index + 1) +
           '.gif'
+        if (!isSafeImageUrl(url)) {
+          return escapeHtmlText(word)
+        }
         return (
           '<img loading="lazy" style="vertical-align: middle;width: 32px;height: 32px" src="' +
-          url +
+          escapeHtmlAttribute(url) +
           '" title="' +
-          word +
+          escapeHtmlAttribute(word) +
           '"/>'
         )
       } else {
-        return word
+        return escapeHtmlText(word)
       }
     })
     return content
@@ -85,16 +115,22 @@ export default {
     content = content.replace(/\[[^\[^\]]+\]/g, (word) => {
       let index = word.indexOf(',')
       if (index > -1) {
-        let arr = word.replace('[', '').replace(']', '').split(',')
+        const value = word.substring(1, word.length - 1)
+        const commaIndex = value.indexOf(',')
+        const title = value.substring(0, commaIndex)
+        const url = value.substring(commaIndex + 1).trim()
+        if (!isSafeImageUrl(url)) {
+          return escapeHtmlText(word)
+        }
         return (
           '<img loading="lazy" class="pictureReg" style="border-radius: 5px;width: 100%;max-width: 250px;display: block" src="' +
-          arr[1] +
+          escapeHtmlAttribute(url) +
           '" title="' +
-          arr[0] +
+          escapeHtmlAttribute(title) +
           '"/>'
         )
       } else {
-        return word
+        return escapeHtmlText(word)
       }
     })
     return content

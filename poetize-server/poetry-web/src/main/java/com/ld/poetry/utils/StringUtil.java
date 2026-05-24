@@ -18,7 +18,14 @@ public class StringUtil {
      * @return 处理后的内容
      */
     public static String removeHtml(String content) {
-        return content.replace("<", "《").replace(">", "》");
+        if (content == null) {
+            return null;
+        }
+        return content.replace("&", "&amp;")
+                .replace("<", "《")
+                .replace(">", "》")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
     }
 
     public static boolean matchString(String text, String searchText) {

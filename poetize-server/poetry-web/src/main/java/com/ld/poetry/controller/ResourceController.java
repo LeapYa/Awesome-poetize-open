@@ -523,17 +523,23 @@ public class ResourceController {
             if (contentType == null || !contentType.startsWith("image/")) {
                 return PoetryResult.fail("只能上传图片文件！");
             }
-            
+
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+            if (!validationResult.isSuccess()) {
+                return PoetryResult.fail("图片安全校验失败: " + validationResult.getMessage());
+            }
+
             // 验证文件大小（2MB限制）
             if (file.getSize() > 2 * 1024 * 1024) {
                 return PoetryResult.fail("图片大小不能超过2MB！");
             }
-            
+
             // 生成唯一文件名
             String originalFilename = file.getOriginalFilename();
-            String extension = originalFilename != null && originalFilename.contains(".") 
-                ? originalFilename.substring(originalFilename.lastIndexOf(".")) 
-                : ".png";
+            String extension = StringUtils.hasText(validationResult.getExtension())
+                    ? "." + validationResult.getExtension()
+                    : ".png";
             String fileName = "waifu_preview_" + System.currentTimeMillis() + extension;
             
             // 使用FileVO存储
