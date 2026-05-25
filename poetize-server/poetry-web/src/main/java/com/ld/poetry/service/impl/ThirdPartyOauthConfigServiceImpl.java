@@ -82,6 +82,10 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
     @Transactional
     public PoetryResult<Boolean> updatePlatformEnabled(String platformType, Boolean enabled) {
         try {
+            if (!StringUtils.hasText(platformType)) {
+                return PoetryResult.fail("平台类型不能为空");
+            }
+
             ThirdPartyOauthConfig config = getByPlatformType(platformType);
             if (config == null) {
                 return PoetryResult.fail("平台配置不存在: " + platformType);
@@ -293,9 +297,12 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             Map<String, Object> result = new HashMap<>();
             List<String> errors = new ArrayList<>();
             List<String> warnings = new ArrayList<>();
+            List<String> validPlatforms = new ArrayList<>();
+            List<String> invalidPlatforms = new ArrayList<>();
 
             for (ThirdPartyOauthConfig config : allConfigs) {
                 String platform = config.getPlatformType();
+                int errorsBeforePlatform = errors.size();
 
                 // 检查必要字段
                 if ("twitter".equals(platform)) {
@@ -320,12 +327,23 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
                 if (config.getEnabled() && !config.getGlobalEnabled()) {
                     warnings.add(platform + ": 平台已启用但全局未启用");
                 }
+
+                if (errors.size() == errorsBeforePlatform) {
+                    validPlatforms.add(platform);
+                } else {
+                    invalidPlatforms.add(platform);
+                }
             }
 
             result.put("valid", errors.isEmpty());
             result.put("errors", errors);
             result.put("warnings", warnings);
             result.put("configCount", allConfigs.size());
+            result.put("total_count", allConfigs.size());
+            result.put("valid_count", validPlatforms.size());
+            result.put("invalid_count", invalidPlatforms.size());
+            result.put("valid_platforms", validPlatforms);
+            result.put("invalid_platforms", invalidPlatforms);
 
             return PoetryResult.success(result);
         } catch (Exception e) {

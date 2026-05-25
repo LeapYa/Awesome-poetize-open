@@ -3,7 +3,10 @@ package com.ld.poetry.service;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import com.ld.poetry.config.AiRestClientConfig;
 import com.ld.poetry.entity.SysAiConfig;
+import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
+import com.ld.poetry.service.ai.AiThinkingAdapterRegistry;
 import com.ld.poetry.service.ai.BaiduTranslationProvider;
 import com.ld.poetry.service.ai.DynamicChatClientFactory;
 import com.ld.poetry.service.ai.LlmTranslationService;
@@ -12,9 +15,9 @@ import com.ld.poetry.service.impl.TranslationServiceImpl;
 import com.ld.poetry.utils.AESCryptoUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
@@ -67,11 +70,14 @@ class ArticleAiManualIntegrationTest {
         assertTrue(StringUtils.hasText(result.get("language")), "翻译语言为空");
     }
 
-    @SpringBootConfiguration
+    @TestConfiguration
     @EnableAutoConfiguration
     @org.mybatis.spring.annotation.MapperScan({"com.ld.poetry.dao", "com.ld.poetry.im.http.dao"})
     @Import({
             AESCryptoUtil.class,
+            AiRestClientConfig.class,
+            AiThinkingAdapterRegistry.class,
+            ApiTranslationProviderRegistry.class,
             DynamicChatClientFactory.class,
             LlmTranslationService.class,
             BaiduTranslationProvider.class,

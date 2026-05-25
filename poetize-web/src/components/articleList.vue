@@ -43,6 +43,10 @@
             :src="article.articleCover"
             fit="cover"
           >
+            <!--
+              安全说明：文章标题、正文和翻译内容仅由站长/管理员写入，普通用户没有发布入口。
+              本组件保留 v-html 是为了渲染后端搜索高亮标签；若未来开放投稿、外部导入或非可信 AI 自动回写，需先接入 HTML sanitize。
+            -->
             <template v-slot:error>
               <div
                 class="image-slot myCenter"

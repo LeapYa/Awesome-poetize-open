@@ -53,7 +53,7 @@ class TranslationServiceImplApiProviderTest {
                 "default_source_lang", "en",
                 "default_target_lang", "zh"));
         when(registry.isApiProvider("deepl")).thenReturn(true);
-        when(registry.translateArticle(config, "Title", "Content", "en", "zh"))
+        when(registry.translateArticle(config, "Title", "Content", "en", "zh", null))
                 .thenReturn(null);
 
         ReflectionTestUtils.setField(service, "sysAiConfigService", sysAiConfigService);
@@ -61,7 +61,7 @@ class TranslationServiceImplApiProviderTest {
         ReflectionTestUtils.setField(service, "llmTranslationService", llmTranslationService);
 
         assertNull(service.translateArticleOnly("Title", "Content", false, null));
-        verify(registry).translateArticle(config, "Title", "Content", "en", "zh");
+        verify(registry).translateArticle(config, "Title", "Content", "en", "zh", null);
         verifyNoInteractions(llmTranslationService);
     }
 }

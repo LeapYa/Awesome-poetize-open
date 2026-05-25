@@ -1,9 +1,15 @@
 package com.ld.poetry.service;
 
+import com.ld.poetry.service.provider.IpLocationProviderFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * 限流功能测试
@@ -22,6 +28,9 @@ public class RateLimiterTest {
     public void testRateLimiterWithMultipleRequests() {
         // 测试连续请求是否被正确限流
         String testIp = "8.8.8.8"; // 使用公网IP进行测试
+        IpLocationProviderFactory providerFactory = mock(IpLocationProviderFactory.class);
+        when(providerFactory.resolveLocation(testIp)).thenReturn("United States|California|0|Google LLC|US");
+        ReflectionTestUtils.setField(locationService, "providerFactory", providerFactory);
         
         // 记录开始时间
         long startTime = System.currentTimeMillis();
@@ -49,6 +58,7 @@ public class RateLimiterTest {
         
         // 验证缓存工作正常
         assertEquals(1, locationService.getCacheSize(), "缓存中应该有一个IP记录");
+        verify(providerFactory, times(1)).resolveLocation(testIp);
     }
     
     @Test 

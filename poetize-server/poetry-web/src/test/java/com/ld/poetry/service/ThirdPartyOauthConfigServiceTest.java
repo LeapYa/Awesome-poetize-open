@@ -1,5 +1,6 @@
 package com.ld.poetry.service;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.dao.ThirdPartyOauthConfigMapper;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
@@ -34,6 +36,7 @@ class ThirdPartyOauthConfigServiceTest {
     @Mock
     private ObjectMapper objectMapper;
 
+    @Spy
     @InjectMocks
     private ThirdPartyOauthConfigServiceImpl configService;
 
@@ -152,15 +155,16 @@ class ThirdPartyOauthConfigServiceTest {
         PoetryResult<Boolean> result = configService.updateGlobalEnabled(true);
 
         // Then
-        assertTrue(result.isSuccess());
-        assertFalse(result.getData());
+        assertFalse(result.isSuccess());
+        assertEquals("更新失败", result.getMessage());
         verify(configMapper).updateGlobalEnabled(true);
     }
 
     @Test
     void testUpdatePlatformEnabledSuccess() {
         // Given
-        when(configMapper.updatePlatformEnabled("github", true)).thenReturn(1);
+        when(configMapper.getByPlatformType("github")).thenReturn(githubConfig);
+        doReturn(true).when(configService).updateById(any(ThirdPartyOauthConfig.class));
 
         // When
         PoetryResult<Boolean> result = configService.updatePlatformEnabled("github", true);
@@ -168,7 +172,8 @@ class ThirdPartyOauthConfigServiceTest {
         // Then
         assertTrue(result.isSuccess());
         assertTrue(result.getData());
-        verify(configMapper).updatePlatformEnabled("github", true);
+        verify(configMapper).getByPlatformType("github");
+        verify(configService).updateById(githubConfig);
     }
 
     @Test
@@ -223,7 +228,7 @@ class ThirdPartyOauthConfigServiceTest {
 
         when(configMapper.updateGlobalEnabled(true)).thenReturn(1);
         when(configMapper.getByPlatformType("github")).thenReturn(githubConfig);
-        when(configService.updateById(any(ThirdPartyOauthConfig.class))).thenReturn(true);
+        doReturn(true).when(configService).updateById(any(ThirdPartyOauthConfig.class));
 
         // When
         PoetryResult<Boolean> result = configService.updateThirdLoginConfig(configMap);
@@ -290,8 +295,8 @@ class ThirdPartyOauthConfigServiceTest {
     @Test
     void testResetToDefault() {
         // Given
-        when(configMapper.getAllConfigs()).thenReturn(allConfigs);
-        when(configService.updateById(any(ThirdPartyOauthConfig.class))).thenReturn(true);
+        doReturn(true).when(configService).remove((Wrapper<ThirdPartyOauthConfig>) isNull());
+        doReturn(PoetryResult.success(true)).when(configService).initDefaultConfigs();
 
         // When
         PoetryResult<Boolean> result = configService.resetToDefault();
@@ -299,7 +304,7 @@ class ThirdPartyOauthConfigServiceTest {
         // Then
         assertTrue(result.isSuccess());
         assertTrue(result.getData());
-        verify(configMapper).getAllConfigs();
-        verify(configService, times(2)).updateById(any(ThirdPartyOauthConfig.class));
+        verify(configService).remove((Wrapper<ThirdPartyOauthConfig>) isNull());
+        verify(configService).initDefaultConfigs();
     }
 }

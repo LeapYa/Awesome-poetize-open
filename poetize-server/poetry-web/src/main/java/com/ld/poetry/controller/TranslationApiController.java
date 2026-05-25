@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.ai.ApiTranslationProvider;
@@ -70,6 +71,7 @@ public class TranslationApiController {
      * "..." }
      */
     @PostMapping("/test/text")
+    @LoginCheck(1)
     public PoetryResult<Map<String, Object>> testTranslateText(
             @RequestBody Map<String, Object> body) {
 
@@ -252,6 +254,7 @@ public class TranslationApiController {
      * max_length: 150, style: "concise" }
      */
     @PostMapping("/test/summary")
+    @LoginCheck(1)
     public PoetryResult<Map<String, Object>> testGenerateSummary(
             @RequestBody Map<String, Object> body) {
 
@@ -429,6 +432,7 @@ public class TranslationApiController {
      * 用极简文本测试 AI 连接是否正常
      */
     @PostMapping("/test/connection")
+    @LoginCheck(1)
     public PoetryResult<Map<String, Object>> testConnection(
             @RequestBody Map<String, Object> body) {
 
@@ -472,6 +476,7 @@ public class TranslationApiController {
      * 测试 TOON 格式编解码
      */
     @PostMapping("/test/toon")
+    @LoginCheck(1)
     public PoetryResult<Map<String, Object>> testToonFormat(
             @RequestBody Map<String, Object> body) {
 

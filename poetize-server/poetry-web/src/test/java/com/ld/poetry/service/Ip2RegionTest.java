@@ -6,12 +6,7 @@ import org.lionsoul.ip2region.xdb.Searcher;
 import org.lionsoul.ip2region.xdb.Version;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.net.URL;
 import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,51 +14,16 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * IP2Region数据库文件测试
  * 验证IP2Region 3.x版本和数据库文件是否正常工作
- * 支持 IPv4 和 IPv6 双栈，自动下载数据库
+ * 支持 IPv4 和 IPv6 双栈，使用随应用打包的测试数据库
  */
 public class Ip2RegionTest {
 
-    private static final String IPV4_DB_URL = "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb";
-    private static final String IPV6_DB_URL = "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v6.xdb";
+    private File ensureDbFile(String fileName) throws Exception {
+        URL resource = Ip2RegionTest.class.getClassLoader().getResource("ip2region/" + fileName);
+        assertNotNull(resource, "测试数据库资源不存在: ip2region/" + fileName);
 
-    private Path getTestDataDir() {
-        return Paths.get(System.getProperty("java.io.tmpdir"), "ip2region_test");
-    }
-
-    private File ensureDbFile(String fileName, String downloadUrl) throws Exception {
-        Path dataDir = getTestDataDir();
-        if (!Files.exists(dataDir)) {
-            Files.createDirectories(dataDir);
-        }
-
-        Path filePath = dataDir.resolve(fileName);
-        File file = filePath.toFile();
-
-        if (file.exists() && file.length() > 1024 * 1024) {
-            return file;
-        }
-
-        System.out.println("下载测试数据库: " + fileName);
-        URI downloadUri = URI.create(downloadUrl);
-        HttpURLConnection conn = (HttpURLConnection) downloadUri.toURL().openConnection();
-        conn.setConnectTimeout(30000);
-        conn.setReadTimeout(120000);
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-
-        if (conn.getResponseCode() != 200) {
-            throw new RuntimeException("下载失败: HTTP " + conn.getResponseCode());
-        }
-
-        try (InputStream is = conn.getInputStream();
-                FileOutputStream fos = new FileOutputStream(file)) {
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = is.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
-            }
-        }
-
-        System.out.println("下载完成: " + file.length() / 1024 / 1024 + " MB");
+        File file = Paths.get(resource.toURI()).toFile();
+        assertTrue(file.exists() && file.length() > 1024, "测试数据库文件无效: " + fileName);
         return file;
     }
 
@@ -71,7 +31,7 @@ public class Ip2RegionTest {
     public void testIp2RegionDatabase() {
         Searcher searcher = null;
         try {
-            File dbFile = ensureDbFile("ip2region_v4.xdb", IPV4_DB_URL);
+            File dbFile = ensureDbFile("ip2region_v4.xdb");
             LongByteArray cBuff = Searcher.loadContentFromFile(dbFile.getAbsolutePath());
             searcher = Searcher.newWithBuffer(Version.IPv4, cBuff);
 
@@ -108,7 +68,7 @@ public class Ip2RegionTest {
     public void testIPv6Database() {
         Searcher searcher = null;
         try {
-            File dbFile = ensureDbFile("ip2region_v6.xdb", IPV6_DB_URL);
+            File dbFile = ensureDbFile("ip2region_v6.xdb");
             LongByteArray cBuff = Searcher.loadContentFromFile(dbFile.getAbsolutePath());
             searcher = Searcher.newWithBuffer(Version.IPv6, cBuff);
 
@@ -141,7 +101,7 @@ public class Ip2RegionTest {
     public void testParseResult() {
         Searcher searcher = null;
         try {
-            File dbFile = ensureDbFile("ip2region_v4.xdb", IPV4_DB_URL);
+            File dbFile = ensureDbFile("ip2region_v4.xdb");
             LongByteArray cBuff = Searcher.loadContentFromFile(dbFile.getAbsolutePath());
             searcher = Searcher.newWithBuffer(Version.IPv4, cBuff);
 

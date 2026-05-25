@@ -75,7 +75,7 @@ public class StringUtil {
             StringBuffer sb = new StringBuffer();
             while (matcher.find()) {
                 String matchedText = matcher.group();
-                matcher.appendReplacement(sb, highlightStart + matchedText + highlightEnd);
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(highlightStart + matchedText + highlightEnd));
             }
             matcher.appendTail(sb);
             result = sb.toString();
@@ -105,7 +105,7 @@ public class StringUtil {
             StringBuffer sb = new StringBuffer();
             while (matcher.find()) {
                 String matchedText = matcher.group();
-                matcher.appendReplacement(sb, highlightStart + matchedText + highlightEnd);
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(highlightStart + matchedText + highlightEnd));
             }
             matcher.appendTail(sb);
             

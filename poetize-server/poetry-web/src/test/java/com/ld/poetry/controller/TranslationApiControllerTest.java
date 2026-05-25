@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
@@ -9,15 +10,25 @@ import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class TranslationApiControllerTest {
+
+    @Test
+    void adminTestEndpointsRequireArticleEditorLogin() throws NoSuchMethodException {
+        assertArticleEditorOnly("testTranslateText");
+        assertArticleEditorOnly("testGenerateSummary");
+        assertArticleEditorOnly("testConnection");
+        assertArticleEditorOnly("testToonFormat");
+    }
 
     @Test
     void testTranslateText_dispatchesTempConfigThroughProviderRegistry() {
@@ -200,5 +211,13 @@ class TranslationApiControllerTest {
             this.lastConfig = config;
             return translated;
         }
+    }
+
+    private void assertArticleEditorOnly(String methodName) throws NoSuchMethodException {
+        Method method = TranslationApiController.class.getDeclaredMethod(methodName, Map.class);
+        LoginCheck loginCheck = method.getAnnotation(LoginCheck.class);
+
+        assertNotNull(loginCheck);
+        assertEquals(1, loginCheck.value());
     }
 }

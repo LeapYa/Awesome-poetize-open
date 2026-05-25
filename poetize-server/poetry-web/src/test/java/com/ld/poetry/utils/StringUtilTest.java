@@ -20,4 +20,22 @@ class StringUtilTest {
     void removeHtmlShouldAllowNullInput() {
         assertNull(StringUtil.removeHtml(null));
     }
+
+    @Test
+    void highlightTextShouldHandleRegexReplacementCharacters() {
+        String actual = StringUtil.highlightText("Price is $9.99 and path C:\\temp", "$9.99 C:\\temp",
+                "<mark>", "</mark>");
+
+        assertEquals("Price is <mark>$9.99</mark> and path <mark>C:\\temp</mark>", actual);
+    }
+
+    @Test
+    void highlightTextWithRegexShouldHandleDollarAndBackslashMatches() {
+        String actual = StringUtil.highlightTextWithRegex("Price is $9.99 and path C:\\temp",
+                "\\$9\\.99|C:\\\\temp",
+                "<mark>",
+                "</mark>");
+
+        assertEquals("Price is <mark>$9.99</mark> and path <mark>C:\\temp</mark>", actual);
+    }
 }
