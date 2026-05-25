@@ -202,14 +202,15 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     }
 
     @Select("<script>" +
-            "select user_agent, count(*) as num" +
+            "select user_agent, ua_type, ua_name, bot_verify_status, bot_verify_reason, count(*) as num" +
             " from history_info" +
-            " where user_agent is not null and user_agent != ''" +
+            " where ((user_agent is not null and user_agent != '')" +
+            " or (ua_type is not null and ua_type != '' and ua_name is not null and ua_name != ''))" +
             " <if test='ignoredIps != null and ignoredIps.size > 0'>" +
             " and ip not in" +
             " <foreach collection='ignoredIps' item='ignoredIp' open='(' separator=',' close=')'>#{ignoredIp}</foreach>" +
             " </if>" +
-            " group by user_agent" +
+            " group by user_agent, ua_type, ua_name, bot_verify_status, bot_verify_reason" +
             " order by num desc" +
             " limit 200" +
             "</script>")
@@ -223,15 +224,16 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     }
 
     @Select("<script>" +
-            "select user_agent, count(*) as num" +
+            "select user_agent, ua_type, ua_name, bot_verify_status, bot_verify_reason, count(*) as num" +
             " from history_info" +
-            " where user_agent is not null and user_agent != ''" +
+            " where ((user_agent is not null and user_agent != '')" +
+            " or (ua_type is not null and ua_type != '' and ua_name is not null and ua_name != ''))" +
             " and date(create_time) = date_sub(curdate(), interval 1 day)" +
             " <if test='ignoredIps != null and ignoredIps.size > 0'>" +
             " and ip not in" +
             " <foreach collection='ignoredIps' item='ignoredIp' open='(' separator=',' close=')'>#{ignoredIp}</foreach>" +
             " </if>" +
-            " group by user_agent" +
+            " group by user_agent, ua_type, ua_name, bot_verify_status, bot_verify_reason" +
             " order by num desc" +
             " limit 200" +
             "</script>")

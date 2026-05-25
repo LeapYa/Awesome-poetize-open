@@ -71,6 +71,12 @@ public class CacheConstants {
      */
     public static final String SEARCH_ARTICLE_PREFIX = CACHE_PREFIX + "search:article:";
 
+    /**
+     * 文章页面存在性缓存键前缀
+     * 格式: poetize:article:page-exists:{tokenType}:{token}
+     */
+    public static final String ARTICLE_PAGE_EXISTS_PREFIX = CACHE_PREFIX + "article:page-exists:";
+
     // ================================ 评论相关缓存 ================================
     
     /**
@@ -243,6 +249,24 @@ public class CacheConstants {
     public static final String DAILY_VISIT_RECORDS_PREFIX = CACHE_PREFIX + "visit:records:";
 
     /**
+     * 搜索引擎IP真实性验证缓存键前缀
+     * 格式: poetize:visit:bot-verify:{engine}:{ip}
+     */
+    public static final String SEARCH_BOT_VERIFY_PREFIX = CACHE_PREFIX + "visit:bot-verify:";
+
+    /**
+     * 伪装搜索引擎短窗口计数缓存键前缀
+     * 格式: poetize:visit:search-bot-spoof:10m:{ip}
+     */
+    public static final String SEARCH_BOT_SPOOF_10M_PREFIX = CACHE_PREFIX + "visit:search-bot-spoof:10m:";
+
+    /**
+     * 伪装搜索引擎长窗口计数缓存键前缀
+     * 格式: poetize:visit:search-bot-spoof:1h:{ip}
+     */
+    public static final String SEARCH_BOT_SPOOF_1H_PREFIX = CACHE_PREFIX + "visit:search-bot-spoof:1h:";
+
+    /**
      * 页面访问5分钟去重缓存键前缀
      * 格式: poetize:visit:dedupe:{ipHash}:{uaHash}:{uriHash}
      */
@@ -357,6 +381,11 @@ public class CacheConstants {
      * 短期缓存过期时间（秒）- 5分钟
      */
     public static final long SHORT_EXPIRE_TIME = 300;
+
+    /**
+     * 文章页面存在性短缓存时间（秒）
+     */
+    public static final long ARTICLE_PAGE_EXISTS_EXPIRE_TIME = SHORT_EXPIRE_TIME;
     
     /**
      * 长期缓存过期时间（秒）- 1小时
@@ -434,6 +463,16 @@ public class CacheConstants {
      */
     public static String buildArticleListKey(Integer sortId, Integer page, Integer size) {
         return ARTICLE_LIST_PREFIX + sortId + ":" + page + ":" + size;
+    }
+
+    /**
+     * 构建文章页面存在性缓存键
+     * @param tokenType token类型（id/slug）
+     * @param token 文章URL token
+     * @return 缓存键
+     */
+    public static String buildArticlePageExistsKey(String tokenType, String token) {
+        return ARTICLE_PAGE_EXISTS_PREFIX + tokenType + ":" + token;
     }
     
     /**
@@ -620,6 +659,34 @@ public class CacheConstants {
      */
     public static String buildDailyVisitRecordsKey(String date) {
         return DAILY_VISIT_RECORDS_PREFIX + date;
+    }
+
+    /**
+     * 构建搜索引擎IP真实性验证缓存键
+     * @param engine 搜索引擎名称
+     * @param ip IP地址
+     * @return 缓存键
+     */
+    public static String buildSearchBotVerifyKey(String engine, String ip) {
+        return SEARCH_BOT_VERIFY_PREFIX + engine + ":" + ip;
+    }
+
+    /**
+     * 构建伪装搜索引擎短窗口计数缓存键
+     * @param ip IP地址
+     * @return 缓存键
+     */
+    public static String buildSearchBotSpoof10mKey(String ip) {
+        return SEARCH_BOT_SPOOF_10M_PREFIX + ip;
+    }
+
+    /**
+     * 构建伪装搜索引擎长窗口计数缓存键
+     * @param ip IP地址
+     * @return 缓存键
+     */
+    public static String buildSearchBotSpoof1hKey(String ip) {
+        return SEARCH_BOT_SPOOF_1H_PREFIX + ip;
     }
 
     /**

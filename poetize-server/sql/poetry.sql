@@ -242,9 +242,15 @@ CREATE TABLE `poetize`.`history_info` (
   `city` varchar(64) DEFAULT NULL COMMENT '城市',
   `page_uri` varchar(512) DEFAULT NULL COMMENT '页面URI',
   `user_agent` varchar(512) DEFAULT NULL COMMENT 'User-Agent',
+  `ua_type` varchar(32) DEFAULT NULL COMMENT 'User-Agent类型',
+  `ua_name` varchar(128) DEFAULT NULL COMMENT 'User-Agent聚合名称',
+  `bot_verify_status` varchar(32) DEFAULT NULL COMMENT '搜索引擎真实性验证状态',
+  `bot_verify_reason` varchar(255) DEFAULT NULL COMMENT '搜索引擎真实性验证原因',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
-    KEY `idx_history_create_time` (`create_time`)
+    KEY `idx_history_create_time` (`create_time`),
+    KEY `idx_history_ua_type_time` (`ua_type`, `create_time`),
+    KEY `idx_history_ua_type_name` (`ua_type`, `ua_name`)
 ) ENGINE=RocksDB DEFAULT CHARSET=utf8mb4 COMMENT='历史信息';
 
 DROP TABLE IF EXISTS `poetize`.`sys_audit_log`;

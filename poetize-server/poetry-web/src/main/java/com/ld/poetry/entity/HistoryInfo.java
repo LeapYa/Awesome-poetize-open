@@ -77,6 +77,30 @@ public class HistoryInfo implements Serializable {
     private String userAgent;
 
     /**
+     * User-Agent类型
+     */
+    @TableField("ua_type")
+    private String uaType;
+
+    /**
+     * User-Agent聚合名称
+     */
+    @TableField("ua_name")
+    private String uaName;
+
+    /**
+     * 搜索引擎真实性验证状态
+     */
+    @TableField("bot_verify_status")
+    private String botVerifyStatus;
+
+    /**
+     * 搜索引擎真实性验证原因
+     */
+    @TableField("bot_verify_reason")
+    private String botVerifyReason;
+
+    /**
      * 创建时间
      */
     @TableField("create_time")

@@ -59,6 +59,9 @@ public class CommonQuery {
     @Autowired
     private Ip2RegionProvider ip2RegionProvider;
 
+    @Autowired
+    private SearchEngineVerifier searchEngineVerifier;
+
     public void saveHistory(String ip) {
         saveHistory(ip, null, null, null, null);
     }
@@ -72,6 +75,14 @@ public class CommonQuery {
      * @param acceptLanguage 用户语言偏好Accept-Language
      */
     public void saveHistory(String ip, String pageUri, String userAgent, String referer, String acceptLanguage) {
+        saveHistory(ip, pageUri, userAgent, referer, acceptLanguage, null);
+    }
+
+    /**
+     * 记录访问历史（带用户请求元数据与UA判定信号）
+     */
+    public void saveHistory(String ip, String pageUri, String userAgent, String referer, String acceptLanguage,
+                            Map<String, Object> uaSignals) {
         try {
             String normalizedIp = cacheService.normalizeVisitIp(ip);
             // 访问统计只记录公网可路由IP，避免Docker网关、内网地址和保留地址污染地域统计。
@@ -91,6 +102,10 @@ public class CommonQuery {
 
             String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
             if (!cacheService.tryMarkPageVisit(normalizedIp, normalizedPageUri, userAgent)) {
+                return;
+            }
+
+            if (!isKnownArticlePage(normalizedPageUri)) {
                 return;
             }
 
@@ -114,14 +129,88 @@ public class CommonQuery {
                     }
                 }
 
-                // 记录访问信息到Redis（不立即写数据库）
+                // 搜索引擎UA先验证IP真实性，再把分类结果写入Redis待同步记录。
+                UserAgentClassifier.BotVerification botVerification = searchEngineVerifier.verify(normalizedIp, userAgent);
+                UserAgentClassifier.UaInfo uaInfo = UserAgentClassifier.classify(userAgent, uaSignals, botVerification);
                 cacheService.recordVisitToRedis(normalizedIp, userId, nation, province, city,
-                        normalizedPageUri, userAgent, referer, acceptLanguage);
+                        normalizedPageUri, userAgent, referer, acceptLanguage, uaInfo);
 
                 // log.info("[saveHistory] 访问记录已保存到Redis缓存，等待定时同步到数据库: {}", ipUser);
             });
         } catch (Exception e) {
             log.error("[saveHistory] 保存访问记录时发生异常: {}", e.getMessage(), e);
+        }
+    }
+
+    private boolean isKnownArticlePage(String pageUri) {
+        String token = PageVisitUtils.extractArticleToken(pageUri);
+        if (!StringUtils.hasText(token)) {
+            return true;
+        }
+
+        try {
+            if (ArticleUrlUtil.isNumericToken(token)) {
+                String normalizedToken = token.trim();
+                String cacheKey = CacheConstants.buildArticlePageExistsKey("id", normalizedToken);
+                Boolean cached = readArticlePageExistsCache(cacheKey);
+                if (cached != null) {
+                    return cached;
+                }
+                return cacheArticlePageExists(cacheKey, countArticleById(normalizedToken) > 0);
+            }
+
+            String slug = ArticleUrlUtil.normalizeSlug(token);
+            if (!ArticleUrlUtil.isValidSlug(slug)) {
+                return false;
+            }
+
+            String cacheKey = CacheConstants.buildArticlePageExistsKey("slug", slug);
+            Boolean cached = readArticlePageExistsCache(cacheKey);
+            if (cached != null) {
+                return cached;
+            }
+
+            Long count = new LambdaQueryChainWrapper<>(articleMapper)
+                    .eq(Article::getArticleSlug, slug)
+                    .eq(Article::getDeleted, false)
+                    .count();
+            return cacheArticlePageExists(cacheKey, count != null && count > 0);
+        } catch (Exception e) {
+            log.warn("[saveHistory] 校验文章页面是否存在失败: pageUri={}, error={}", pageUri, e.getMessage());
+            return true;
+        }
+    }
+
+    private Boolean readArticlePageExistsCache(String cacheKey) {
+        Object cached = cacheService.get(cacheKey);
+        if (cached == null) {
+            return null;
+        }
+        String value = cached.toString();
+        if ("1".equals(value) || "true".equalsIgnoreCase(value)) {
+            return true;
+        }
+        if ("0".equals(value) || "false".equalsIgnoreCase(value)) {
+            return false;
+        }
+        return null;
+    }
+
+    private boolean cacheArticlePageExists(String cacheKey, boolean exists) {
+        cacheService.set(cacheKey, exists ? "1" : "0", CacheConstants.ARTICLE_PAGE_EXISTS_EXPIRE_TIME);
+        return exists;
+    }
+
+    private long countArticleById(String token) {
+        try {
+            Integer articleId = Integer.valueOf(token);
+            Long count = new LambdaQueryChainWrapper<>(articleMapper)
+                    .eq(Article::getId, articleId)
+                    .eq(Article::getDeleted, false)
+                    .count();
+            return count == null ? 0L : count;
+        } catch (NumberFormatException e) {
+            return 0L;
         }
     }
 

@@ -17,6 +17,8 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 消费 Nginx 页面访问日志，补充爬虫/搜索引擎直接抓取 HTML 时不会调用前端接口的问题。
@@ -111,10 +113,48 @@ public class NginxPageVisitLogConsumer {
                     uri,
                     blankToNull(json.getString("user_agent")),
                     blankToNull(json.getString("referer")),
-                    null
+                    blankToNull(json.getString("accept_language")),
+                    buildUaSignals(json)
             );
         } catch (Exception e) {
             log.debug("跳过无法解析的Nginx页面访问日志: {}", e.getMessage());
+        }
+    }
+
+    private Map<String, Object> buildUaSignals(JSONObject json) {
+        Map<String, Object> signals = new HashMap<>();
+        signals.put("visitSource", "nginx");
+        if (hasHeaderSnapshot(json)) {
+            signals.put("headerSnapshot", "true");
+        }
+        putJsonText(signals, json, "accept", "accept");
+        putJsonText(signals, json, "acceptLanguage", "accept_language");
+        putJsonText(signals, json, "secFetchSite", "sec_fetch_site");
+        putJsonText(signals, json, "secFetchMode", "sec_fetch_mode");
+        putJsonText(signals, json, "secFetchDest", "sec_fetch_dest");
+        putJsonText(signals, json, "secFetchUser", "sec_fetch_user");
+        putJsonText(signals, json, "secChUa", "sec_ch_ua");
+        putJsonText(signals, json, "secChUaPlatform", "sec_ch_ua_platform");
+        putJsonText(signals, json, "upgradeInsecureRequests", "upgrade_insecure_requests");
+        return signals;
+    }
+
+    private boolean hasHeaderSnapshot(JSONObject json) {
+        return json.containsKey("accept")
+                || json.containsKey("accept_language")
+                || json.containsKey("sec_fetch_site")
+                || json.containsKey("sec_fetch_mode")
+                || json.containsKey("sec_fetch_dest")
+                || json.containsKey("sec_fetch_user")
+                || json.containsKey("sec_ch_ua")
+                || json.containsKey("sec_ch_ua_platform")
+                || json.containsKey("upgrade_insecure_requests");
+    }
+
+    private void putJsonText(Map<String, Object> signals, JSONObject json, String key, String jsonKey) {
+        String value = json.getString(jsonKey);
+        if (hasText(value) && !"-".equals(value.trim())) {
+            signals.put(key, value.trim());
         }
     }
 

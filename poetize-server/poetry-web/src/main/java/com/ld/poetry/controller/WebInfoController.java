@@ -688,8 +688,7 @@ public class WebInfoController {
             }
 
             try {
-                result.put("ua_yest", UserAgentClassifier.aggregateRawUserAgentCounts(
-                        historyInfoMapper.getHistoryByUserAgentYesterday(cacheService.getVisitIgnoreIpList())));
+                result.put("ua_yest", buildYesterdayUaStats());
             } catch (Exception e) {
                 log.error("获取昨日UA访问统计失败", e);
                 result.put("ua_yest", new ArrayList<>());
@@ -886,6 +885,7 @@ public class WebInfoController {
 
         Map<String, Article> articlesByToken = loadArticlesByToken(buckets.keySet());
         return buckets.values().stream()
+                .filter(bucket -> articlesByToken.containsKey(bucket.token))
                 .sorted((a, b) -> Long.compare(b.num, a.num))
                 .limit(10)
                 .map(bucket -> toArticleVisitRow(bucket, articlesByToken.get(bucket.token)))
@@ -944,10 +944,19 @@ public class WebInfoController {
             return articleMap;
         }
 
-        List<Integer> ids = tokens.stream()
-                .filter(this::isPositiveInteger)
-                .map(Integer::valueOf)
-                .collect(Collectors.toList());
+        Map<Integer, List<String>> idTokens = new HashMap<>();
+        for (String token : tokens) {
+            if (!isPositiveInteger(token)) {
+                continue;
+            }
+            try {
+                idTokens.computeIfAbsent(Integer.valueOf(token), ignored -> new ArrayList<>()).add(token);
+            } catch (NumberFormatException ignored) {
+                // Ignore integer-looking tokens that exceed Integer range.
+            }
+        }
+
+        List<Integer> ids = new ArrayList<>(idTokens.keySet());
         if (!ids.isEmpty()) {
             try {
                 List<Article> articles = new LambdaQueryChainWrapper<>(articleMapper)
@@ -958,6 +967,8 @@ public class WebInfoController {
                 for (Article article : articles) {
                     if (article == null) continue;
                     articleMap.put(String.valueOf(article.getId()), article);
+                    idTokens.getOrDefault(article.getId(), Collections.emptyList())
+                            .forEach(token -> articleMap.put(token, article));
                     if (StringUtils.hasText(article.getArticleSlug())) {
                         articleMap.put(article.getArticleSlug(), article);
                     }
@@ -967,9 +978,18 @@ public class WebInfoController {
             }
         }
 
-        List<String> slugs = tokens.stream()
-                .filter(token -> !isPositiveInteger(token))
-                .collect(Collectors.toList());
+        Map<String, List<String>> slugTokens = new HashMap<>();
+        for (String token : tokens) {
+            if (isPositiveInteger(token)) {
+                continue;
+            }
+            String slug = ArticleUrlUtil.normalizeSlug(token);
+            if (ArticleUrlUtil.isValidSlug(slug)) {
+                slugTokens.computeIfAbsent(slug, ignored -> new ArrayList<>()).add(token);
+            }
+        }
+
+        List<String> slugs = new ArrayList<>(slugTokens.keySet());
         if (!slugs.isEmpty()) {
             try {
                 List<Article> articles = new LambdaQueryChainWrapper<>(articleMapper)
@@ -978,8 +998,15 @@ public class WebInfoController {
                         .eq(Article::getDeleted, false)
                         .list();
                 for (Article article : articles) {
-                    if (article != null && StringUtils.hasText(article.getArticleSlug())) {
-                        articleMap.put(article.getArticleSlug(), article);
+                    if (article == null || !StringUtils.hasText(article.getArticleSlug())) {
+                        continue;
+                    }
+                    String slug = ArticleUrlUtil.normalizeSlug(article.getArticleSlug());
+                    articleMap.put(article.getArticleSlug(), article);
+                    if (StringUtils.hasText(slug)) {
+                        articleMap.put(slug, article);
+                        slugTokens.getOrDefault(slug, Collections.emptyList())
+                                .forEach(token -> articleMap.put(token, article));
                     }
                 }
             } catch (Exception e) {
@@ -1591,6 +1618,22 @@ public class WebInfoController {
                     if (userAgentObj != null) {
                         historyInfo.setUserAgent(userAgentObj.toString());
                     }
+                    Object uaTypeObj = firstNonNull(record.get("uaType"), record.get("ua_type"));
+                    if (uaTypeObj != null) {
+                        historyInfo.setUaType(uaTypeObj.toString());
+                    }
+                    Object uaNameObj = firstNonNull(record.get("uaName"), record.get("ua_name"));
+                    if (uaNameObj != null) {
+                        historyInfo.setUaName(uaNameObj.toString());
+                    }
+                    Object botVerifyStatusObj = firstNonNull(record.get("botVerifyStatus"), record.get("bot_verify_status"));
+                    if (botVerifyStatusObj != null) {
+                        historyInfo.setBotVerifyStatus(botVerifyStatusObj.toString());
+                    }
+                    Object botVerifyReasonObj = firstNonNull(record.get("botVerifyReason"), record.get("bot_verify_reason"));
+                    if (botVerifyReasonObj != null) {
+                        historyInfo.setBotVerifyReason(botVerifyReasonObj.toString());
+                    }
 
                     // 设置创建时间
                     String createTimeStr = (String) record.get("createTime");
@@ -1627,5 +1670,19 @@ public class WebInfoController {
         } catch (Exception e) {
             log.error("同步Redis访问记录到数据库失败", e);
         }
+    }
+
+    private List<Map<String, Object>> buildYesterdayUaStats() {
+        String yesterday = java.time.LocalDate.now().minusDays(1).toString();
+        List<Map<String, Object>> yesterdayRecords = cacheService.getDailyVisitRecords(yesterday);
+        if (yesterdayRecords != null && !yesterdayRecords.isEmpty()) {
+            return UserAgentClassifier.aggregateVisitRecords(yesterdayRecords);
+        }
+        return UserAgentClassifier.aggregateRawUserAgentCounts(
+                historyInfoMapper.getHistoryByUserAgentYesterday(cacheService.getVisitIgnoreIpList()));
+    }
+
+    private Object firstNonNull(Object first, Object second) {
+        return first != null ? first : second;
     }
 }

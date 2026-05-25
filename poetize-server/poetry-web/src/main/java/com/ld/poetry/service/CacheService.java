@@ -1284,6 +1284,16 @@ public class CacheService {
      */
     public void recordVisitToRedis(String ip, Integer userId, String nation, String province, String city,
                                    String pageUri, String userAgent, String referer, String acceptLanguage) {
+        recordVisitToRedis(ip, userId, nation, province, city, pageUri, userAgent, referer, acceptLanguage,
+                UserAgentClassifier.classify(userAgent));
+    }
+
+    /**
+     * 记录访问信息到Redis（带UA分类结果，不立即写数据库）
+     */
+    public void recordVisitToRedis(String ip, Integer userId, String nation, String province, String city,
+                                   String pageUri, String userAgent, String referer, String acceptLanguage,
+                                   UserAgentClassifier.UaInfo uaInfo) {
         try {
             String normalizedIp = normalizeVisitIp(ip);
             if (normalizedIp.isEmpty() || isVisitIpIgnored(normalizedIp)) {
@@ -1304,8 +1314,7 @@ public class CacheService {
                     safeCity
             );
             String safeUserAgent = limitText(userAgent, 512);
-            String safeReferer = limitText(referer, 512);
-            String safeAcceptLanguage = limitText(acceptLanguage, 128);
+            UserAgentClassifier.UaInfo safeUaInfo = uaInfo != null ? uaInfo : UserAgentClassifier.classify(safeUserAgent);
             
             // 将访问记录添加到当日记录集合中（每次访问都记录）
             String recordsKey = CacheConstants.buildDailyVisitRecordsKey(today);
@@ -1330,11 +1339,13 @@ public class CacheService {
             if (safeUserAgent != null && !safeUserAgent.isEmpty()) {
                 visitRecord.put("userAgent", safeUserAgent);
             }
-            if (safeReferer != null && !safeReferer.isEmpty()) {
-                visitRecord.put("referer", safeReferer);
-            }
-            if (safeAcceptLanguage != null && !safeAcceptLanguage.isEmpty()) {
-                visitRecord.put("acceptLanguage", safeAcceptLanguage);
+            if (safeUaInfo != null) {
+                visitRecord.put("uaType", safeUaInfo.type());
+                visitRecord.put("uaName", safeUaInfo.name());
+                visitRecord.put("botVerifyStatus", safeUaInfo.botVerifyStatus());
+                if (safeUaInfo.botVerifyReason() != null && !safeUaInfo.botVerifyReason().isEmpty()) {
+                    visitRecord.put("botVerifyReason", limitText(safeUaInfo.botVerifyReason(), 255));
+                }
             }
             
             // 将记录序列化为JSON字符串并添加到Redis List中

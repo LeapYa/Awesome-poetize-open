@@ -260,6 +260,174 @@ router.beforeEach(async (to, from, next) => {
   next()
 })
 
+function appendVisitSignals(params) {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return
+
+  const automation = detectAutomationSignals()
+
+  // 自动化检测信号放在 POST body 中，避免出现在 Nginx $request 日志里。
+  setVisitSignal(params, 'wd', automation.webdriver)
+  setVisitSignal(params, 'wdt', automation.webdriverType)
+  setVisitSignal(params, 'pl', automation.pluginCount)
+  setVisitSignal(params, 'lg', automation.languageCount)
+  setVisitSignal(params, 'hc', automation.hardwareConcurrency)
+  setVisitSignal(params, 'tp', automation.maxTouchPoints)
+  setVisitSignal(params, 'pf', automation.platform)
+  setVisitSignal(params, 'dm', automation.deviceMemory)
+  setVisitSignal(params, 'tz', automation.timezone)
+  setVisitSignal(params, 'sw', automation.screenWidth)
+  setVisitSignal(params, 'sh', automation.screenHeight)
+  setVisitSignal(params, 'cd', automation.colorDepth)
+  setVisitSignal(params, 'as', automation.score)
+  setVisitSignal(params, 'av', automation.verdict)
+  setVisitSignal(params, 'af', automation.signals.join(','))
+  setVisitSignal(params, 'pqn', automation.permissionsQueryNative)
+  setVisitSignal(params, 'pin', automation.pluginsItemNative)
+  setVisitSignal(params, 'wdd', automation.webdriverDescriptor)
+  setVisitSignal(params, 'glv', automation.webglVendor, 128)
+  setVisitSignal(params, 'glr', automation.webglRenderer, 128)
+}
+
+function detectAutomationSignals() {
+  const signals = []
+  let score = 0
+  const nativePattern = /\[native code\]/
+  const result = {
+    score: 0,
+    verdict: 'LIKELY_HUMAN',
+    signals,
+    webdriver: '',
+    webdriverType: '',
+    pluginCount: '',
+    languageCount: '',
+    hardwareConcurrency: '',
+    maxTouchPoints: '',
+    platform: '',
+    deviceMemory: '',
+    timezone: '',
+    screenWidth: '',
+    screenHeight: '',
+    colorDepth: '',
+    permissionsQueryNative: '',
+    pluginsItemNative: '',
+    webdriverDescriptor: '',
+    webglVendor: '',
+    webglRenderer: '',
+  }
+
+  const addSignal = (code, points) => {
+    signals.push(code)
+    score += points
+  }
+
+  try {
+    result.webdriver = navigator.webdriver === true ? '1' : (navigator.webdriver === false ? '0' : '')
+    result.webdriverType = typeof navigator.webdriver
+    if (navigator.webdriver === true) {
+      addSignal('wd', 80)
+    }
+    if (navigator.webdriver !== undefined && typeof navigator.webdriver !== 'boolean') {
+      addSignal('wdtype', 15)
+    }
+  } catch (e) {}
+
+  try {
+    if (/HeadlessChrome/i.test(navigator.userAgent || '')) {
+      addSignal('hch', 80)
+    }
+  } catch (e) {}
+
+  try {
+    result.pluginCount = navigator.plugins ? navigator.plugins.length : ''
+    result.languageCount = navigator.languages ? navigator.languages.length : ''
+    result.hardwareConcurrency = navigator.hardwareConcurrency
+    result.maxTouchPoints = navigator.maxTouchPoints
+    result.platform = navigator.platform
+    result.deviceMemory = navigator.deviceMemory == null ? 'null' : navigator.deviceMemory
+    if (typeof screen !== 'undefined') {
+      result.screenWidth = screen.width
+      result.screenHeight = screen.height
+      result.colorDepth = screen.colorDepth
+    }
+  } catch (e) {}
+
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+    const debugInfo = gl && gl.getExtension && gl.getExtension('WEBGL_debug_renderer_info')
+    if (gl && debugInfo) {
+      result.webglVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
+      result.webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+      if (/SwiftShader/i.test(result.webglRenderer || '')) {
+        addSignal('swg', 70)
+      }
+    }
+  } catch (e) {}
+
+  try {
+    if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+      result.permissionsQueryNative = nativePattern.test(
+        Function.prototype.toString.call(navigator.permissions.query)
+      ) ? '1' : '0'
+      if (result.permissionsQueryNative === '0') {
+        addSignal('pqn', 75)
+      }
+    }
+  } catch (e) {}
+
+  try {
+    if (navigator.plugins && typeof navigator.plugins.item === 'function') {
+      result.pluginsItemNative = nativePattern.test(
+        Function.prototype.toString.call(navigator.plugins.item)
+      ) ? '1' : '0'
+      if (result.pluginsItemNative === '0') {
+        addSignal('pin', 60)
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(navigator),
+      'webdriver'
+    )
+    if (descriptor) {
+      result.webdriverDescriptor = descriptor.get ? 'getter' : ('value' in descriptor ? 'value' : 'other')
+      if ('value' in descriptor && !descriptor.get) {
+        addSignal('wdprop', 60)
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const leakPattern = /(__playwright|__puppeteer|__nightmare|callPhantom|cdc_|\$cdc)/
+    if (Object.getOwnPropertyNames(window).some((key) => leakPattern.test(key))) {
+      addSignal('gleak', 50)
+    }
+  } catch (e) {}
+
+  try {
+    result.timezone = typeof Intl !== 'undefined' && Intl.DateTimeFormat
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : ''
+    if (result.platform === 'Win32' && result.timezone === 'UTC') {
+      addSignal('wutc', 15)
+    }
+    if (result.platform === 'Win32' && navigator.deviceMemory == null) {
+      addSignal('wdm', 15)
+    }
+  } catch (e) {}
+
+  result.score = score
+  result.verdict = score >= 70 ? 'LIKELY_BOT' : (score >= 25 ? 'SUSPICIOUS' : 'LIKELY_HUMAN')
+  return result
+}
+
+function setVisitSignal(params, key, value, maxLength = 64) {
+  if (value === undefined || value === null || value === '') return
+  params.set(key, String(value).slice(0, maxLength))
+}
+
 // ===== 页面访问量统计 =====
 router.afterEach((to, from) => {
   // 404/403 不统计
@@ -268,9 +436,16 @@ router.afterEach((to, from) => {
   if (from.name && to.fullPath === from.fullPath) return
 
   try {
-    const url = constant.baseURL + '/track/pageview?path=' + encodeURIComponent(to.fullPath)
+    const params = new URLSearchParams({ path: to.fullPath })
+    appendVisitSignals(params)
+    const url = constant.baseURL + '/track/pageview'
     // 使用 fetch + keepalive + credentials 代替 sendBeacon，cookie会自动携带用户身份
-    fetch(url, { method: 'POST', keepalive: true, credentials: 'include' }).catch(() => { })
+    fetch(url, {
+      method: 'POST',
+      keepalive: true,
+      credentials: 'include',
+      body: params
+    }).catch(() => { })
   } catch (e) {
     // 统计失败不影响用户
   }

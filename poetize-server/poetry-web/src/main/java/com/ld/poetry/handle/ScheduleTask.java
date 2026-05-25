@@ -209,6 +209,22 @@ public class ScheduleTask {
                     if (userAgentObj != null) {
                         historyInfo.setUserAgent(userAgentObj.toString());
                     }
+                    Object uaTypeObj = firstNonNull(record.get("uaType"), record.get("ua_type"));
+                    if (uaTypeObj != null) {
+                        historyInfo.setUaType(uaTypeObj.toString());
+                    }
+                    Object uaNameObj = firstNonNull(record.get("uaName"), record.get("ua_name"));
+                    if (uaNameObj != null) {
+                        historyInfo.setUaName(uaNameObj.toString());
+                    }
+                    Object botVerifyStatusObj = firstNonNull(record.get("botVerifyStatus"), record.get("bot_verify_status"));
+                    if (botVerifyStatusObj != null) {
+                        historyInfo.setBotVerifyStatus(botVerifyStatusObj.toString());
+                    }
+                    Object botVerifyReasonObj = firstNonNull(record.get("botVerifyReason"), record.get("bot_verify_reason"));
+                    if (botVerifyReasonObj != null) {
+                        historyInfo.setBotVerifyReason(botVerifyReasonObj.toString());
+                    }
                     
                     // 设置创建时间
                     String createTimeStr = (String) record.get("createTime");
@@ -290,17 +306,18 @@ public class ScheduleTask {
             
             log.info("{}的访问记录同步完成: 成功{}, 失败{}", yesterday, successCount.get(), failCount);
             
-            // 标记成功同步的记录，并清空昨天的缓存（因为昨天已经过去了）
+            // 标记成功同步的记录，保留Redis近7天记录用于昨日UA榜等实时分类统计。
             if (successCount.get() > 0) {
-                // 先标记已同步
                 cacheService.markVisitRecordsAsSynced(yesterday, successfullyInsertedRecords);
-                // 清空昨天的缓存（定时任务可以清空昨天的缓存）
-                cacheService.clearDailyVisitRecords(yesterday);
-                log.info("已清空{}的Redis访问记录缓存", yesterday);
+                log.info("已标记{}的{}条Redis访问记录为已同步，并保留近7天记录用于统计", yesterday, successCount.get());
             }
             
         } catch (Exception e) {
             log.error("同步访问记录到数据库失败", e);
         }
+    }
+
+    private Object firstNonNull(Object first, Object second) {
+        return first != null ? first : second;
     }
 }
