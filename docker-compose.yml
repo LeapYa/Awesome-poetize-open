@@ -1,5 +1,5 @@
 services:
-  # Nginx代理服务，使用OpenResty 1.29.2.3，支持HTTP/3和Brotli
+  # Nginx代理服务，使用OpenResty 1.29.2.5，支持HTTP/3和Brotli
   nginx:
     build:
       context: ./docker/nginx

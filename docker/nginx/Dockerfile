@@ -1,4 +1,4 @@
-FROM openresty/openresty:1.29.2.3-alpine AS builder
+FROM openresty/openresty:1.29.2.5-alpine AS builder
 # 国内镜像会根据行号来添加镜像加速，第3行和第139行会添加镜像加速，如果这里修改了，记得修改国内镜像的行号
 
 RUN apk update
@@ -138,7 +138,7 @@ RUN set -e; \
 #     echo "✅ lua-resty-http安装完成"
 
 # 最终镜像
-FROM openresty/openresty:1.29.2.3-alpine
+FROM openresty/openresty:1.29.2.5-alpine
 
 RUN apk update
 
