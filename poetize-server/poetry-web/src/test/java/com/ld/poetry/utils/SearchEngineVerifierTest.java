@@ -1,8 +1,10 @@
 package com.ld.poetry.utils;
 
 import com.ld.poetry.constants.CacheConstants;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,33 @@ class SearchEngineVerifierTest {
             "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
     private static final String BING_UA =
             "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)";
+    private static final String YAHOO_UA =
+            "Mozilla/5.0 (compatible; Yahoo! Slurp; http://help.yahoo.com/help/us/ysearch/slurp)";
+    private static final String BAIDU_UA =
+            "Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)";
+    private static final String QIHOO_360_UA =
+            "Mozilla/5.0 (compatible; 360Spider; +http://www.so.com/help/help_3_2.html)";
+    private static final String BYTESPIDER_UA =
+            "Mozilla/5.0 (compatible; Bytespider; spider-feedback@bytedance.com)";
+    private static final String SOGOU_UA =
+            "Sogou web spider/4.0(+http://www.sogou.com/docs/help/webmasters.htm#07)";
+    private static final String YANDEX_UA =
+            "Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)";
+    private static final String DUCKDUCKBOT_UA =
+            "DuckDuckBot/1.1; (+http://duckduckgo.com/duckduckbot.html)";
+    private static final String APPLE_UA =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+                    + "(KHTML, like Gecko) Applebot/0.1";
+    private static final String YISOU_UA =
+            "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 "
+                    + "(KHTML, like Gecko) Chrome/69.0.3497.81 YisouSpider/5.0 Safari/537.36";
+    private final List<SearchEngineVerifier> verifiers = new ArrayList<>();
+
+    @AfterEach
+    void shutdownVerifiers() {
+        verifiers.forEach(SearchEngineVerifier::shutdown);
+        verifiers.clear();
+    }
 
     @Test
     void verifiesGooglebotWhenReverseAndForwardDnsMatch() throws Exception {
@@ -24,7 +53,7 @@ class SearchEngineVerifierTest {
         FakeDnsResolver dnsResolver = new FakeDnsResolver()
                 .reverse("66.249.66.1", "crawl-66-249-66-1.googlebot.com")
                 .forward("crawl-66-249-66-1.googlebot.com", List.of("66.249.66.1"));
-        SearchEngineVerifier verifier = new SearchEngineVerifier(redisUtil, dnsResolver);
+        SearchEngineVerifier verifier = newVerifier(redisUtil, dnsResolver);
 
         UserAgentClassifier.BotVerification result = awaitStatus(verifier, "66.249.66.1", GOOGLE_UA, "verified");
 
@@ -38,7 +67,7 @@ class SearchEngineVerifierTest {
         FakeDnsResolver dnsResolver = new FakeDnsResolver()
                 .reverse("157.55.39.1", "msnbot-157-55-39-1.search.msn.com")
                 .forward("msnbot-157-55-39-1.search.msn.com", List.of("157.55.39.1"));
-        SearchEngineVerifier verifier = new SearchEngineVerifier(redisUtil, dnsResolver);
+        SearchEngineVerifier verifier = newVerifier(redisUtil, dnsResolver);
 
         UserAgentClassifier.BotVerification result = awaitStatus(verifier, "157.55.39.1", BING_UA, "verified");
 
@@ -47,12 +76,49 @@ class SearchEngineVerifierTest {
     }
 
     @Test
+    void verifiesAdditionalSearchEnginesWhenReverseAndForwardDnsMatch() throws Exception {
+        List<BotCase> cases = List.of(
+                new BotCase("Yahoo Slurp", YAHOO_UA, "74.6.67.218",
+                        "lj612134.crawl.yahoo.net"),
+                new BotCase("Baiduspider", BAIDU_UA, "180.76.15.10",
+                        "baiduspider-180-76-15-10.crawl.baidu.com"),
+                new BotCase("360 Spider", QIHOO_360_UA, "101.226.167.226",
+                        "crawler-101-226-167-226.qhims.com"),
+                new BotCase("Bytespider", BYTESPIDER_UA, "110.249.201.100",
+                        "bytespider-110-249-201-100.crawl.bytedance.com"),
+                new BotCase("Sogou Spider", SOGOU_UA, "106.120.173.96",
+                        "sogou-106-120-173-96.spider.sogou.com"),
+                new BotCase("YandexBot", YANDEX_UA, "5.255.253.20",
+                        "5-255-253-20.spider.yandex.com"),
+                new BotCase("Applebot", APPLE_UA, "17.58.101.179",
+                        "17-58-101-179.applebot.apple.com")
+        );
+
+        for (BotCase botCase : cases) {
+            FakeRedisUtil redisUtil = new FakeRedisUtil();
+            FakeDnsResolver dnsResolver = new FakeDnsResolver()
+                    .reverse(botCase.ip(), botCase.host())
+                    .forward(botCase.host(), List.of(botCase.ip()));
+            SearchEngineVerifier verifier = newVerifier(redisUtil, dnsResolver);
+
+            UserAgentClassifier.BotVerification result = awaitStatus(
+                    verifier,
+                    botCase.ip(),
+                    botCase.userAgent(),
+                    "verified");
+
+            assertEquals(botCase.displayName(), result.claimedName());
+            assertEquals("verified", result.status());
+        }
+    }
+
+    @Test
     void failsGooglebotWhenPtrUsesNonOfficialDomain() throws Exception {
         FakeRedisUtil redisUtil = new FakeRedisUtil();
         FakeDnsResolver dnsResolver = new FakeDnsResolver()
                 .reverse("203.0.113.10", "crawler.example.com")
                 .forward("crawler.example.com", List.of("203.0.113.10"));
-        SearchEngineVerifier verifier = new SearchEngineVerifier(redisUtil, dnsResolver);
+        SearchEngineVerifier verifier = newVerifier(redisUtil, dnsResolver);
 
         UserAgentClassifier.BotVerification result = awaitStatus(verifier, "203.0.113.10", GOOGLE_UA, "failed");
         UserAgentClassifier.UaInfo uaInfo = UserAgentClassifier.classify(GOOGLE_UA, Map.of(), result);
@@ -63,9 +129,66 @@ class SearchEngineVerifierTest {
     }
 
     @Test
+    void failsBaiduspiderWhenPtrUsesNonOfficialDomain() throws Exception {
+        FakeRedisUtil redisUtil = new FakeRedisUtil();
+        FakeDnsResolver dnsResolver = new FakeDnsResolver()
+                .reverse("203.0.113.20", "crawler.example.com")
+                .forward("crawler.example.com", List.of("203.0.113.20"));
+        SearchEngineVerifier verifier = newVerifier(redisUtil, dnsResolver);
+
+        UserAgentClassifier.BotVerification result = awaitStatus(verifier, "203.0.113.20", BAIDU_UA, "failed");
+        UserAgentClassifier.UaInfo uaInfo = UserAgentClassifier.classify(BAIDU_UA, Map.of(), result);
+
+        assertEquals("failed", result.status());
+        assertEquals("spoofed_search_engine", uaInfo.type());
+        assertEquals("疑似伪装 Baiduspider", uaInfo.name());
+    }
+
+    @Test
+    void verifiesDuckDuckBotAgainstOfficialIpPrefixes() throws Exception {
+        FakeIpPrefixProvider ipPrefixProvider = new FakeIpPrefixProvider(List.of("20.191.44.119/32", "203.0.113.0/24"));
+        SearchEngineVerifier verifier = newVerifier(new FakeRedisUtil(), new FakeDnsResolver(), ipPrefixProvider);
+
+        UserAgentClassifier.BotVerification result = awaitStatus(
+                verifier,
+                "20.191.44.119",
+                DUCKDUCKBOT_UA,
+                "verified");
+
+        assertEquals("DuckDuckBot", result.claimedName());
+        assertEquals("verified", result.status());
+    }
+
+    @Test
+    void failsDuckDuckBotWhenIpIsNotInOfficialPrefixes() throws Exception {
+        FakeIpPrefixProvider ipPrefixProvider = new FakeIpPrefixProvider(List.of("20.191.44.119/32"));
+        SearchEngineVerifier verifier = newVerifier(new FakeRedisUtil(), new FakeDnsResolver(), ipPrefixProvider);
+
+        UserAgentClassifier.BotVerification result = awaitStatus(
+                verifier,
+                "198.51.100.42",
+                DUCKDUCKBOT_UA,
+                "failed");
+
+        assertEquals("DuckDuckBot", result.claimedName());
+        assertEquals("failed", result.status());
+    }
+
+    @Test
+    void returnsUnknownForRecognizedSearchEngineWithoutReliableVerificationRule() {
+        SearchEngineVerifier verifier = newVerifier(new FakeRedisUtil(), new FakeDnsResolver());
+
+        UserAgentClassifier.BotVerification result = verifier.verify("203.0.113.30", YISOU_UA);
+
+        assertEquals("YisouSpider", result.claimedName());
+        assertEquals("unknown", result.status());
+        assertEquals("暂无可信IP验证规则", result.reason());
+    }
+
+    @Test
     void returnsUnknownImmediatelyWhenDnsIsSlowThenCachesResult() throws Exception {
         FakeRedisUtil redisUtil = new FakeRedisUtil();
-        SearchEngineVerifier verifier = new SearchEngineVerifier(redisUtil, new SlowDnsResolver());
+        SearchEngineVerifier verifier = newVerifier(redisUtil, new SlowDnsResolver());
 
         long started = System.nanoTime();
         UserAgentClassifier.BotVerification result = verifier.verify("66.249.66.1", GOOGLE_UA);
@@ -87,7 +210,7 @@ class SearchEngineVerifierTest {
         FakeDnsResolver dnsResolver = new FakeDnsResolver()
                 .reverse("203.0.113.10", "crawler.example.com")
                 .forward("crawler.example.com", List.of("203.0.113.10"));
-        SearchEngineVerifier verifier = new SearchEngineVerifier(redisUtil, dnsResolver);
+        SearchEngineVerifier verifier = newVerifier(redisUtil, dnsResolver);
 
         awaitStatus(verifier, "203.0.113.10", GOOGLE_UA, "failed");
         for (int i = 0; i < 20; i++) {
@@ -109,6 +232,23 @@ class SearchEngineVerifierTest {
             Thread.sleep(10);
         }
         return result;
+    }
+
+    private SearchEngineVerifier newVerifier(RedisUtil redisUtil, SearchEngineVerifier.DnsResolver dnsResolver) {
+        SearchEngineVerifier verifier = new SearchEngineVerifier(redisUtil, dnsResolver);
+        verifiers.add(verifier);
+        return verifier;
+    }
+
+    private SearchEngineVerifier newVerifier(RedisUtil redisUtil,
+                                             SearchEngineVerifier.DnsResolver dnsResolver,
+                                             SearchEngineVerifier.IpPrefixProvider ipPrefixProvider) {
+        SearchEngineVerifier verifier = new SearchEngineVerifier(redisUtil, dnsResolver, ipPrefixProvider);
+        verifiers.add(verifier);
+        return verifier;
+    }
+
+    private record BotCase(String displayName, String userAgent, String ip, String host) {
     }
 
     private static final class FakeDnsResolver implements SearchEngineVerifier.DnsResolver {
@@ -146,6 +286,19 @@ class SearchEngineVerifierTest {
         @Override
         public List<String> forwardLookup(String host) {
             return List.of("66.249.66.1");
+        }
+    }
+
+    private static final class FakeIpPrefixProvider implements SearchEngineVerifier.IpPrefixProvider {
+        private final List<String> prefixes;
+
+        private FakeIpPrefixProvider(List<String> prefixes) {
+            this.prefixes = prefixes;
+        }
+
+        @Override
+        public List<String> fetch(String url) {
+            return prefixes;
         }
     }
 

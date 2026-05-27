@@ -288,6 +288,49 @@ function appendVisitSignals(params) {
   setVisitSignal(params, 'glr', automation.webglRenderer, 128)
 }
 
+let cachedWebglInfo
+
+function getWebglInfo() {
+  if (cachedWebglInfo) return cachedWebglInfo
+
+  let canvas
+  let gl
+  const info = {
+    vendor: '',
+    renderer: '',
+  }
+
+  try {
+    canvas = document.createElement('canvas')
+    canvas.width = 1
+    canvas.height = 1
+    gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+    const debugInfo = gl && gl.getExtension && gl.getExtension('WEBGL_debug_renderer_info')
+    if (gl && debugInfo) {
+      info.vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
+      info.renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+    }
+  } catch (e) {
+  } finally {
+    try {
+      const loseContext = gl && gl.getExtension && gl.getExtension('WEBGL_lose_context')
+      if (loseContext && typeof loseContext.loseContext === 'function') {
+        loseContext.loseContext()
+      }
+    } catch (e) {}
+    if (canvas) {
+      canvas.width = 0
+      canvas.height = 0
+      canvas.remove()
+    }
+    gl = null
+    canvas = null
+  }
+
+  cachedWebglInfo = info
+  return info
+}
+
 function detectAutomationSignals() {
   const signals = []
   let score = 0
@@ -352,15 +395,11 @@ function detectAutomationSignals() {
   } catch (e) {}
 
   try {
-    const canvas = document.createElement('canvas')
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-    const debugInfo = gl && gl.getExtension && gl.getExtension('WEBGL_debug_renderer_info')
-    if (gl && debugInfo) {
-      result.webglVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
-      result.webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
-      if (/SwiftShader/i.test(result.webglRenderer || '')) {
-        addSignal('swg', 70)
-      }
+    const webglInfo = getWebglInfo()
+    result.webglVendor = webglInfo.vendor
+    result.webglRenderer = webglInfo.renderer
+    if (/SwiftShader/i.test(result.webglRenderer || '')) {
+      addSignal('swg', 70)
     }
   } catch (e) {}
 

@@ -99,11 +99,22 @@ class UserAgentClassifierTest {
         UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                         + "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                Map.of("visitSource", "nginx", "accept", "*/*"));
+                Map.of("visitSource", "nginx", "headerSnapshot", "1", "accept", "application/json"));
 
         assertEquals("crawler", info.type());
         assertEquals("爬虫", info.typeLabel());
         assertEquals("伪装浏览器请求", info.name());
+    }
+
+    @Test
+    void doesNotTreatWildcardAcceptAloneAsDisguisedBrowserRequest() {
+        UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        + "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                Map.of("visitSource", "nginx", "headerSnapshot", "1", "accept", "*/*"));
+
+        assertEquals("pc", info.type());
+        assertEquals("Chrome", info.name());
     }
 
     @Test
@@ -143,6 +154,28 @@ class UserAgentClassifierTest {
         assertEquals("unknown", unverified.botVerifyStatus());
         assertEquals("Googlebot", verified.name());
         assertEquals("verified", verified.botVerifyStatus());
+    }
+
+    @Test
+    void recognizesYahooAndYisouAsSearchEngines() {
+        UserAgentClassifier.UaInfo yahoo = UserAgentClassifier.classify(
+                "Mozilla/5.0 (compatible; Yahoo! Slurp; http://help.yahoo.com/help/us/ysearch/slurp)");
+        UserAgentClassifier.UaInfo yisou = UserAgentClassifier.classify(
+                "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 "
+                        + "(KHTML, like Gecko) Chrome/69.0.3497.81 YisouSpider/5.0 Safari/537.36");
+
+        assertEquals("search_engine", yahoo.type());
+        assertEquals("Yahoo Slurp（未验证）", yahoo.name());
+        assertEquals("search_engine", yisou.type());
+        assertEquals("YisouSpider（未验证）", yisou.name());
+    }
+
+    @Test
+    void recognizesAdditionalKnownSearchEngineBots() {
+        assertEquals("DuckDuckBot（未验证）", UserAgentClassifier.classify("DuckDuckBot/1.1").name());
+        assertEquals("Applebot（未验证）", UserAgentClassifier.classify("Applebot/0.1").name());
+        assertEquals("PetalBot（未验证）", UserAgentClassifier.classify("PetalBot").name());
+        assertEquals("Sosospider（未验证）", UserAgentClassifier.classify("Sosospider+(+http://help.soso.com/webspider.htm)").name());
     }
 
     @Test
@@ -186,13 +219,15 @@ class UserAgentClassifierTest {
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                                 + "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
                         "visitSource", "nginx",
-                        "accept", "*/*"),
+                        "headerSnapshot", "1",
+                        "accept", "application/json"),
                 Map.of(
                         "userAgent",
                         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:126.0) "
                                 + "Gecko/20100101 Firefox/126.0",
                         "visitSource", "nginx",
-                        "accept", "*/*"));
+                        "headerSnapshot", "1",
+                        "accept", "application/json"));
 
         List<Map<String, Object>> result = UserAgentClassifier.aggregateVisitRecords(records);
 

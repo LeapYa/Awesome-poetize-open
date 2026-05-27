@@ -224,13 +224,18 @@ public final class UserAgentClassifier {
         if (lower.contains("googlebot")) return "Googlebot";
         if (lower.contains("baiduspider")) return "Baiduspider";
         if (lower.contains("bingbot")) return "Bingbot";
+        if (lower.contains("yahoo! slurp") || lower.contains("yahoo slurp") || lower.contains("slurp")) {
+            return "Yahoo Slurp";
+        }
         if (lower.contains("sogou")) return "Sogou Spider";
         if (lower.contains("360spider") || lower.contains("haosouspider")) return "360 Spider";
         if (lower.contains("yandexbot")) return "YandexBot";
         if (lower.contains("duckduckbot")) return "DuckDuckBot";
         if (lower.contains("bytespider")) return "Bytespider";
+        if (lower.contains("yisouspider")) return "YisouSpider";
         if (lower.contains("petalbot")) return "PetalBot";
         if (lower.contains("applebot")) return "Applebot";
+        if (lower.contains("sosospider")) return "Sosospider";
         if (lower.contains("semrushbot")) return "SemrushBot";
         if (lower.contains("ahrefsbot")) return "AhrefsBot";
         return null;
@@ -393,7 +398,10 @@ public final class UserAgentClassifier {
         }
 
         boolean hasAcceptLanguage = hasText(firstText(signals, "acceptLanguage", "accept_language", "lang"));
-        boolean acceptsHtml = contains(firstText(signals, "accept"), "text/html");
+        String accept = firstText(signals, "accept");
+        boolean acceptsHtml = contains(accept, "text/html");
+        boolean wildcardAccept = "*/*".equals(accept != null ? accept.trim() : "");
+        boolean clearlyNonBrowserAccept = hasText(accept) && !acceptsHtml && !wildcardAccept;
         boolean hasFetchMetadata = hasAnyText(signals,
                 "secFetchSite", "sec_fetch_site",
                 "secFetchMode", "sec_fetch_mode",
@@ -403,7 +411,8 @@ public final class UserAgentClassifier {
                 "secChUaPlatform", "sec_ch_ua_platform",
                 "upgradeInsecureRequests", "upgrade_insecure_requests");
 
-        if (!hasRuntimeSignals(signals) && !hasAcceptLanguage && !acceptsHtml && !hasFetchMetadata) {
+        if (!hasRuntimeSignals(signals) && !hasAcceptLanguage && !acceptsHtml && !hasFetchMetadata
+                && (!hasText(accept) || clearlyNonBrowserAccept)) {
             return "伪装浏览器请求";
         }
 

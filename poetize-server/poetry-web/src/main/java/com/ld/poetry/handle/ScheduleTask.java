@@ -4,6 +4,7 @@ import com.ld.poetry.dao.HistoryInfoMapper;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.SysAuditLogService;
+import com.ld.poetry.utils.HistoryInfoRecordMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -190,50 +191,11 @@ public class ScheduleTask {
             
             for (Map<String, Object> record : visitRecords) {
                 try {
-                    com.ld.poetry.entity.HistoryInfo historyInfo = new com.ld.poetry.entity.HistoryInfo();
-                    historyInfo.setIp((String) record.get("ip"));
-                    
-                    Object userIdObj = record.get("userId");
-                    if (userIdObj != null) {
-                        historyInfo.setUserId(Integer.valueOf(userIdObj.toString()));
-                    }
-                    
-                    historyInfo.setNation((String) record.get("nation"));
-                    historyInfo.setProvince((String) record.get("province"));
-                    historyInfo.setCity((String) record.get("city"));
-                    Object pageUriObj = record.get("pageUri");
-                    if (pageUriObj != null) {
-                        historyInfo.setPageUri(pageUriObj.toString());
-                    }
-                    Object userAgentObj = record.get("userAgent");
-                    if (userAgentObj != null) {
-                        historyInfo.setUserAgent(userAgentObj.toString());
-                    }
-                    Object uaTypeObj = firstNonNull(record.get("uaType"), record.get("ua_type"));
-                    if (uaTypeObj != null) {
-                        historyInfo.setUaType(uaTypeObj.toString());
-                    }
-                    Object uaNameObj = firstNonNull(record.get("uaName"), record.get("ua_name"));
-                    if (uaNameObj != null) {
-                        historyInfo.setUaName(uaNameObj.toString());
-                    }
-                    Object botVerifyStatusObj = firstNonNull(record.get("botVerifyStatus"), record.get("bot_verify_status"));
-                    if (botVerifyStatusObj != null) {
-                        historyInfo.setBotVerifyStatus(botVerifyStatusObj.toString());
-                    }
-                    Object botVerifyReasonObj = firstNonNull(record.get("botVerifyReason"), record.get("bot_verify_reason"));
-                    if (botVerifyReasonObj != null) {
-                        historyInfo.setBotVerifyReason(botVerifyReasonObj.toString());
-                    }
-                    
-                    // 设置创建时间
-                    String createTimeStr = (String) record.get("createTime");
-                    if (createTimeStr != null) {
-                        // 解析数据库兼容格式的时间字符串 yyyy-MM-dd HH:mm:ss
-                        historyInfo.setCreateTime(java.time.LocalDateTime.parse(createTimeStr, formatter));
-                    } else {
-                        historyInfo.setCreateTime(java.time.LocalDateTime.now().minusDays(1));
-                    }
+                    com.ld.poetry.entity.HistoryInfo historyInfo = HistoryInfoRecordMapper.fromVisitRecord(
+                            record,
+                            formatter,
+                            java.time.LocalDateTime.now().minusDays(1)
+                    );
                     
                     historyInfoList.add(historyInfo);
                     validRecords.add(record);
@@ -315,9 +277,5 @@ public class ScheduleTask {
         } catch (Exception e) {
             log.error("同步访问记录到数据库失败", e);
         }
-    }
-
-    private Object firstNonNull(Object first, Object second) {
-        return first != null ? first : second;
     }
 }

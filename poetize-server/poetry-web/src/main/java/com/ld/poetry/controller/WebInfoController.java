@@ -1599,52 +1599,13 @@ public class WebInfoController {
             // 批量插入访问记录到数据库
             for (Map<String, Object> record : visitRecords) {
                 try {
-                    com.ld.poetry.entity.HistoryInfo historyInfo = new com.ld.poetry.entity.HistoryInfo();
-                    historyInfo.setIp((String) record.get("ip"));
-
-                    Object userIdObj = record.get("userId");
-                    if (userIdObj != null) {
-                        historyInfo.setUserId(Integer.valueOf(userIdObj.toString()));
-                    }
-
-                    historyInfo.setNation((String) record.get("nation"));
-                    historyInfo.setProvince((String) record.get("province"));
-                    historyInfo.setCity((String) record.get("city"));
-                    Object pageUriObj = record.get("pageUri");
-                    if (pageUriObj != null) {
-                        historyInfo.setPageUri(pageUriObj.toString());
-                    }
-                    Object userAgentObj = record.get("userAgent");
-                    if (userAgentObj != null) {
-                        historyInfo.setUserAgent(userAgentObj.toString());
-                    }
-                    Object uaTypeObj = firstNonNull(record.get("uaType"), record.get("ua_type"));
-                    if (uaTypeObj != null) {
-                        historyInfo.setUaType(uaTypeObj.toString());
-                    }
-                    Object uaNameObj = firstNonNull(record.get("uaName"), record.get("ua_name"));
-                    if (uaNameObj != null) {
-                        historyInfo.setUaName(uaNameObj.toString());
-                    }
-                    Object botVerifyStatusObj = firstNonNull(record.get("botVerifyStatus"), record.get("bot_verify_status"));
-                    if (botVerifyStatusObj != null) {
-                        historyInfo.setBotVerifyStatus(botVerifyStatusObj.toString());
-                    }
-                    Object botVerifyReasonObj = firstNonNull(record.get("botVerifyReason"), record.get("bot_verify_reason"));
-                    if (botVerifyReasonObj != null) {
-                        historyInfo.setBotVerifyReason(botVerifyReasonObj.toString());
-                    }
-
-                    // 设置创建时间
-                    String createTimeStr = (String) record.get("createTime");
-                    if (createTimeStr != null) {
-                        // 使用与CacheService相同的日期格式 yyyy-MM-dd HH:mm:ss
-                        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
-                                .ofPattern("yyyy-MM-dd HH:mm:ss");
-                        historyInfo.setCreateTime(java.time.LocalDateTime.parse(createTimeStr, formatter));
-                    } else {
-                        historyInfo.setCreateTime(java.time.LocalDateTime.now());
-                    }
+                    java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
+                            .ofPattern("yyyy-MM-dd HH:mm:ss");
+                    com.ld.poetry.entity.HistoryInfo historyInfo = HistoryInfoRecordMapper.fromVisitRecord(
+                            record,
+                            formatter,
+                            java.time.LocalDateTime.now()
+                    );
 
                     // 插入数据库
                     historyInfoMapper.insert(historyInfo);
@@ -1680,9 +1641,5 @@ public class WebInfoController {
         }
         return UserAgentClassifier.aggregateRawUserAgentCounts(
                 historyInfoMapper.getHistoryByUserAgentYesterday(cacheService.getVisitIgnoreIpList()));
-    }
-
-    private Object firstNonNull(Object first, Object second) {
-        return first != null ? first : second;
     }
 }
