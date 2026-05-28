@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-05-22
+## 修改时间: 2026-05-29
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.11.17
+## 版本: 1.12.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.11.19"
+POETIZE_VERSION="1.12.0"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -13117,6 +13117,7 @@ show_help() {
     printf "${BLUE}配置管理:${NC}\n"
     printf "  -oauth-proxy              OAuth 代理配置向导（三步引导配置 GitHub/Google 等海外登录代理）\n"
     printf "  -enable-https             手动启用 HTTPS（自动检测前置条件并执行 enable-https.sh）\n"
+    printf "  -change-domain            更换网站域名（交互式，自动更新 nginx/certbot 配置）\n"
     printf "\n"
     printf "${BLUE}常用示例:${NC}\n"
     printf "  poetize install --domain example.com --skip-dns-check\n"
@@ -13150,12 +13151,12 @@ show_interactive_menu() {
         printf "  ${YELLOW}[1]${NC} 安装项目        ${YELLOW}[2]${NC} 卸载当前项目    ${YELLOW}[3]${NC} 迁移项目\n"
         printf "  ${YELLOW}[4]${NC} 更新项目        ${YELLOW}[5]${NC} 启动服务        ${YELLOW}[6]${NC} 停止服务\n"
         printf "  ${YELLOW}[7]${NC} 重启服务        ${YELLOW}[8]${NC} 查看状态        ${YELLOW}[9]${NC} 备份 / 恢复\n"
-        printf "  ${YELLOW}[10]${NC} OAuth 代理配置 ${YELLOW}[11]${NC} 启用 HTTPS      ${YELLOW}[0]${NC} 退出\n"
-        printf "\n"
+        printf "  ${YELLOW}[10]${NC} OAuth 代理配置 ${YELLOW}[11]${NC} 启用 HTTPS     ${YELLOW}[12]${NC} 更换域名\n"
+        printf "  ${YELLOW}[0]${NC} 退出\n"
         printf "${BLUE}  Tip:${NC} 首次部署建议先执行安装项目，后续统一使用 poetize 命令管理\n"
         printf "\n"
 
-        read -rp "请输入编号 [0-11]: " menu_choice
+        read -rp "请输入编号 [0-12]: " menu_choice
         case "$menu_choice" in
             1)
                 run_deployment
@@ -13239,6 +13240,11 @@ show_interactive_menu() {
             11)
                 check_docker
                 enable_https
+                read -rp "按 Enter 返回菜单..." _
+                ;;
+            12)
+                check_docker
+                change_domain
                 read -rp "按 Enter 返回菜单..." _
                 ;;
             *)
@@ -15709,8 +15715,484 @@ run_update() {
 }
 
 # 手动启用 HTTPS
+# 将域名替换应用到单个 nginx 配置文件
+# 参数: $1=配置文件名, $2=主域名, $3=空格分隔的副域名列表
+apply_domain_to_nginx_conf() {
+    local conf_file="$1"
+    local primary="$2"
+    local secondary="$3"
+
+    [ -f "$conf_file" ] || return 1
+
+    # 替换 server_name 占位符
+    sed_i "s|server_name example.com www.example.com;|server_name ${primary};|g" "$conf_file"
+    # 替换路径中的 example.com
+    sed_i "s|example\.com/|${primary}/|g" "$conf_file"
+    # 修正 valid_referers 防盗链的域名引用
+    sed_i "s|~\\\\\\.example\\\\\\.com\$ example\\.com|~\\\\.${primary//./\\\\.}\$ ${primary}|g" "$conf_file"
+
+    # 删除旧的副域名重定向块（如果存在）
+    sed_i '/# AUTO_REDIRECT_SECONDARY_DOMAINS_START/,/# AUTO_REDIRECT_SECONDARY_DOMAINS_END/d' "$conf_file"
+
+    # 追加副域名 301 重定向块
+    if [ -n "$secondary" ]; then
+        cat >> "$conf_file" << 'SECONDARY_HEADER'
+
+# AUTO_REDIRECT_SECONDARY_DOMAINS_START
+# 自动追加的副域名 301 重定向模块
+SECONDARY_HEADER
+        if [[ "$conf_file" == *https* ]]; then
+            for sd in $secondary; do
+                cat >> "$conf_file" << SECBLOCK
+server {
+    listen 80;
+    server_name ${sd};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /usr/share/nginx/html;
+        allow all;
+        try_files \$uri =404;
+    }
+
+    return 301 https://${primary}\$request_uri;
+}
+server {
+    listen 443 ssl;
+    listen 443 quic;
+    http2 on;
+    http3 on;
+    server_name ${sd};
+    ssl_certificate /etc/letsencrypt/live/${primary}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${primary}/privkey.pem;
+    return 301 https://${primary}\$request_uri;
+}
+SECBLOCK
+            done
+        else
+            for sd in $secondary; do
+                cat >> "$conf_file" << SECBLOCK
+server {
+    listen 80;
+    server_name ${sd};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /usr/share/nginx/html;
+        allow all;
+        try_files \$uri =404;
+    }
+
+    return 301 http://${primary}\$request_uri;
+}
+SECBLOCK
+            done
+        fi
+        echo "# AUTO_REDIRECT_SECONDARY_DOMAINS_END" >> "$conf_file"
+    fi
+}
+
+# 更换域名命令
+change_domain() {
+    find_project_dir
+    load_config_lib
+
+    # 加载 deploy-core 函数库（select_primary_domain / handle_https_port_mapping / configure_ip_access_block 等）
+    if ensure_embedded_core_dir; then
+        local core_script="$EMBEDDED_CORE_DIR/deploy-core.sh"
+        if [ ! -f "$core_script" ]; then
+            emit_embedded_core_script "deploy-core.sh" > "$core_script" || true
+        fi
+        if [ -f "$core_script" ]; then
+            # 安全 source：POETIZE_SOURCE_ONLY 绕过 deploy-core 入口守卫，仅加载函数定义
+            POETIZE_SOURCE_ONLY=true source "$core_script"
+        fi
+    fi
+
+    local current_primary=""
+    local enable_https="true"
+    local current_email=""
+    local current_http_port=""
+
+    if [ -f ".env" ]; then
+        current_primary=$(grep "^PRIMARY_DOMAIN=" .env 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+        enable_https=$(grep "^ENABLE_HTTPS=" .env 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+        current_email=$(grep "^EMAIL=" .env 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+        current_http_port=$(grep "^HTTP_PORT=" .env 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+    fi
+
+    # 旧版本回退：从 nginx 配置和 docker-compose.yml 提取
+    if [ -z "$current_primary" ] && [ -f "docker/nginx/default.conf" ]; then
+        current_primary=$(extract_server_names_from_nginx_file "docker/nginx/default.conf" 2>/dev/null | head -n 1 || true)
+    fi
+    if [ -z "$current_http_port" ] && [ -f "docker-compose.yml" ]; then
+        # 从 docker-compose.yml 提取硬编码的非80端口（如 "9888:80/tcp"）
+        local raw_port=$(sed -n 's/^[[:space:]]*-[[:space:]]*"\([0-9]\+\):80\/tcp"/\1/p' docker-compose.yml 2>/dev/null | head -n 1 || true)
+        if [ -n "$raw_port" ] && [ "$raw_port" != "80" ]; then
+            current_http_port="$raw_port"
+        fi
+    fi
+
+    [ -z "$enable_https" ] && enable_https="true"
+
+    # 拼接当前显示域名（含端口）
+    local current_domain_display="${current_primary:-未设置}"
+    if [ -n "$current_http_port" ] && [ "$current_http_port" != "80" ]; then
+        current_domain_display="${current_domain_display}:${current_http_port}"
+    fi
+
+    printf "\n"
+    info "当前配置："
+    printf "  主域名:     ${GREEN}%s${NC}\n" "$current_domain_display"
+    printf "  HTTPS:      ${GREEN}%s${NC}\n" "$enable_https"
+    printf "  邮箱:       ${GREEN}%s${NC}\n" "${current_email:-未设置}"
+    printf "\n"
+
+    # —— 域名输入循环（含 DNS 校验和重输） ——
+    local domain_input_str=""
+    local secondary_domains=""
+    HTTP_PORT=""
+
+    while true; do
+        printf "当前域名: ${YELLOW}%s${NC}\n" "$current_domain_display"
+        printf "输入格式: ${BLUE}域名1 域名2 ...${NC}（空格分隔，回车保持当前）\n"
+        read -rp "新域名: " domain_input_str
+
+        if [ -z "$domain_input_str" ]; then
+            # 保持当前不变
+            [ -z "$current_primary" ] && { error "当前未配置域名，必须输入"; continue; }
+            DOMAINS=("$current_primary")
+            PRIMARY_DOMAIN="$current_primary"
+            HTTP_PORT="$current_http_port"
+            secondary_domains=""
+            secondary_domains=""
+            break
+        fi
+
+        read -a input_domains <<< "$domain_input_str"
+
+        if [ ${#input_domains[@]} -eq 0 ]; then
+            error "请至少提供一个域名"
+            continue
+        fi
+
+        # 处理域名:端口格式（完全对齐 prompt_for_domains）
+        DOMAINS=()
+        for d in "${input_domains[@]}"; do
+            if [[ "$d" =~ ^([^:]+):([0-9]+)$ ]]; then
+                local extracted_domain="${BASH_REMATCH[1]}"
+                local extracted_port="${BASH_REMATCH[2]}"
+                DOMAINS+=("$extracted_domain")
+                HTTP_PORT="$extracted_port"
+                success "检测到域名:端口格式 - $extracted_domain:$extracted_port"
+            else
+                DOMAINS+=("$d")
+            fi
+        done
+
+        # 选择主域名（www 优先 > 根域名优先 > 用户确认，完全对齐 select_primary_domain）
+        select_primary_domain
+
+        # DNS 校验
+        echo ""
+        if validate_dns_for_domains "no_prompt"; then
+            break
+        else
+            echo ""
+            if auto_confirm "是否重新输入域名? (Y/n) " "y"; then
+                echo ""
+                continue
+            else
+                if auto_confirm "是否仍要使用当前域名继续? (y/N) " "n"; then
+                    warning "DNS 校验未通过，但用户选择继续"
+                    break
+                else
+                    error "已取消"
+                    return 0
+                fi
+            fi
+        fi
+    done
+
+    # 计算副域名列表
+    secondary_domains=""
+    local d
+    for d in "${DOMAINS[@]}"; do
+        [ "$d" = "$PRIMARY_DOMAIN" ] && continue
+        secondary_domains="$secondary_domains $d"
+    done
+    secondary_domains=$(echo "$secondary_domains" | xargs)
+
+    printf "\n"
+    info "新域名配置："
+    printf "  主域名:     ${GREEN}%s${NC}\n" "$PRIMARY_DOMAIN"
+    [ -n "$secondary_domains" ] && printf "  附加域名:   ${GREEN}%s${NC}\n" "$secondary_domains"
+    if [ -n "$HTTP_PORT" ] && [ "$HTTP_PORT" != "80" ]; then
+        printf "  自定义端口: ${GREEN}%s${NC}\n" "$HTTP_PORT"
+        warning "使用非标准端口将自动禁用 HTTPS"
+    fi
+    printf "\n"
+
+    read -rp "确认更换域名? (y/N): " confirm
+    case "$confirm" in
+        [Yy]|[Yy][Ee][Ss]) ;;
+        *) info "已取消"; return 0 ;;
+    esac
+
+    # —— 自定义端口 → 自动禁用 HTTPS ——
+    if [ -n "$HTTP_PORT" ] && [ "$HTTP_PORT" != "80" ]; then
+        enable_https="false"
+        ENABLE_HTTPS="false"   # deploy-core 函数库使用大写变量
+        info "自定义端口 ${HTTP_PORT} → 自动禁用 HTTPS"
+
+        if [ -f "lib/config.sh" ]; then
+            update_env_var "HTTP_PORT" "$HTTP_PORT"
+            update_env_var "ENABLE_HTTPS" "false"
+            sync_compose_profiles
+            success "已通过 .env 配置自定义端口"
+        else
+            # 旧版本回退：兼容变量形式和字面量形式两种端口格式
+            if grep -q '"${HTTP_PORT:-80}:80/tcp"' docker-compose.yml; then
+                sed_i 's|"\${HTTP_PORT:-80}:80/tcp"|"'"${HTTP_PORT}"':80/tcp"|g' docker-compose.yml
+            elif grep -q '"80:80/tcp"' docker-compose.yml; then
+                sed_i 's|"80:80/tcp"|"'"${HTTP_PORT}"':80/tcp"|g' docker-compose.yml
+            elif grep -q '- "80:80"' docker-compose.yml; then
+                sed_i 's|- "80:80"|- "'"${HTTP_PORT}"':80"|g' docker-compose.yml
+            elif [ -n "$current_http_port" ]; then
+                # 从旧端口换成新端口（如 8088 → 9888）
+                sed_i 's|"'"${current_http_port}"':80/tcp"|"'"${HTTP_PORT}"':80/tcp"|g' docker-compose.yml
+            fi
+            handle_https_port_mapping
+            disable_certbot_service
+            success "已通过 docker-compose.yml 配置自定义端口"
+        fi
+        # 停止可能正在运行的 certbot 容器
+        sudo docker stop poetize-certbot 2>/dev/null || true
+    fi
+
+    # 标准端口 + 真实域名 → 自动启用 HTTPS（从端口模式切回时需要）
+    if [ -z "$HTTP_PORT" ] || [ "$HTTP_PORT" = "80" ]; then
+        if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ]; then
+            if ! is_valid_ipv4 "$PRIMARY_DOMAIN" 2>/dev/null && ! is_valid_ipv6 "$PRIMARY_DOMAIN" 2>/dev/null; then
+                enable_https="true"
+                ENABLE_HTTPS="true"
+            fi
+        fi
+    fi
+
+    # —— 写入 .env（对齐 init_deploy 的新旧版本兼容逻辑） ——
+    if [ -f "lib/config.sh" ]; then
+        update_env_var "PRIMARY_DOMAIN" "$PRIMARY_DOMAIN"
+        local protocol="http"
+        [ "$enable_https" = "true" ] && protocol="https"
+        update_env_var "SITE_URL" "${protocol}://${PRIMARY_DOMAIN}"
+        update_env_var "COMPOSE_PROFILES" "$([ "$enable_https" = "true" ] && echo "https,redis,mysql" || echo "redis,mysql")"
+    else
+        # 旧版本回退：直接改 docker-compose.yml
+        sed_i "s|SITE_URL=http://example.com|SITE_URL=http://$PRIMARY_DOMAIN|g" docker-compose.yml
+        sed_i "s|SITE_URL=https://example.com|SITE_URL=https://$PRIMARY_DOMAIN|g" docker-compose.yml
+
+        if project_requires_python_backend; then
+            info "更新旧版 Python 后端 FRONTEND_HOST 环境变量为: $PRIMARY_DOMAIN"
+            if grep -q "FRONTEND_HOST=" docker-compose.yml; then
+                sed_i "s/- FRONTEND_HOST=example.com/- FRONTEND_HOST=$PRIMARY_DOMAIN/g" docker-compose.yml
+                success "已更新 FRONTEND_HOST 环境变量"
+            else
+                local java_backend_port_line=$(grep -n "JAVA_BACKEND_PORT=8081" docker-compose.yml | cut -d: -f1)
+                if [ -n "$java_backend_port_line" ]; then
+                    sed_i "${java_backend_port_line}a\\      - FRONTEND_HOST=$PRIMARY_DOMAIN" docker-compose.yml
+                    success "已添加 FRONTEND_HOST 环境变量"
+                fi
+            fi
+        fi
+    fi
+    success "已更新域名配置"
+
+    # —— 重新渲染 nginx 配置文件 ——
+    local conf
+    for conf in default.http.conf default.https.conf default.conf; do
+        if [ -f "docker/nginx/${conf}.template" ]; then
+            cp "docker/nginx/${conf}.template" "docker/nginx/${conf}"
+            apply_domain_to_nginx_conf "docker/nginx/${conf}" "$PRIMARY_DOMAIN" "$secondary_domains"
+        fi
+    done
+    success "已重新渲染 nginx 配置文件"
+
+    # —— 处理 IP 直接访问拦截 ——
+    configure_ip_access_block
+
+    # —— 处理 certbot 脚本 ——
+    if [ "$enable_https" = "true" ] && [ -f "docker/nginx/certbot-entrypoint.sh.template" ]; then
+        cp "docker/nginx/certbot-entrypoint.sh.template" "docker/nginx/certbot-entrypoint.sh"
+
+        local domains_param=" -d $PRIMARY_DOMAIN"
+        for d in "${DOMAINS[@]}"; do
+            [ "$d" = "$PRIMARY_DOMAIN" ] && continue
+            domains_param="$domains_param -d $d"
+        done
+
+        sed_i "s|--email your-email@example.com|--email ${current_email:-example@qq.com}|g" docker/nginx/certbot-entrypoint.sh
+        sed_i "s|--cert-name example.com|--cert-name $PRIMARY_DOMAIN|g" docker/nginx/certbot-entrypoint.sh
+        sed_i "s|-d example.com -d www.example.com|$domains_param|g" docker/nginx/certbot-entrypoint.sh
+        sed_i "s|check_dns \"example.com\"|check_dns \"$PRIMARY_DOMAIN\"|g" docker/nginx/certbot-entrypoint.sh
+        success "已更新 certbot 证书申请脚本"
+    fi
+
+    # —— 重新加载 nginx ——
+    if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^poetize-nginx'; then
+        info "同步 nginx 配置到容器..."
+        sudo docker cp docker/nginx/default.conf poetize-nginx:/usr/local/openresty/nginx/conf/conf.d/default.conf 2>/dev/null || true
+        info "重新加载 nginx 配置..."
+        if sudo docker exec --user root poetize-nginx nginx -s reload 2>/dev/null; then
+            success "nginx 配置已重新加载"
+        else
+            warning "nginx reload 失败，尝试重启容器..."
+            sudo docker restart poetize-nginx 2>/dev/null || true
+        fi
+    else
+        warning "nginx 容器未运行，新配置将在下次启动时生效"
+    fi
+
+    printf "\n"
+    success "域名更换完成"
+    local final_proto="http"
+    [ "$enable_https" = "true" ] && final_proto="https"
+    local final_url="$PRIMARY_DOMAIN"
+    if [ -n "$HTTP_PORT" ] && [ "$HTTP_PORT" != "80" ]; then
+        final_url="$PRIMARY_DOMAIN:$HTTP_PORT"
+    fi
+    printf "新访问地址: ${GREEN}%s://%s${NC}\n" "$final_proto" "$final_url"
+
+    if [ "$enable_https" = "true" ]; then
+        printf "\n"
+        info "HTTPS 已启用，自动申请新域名证书..."
+
+        # 确保 nginx 在运行
+        if ! sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^poetize-nginx'; then
+            warning "nginx 未运行，跳过证书自动申请"
+            info "请稍后手动执行：poetize -start && docker compose --profile https up -d certbot"
+        else
+            # 如果之前端口模式把 certbot 注释了，先恢复
+            enable_certbot_service
+
+            # 启动 certbot 容器
+            info "启动 certbot 容器..."
+            sudo docker compose --profile https up -d certbot 2>/dev/null || \
+                sudo docker-compose --profile https up -d certbot 2>/dev/null || true
+
+            # 等待证书生成（最多 15 分钟）
+            info "等待证书生成（最多 15 分钟）..."
+            local cert_wait=0
+            local cert_max=900
+            local cert_interval=15
+            local cert_ok=false
+
+            while [ $cert_wait -lt $cert_max ]; do
+                local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
+                local cert_code=$(sudo docker inspect poetize-certbot --format='{{.State.ExitCode}}' 2>/dev/null || echo "-1")
+                local cert_running=$(sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
+
+                if echo "$cert_logs" | grep -q "证书申请成功!"; then
+                    cert_ok=true
+                    break
+                fi
+                if [ "$cert_code" = "0" ] && [ "$cert_running" = "false" ]; then
+                    cert_ok=true
+                    break
+                fi
+                if echo "$cert_logs" | grep -q "已达到最大重试次数\|证书申请最终失败\|too many certificates"; then
+                    break
+                fi
+
+                sleep $cert_interval
+                cert_wait=$((cert_wait + cert_interval))
+            done
+            sleep 5
+
+            if [ "$cert_ok" = true ]; then
+                success "新域名 SSL 证书申请成功"
+                # 自动启用 HTTPS
+                sudo docker exec --user root poetize-nginx chmod +x /enable-https.sh 2>/dev/null || true
+                if sudo docker exec --user root poetize-nginx /enable-https.sh; then
+                    success "HTTPS 已自动启用"
+                    final_proto="https"
+                else
+                    warning "enable-https.sh 执行失败，回退 HTTP 模式"
+                    revert_to_http_protocol
+                    handle_https_port_mapping
+                fi
+            else
+                warning "证书自动申请未成功，回退 HTTP 模式"
+
+                # 回退到 HTTP：更新 .env + docker-compose + nginx 配置
+                revert_to_http_protocol
+                handle_https_port_mapping
+                enable_https="false"
+                final_proto="http"
+
+                # 恢复 nginx 为 HTTP 配置（default.conf 已在上方渲染，只需 docker cp 覆盖容器内残留）
+                if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^poetize-nginx'; then
+                    sudo docker cp docker/nginx/default.conf poetize-nginx:/usr/local/openresty/nginx/conf/conf.d/default.conf 2>/dev/null || true
+                    sudo docker exec --user root poetize-nginx nginx -s reload 2>/dev/null || true
+                fi
+
+                info "请稍后手动排查并重试："
+                printf "  ${CYAN}docker logs poetize-certbot${NC}  # 查看 certbot 日志\n"
+                printf "  ${CYAN}poetize -enable-https${NC}        # 修复后手动启用 HTTPS\n"
+            fi
+        fi
+    fi
+}
+
+# 恢复被 disable_certbot_service 注释的 certbot 块（旧版本 docker-compose.yml 物理注释）
+# 新版本直接通过 .env 和 sync_compose_profiles 控制，无需操作 docker-compose.yml
+enable_certbot_service() {
+    if [ -f "lib/config.sh" ]; then
+        update_env_var "ENABLE_HTTPS" "true"
+        sync_compose_profiles
+        return 0
+    fi
+
+    if ! grep -q '# 已禁用（不需要SSL证书）' docker-compose.yml 2>/dev/null; then
+        return 0
+    fi
+
+    info "检测到 certbot 服务被注释（之前为端口模式），正在恢复..."
+    awk '
+    /^  #   certbot:.*已禁用/ {
+        print "  certbot:"
+        in_block = 1
+        next
+    }
+    in_block {
+        if (/^    #  /) {
+            sub(/^    #  /, "    ")
+            print
+        } else if (/^  [a-z]/) {
+            in_block = 0
+            print
+        } else {
+            print
+        }
+        next
+    }
+    { print }
+    ' docker-compose.yml > docker-compose.yml.tmp && mv docker-compose.yml.tmp docker-compose.yml
+    success "certbot 服务已恢复"
+}
+
 enable_https() {
     find_project_dir
+    load_config_lib
+
+    # 加载 deploy-core 函数库
+    if ensure_embedded_core_dir; then
+        local core_script="$EMBEDDED_CORE_DIR/deploy-core.sh"
+        if [ ! -f "$core_script" ]; then
+            emit_embedded_core_script "deploy-core.sh" > "$core_script" || true
+        fi
+        if [ -f "$core_script" ]; then
+            POETIZE_SOURCE_ONLY=true source "$core_script"
+        fi
+    fi
 
     info "正在检查 HTTPS 启用前置条件..."
 
@@ -15720,27 +16202,55 @@ enable_https() {
         exit 1
     fi
 
-    # 检查 certbot 容器状态（仅提示，不阻断）
-    local certbot_status=$(sudo docker inspect --format='{{.State.Status}}' poetize-certbot 2>/dev/null || echo "not-found")
-    if [ "$certbot_status" = "not-found" ] || [ "$certbot_status" = "exited" ]; then
-        info "certbot 容器当前状态：$certbot_status"
-        warning "如果证书尚未申请，建议先启动 certbot 并等待约 2 分钟："
-        printf "  ${CYAN}docker start poetize-certbot && sleep 120${NC}\n"
-        printf "\n"
-        read -rp "是否继续尝试启用 HTTPS？(y/N): " _confirm_https
-        case "$_confirm_https" in
-            [Yy]|[Yy][Ee][Ss]) ;;
-            *)
-                info "已取消"
-                return 0
-                ;;
-        esac
+    # 恢复被端口模式注释的 certbot，并确保 HTTPS 在 .env 中启用
+    enable_certbot_service
+
+    # 检查证书是否已存在
+    local cert_exists=false
+    local cert_domain=$(grep "^PRIMARY_DOMAIN=" .env 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+    if [ -n "$cert_domain" ] && sudo docker exec poetize-nginx test -f "/etc/letsencrypt/live/$cert_domain/fullchain.pem" 2>/dev/null; then
+        cert_exists=true
+    fi
+
+    # 没有证书 → 自动启动 certbot 申请
+    if [ "$cert_exists" = false ]; then
+        info "未找到 SSL 证书，启动 certbot 自动申请..."
+
+        sudo docker compose --profile https up -d certbot 2>/dev/null || \
+            sudo docker-compose --profile https up -d certbot 2>/dev/null || true
+
+        info "等待证书生成（最多 15 分钟）..."
+        local cert_wait=0
+        local cert_max=900
+        local cert_ok=false
+
+        while [ $cert_wait -lt $cert_max ]; do
+            local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
+            if echo "$cert_logs" | grep -q "证书申请成功!"; then
+                cert_ok=true
+                break
+            fi
+            if echo "$cert_logs" | grep -q "已达到最大重试次数\|证书申请最终失败\|too many certificates"; then
+                break
+            fi
+            sleep 15
+            cert_wait=$((cert_wait + 15))
+        done
+        sleep 5
+
+        if [ "$cert_ok" != true ]; then
+            warning "证书自动申请未成功，回退 HTTP 模式"
+            revert_to_http_protocol
+            handle_https_port_mapping
+            info "请稍后手动排查：docker logs poetize-certbot"
+            return 1
+        fi
+        success "SSL 证书申请成功"
     fi
 
     info "正在执行 /enable-https.sh ..."
     printf "\n"
 
-    # 确保脚本有执行权限
     sudo docker exec --user root poetize-nginx chmod +x /enable-https.sh 2>/dev/null || true
 
     if sudo docker exec --user root poetize-nginx /enable-https.sh; then
@@ -15750,12 +16260,10 @@ enable_https() {
         printf "  ${CYAN}poetize -status${NC}\n"
     else
         printf "\n"
-        error "HTTPS 启用失败，请检查以下内容："
-        printf "  1. 域名 DNS 是否已解析到本服务器\n"
-        printf "  2. 服务器 80/443 端口是否对公网开放\n"
-        printf "  3. certbot 容器日志：${CYAN}docker logs poetize-certbot${NC}\n"
-        printf "  4. nginx 容器日志：${CYAN}docker logs poetize-nginx${NC}\n"
-        exit 1
+        warning "HTTPS 启用失败，回退 HTTP 模式"
+        revert_to_http_protocol
+        handle_https_port_mapping
+        info "请检查：docker logs poetize-certbot 和 docker logs poetize-nginx"
     fi
 }
 
@@ -16023,6 +16531,10 @@ dispatch_command() {
         "-enable-https"|"enable-https"|"--enable-https")
             check_docker
             enable_https
+            ;;
+        "-change-domain"|"change-domain"|"--change-domain")
+            check_docker
+            change_domain
             ;;
         "help"|"-help"|"--help"|"-h")
             show_help
