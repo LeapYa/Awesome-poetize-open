@@ -16104,10 +16104,7 @@ change_domain() {
 
             # 启动 certbot 容器
             info "启动 certbot 容器..."
-            # 使用新容器避免读取旧日志造成误判；证书数据保存在 volume 中，不会随容器删除。
-            sudo docker rm -f poetize-certbot 2>/dev/null || true
-            timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
-                timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
+            start_certbot_container_fresh
 
             # 等待证书生成（最多 15 分钟）
             info "等待证书生成（最多 15 分钟）..."
@@ -16115,9 +16112,15 @@ change_domain() {
             local cert_max=900
             local cert_interval=15
             local cert_ok=false
+            local cert_logs_since="${CERTBOT_LOG_SINCE:-}"
 
             while [ $cert_wait -lt $cert_max ]; do
-                local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
+                local cert_logs=""
+                if [ -n "$cert_logs_since" ]; then
+                    cert_logs=$(sudo docker logs --since "$cert_logs_since" poetize-certbot 2>/dev/null || echo "")
+                else
+                    cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
+                fi
                 local cert_code=$(sudo docker inspect poetize-certbot --format='{{.State.ExitCode}}' 2>/dev/null || echo "-1")
                 local cert_running=$(sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
 
@@ -16234,6 +16237,25 @@ enable_certbot_service() {
     success "certbot 服务已恢复"
 }
 
+start_certbot_container_fresh() {
+    local compose_args=(up -d --no-build --no-deps --force-recreate certbot)
+
+    CERTBOT_LOG_SINCE=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')
+
+    if sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^poetize-certbot$'; then
+        info "重启 certbot 容器..."
+        if timeout 60 sudo docker restart poetize-certbot >/dev/null 2>&1; then
+            return 0
+        fi
+        warning "certbot 容器重启失败，尝试通过 docker compose 重新创建"
+    else
+        info "创建 certbot 容器..."
+    fi
+
+    timeout 60 sudo docker compose --profile https "${compose_args[@]}" >/dev/null 2>&1 || \
+        timeout 60 sudo docker-compose --profile https "${compose_args[@]}" >/dev/null 2>&1 || true
+}
+
 enable_https() {
     find_project_dir
     load_config_lib
@@ -16271,18 +16293,21 @@ enable_https() {
     if [ "$cert_exists" = false ]; then
         info "未找到 SSL 证书，启动 certbot 自动申请..."
 
-        # 使用新容器避免读取旧日志造成误判；证书数据保存在 volume 中，不会随容器删除。
-        sudo docker rm -f poetize-certbot 2>/dev/null || true
-        timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
-            timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
+        start_certbot_container_fresh
 
         info "等待证书生成（最多 15 分钟）..."
         local cert_wait=0
         local cert_max=900
         local cert_ok=false
+        local cert_logs_since="${CERTBOT_LOG_SINCE:-}"
 
         while [ $cert_wait -lt $cert_max ]; do
-            local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
+            local cert_logs=""
+            if [ -n "$cert_logs_since" ]; then
+                cert_logs=$(sudo docker logs --since "$cert_logs_since" poetize-certbot 2>/dev/null || echo "")
+            else
+                cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
+            fi
             local cert_running=$(sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
 
             if sudo docker exec poetize-certbot test -f "/etc/letsencrypt/live/$cert_domain/fullchain.pem" 2>/dev/null || \
