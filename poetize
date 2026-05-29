@@ -16075,8 +16075,14 @@ change_domain() {
 
             # 启动 certbot 容器
             info "启动 certbot 容器..."
-            sudo docker compose --profile https up -d certbot 2>/dev/null || \
-                sudo docker-compose --profile https up -d certbot 2>/dev/null || true
+            # 优先尝试直接启动已有容器，避免 docker compose pull 卡住
+            if sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null | grep -q "false"; then
+                sudo docker start poetize-certbot 2>/dev/null || \
+                    timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || true
+            else
+                timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
+                    timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
+            fi
 
             # 等待证书生成（最多 15 分钟）
             info "等待证书生成（最多 15 分钟）..."
@@ -16089,6 +16095,18 @@ change_domain() {
                 local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
                 local cert_code=$(sudo docker inspect poetize-certbot --format='{{.State.ExitCode}}' 2>/dev/null || echo "-1")
                 local cert_running=$(sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
+
+                # certbot 容器根本不存在 → 立即退出
+                if [ "$cert_code" = "-1" ] && [ "$cert_running" = "false" ] && [ -z "$cert_logs" ] && [ $cert_wait -ge 10 ]; then
+                    info "certbot 容器未启动（可能 docker-compose.yml 中服务已被注释）"
+                    break
+                fi
+
+                # 容器已退出且超过 60 秒无日志 → 启动失败
+                if [ "$cert_running" = "false" ] && [ -z "$cert_logs" ] && [ $cert_wait -ge 60 ]; then
+                    info "certbot 在 60 秒内未产生任何日志，判定启动失败"
+                    break
+                fi
 
                 if echo "$cert_logs" | grep -q "证书申请成功!"; then
                     cert_ok=true
@@ -16216,8 +16234,14 @@ enable_https() {
     if [ "$cert_exists" = false ]; then
         info "未找到 SSL 证书，启动 certbot 自动申请..."
 
-        sudo docker compose --profile https up -d certbot 2>/dev/null || \
-            sudo docker-compose --profile https up -d certbot 2>/dev/null || true
+        # 优先 docker start 已有容器，避免 compose pull 卡住
+        if sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null | grep -q "false"; then
+            sudo docker start poetize-certbot 2>/dev/null || \
+                timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || true
+        else
+            timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
+                timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
+        fi
 
         info "等待证书生成（最多 15 分钟）..."
         local cert_wait=0
@@ -16226,6 +16250,14 @@ enable_https() {
 
         while [ $cert_wait -lt $cert_max ]; do
             local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
+            local cert_running=$(sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
+
+            # certbot 容器不存在/无日志 → 提前退出
+            if [ "$cert_running" = "false" ] && [ -z "$cert_logs" ] && [ $cert_wait -ge 10 ]; then
+                info "certbot 容器未正常启动，跳过等待"
+                break
+            fi
+
             if echo "$cert_logs" | grep -q "证书申请成功!"; then
                 cert_ok=true
                 break
