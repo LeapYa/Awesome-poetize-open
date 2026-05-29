@@ -5667,11 +5667,8 @@ render_nginx_config_file() {
     if ($0 ~ /valid_referers/) {
       # server_names 关键字已自动包含当前 server_name 的值，
       # 只需移除旧的域名占位符，不再追加域名，避免与 server_names 重复导致
-      # nginx 报 "conflicting parameter" 错误（尤其 localhost/IP 部署场景）
-      old_ref = "~\\.example\\.com$ example.com"
-      if ((pos = index($0, old_ref)) > 0) {
-        $0 = substr($0, 1, pos - 1) substr($0, pos + length(old_ref))
-      }
+      # nginx 报 "conflicting parameter" 错误。
+      sub(/server_names[[:space:]]+[^;]*;/, "server_names;")
       print $0
     } else {
       # 主站 server_name 仅绑定主域名，副域名通过单独 server 块做 301 跳转
@@ -15728,8 +15725,9 @@ apply_domain_to_nginx_conf() {
     sed_i "s|server_name example.com www.example.com;|server_name ${primary};|g" "$conf_file"
     # 替换路径中的 example.com
     sed_i "s|example\.com/|${primary}/|g" "$conf_file"
-    # 修正 valid_referers 防盗链的域名引用
-    sed_i "s|~\\\\\\.example\\\\\\.com\$ example\\.com|~\\\\.${primary//./\\\\.}\$ ${primary}|g" "$conf_file"
+    # valid_referers 使用 server_names 即可覆盖当前 server_name。
+    # 不能再追加显式主域名，否则 nginx 会报 conflicting parameter。
+    sed_i -E 's|(valid_referers[[:space:]].*server_names)[[:space:]]+[^;]*;|\1;|g' "$conf_file"
 
     # 删除旧的副域名重定向块（如果存在）
     sed_i '/# AUTO_REDIRECT_SECONDARY_DOMAINS_START/,/# AUTO_REDIRECT_SECONDARY_DOMAINS_END/d' "$conf_file"
@@ -15811,6 +15809,8 @@ change_domain() {
     local enable_https="true"
     local current_email=""
     local current_http_port=""
+    local original_enable_https=""
+    local port_mapping_changed=false
 
     if [ -f ".env" ]; then
         current_primary=$(grep "^PRIMARY_DOMAIN=" .env 2>/dev/null | tail -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')
@@ -15832,6 +15832,7 @@ change_domain() {
     fi
 
     [ -z "$enable_https" ] && enable_https="true"
+    original_enable_https="$enable_https"
 
     # 拼接当前显示域名（含端口）
     local current_domain_display="${current_primary:-未设置}"
@@ -15970,6 +15971,10 @@ change_domain() {
 
     # 标准端口 + 真实域名 → 自动启用 HTTPS（从端口模式切回时需要）
     if [ -z "$HTTP_PORT" ] || [ "$HTTP_PORT" = "80" ]; then
+        if [ -n "$current_http_port" ] && [ "$current_http_port" != "80" ]; then
+            info "标准域名模式：清除旧 HTTP 端口 ${current_http_port}，恢复为 80"
+        fi
+        HTTP_PORT="80"
         if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ]; then
             if ! is_valid_ipv4 "$PRIMARY_DOMAIN" 2>/dev/null && ! is_valid_ipv6 "$PRIMARY_DOMAIN" 2>/dev/null; then
                 enable_https="true"
@@ -15978,13 +15983,20 @@ change_domain() {
         fi
     fi
 
+    if [ "${HTTP_PORT:-80}" != "${current_http_port:-80}" ] || [ "$enable_https" != "$original_enable_https" ]; then
+        port_mapping_changed=true
+    fi
+
     # —— 写入 .env（对齐 init_deploy 的新旧版本兼容逻辑） ——
     if [ -f "lib/config.sh" ]; then
         update_env_var "PRIMARY_DOMAIN" "$PRIMARY_DOMAIN"
+        update_env_var "HTTP_PORT" "${HTTP_PORT:-80}"
+        update_env_var "ENABLE_HTTPS" "$enable_https"
         local protocol="http"
         [ "$enable_https" = "true" ] && protocol="https"
         update_env_var "SITE_URL" "${protocol}://${PRIMARY_DOMAIN}"
-        update_env_var "COMPOSE_PROFILES" "$([ "$enable_https" = "true" ] && echo "https,redis,mysql" || echo "redis,mysql")"
+        update_env_var "FRONTEND_PROTOCOL" "$protocol"
+        sync_compose_profiles
     else
         # 旧版本回退：直接改 docker-compose.yml
         sed_i "s|SITE_URL=http://example.com|SITE_URL=http://$PRIMARY_DOMAIN|g" docker-compose.yml
@@ -16005,6 +16017,8 @@ change_domain() {
         fi
     fi
     success "已更新域名配置"
+    ENABLE_HTTPS="$enable_https"
+    handle_https_port_mapping
 
     # —— 重新渲染 nginx 配置文件 ——
     local conf
@@ -16036,16 +16050,31 @@ change_domain() {
         success "已更新 certbot 证书申请脚本"
     fi
 
+    if [ "$port_mapping_changed" = true ] && sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^poetize-nginx$'; then
+        info "检测到端口/HTTPS 映射变更，重新创建 nginx 容器以应用端口绑定..."
+        if run_docker_compose up -d --no-deps --force-recreate nginx; then
+            success "nginx 容器已重新创建"
+            sleep 3
+        else
+            warning "nginx 容器重建失败，将继续尝试同步配置并重启"
+        fi
+    fi
+
     # —— 重新加载 nginx ——
-    if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^poetize-nginx'; then
+    if sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^poetize-nginx$'; then
         info "同步 nginx 配置到容器..."
         sudo docker cp docker/nginx/default.conf poetize-nginx:/usr/local/openresty/nginx/conf/conf.d/default.conf 2>/dev/null || true
-        info "重新加载 nginx 配置..."
-        if sudo docker exec --user root poetize-nginx nginx -s reload 2>/dev/null; then
-            success "nginx 配置已重新加载"
+        if sudo docker inspect poetize-nginx --format='{{.State.Running}}' 2>/dev/null | grep -q "true"; then
+            info "重新加载 nginx 配置..."
+            if sudo docker exec --user root poetize-nginx nginx -s reload 2>/dev/null; then
+                success "nginx 配置已重新加载"
+            else
+                warning "nginx reload 失败，尝试重启容器..."
+                sudo docker restart poetize-nginx 2>/dev/null || true
+            fi
         else
-            warning "nginx reload 失败，尝试重启容器..."
-            sudo docker restart poetize-nginx 2>/dev/null || true
+            info "nginx 容器未运行，尝试启动..."
+            sudo docker start poetize-nginx 2>/dev/null || sudo docker restart poetize-nginx 2>/dev/null || true
         fi
     else
         warning "nginx 容器未运行，新配置将在下次启动时生效"
@@ -16075,14 +16104,10 @@ change_domain() {
 
             # 启动 certbot 容器
             info "启动 certbot 容器..."
-            # 优先尝试直接启动已有容器，避免 docker compose pull 卡住
-            if sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null | grep -q "false"; then
-                sudo docker start poetize-certbot 2>/dev/null || \
-                    timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || true
-            else
-                timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
-                    timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
-            fi
+            # 使用新容器避免读取旧日志造成误判；证书数据保存在 volume 中，不会随容器删除。
+            sudo docker rm -f poetize-certbot 2>/dev/null || true
+            timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
+                timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
 
             # 等待证书生成（最多 15 分钟）
             info "等待证书生成（最多 15 分钟）..."
@@ -16095,6 +16120,12 @@ change_domain() {
                 local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
                 local cert_code=$(sudo docker inspect poetize-certbot --format='{{.State.ExitCode}}' 2>/dev/null || echo "-1")
                 local cert_running=$(sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
+
+                if sudo docker exec poetize-certbot test -f "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null || \
+                   sudo docker exec poetize-nginx test -f "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null; then
+                    cert_ok=true
+                    break
+                fi
 
                 # certbot 容器根本不存在 → 立即退出
                 if [ "$cert_code" = "-1" ] && [ "$cert_running" = "false" ] && [ -z "$cert_logs" ] && [ $cert_wait -ge 10 ]; then
@@ -16130,6 +16161,12 @@ change_domain() {
                 # 自动启用 HTTPS
                 sudo docker exec --user root poetize-nginx chmod +x /enable-https.sh 2>/dev/null || true
                 if sudo docker exec --user root poetize-nginx /enable-https.sh; then
+                    if sudo docker exec --user root poetize-nginx nginx -s reload 2>/dev/null; then
+                        success "nginx 已重新加载 HTTPS 配置"
+                    else
+                        warning "nginx reload 失败，尝试重启容器应用 HTTPS 配置"
+                        sudo docker restart poetize-nginx 2>/dev/null || true
+                    fi
                     success "HTTPS 已自动启用"
                     final_proto="https"
                 else
@@ -16234,14 +16271,10 @@ enable_https() {
     if [ "$cert_exists" = false ]; then
         info "未找到 SSL 证书，启动 certbot 自动申请..."
 
-        # 优先 docker start 已有容器，避免 compose pull 卡住
-        if sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null | grep -q "false"; then
-            sudo docker start poetize-certbot 2>/dev/null || \
-                timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || true
-        else
-            timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
-                timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
-        fi
+        # 使用新容器避免读取旧日志造成误判；证书数据保存在 volume 中，不会随容器删除。
+        sudo docker rm -f poetize-certbot 2>/dev/null || true
+        timeout 60 sudo docker compose --profile https up -d --no-build certbot 2>/dev/null || \
+            timeout 60 sudo docker-compose --profile https up -d --no-build certbot 2>/dev/null || true
 
         info "等待证书生成（最多 15 分钟）..."
         local cert_wait=0
@@ -16251,6 +16284,12 @@ enable_https() {
         while [ $cert_wait -lt $cert_max ]; do
             local cert_logs=$(sudo docker logs poetize-certbot 2>/dev/null || echo "")
             local cert_running=$(sudo docker inspect poetize-certbot --format='{{.State.Running}}' 2>/dev/null || echo "false")
+
+            if sudo docker exec poetize-certbot test -f "/etc/letsencrypt/live/$cert_domain/fullchain.pem" 2>/dev/null || \
+               sudo docker exec poetize-nginx test -f "/etc/letsencrypt/live/$cert_domain/fullchain.pem" 2>/dev/null; then
+                cert_ok=true
+                break
+            fi
 
             # certbot 容器不存在/无日志 → 提前退出
             if [ "$cert_running" = "false" ] && [ -z "$cert_logs" ] && [ $cert_wait -ge 10 ]; then
@@ -16286,6 +16325,12 @@ enable_https() {
     sudo docker exec --user root poetize-nginx chmod +x /enable-https.sh 2>/dev/null || true
 
     if sudo docker exec --user root poetize-nginx /enable-https.sh; then
+        if sudo docker exec --user root poetize-nginx nginx -s reload 2>/dev/null; then
+            success "nginx 已重新加载 HTTPS 配置"
+        else
+            warning "nginx reload 失败，尝试重启容器应用 HTTPS 配置"
+            sudo docker restart poetize-nginx 2>/dev/null || true
+        fi
         printf "\n"
         success "HTTPS 启用成功！"
         info "建议执行以下命令确认服务状态："
