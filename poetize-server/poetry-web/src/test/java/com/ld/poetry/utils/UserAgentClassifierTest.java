@@ -20,6 +20,16 @@ class UserAgentClassifierTest {
     }
 
     @Test
+    void classifiesPaloAltoNetworksAsScanner() {
+        UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
+                "Hello from Palo Alto Networks, find out more about our scans in https://docs-cortex.paloaltonetworks.com/r/1/Cortex-Xpanse/Scanning-activity");
+
+        assertEquals("scanner", info.type());
+        assertEquals("扫描器", info.typeLabel());
+        assertEquals("Palo Alto Networks Scanner", info.name());
+    }
+
+    @Test
     void keepsNormalDesktopBrowserAsPc() {
         UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -140,7 +150,7 @@ class UserAgentClassifierTest {
     }
 
     @Test
-    void keepsUnverifiedSearchEngineSeparateFromVerifiedSearchEngine() {
+    void keepsSearchEnginePureNameAndAggregatesTogether() {
         String googlebotUa = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 
         UserAgentClassifier.UaInfo unverified = UserAgentClassifier.classify(googlebotUa);
@@ -150,7 +160,7 @@ class UserAgentClassifierTest {
                 UserAgentClassifier.BotVerification.verified("Googlebot", "PTR与正向DNS验证通过"));
 
         assertEquals("search_engine", unverified.type());
-        assertEquals("Googlebot（未验证）", unverified.name());
+        assertEquals("Googlebot", unverified.name());
         assertEquals("unknown", unverified.botVerifyStatus());
         assertEquals("Googlebot", verified.name());
         assertEquals("verified", verified.botVerifyStatus());
@@ -165,17 +175,70 @@ class UserAgentClassifierTest {
                         + "(KHTML, like Gecko) Chrome/69.0.3497.81 YisouSpider/5.0 Safari/537.36");
 
         assertEquals("search_engine", yahoo.type());
-        assertEquals("Yahoo Slurp（未验证）", yahoo.name());
+        assertEquals("Yahoo Slurp", yahoo.name());
         assertEquals("search_engine", yisou.type());
-        assertEquals("YisouSpider（未验证）", yisou.name());
+        assertEquals("YisouSpider", yisou.name());
     }
 
     @Test
     void recognizesAdditionalKnownSearchEngineBots() {
-        assertEquals("DuckDuckBot（未验证）", UserAgentClassifier.classify("DuckDuckBot/1.1").name());
-        assertEquals("Applebot（未验证）", UserAgentClassifier.classify("Applebot/0.1").name());
-        assertEquals("PetalBot（未验证）", UserAgentClassifier.classify("PetalBot").name());
-        assertEquals("Sosospider（未验证）", UserAgentClassifier.classify("Sosospider+(+http://help.soso.com/webspider.htm)").name());
+        assertEquals("DuckDuckBot", UserAgentClassifier.classify("DuckDuckBot/1.1").name());
+        assertEquals("Applebot", UserAgentClassifier.classify("Applebot/0.1").name());
+        assertEquals("PetalBot", UserAgentClassifier.classify("PetalBot").name());
+        // Sosospider was moved to crawler
+        UserAgentClassifier.UaInfo soso = UserAgentClassifier.classify("Sosospider+(+http://help.soso.com/webspider.htm)");
+        assertEquals("crawler", soso.type());
+        assertEquals("Sosospider", soso.name());
+    }
+
+    @Test
+    void recognizesAiCrawlersSpecifically() {
+        UserAgentClassifier.UaInfo gpt = UserAgentClassifier.classify("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot");
+        assertEquals("ai_crawler", gpt.type());
+        assertEquals("AI爬虫", gpt.typeLabel());
+        assertEquals("GPTBot", gpt.name());
+
+        UserAgentClassifier.UaInfo claude = UserAgentClassifier.classify("Mozilla/5.0 (compatible; ClaudeBot/1.0; +http://www.anthropic.com/claudebot)");
+        assertEquals("ai_crawler", claude.type());
+        assertEquals("ClaudeBot", claude.name());
+
+        UserAgentClassifier.UaInfo perplexity = UserAgentClassifier.classify("Mozilla/5.0 (compatible; PerplexityBot/1.0; +http://www.perplexity.ai/bot)");
+        assertEquals("ai_crawler", perplexity.type());
+        assertEquals("PerplexityBot", perplexity.name());
+    }
+
+    @Test
+    void promotesVerificationStatusDuringAggregation() {
+        List<Map<String, Object>> records = List.of(
+                Map.of(
+                        "userAgent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                        "botVerifyStatus", "unknown"
+                ),
+                Map.of(
+                        "userAgent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                        "botVerifyStatus", "verified"
+                )
+        );
+
+        List<Map<String, Object>> result = UserAgentClassifier.aggregateVisitRecords(records);
+        assertEquals(1, result.size());
+        assertEquals("Googlebot", result.get(0).get("ua_name")); // Since it's verified, no suffix
+        assertEquals("verified", result.get(0).get("bot_verify_status"));
+    }
+
+    @Test
+    void appendsUnverifiedSuffixForUnverifiedSearchEnginesInToRows() {
+        List<Map<String, Object>> records = List.of(
+                Map.of(
+                        "userAgent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                        "botVerifyStatus", "unknown"
+                )
+        );
+
+        List<Map<String, Object>> result = UserAgentClassifier.aggregateVisitRecords(records);
+        assertEquals(1, result.size());
+        assertEquals("Googlebot（未验证）", result.get(0).get("ua_name"));
+        assertEquals("unknown", result.get(0).get("bot_verify_status"));
     }
 
     @Test

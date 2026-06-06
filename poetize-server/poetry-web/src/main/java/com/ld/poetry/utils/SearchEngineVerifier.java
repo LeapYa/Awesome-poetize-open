@@ -398,6 +398,16 @@ public class SearchEngineVerifier {
                 "applebot",
                 List.of("applebot.apple.com")
         );
+        private static final SearchEngineRule YISOU = new SearchEngineRule(
+                "YisouSpider",
+                "yisouspider",
+                List.of("sm.cn")
+        );
+        private static final SearchEngineRule PETAL = new SearchEngineRule(
+                "PetalBot",
+                "petalbot",
+                List.of("petalsearch.com", "aspiegel.com")
+        );
 
         private static SearchEngineRule match(String claimedName) {
             if (!hasText(claimedName)) {
@@ -414,6 +424,8 @@ public class SearchEngineVerifier {
                 case "yandexbot" -> YANDEX;
                 case "duckduckbot" -> DUCKDUCKGO;
                 case "applebot" -> APPLE;
+                case "yisouspider" -> YISOU;
+                case "petalbot" -> PETAL;
                 default -> null;
             };
         }

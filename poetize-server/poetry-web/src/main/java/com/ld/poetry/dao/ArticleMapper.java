@@ -23,6 +23,9 @@ public interface ArticleMapper extends BaseMapper<Article> {
     @Update("update article set view_count=view_count+1 where id=#{id}")
     int updateViewCount(@Param("id") Integer id);
 
+    @Update("update article set view_count = case when view_count >= #{count} then view_count - #{count} else 0 end where id=#{id}")
+    int decrementViewCount(@Param("id") Integer id, @Param("count") Integer count);
+
     @Select("""
             SELECT id FROM article
             WHERE deleted = 0 AND article_title REGEXP #{regexPattern}

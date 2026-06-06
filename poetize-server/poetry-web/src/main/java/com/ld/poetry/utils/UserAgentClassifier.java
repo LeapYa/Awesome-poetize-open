@@ -39,6 +39,11 @@ public final class UserAgentClassifier {
             return searchEngineInfo(searchEngine, botVerification);
         }
 
+        String aiCrawler = aiCrawlerName(lower);
+        if (aiCrawler != null) {
+            return new UaInfo("ai_crawler", "AI爬虫", aiCrawler);
+        }
+
         String securityScanner = securityScannerName(lower);
         if (securityScanner != null) {
             return new UaInfo("scanner", "扫描器", securityScanner);
@@ -157,21 +162,34 @@ public final class UserAgentClassifier {
         String key = info.type() + "|" + info.name();
         UaBucket bucket = buckets.computeIfAbsent(key, ignored -> new UaBucket(info, userAgent));
         bucket.num += count;
+        if ("search_engine".equals(info.type())) {
+            bucket.promoteBotVerification(info);
+        }
     }
 
     private static UaInfo resolveInfo(String userAgent, Map<String, Object> row) {
         String type = firstText(row, "uaType", "ua_type");
         String name = firstText(row, "uaName", "ua_name");
+        String status = firstText(row, "botVerifyStatus", "bot_verify_status");
+        String reason = firstText(row, "botVerifyReason", "bot_verify_reason");
+        BotVerification botVerification = null;
+        if (hasText(status)) {
+            botVerification = new BotVerification(null, status, reason);
+        }
         if (hasText(type) && hasText(name)) {
+            String cleanName = name.trim();
+            if ("search_engine".equals(type.trim()) && cleanName.endsWith("（未验证）")) {
+                cleanName = cleanName.substring(0, cleanName.length() - "（未验证）".length()).trim();
+            }
             return new UaInfo(
                     type.trim(),
                     typeLabel(type),
-                    name.trim(),
-                    firstText(row, "botVerifyStatus", "bot_verify_status"),
-                    firstText(row, "botVerifyReason", "bot_verify_reason")
+                    cleanName,
+                    status,
+                    reason
             );
         }
-        return classify(userAgent, row);
+        return classify(userAgent, row, botVerification);
     }
 
     private static List<Map<String, Object>> toRows(Map<String, UaBucket> buckets, int limit) {
@@ -185,7 +203,11 @@ public final class UserAgentClassifier {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("ua_type", bucket.info.type());
                     row.put("ua_type_label", bucket.info.typeLabel());
-                    row.put("ua_name", bucket.info.name());
+                    String displayName = bucket.info.name();
+                    if ("search_engine".equals(bucket.info.type()) && !"verified".equals(bucket.info.botVerifyStatus())) {
+                        displayName = displayName + "（未验证）";
+                    }
+                    row.put("ua_name", displayName);
                     row.put("bot_verify_status", bucket.info.botVerifyStatus());
                     if (hasText(bucket.info.botVerifyReason())) {
                         row.put("bot_verify_reason", bucket.info.botVerifyReason());
@@ -216,8 +238,7 @@ public final class UserAgentClassifier {
                     reason
             );
         }
-        String name = "verified".equals(status) ? searchEngine : searchEngine + "（未验证）";
-        return new UaInfo("search_engine", "搜索引擎", name, status, reason);
+        return new UaInfo("search_engine", "搜索引擎", searchEngine, status, reason);
     }
 
     private static String searchEngineName(String lower) {
@@ -235,13 +256,11 @@ public final class UserAgentClassifier {
         if (lower.contains("yisouspider")) return "YisouSpider";
         if (lower.contains("petalbot")) return "PetalBot";
         if (lower.contains("applebot")) return "Applebot";
-        if (lower.contains("sosospider")) return "Sosospider";
-        if (lower.contains("semrushbot")) return "SemrushBot";
-        if (lower.contains("ahrefsbot")) return "AhrefsBot";
         return null;
     }
 
     private static String securityScannerName(String lower) {
+        if (lower.contains("palo alto networks") || lower.contains("expanse")) return "Palo Alto Networks Scanner";
         if (lower.contains("l9scan") || lower.contains("leakix")) return "LeakIX";
         if (lower.contains("censysinspect") || lower.contains("censys")) return "Censys";
         if (lower.contains("shodan")) return "Shodan";
@@ -274,6 +293,26 @@ public final class UserAgentClassifier {
         return null;
     }
 
+    private static String aiCrawlerName(String lower) {
+        if (lower.contains("gptbot")) return "GPTBot";
+        if (lower.contains("oai-searchbot")) return "OAI-SearchBot";
+        if (lower.contains("chatgpt-user")) return "ChatGPT-User";
+        if (lower.contains("claudebot")) return "ClaudeBot";
+        if (lower.contains("claude-user")) return "Claude-User";
+        if (lower.contains("claude-searchbot")) return "Claude-SearchBot";
+        if (lower.contains("perplexitybot")) return "PerplexityBot";
+        if (lower.contains("perplexity-user")) return "Perplexity-User";
+        if (lower.contains("google-extended")) return "Google-Extended";
+        if (lower.contains("cohere-ai")) return "Cohere AI";
+        if (lower.contains("meta-externalagent")) return "Meta AI";
+        if (lower.contains("amazonbot")) return "Amazonbot";
+        if (lower.contains("ccbot")) return "CCBot";
+        if (lower.contains("diffbot")) return "Diffbot";
+        if (lower.contains("bytedance-friendlyspider")) return "Bytedance AI";
+        if (lower.contains("iaskspider")) return "iAsk Spider";
+        return null;
+    }
+
     private static String crawlerName(String lower) {
         if (lower.contains("headlesschrome")) return "Headless Chrome";
         if (lower.contains("playwright")) return "Playwright";
@@ -296,6 +335,9 @@ public final class UserAgentClassifier {
         if (lower.contains("java")) return "Java HTTP Client";
         if (lower.contains("facebookexternalhit")) return "Facebook Crawler";
         if (lower.contains("twitterbot")) return "TwitterBot";
+        if (lower.contains("semrushbot")) return "SemrushBot";
+        if (lower.contains("ahrefsbot")) return "AhrefsBot";
+        if (lower.contains("sosospider")) return "Sosospider";
         if (lower.contains("bot")) return "Bot";
         if (lower.contains("spider")) return "Spider";
         if (lower.contains("crawler")) return "Crawler";
@@ -519,6 +561,7 @@ public final class UserAgentClassifier {
             case "spoofed_search_engine" -> "疑似伪装搜索引擎";
             case "scanner" -> "扫描器";
             case "crawler" -> "爬虫";
+            case "ai_crawler" -> "AI爬虫";
             case "http_client" -> "HTTP客户端";
             case "automation" -> "自动化访问";
             case "mobile" -> "移动端";
@@ -635,13 +678,54 @@ public final class UserAgentClassifier {
     }
 
     private static final class UaBucket {
-        private final UaInfo info;
+        private UaInfo info;
         private final String sampleUa;
         private long num;
 
         private UaBucket(UaInfo info, String sampleUa) {
             this.info = info;
             this.sampleUa = sampleUa;
+        }
+
+        private void promoteBotVerification(UaInfo newInfo) {
+            if (this.info == null || newInfo == null) return;
+            String currentStatus = this.info.botVerifyStatus();
+            String newStatus = newInfo.botVerifyStatus();
+            if ("verified".equals(currentStatus)) {
+                return;
+            }
+            if ("verified".equals(newStatus)) {
+                this.info = new UaInfo(
+                        this.info.type(),
+                        this.info.typeLabel(),
+                        this.info.name(),
+                        newInfo.botVerifyStatus(),
+                        newInfo.botVerifyReason()
+                );
+                return;
+            }
+            if ("unknown".equals(currentStatus)) {
+                return;
+            }
+            if ("unknown".equals(newStatus)) {
+                this.info = new UaInfo(
+                        this.info.type(),
+                        this.info.typeLabel(),
+                        this.info.name(),
+                        newInfo.botVerifyStatus(),
+                        newInfo.botVerifyReason()
+                );
+                return;
+            }
+            if ("not_applicable".equals(currentStatus) || "none".equals(currentStatus)) {
+                this.info = new UaInfo(
+                        this.info.type(),
+                        this.info.typeLabel(),
+                        this.info.name(),
+                        newInfo.botVerifyStatus(),
+                        newInfo.botVerifyReason()
+                );
+            }
         }
     }
 }

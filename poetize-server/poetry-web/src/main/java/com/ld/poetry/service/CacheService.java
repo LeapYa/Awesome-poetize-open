@@ -560,6 +560,25 @@ public class CacheService {
         int deletedDbCount = 0;
         int removedRedisCount = 0;
 
+        // 查找该时间范围内站长 IP 访问的文章并扣减浏览量，然后清除对应缓存
+        try {
+            Map<Integer, Integer> visitedArticles = findVisitedArticleCounts(normalizedIp, since);
+            if (!visitedArticles.isEmpty()) {
+                com.ld.poetry.dao.ArticleMapper articleMapper = SpringContextUtil.getBean(com.ld.poetry.dao.ArticleMapper.class);
+                for (Map.Entry<Integer, Integer> entry : visitedArticles.entrySet()) {
+                    Integer articleId = entry.getKey();
+                    Integer count = entry.getValue();
+                    if (articleId != null && count != null && count > 0) {
+                        articleMapper.decrementViewCount(articleId, count);
+                        evictArticleRelatedCache(articleId);
+                    }
+                }
+                log.info("已扣减站长IP最近访问的文章浏览量: {}", visitedArticles);
+            }
+        } catch (Exception e) {
+            log.warn("扣减站长IP最近访问文章浏览量失败: ip={}, since={}", normalizedIp, since, e);
+        }
+
         try {
             deletedDbCount = historyInfoMapper.deleteByIpSince(normalizedIp, since);
         } catch (Exception e) {
@@ -584,6 +603,101 @@ public class CacheService {
         result.put("windowMinutes", safeMinutes);
         log.info("站长IP访问统计过滤完成: {}", result);
         return result;
+    }
+
+    private Map<Integer, Integer> findVisitedArticleCounts(String ip, LocalDateTime since) {
+        Map<Integer, Integer> articleCounts = new HashMap<>();
+        String normalizedIp = normalizeVisitIp(ip);
+        if (normalizedIp.isEmpty() || since == null) {
+            return articleCounts;
+        }
+
+        // 1. 从数据库中查询该 IP 且创建时间 >= since 的访问记录
+        try {
+            List<com.ld.poetry.entity.HistoryInfo> dbHistoryList = historyInfoMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.ld.poetry.entity.HistoryInfo>()
+                            .eq(com.ld.poetry.entity.HistoryInfo::getIp, normalizedIp)
+                            .ge(com.ld.poetry.entity.HistoryInfo::getCreateTime, since)
+            );
+            if (dbHistoryList != null) {
+                for (com.ld.poetry.entity.HistoryInfo history : dbHistoryList) {
+                    processPageUriToArticleCounts(history.getPageUri(), articleCounts);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询站长IP数据库历史记录提取文章ID失败: ip={}, since={}", normalizedIp, since, e);
+        }
+
+        // 2. 从 Redis 每日记录中查询
+        try {
+            LocalDate today = LocalDate.now();
+            LocalDate sinceDate = since.toLocalDate();
+            for (LocalDate date = sinceDate; !date.isAfter(today); date = date.plusDays(1)) {
+                String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date.toString());
+                List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
+                if (recordJsonList != null && !recordJsonList.isEmpty()) {
+                    for (Object recordJson : recordJsonList) {
+                        if (recordJson == null) {
+                            continue;
+                        }
+                        try {
+                            Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), Map.class);
+                            String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
+                            LocalDateTime recordTime = resolveVisitRecordTime(record);
+                            if (normalizedIp.equals(recordIp) && recordTime != null && !recordTime.isBefore(since)) {
+                                Object pageUriObj = record.get("pageUri");
+                                if (pageUriObj != null) {
+                                    processPageUriToArticleCounts(pageUriObj.toString(), articleCounts);
+                                }
+                            }
+                        } catch (Exception e) {
+                            // 忽略单个解析失败
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("从 Redis 每日访问记录中提取文章ID失败: ip={}, since={}", normalizedIp, since, e);
+        }
+
+        return articleCounts;
+    }
+
+    private void processPageUriToArticleCounts(String pageUri, Map<Integer, Integer> articleCounts) {
+        if (pageUri == null || pageUri.isEmpty()) {
+            return;
+        }
+        String token = PageVisitUtils.extractArticleToken(pageUri);
+        if (token == null || token.isEmpty()) {
+            return;
+        }
+        
+        // 解析 token 为 articleId
+        try {
+            Integer articleId = null;
+            if (com.ld.poetry.utils.ArticleUrlUtil.isNumericToken(token)) {
+                articleId = Integer.valueOf(token.trim());
+            } else {
+                String slug = com.ld.poetry.utils.ArticleUrlUtil.normalizeSlug(token);
+                if (com.ld.poetry.utils.ArticleUrlUtil.isValidSlug(slug)) {
+                    com.ld.poetry.dao.ArticleMapper articleMapper = SpringContextUtil.getBean(com.ld.poetry.dao.ArticleMapper.class);
+                    Article article = articleMapper.selectOne(
+                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Article>()
+                                    .select(Article::getId)
+                                    .eq(Article::getArticleSlug, slug)
+                                    .last("limit 1")
+                    );
+                    if (article != null) {
+                        articleId = article.getId();
+                    }
+                }
+            }
+            if (articleId != null) {
+                articleCounts.put(articleId, articleCounts.getOrDefault(articleId, 0) + 1);
+            }
+        } catch (Exception e) {
+            log.warn("从 token 解析文章 ID 失败: token={}, error={}", token, e.getMessage());
+        }
     }
 
     private void saveVisitIgnoreIps(Set<String> ignoreIps) {

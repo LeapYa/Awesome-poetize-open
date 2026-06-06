@@ -175,14 +175,27 @@ class SearchEngineVerifierTest {
     }
 
     @Test
-    void returnsUnknownForRecognizedSearchEngineWithoutReliableVerificationRule() {
-        SearchEngineVerifier verifier = newVerifier(new FakeRedisUtil(), new FakeDnsResolver());
+    void verifiesYisouAndPetalWhenReverseAndForwardDnsMatch() throws Exception {
+        // YisouSpider
+        FakeRedisUtil redisUtil1 = new FakeRedisUtil();
+        FakeDnsResolver dnsResolver1 = new FakeDnsResolver()
+                .reverse("106.11.155.10", "crawler.sm.cn")
+                .forward("crawler.sm.cn", List.of("106.11.155.10"));
+        SearchEngineVerifier verifier1 = newVerifier(redisUtil1, dnsResolver1);
+        UserAgentClassifier.BotVerification result1 = awaitStatus(verifier1, "106.11.155.10", YISOU_UA, "verified");
+        assertEquals("YisouSpider", result1.claimedName());
+        assertEquals("verified", result1.status());
 
-        UserAgentClassifier.BotVerification result = verifier.verify("203.0.113.30", YISOU_UA);
-
-        assertEquals("YisouSpider", result.claimedName());
-        assertEquals("unknown", result.status());
-        assertEquals("暂无可信IP验证规则", result.reason());
+        // PetalBot
+        String petalUa = "Mozilla/5.0 (compatible; PetalBot; +https://webmaster.petalsearch.com/site/petalbot)";
+        FakeRedisUtil redisUtil2 = new FakeRedisUtil();
+        FakeDnsResolver dnsResolver2 = new FakeDnsResolver()
+                .reverse("114.119.160.10", "crawl.petalsearch.com")
+                .forward("crawl.petalsearch.com", List.of("114.119.160.10"));
+        SearchEngineVerifier verifier2 = newVerifier(redisUtil2, dnsResolver2);
+        UserAgentClassifier.BotVerification result2 = awaitStatus(verifier2, "114.119.160.10", petalUa, "verified");
+        assertEquals("PetalBot", result2.claimedName());
+        assertEquals("verified", result2.status());
     }
 
     @Test
@@ -198,7 +211,7 @@ class SearchEngineVerifierTest {
         assertEquals("unknown", result.status());
         assertTrue(elapsedMillis < 80, "verify should return before slow DNS completes");
         assertEquals("search_engine", uaInfo.type());
-        assertEquals("Googlebot（未验证）", uaInfo.name());
+        assertEquals("Googlebot", uaInfo.name());
 
         UserAgentClassifier.BotVerification cached = awaitStatus(verifier, "66.249.66.1", GOOGLE_UA, "verified");
         assertEquals("verified", cached.status());
