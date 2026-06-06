@@ -34,6 +34,15 @@ class PrerenderEngineTest {
     }
 
     @Test
+    void replaceTitlePreservesQuotes() {
+        PrerenderEngine engine = createEngine();
+        String htmlTemplate = "<html><head><title>Old</title></head><body></body></html>";
+        String title = "测试“双引号”与[方括号]是否会被转义 & < >";
+        String result = org.springframework.test.util.ReflectionTestUtils.invokeMethod(engine, "replaceTitle", htmlTemplate, title);
+        assertTrue(result.contains("<title>测试“双引号”与[方括号]是否会被转义 &amp; &lt; &gt;</title>"));
+    }
+
+    @Test
     void buildPageInjectsSeoTagsAndRenderedContent() throws IOException {
         Path templatePath = tempDir.resolve("index.html");
         Files.writeString(templatePath, """

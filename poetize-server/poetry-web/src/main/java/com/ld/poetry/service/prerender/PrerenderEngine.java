@@ -339,7 +339,14 @@ public class PrerenderEngine {
 
     private String replaceTitle(String html, String title) {
         return TITLE_PATTERN.matcher(html)
-                .replaceFirst(Matcher.quoteReplacement("<title>" + escapeHtml(title) + "</title>"));
+                .replaceFirst(Matcher.quoteReplacement("<title>" + escapeTitleHtml(title) + "</title>"));
+    }
+
+    private String escapeTitleHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private String removeExistingSeoTags(String html) {
