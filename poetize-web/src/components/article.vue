@@ -801,6 +801,7 @@ export default {
       this.renderMermaid()
       this.renderECharts()
       this.addId()
+      this.getTocbot()
       this.detectAndLoadResources()
       // 异步注入图片宽高，让浏览器提前预留占位，避免目录跳转偏移
       this.injectImageDimensions()
