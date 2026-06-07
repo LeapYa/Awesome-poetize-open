@@ -514,8 +514,8 @@ public class SeoMetaServiceImpl implements SeoMetaService {
         if (StringUtils.hasText(article.getSummary())) {
             description = cleanSummaryText(article.getSummary());
         } else if (StringUtils.hasText(article.getArticleContent())) {
-            // 从内容中提取描述
-            description = cleanSummaryText(article.getArticleContent());
+            // 从内容中提取描述，保底限制在前500字
+            description = cleanSummaryText(article.getArticleContent(), 500);
         }
 
         // 如果还是没有，使用网站默认描述
@@ -756,7 +756,11 @@ public class SeoMetaServiceImpl implements SeoMetaService {
     }
 
     private String cleanSummaryText(String content) {
-        return ArticleSummaryTextUtil.toPlainText(content, 200);
+        return cleanSummaryText(content, 0);
+    }
+
+    private String cleanSummaryText(String content, int maxLength) {
+        return ArticleSummaryTextUtil.toPlainText(content, maxLength);
     }
 
     private String detectUrlFromRequest(HttpServletRequest request) {

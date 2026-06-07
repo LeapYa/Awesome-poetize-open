@@ -22,7 +22,6 @@ import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.ResourcePathVO;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.text.StringEscapeUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -874,10 +873,18 @@ public class PrerenderService {
     }
 
     private String text(String value) {
-        return StringEscapeUtils.escapeHtml4(firstNonBlank(value));
+        String val = firstNonBlank(value);
+        return val.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     private String attr(String value) {
-        return StringEscapeUtils.escapeHtml4(firstNonBlank(value)).replace("'", "&#39;");
+        String val = firstNonBlank(value);
+        return val.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 }
