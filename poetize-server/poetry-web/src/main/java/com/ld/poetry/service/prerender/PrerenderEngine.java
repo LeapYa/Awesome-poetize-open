@@ -657,11 +657,14 @@ public class PrerenderEngine {
         return value == null ? "" : value.toString().trim();
     }
 
-    private String escapeHtml(String value) {
-        return StringEscapeUtils.escapeHtml4(value == null ? "" : value);
-    }
-
     private String escapeAttribute(String value) {
-        return escapeHtml(value).replace("'", "&#39;");
+        if (value == null) {
+            return "";
+        }
+        return value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 }

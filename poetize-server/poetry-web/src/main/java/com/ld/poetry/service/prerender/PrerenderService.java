@@ -479,7 +479,9 @@ public class PrerenderService {
         meta.putIfAbsent("author", firstNonBlank(stringValue(seoConfig.get("default_author")), siteName));
         meta.putIfAbsent("keywords", firstNonBlank(stringValue(seoConfig.get("site_keywords")), siteName));
         meta.putIfAbsent("canonical", buildUrl(baseUrl, articleRoute));
-        meta.putIfAbsent("og:site_name", siteName);
+        if (!org.springframework.util.StringUtils.hasText(stringValue(meta.get("og:site_name")))) {
+            meta.put("og:site_name", siteName);
+        }
         meta.putIfAbsent("og:url", buildUrl(baseUrl, articleRoute));
 
         String socialImage = ensureAbsoluteImageUrl(firstNonBlank(stringValue(meta.get("og:image")), stringValue(seoConfig.get("og_image"))), baseUrl);
@@ -615,7 +617,7 @@ public class PrerenderService {
         meta.put("og:type", ogType);
         meta.put("og:url", canonicalUrl);
         meta.put("og:image", ogImage);
-        meta.put("og:site_name", getSiteName(webInfo));
+        meta.put("og:site_name", firstNonBlank(stringValue(seoConfig.get("og_site_name")), getSiteName(webInfo)));
         meta.put("twitter:card", firstNonBlank(stringValue(seoConfig.get("twitter_card")), "summary"));
         meta.put("twitter:title", title);
         meta.put("twitter:description", description);
