@@ -35,7 +35,6 @@ public final class ArticleSummaryTextUtil {
         result = result.replaceAll("(\\*|_)(.*?)\\1", "$2");
         result = result.replaceAll("~~(.*?)~~", "$1");
         result = result.replace('|', ' ');
-        result = result.replaceAll("[\"'“”‘’]", "");
         result = result.replaceAll("\\s+", " ").trim();
 
         if (maxLength > 0 && result.length() > maxLength) {

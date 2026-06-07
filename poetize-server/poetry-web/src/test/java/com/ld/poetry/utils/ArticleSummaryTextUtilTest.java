@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ArticleSummaryTextUtilTest {
 
@@ -14,9 +15,9 @@ class ArticleSummaryTextUtilTest {
 
         String result = ArticleSummaryTextUtil.toPlainText(markdown, 200);
 
-        assertEquals("标题 这是 Spring 的 链接 和 code 列表项 重点", result);
+        assertEquals("标题 这是 \"Spring\" 的 链接 和 code 列表项 重点", result);
         assertFalse(result.contains("\n"));
-        assertFalse(result.contains("\""));
+        assertTrue(result.contains("\""));
         assertFalse(result.contains("<img"));
     }
 
