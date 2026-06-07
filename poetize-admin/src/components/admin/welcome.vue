@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="welcome-container">
     <div class="welcome-title">
       <h2 class="playful">
@@ -15,13 +15,13 @@
         <span>{{ appVersion }}</span>
         <span
           class="check-update-btn"
-          :class="{ checking: checking, 'has-update': updateAvailable }"
+          :class="{ checking: checking, 'has-update': updateAvailable, 'is-latest': isLatest }"
           @click.stop="updateAvailable ? openReleasePage() : checkForUpdates()"
           :title="updateButtonTitle"
           :aria-label="updateButtonTitle"
         >
-          <i :class="updateAvailable ? 'el-icon-top' : 'el-icon-refresh'"></i>
-          {{ updateAvailable ? '去更新' : (checking ? '检查中...' : '检查更新') }}
+          <i :class="updateAvailable ? 'el-icon-top' : (isLatest ? 'el-icon-check' : 'el-icon-refresh')"></i>
+          {{ updateAvailable ? '去更新' : (isLatest ? '已是最新版本' : (checking ? '检查中...' : '检查更新')) }}
         </span>
       </div>
     </div>
@@ -100,6 +100,7 @@
         totalSteps: TOTAL_STEPS,
         hasStartedGuide: false,
         updateAvailable: false,
+        isLatest: false,
         latestVersion: '',
         checking: false,
         hideGuide: false
@@ -116,6 +117,9 @@
         }
         if (this.checking) {
           return '正在从 GitHub/Gitee 检查 Poetize 最新版本';
+        }
+        if (this.isLatest) {
+          return '当前已是最新版本';
         }
         return '检查 Poetize 最新版本；发现更新后可前往 GitHub Releases 查看升级说明';
       },
@@ -171,6 +175,8 @@
                 5000,
                 () => this.openReleasePage()
               );
+            } else {
+              this.isLatest = true;
             }
           } catch (e) {
             // ignore
@@ -230,6 +236,7 @@
       async checkForUpdates() {
         if (this.checking) return;
         this.checking = true;
+        this.isLatest = false;
         try {
           const CACHE_KEY = 'poetize_update_check';
           const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
@@ -247,6 +254,8 @@
                   5000,
                   () => this.openReleasePage()
                 );
+              } else {
+                this.isLatest = true;
               }
               return;
             }
@@ -269,6 +278,8 @@
               5000,
               () => this.openReleasePage()
             );
+          } else {
+            this.isLatest = true;
           }
         } catch (e) {
           // 静默忽略
@@ -585,6 +596,15 @@
     cursor: not-allowed;
     color: #94a3b8;
     background: #f1f5f9;
+  }
+
+  .check-update-btn.is-latest {
+    color: #fff;
+    background: #10b981;
+  }
+
+  .check-update-btn.is-latest:hover {
+    background: #059669;
   }
 
   .check-update-btn.checking i {
