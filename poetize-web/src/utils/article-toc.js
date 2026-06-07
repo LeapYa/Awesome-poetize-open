@@ -2,7 +2,7 @@ import { getTocTitle } from '@/utils/languageUtils'
 import { emitPluginHook } from '@/composables/usePluginLoader'
 import { getTocEmoji } from '@/composables/useArticleTheme'
 
-function formatTocLinks() {
+export function formatTocLinks() {
   const tocLinks = document.querySelectorAll('.toc a.toc-link')
   const prefixRegex = /^(([0-9]+(?:\.[0-9]+)*|[一二三四五六七八九十百]+|[a-zA-Z]|[IVXLCDMivxlcdm]+)(?:\.|、|-|\s)+|[\(（][0-9a-zA-Z一二三四五六七八九十百]+[\)）](?:\.|、|-|\s)?)\s*(.*)$/
 

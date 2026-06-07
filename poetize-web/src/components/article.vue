@@ -1297,6 +1297,7 @@ export default {
         this.tocbotRefreshTimer = setTimeout(() => {
           if (window.tocbot && window.tocbot.refresh) {
             window.tocbot.refresh()
+            this.formatTocLinks()
             this.tocbotRefreshed = true
           }
         }, 50)
@@ -1304,6 +1305,7 @@ export default {
     },
     syncTocPosition,
     getTocbot,
+    formatTocLinks,
     addId() {
       const entryContent = document.querySelector('.entry-content')
       if (entryContent) {
