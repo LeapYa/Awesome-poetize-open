@@ -73,6 +73,8 @@ function isPageRequest(request) {
 // 检查是否为静态资源
 function isStaticAsset(request) {
   const url = new URL(request.url);
+  // 排除 manifest.json，避免浏览器使用缓存导致网站名称等配置更新不生效
+  if (url.pathname === '/manifest.json') return false;
   return url.pathname.match(/\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|eot|json|mp4)$/);
 }
 

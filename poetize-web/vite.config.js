@@ -6,6 +6,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
+import fs from 'fs'
+import { minify } from 'terser'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -223,10 +225,40 @@ function captchaObfuscator() {
   }
 }
 
+function swMinifier() {
+  return {
+    name: 'sw-minifier',
+    apply: 'build',
+    enforce: 'post',
+    async closeBundle() {
+      const swPath = path.resolve(__dirname, 'dist/sw.js')
+      if (fs.existsSync(swPath)) {
+        try {
+          const code = fs.readFileSync(swPath, 'utf8')
+          const result = await minify(code, {
+            compress: true,
+            mangle: true,
+            format: {
+              comments: false
+            }
+          })
+          if (result.code) {
+            fs.writeFileSync(swPath, result.code, 'utf8')
+            console.log('✓ sw.js minified successfully')
+          }
+        } catch (e) {
+          console.error('Failed to minify sw.js:', e)
+        }
+      }
+    }
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
+    swMinifier(),
     // 仅自动导入 Vue / Vue Router API，避免把 Element Plus JS 标识符重新指回聚合入口
     AutoImport({
       imports: ['vue', 'vue-router'],
