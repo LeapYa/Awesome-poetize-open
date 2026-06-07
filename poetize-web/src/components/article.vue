@@ -166,6 +166,15 @@
       :web-title="mainStore.webInfo.webTitle"
     />
 
+    <el-image-viewer
+      v-if="showImageViewer"
+      :url-list="previewImages"
+      :initial-index="previewImageIndex"
+      @close="showImageViewer = false"
+      :hide-on-click-modal="true"
+      :teleported="true"
+    />
+
     <!-- 图表和图片 右键菜单 -->
     <div
       v-show="graphicContextMenu.visible"
@@ -381,6 +390,9 @@ export default {
       articleThemeConfig: null, // 文章主题配置（缓存，供 TOC 使用）
       paymentLoading: false, // 付费按钮加载状态
       verifyingPayment: false, // 验证支付状态
+      showImageViewer: false, // 是否显示图片预览
+      previewImages: [], // 预览图片列表
+      previewImageIndex: 0, // 预览图片当前索引
     }
   },
   head() {
@@ -922,6 +934,11 @@ export default {
       this.isLoading = false
       this.shouldLoadComments = false
       this.teardownCommentIntersectionObserver()
+
+      // 重置图片预览状态
+      this.showImageViewer = false
+      this.previewImages = []
+      this.previewImageIndex = 0
 
       // 重置语言相关状态 - 这是关键修复
       this.currentLang = this.sourceLanguage || 'zh'

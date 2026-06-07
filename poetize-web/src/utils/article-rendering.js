@@ -1171,7 +1171,7 @@ export function processImages() {
 
     img.addEventListener('click', (event) => {
       event.stopPropagation()
-      this.toggleImageZoom(img.src)
+      this.toggleImageZoom(img.src, img)
     })
 
     img.addEventListener('contextmenu', (event) => {
@@ -1180,121 +1180,21 @@ export function processImages() {
   })
 }
 
-export function toggleImageZoom(src) {
-  let overlay = document.getElementById('image-zoom-overlay')
+export function toggleImageZoom(src, clickedImg) {
+  const entryContent = document.querySelector('.entry-content')
+  const images = entryContent ? Array.from(entryContent.querySelectorAll('img:not(.pictureReg):not(.emoji)')) : []
+  const urlList = images.map(img => img.src)
 
-  if (overlay) {
-    overlay.style.transition = 'opacity 0.3s ease'
-    overlay.style.opacity = '0'
-    setTimeout(() => {
-      if (overlay && overlay.parentNode) {
-        overlay.parentNode.removeChild(overlay)
-      }
-    }, 300)
-    document.body.style.overflow = ''
-    return
+  let initialIndex = 0
+  if (clickedImg) {
+    initialIndex = images.indexOf(clickedImg)
+  } else {
+    initialIndex = urlList.indexOf(src)
   }
 
-  overlay = document.createElement('div')
-  overlay.id = 'image-zoom-overlay'
-  Object.assign(overlay.style, {
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    zIndex: '9999',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'opacity 0.3s ease'
-  })
-
-  const content = document.createElement('div')
-  Object.assign(content.style, {
-    position: 'relative',
-    maxWidth: '90%',
-    maxHeight: '90%'
-  })
-
-  const img = document.createElement('img')
-  img.src = src
-  Object.assign(img.style, {
-    maxWidth: '100%',
-    maxHeight: '90vh',
-    objectFit: 'contain',
-    display: 'block',
-    margin: '0 auto',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-    borderRadius: '4px'
-  })
-
-  content.appendChild(img)
-
-  const closeBtn = document.createElement('button')
-  Object.assign(closeBtn.style, {
-    position: 'absolute',
-    top: '-40px',
-    right: '-40px',
-    background: 'rgba(255,255,255,0.2)',
-    border: 'none',
-    borderRadius: '50%',
-    width: '40px',
-    height: '40px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'white',
-    transition: 'background 0.3s',
-    zIndex: '10000'
-  })
-  closeBtn.onmouseover = () => closeBtn.style.background = 'rgba(255,255,255,0.4)'
-  closeBtn.onmouseout = () => closeBtn.style.background = 'rgba(255,255,255,0.2)'
-  closeBtn.innerHTML = `
-    <svg viewBox="0 0 1024 1024" width="20" height="20">
-      <path d="M557.312 513.248l265.28-263.904c12.544-12.48 12.608-32.704 0.128-45.248-12.512-12.576-32.704-12.608-45.248-0.128L512.128 467.904 246.72 204.096c-12.48-12.544-32.704-12.608-45.248-0.128-12.576 12.512-12.608 32.704-0.128 45.248l265.344 263.84-265.28 263.872c-12.544 12.48-12.608 32.704-0.128 45.248 6.24 6.272 14.464 9.44 22.688 9.44 8.16 0 16.32-3.104 22.56-9.312l265.344-263.872 265.376 263.904c6.272 6.272 14.464 9.408 22.688 9.408 8.16 0 16.32-3.104 22.56-9.312 12.544-12.48 12.608-32.704 0.128-45.248L557.312 513.248z" fill="currentColor"></path>
-    </svg>
-  `
-
-  if (window.innerWidth < 768) {
-    closeBtn.style.top = '10px'
-    closeBtn.style.right = '10px'
-  }
-
-  content.appendChild(closeBtn)
-  overlay.appendChild(content)
-  document.body.appendChild(overlay)
-
-  overlay.style.opacity = '0'
-  setTimeout(() => {
-    overlay.style.opacity = '1'
-  }, 10)
-
-  document.body.style.overflow = 'hidden'
-
-  const closeOverlay = () => {
-    overlay.style.opacity = '0'
-    setTimeout(() => {
-      if (overlay && overlay.parentNode) {
-        overlay.parentNode.removeChild(overlay)
-      }
-    }, 300)
-    document.body.style.overflow = ''
-  }
-
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) {
-      closeOverlay()
-    }
-  })
-
-  img.addEventListener('contextmenu', (event) => {
-    this.handleGraphicContextMenu(event, img, 'image')
-  })
-
-  closeBtn.addEventListener('click', closeOverlay)
+  this.previewImages = urlList.length > 0 ? urlList : [src]
+  this.previewImageIndex = initialIndex >= 0 ? initialIndex : 0
+  this.showImageViewer = true
 }
 
 export function inlineSvgStyles(source, target) {
