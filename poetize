@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-05-29
+## 修改时间: 2026-06-07
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.12.0
+## 版本: 1.13.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.12.0"
+POETIZE_VERSION="1.13.0"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -8993,12 +8993,14 @@ modify_docker_compose_for_multi_instance() {
   sed_i "s/container_name: poetize-java/container_name: poetize-java$suffix/g" docker-compose.yml
   sed_i "s/container_name: poetize-mariadb/container_name: poetize-mariadb$suffix/g" docker-compose.yml
   sed_i "s/container_name: poetize-redis/container_name: poetize-redis$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-translation-model/container_name: poetize-translation-model$suffix/g" docker-compose.yml
   
   # 修改网络名称
   sed_i "s/poetize-network/poetize-network$suffix/g" docker-compose.yml
   
   # 修改卷名称
   sed_i "s/mysql_data:/mysql_data$suffix:/g" docker-compose.yml
+  sed_i "s/ollama_data:/ollama_data$suffix:/g" docker-compose.yml
   sed_i "s/redis_data:/redis_data$suffix:/g" docker-compose.yml
   sed_i "s/certbot-etc:/certbot-etc$suffix:/g" docker-compose.yml
   sed_i "s/certbot-var:/certbot-var$suffix:/g" docker-compose.yml
@@ -13115,6 +13117,8 @@ show_help() {
     printf "  -oauth-proxy              OAuth 代理配置向导（三步引导配置 GitHub/Google 等海外登录代理）\n"
     printf "  -enable-https             手动启用 HTTPS（自动检测前置条件并执行 enable-https.sh）\n"
     printf "  -change-domain            更换网站域名（交互式，自动更新 nginx/certbot 配置）\n"
+    printf "  -edit-nginx               编辑 Nginx 配置文件（交互式选择、自动备份、语法校验与重载）\n"
+    printf "  -deploy-ollama            部署/管理 Ollama 本地模型（AI 翻译与知识库支持）\n"
     printf "\n"
     printf "${BLUE}常用示例:${NC}\n"
     printf "  poetize install --domain example.com --skip-dns-check\n"
@@ -13149,11 +13153,11 @@ show_interactive_menu() {
         printf "  ${YELLOW}[4]${NC} 更新项目        ${YELLOW}[5]${NC} 启动服务        ${YELLOW}[6]${NC} 停止服务\n"
         printf "  ${YELLOW}[7]${NC} 重启服务        ${YELLOW}[8]${NC} 查看状态        ${YELLOW}[9]${NC} 备份 / 恢复\n"
         printf "  ${YELLOW}[10]${NC} OAuth 代理配置 ${YELLOW}[11]${NC} 启用 HTTPS     ${YELLOW}[12]${NC} 更换域名\n"
-        printf "  ${YELLOW}[0]${NC} 退出\n"
+        printf "  ${YELLOW}[13]${NC} 编辑 Nginx 配置 ${YELLOW}[14]${NC} 部署 Ollama    ${YELLOW}[0]${NC} 退出\n"
         printf "${BLUE}  Tip:${NC} 首次部署建议先执行安装项目，后续统一使用 poetize 命令管理\n"
         printf "\n"
 
-        read -rp "请输入编号 [0-12]: " menu_choice
+        read -rp "请输入编号 [0-14]: " menu_choice
         case "$menu_choice" in
             1)
                 run_deployment
@@ -13242,6 +13246,16 @@ show_interactive_menu() {
             12)
                 check_docker
                 change_domain
+                read -rp "按 Enter 返回菜单..." _
+                ;;
+            13)
+                check_docker
+                edit_nginx_config
+                read -rp "按 Enter 返回菜单..." _
+                ;;
+            14)
+                check_docker
+                deploy_ollama_model
                 read -rp "按 Enter 返回菜单..." _
                 ;;
             *)
@@ -14334,6 +14348,158 @@ sync_sql_migration_scripts() {
     printf "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
     info "总计: $total_count | 已执行: $done_count | 本次新执行: $new_exec_count | 失败: $fail_count"
     success "SQL 脚本同步完成"
+}
+
+# 编辑 Nginx 配置文件
+edit_nginx_config() {
+    find_project_dir
+    load_config_lib
+
+    # 检查 Nginx 容器是否正在运行
+    if ! docker ps --format '{{.Names}}' | grep -q "^poetize-nginx$"; then
+        error "Nginx 容器 (poetize-nginx) 未在运行！"
+        error "请先启动服务 (选项 5) 后再编辑容器内的配置文件。"
+        return 1
+    fi
+
+    # 查找可用编辑器，优先使用系统的 EDITOR 环境变量，其次是 nano, vim, vi
+    local editor=""
+    if [ -n "$EDITOR" ] && command -v "$EDITOR" &>/dev/null; then
+        editor="$EDITOR"
+    elif command -v nano &>/dev/null; then
+        editor="nano"
+    elif command -v vim &>/dev/null; then
+        editor="vim"
+    elif command -v vi &>/dev/null; then
+        editor="vi"
+    else
+        error "未在系统中找到 nano, vim 或 vi 编辑器，请手动安装后重试"
+        return 1
+    fi
+
+    while true; do
+        printf "\n"
+        printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
+        printf "${GREEN}  Nginx 容器内部配置文件编辑器 (使用编辑器: $editor)${NC}\n"
+        printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
+        printf "  ${YELLOW}⚠️  警告: 编辑配置文件可能引发服务中断。${NC}\n"
+        printf "  ${YELLOW}⚠️  注意: 系统升级时，此处修改的文件（即使同步回宿主机）将不会被保留！${NC}\n"
+        printf "  ${YELLOW}          若有核心自定义配置，请在升级前自行导出备份，并在升级后手动应用。${NC}\n"
+        printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
+        printf "  ${YELLOW}[1]${NC} /etc/nginx/conf.d/default.conf            (主站点虚拟主机配置)\n"
+        printf "  ${YELLOW}[2]${NC} /etc/nginx/nginx.conf                     (Nginx 全局配置文件)\n"
+        printf "  ${YELLOW}[3]${NC} /etc/nginx/security/spoofed-ip-headers.conf(防伪造 IP 头配置)\n"
+        printf "  ${YELLOW}[0]${NC} 返回上一级\n"
+        printf "\n"
+
+        read -rp "请选择要编辑的容器内文件 [0-3]: " edit_choice
+        local container_file=""
+        local host_file=""
+
+        case "$edit_choice" in
+            1)
+                container_file="/etc/nginx/conf.d/default.conf"
+                host_file="docker/nginx/default.conf"
+                ;;
+            2)
+                container_file="/etc/nginx/nginx.conf"
+                host_file="docker/nginx/nginx.conf"
+                ;;
+            3)
+                container_file="/etc/nginx/security/spoofed-ip-headers.conf"
+                host_file="docker/nginx/spoofed-ip-headers.conf"
+                ;;
+            0) return 0 ;;
+            *)
+                warning "无效的编号，请重新选择"
+                continue
+                ;;
+        esac
+
+        # 检查容器内文件是否存在
+        if ! docker exec poetize-nginx test -f "$container_file" 2>/dev/null; then
+            error "容器内不存在该文件: $container_file"
+            continue
+        fi
+
+        # 创建临时文件来存放从容器拷贝出来的配置
+        local temp_file=""
+        temp_file=$(mktemp)
+        local temp_backup=""
+        temp_backup=$(mktemp)
+
+        # 从容器中拷贝配置文件到临时文件
+        if ! docker cp poetize-nginx:"$container_file" "$temp_file" 2>/dev/null; then
+            error "从容器拷贝文件失败: $container_file"
+            rm -f "$temp_file" "$temp_backup" 2>/dev/null
+            continue
+        fi
+
+        # 备份原始配置
+        cp "$temp_file" "$temp_backup"
+
+        # 打开编辑器编辑临时文件
+        "$editor" "$temp_file"
+
+        # 检查文件是否被修改过
+        if cmp -s "$temp_file" "$temp_backup"; then
+            info "配置文件未发生变更。"
+            rm -f "$temp_file" "$temp_backup" 2>/dev/null
+            read -rp "按 Enter 返回菜单..." _
+            continue
+        fi
+
+        # 将编辑后的临时文件拷贝回容器
+        info "正在将修改后的配置应用到容器中..."
+        if ! docker cp "$temp_file" poetize-nginx:"$container_file" 2>/dev/null; then
+            error "拷贝修改后的配置文件回容器失败！"
+            rm -f "$temp_file" "$temp_backup" 2>/dev/null
+            continue
+        fi
+
+        # 验证 Nginx 配置语法
+        info "正在验证 Nginx 配置语法..."
+        if docker exec poetize-nginx nginx -t 2>/dev/null; then
+            success "Nginx 配置语法验证通过！"
+            if auto_confirm "是否立即重新加载 Nginx 配置以生效? (Y/n) " "y"; then
+                if docker exec poetize-nginx nginx -s reload; then
+                    success "Nginx 配置重载成功！"
+
+                    # 语法验证通过且已生效，提示同步回宿主机以防容器重建后丢失
+                    if [ -f "$host_file" ]; then
+                        warning "提示: 即使同步到宿主机，在执行系统升级/更新时，本地 Nginx 配置也可能会被重置覆盖。"
+                        if auto_confirm "是否仍将修改同步保存到宿主机本地文件 (${host_file})? (Y/n) " "y"; then
+                            # 备份宿主机本地文件
+                            local host_backup="${host_file}.bak.$(date +%Y%m%d%H%M%S)"
+                            cp "$host_file" "$host_backup"
+                            if cp "$temp_file" "$host_file"; then
+                                success "已同步保存到宿主机，原宿主机文件备份为: $host_backup"
+                            else
+                                error "同步保存到宿主机失败"
+                            fi
+                        fi
+                    fi
+                else
+                    error "Nginx 配置重载失败！"
+                fi
+            fi
+        else
+            error "Nginx 配置语法验证失败！"
+            # 打印详细错误信息
+            docker exec poetize-nginx nginx -t
+            if auto_confirm "发现语法错误，是否还原到修改前的配置? (Y/n) " "y"; then
+                if docker cp "$temp_backup" poetize-nginx:"$container_file" 2>/dev/null; then
+                    success "已将容器内配置还原为修改前版本。"
+                else
+                    error "还原配置失败，请手动检查容器内文件。"
+                fi
+            fi
+        fi
+
+        # 清理临时文件
+        rm -f "$temp_file" "$temp_backup" 2>/dev/null
+        read -rp "按 Enter 返回菜单..." _
+    done
 }
 
 backfill_sql_migration_success_records() {
@@ -16539,6 +16705,295 @@ __NGINX_CONF__
   printf "\n"
 }
 
+# 展示 Ollama 部署成功后的配置与访问信息
+show_ollama_access_info() {
+    local user_models="$1"
+    local user_keep_alive="$2"
+    local user_api_key="$3"
+
+    local host_addr
+    local domain=$(read_env_config "DOMAIN" "")
+    if [ -n "$domain" ]; then
+        host_addr="$domain"
+    else
+        host_addr=$(curl -s --max-time 2 ipv4.icanhazip.com || curl -s --max-time 2 ifconfig.me || ip route get 1 2>/dev/null | awk '{print $7}' || echo "localhost")
+    fi
+    
+    local ollama_port=$(read_env_config "OLLAMA_PORT" "11434")
+
+    printf "\n"
+    printf "${CYAN}================================================================${NC}\n"
+    printf "${GREEN}                     Ollama 服务访问与配置信息                    ${NC}\n"
+    printf "${CYAN}================================================================${NC}\n"
+    printf "  ${BLUE}* 服务外部访问地址:${NC}  http://${host_addr}:${ollama_port}\n"
+    printf "  ${BLUE}* 服务容器内网地址:${NC}  http://poetize-translation-model:11434\n"
+    printf "  ${BLUE}* 已部署模型:${NC}        ${user_models}\n"
+    printf "  ${BLUE}* 模型空闲休眠时长:${NC}  ${user_keep_alive}\n"
+    if [ -n "$user_api_key" ]; then
+        printf "  ${BLUE}* API Key (Bearer):${NC}  ${user_api_key}\n"
+        printf "  ${GREEN}* 安全状态:${NC}          已启用安全校验 (需携带 Bearer 令牌进行验证)\n"
+    else
+        printf "  ${BLUE}* API Key (Bearer):${NC}  无安全密钥 (公开访问模式)\n"
+        printf "  ${YELLOW}* 安全提示:${NC}          当前未启用访问控制，任何人均可调用。建议设置 API Key。\n"
+    fi
+    printf "${CYAN}----------------------------------------------------------------${NC}\n"
+    printf "${GREEN}                     博客后台 AI 翻译设置指引                    ${NC}\n"
+    printf "${CYAN}----------------------------------------------------------------${NC}\n"
+    printf "  1. 登录博客后台管理系统 -> 点击进入 [文章AI助手]\n"
+    printf "  2. 接口类型 (Provider) 选择: ${GREEN}openai${NC} (OpenAI 兼容接口)\n"
+    printf "  3. 接口 Base URL (API Base) 填写:\n"
+    printf "     - ${YELLOW}推荐 (容器网络同宿主机):${NC} http://poetize-translation-model:11434/v1\n"
+    printf "     - 外部网络访问:          http://${host_addr}:${ollama_port}/v1\n"
+    printf "  4. 接口 API Key 填写:        ${user_api_key:-任意占位符(公开模式下)}\n"
+    printf "  5. 翻译模型名称 (Model) 填写:  ${user_models%%,*}\n"
+    printf "${CYAN}================================================================${NC}\n"
+    printf "\n"
+}
+
+# 编辑 Nginx 配置文件
+edit_nginx_config() {
+    find_project_dir
+    load_config_lib
+
+    local config_dir="docker/nginx"
+    if [ ! -d "$config_dir" ]; then
+        error "未找到 Nginx 配置目录: $config_dir"
+        return 1
+    fi
+
+    # 查找可用编辑器，优先使用系统的 EDITOR 环境变量，其次是 nano, vim, vi
+    local editor=""
+    if [ -n "$EDITOR" ] && command -v "$EDITOR" &>/dev/null; then
+        editor="$EDITOR"
+    elif command -v nano &>/dev/null; then
+        editor="nano"
+    elif command -v vim &>/dev/null; then
+        editor="vim"
+    elif command -v vi &>/dev/null; then
+        editor="vi"
+    else
+        error "未在系统中找到 nano, vim 或 vi 编辑器，请手动安装后重试"
+        return 1
+    fi
+
+    while true; do
+        printf "\n"
+        printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
+        printf "${GREEN}  Nginx 配置文件编辑器 (使用编辑器: $editor)${NC}\n"
+        printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
+        printf "  ${YELLOW}[1]${NC} default.conf            (当前生效配置，修改后需重启/重载 Nginx)\n"
+        printf "  ${YELLOW}[2]${NC} default.http.conf       (HTTP 配置模板)\n"
+        printf "  ${YELLOW}[3]${NC} default.https.conf      (HTTPS 配置模板)\n"
+        printf "  ${YELLOW}[4]${NC} nginx.conf              (Nginx 全局配置文件)\n"
+        printf "  ${YELLOW}[5]${NC} spoofed-ip-headers.conf (防伪造 IP 头配置)\n"
+        printf "  ${YELLOW}[0]${NC} 返回上一级\n"
+        printf "\n"
+
+        read -rp "请选择要编辑的文件 [0-5]: " edit_choice
+        local target_file=""
+        case "$edit_choice" in
+            1) target_file="$config_dir/default.conf" ;;
+            2) target_file="$config_dir/default.http.conf" ;;
+            3) target_file="$config_dir/default.https.conf" ;;
+            4) target_file="$config_dir/nginx.conf" ;;
+            5) target_file="$config_dir/spoofed-ip-headers.conf" ;;
+            0) return 0 ;;
+            *)
+                warning "无效的编号，请重新选择"
+                continue
+                ;;
+        esac
+
+        if [ ! -f "$target_file" ]; then
+            error "文件不存在: $target_file"
+            continue
+        fi
+
+        # 备份文件
+        local backup_file="${target_file}.bak.$(date +%Y%m%d%H%M%S)"
+        if cp "$target_file" "$backup_file"; then
+            info "已自动备份原配置到: $backup_file"
+        else
+            error "备份文件失败，为了安全起见停止编辑。"
+            continue
+        fi
+
+        # 打开编辑器
+        "$editor" "$target_file"
+
+        # 检查 Nginx 配置语法
+        if docker ps --format '{{.Names}}' | grep -q "^poetize-nginx$"; then
+            info "检测到 nginx 容器正在运行，开始验证配置文件语法..."
+            # 无论编辑哪个，因为 default.conf 在容器里是被读取的，如果是编辑模板可能不会即时反映在容器的语法检查中
+            # 但如果编辑的是实际生效文件，验证会更准确。
+            if [ "$edit_choice" -eq 1 ] || [ "$edit_choice" -eq 4 ] || [ "$edit_choice" -eq 5 ]; then
+                if docker exec poetize-nginx nginx -t 2>/dev/null; then
+                    success "Nginx 配置语法验证通过！"
+                    if auto_confirm "是否立即重新加载 Nginx 配置以生效? (Y/n) " "y"; then
+                        if docker exec poetize-nginx nginx -s reload; then
+                            success "Nginx 配置重载成功！"
+                        else
+                            error "Nginx 配置重载失败"
+                        fi
+                    fi
+                else
+                    error "Nginx 配置语法验证失败！"
+                    docker exec poetize-nginx nginx -t
+                    if auto_confirm "是否还原到修改前的备份? (y/N) " "n"; then
+                        cp "$backup_file" "$target_file"
+                        success "已还原配置文件"
+                    fi
+                fi
+            else
+                info "由于您编辑的是配置模板文件，本次修改不会立即被 Nginx 读取。修改将在下次执行 '更换域名' 或 '重新部署' 时生成并生效。"
+            fi
+        else
+            warning "Nginx 容器未运行，无法验证配置语法。请稍后启动服务后运行 'docker exec poetize-nginx nginx -t' 进行测试。"
+        fi
+
+        read -rp "按 Enter 返回编辑器菜单..." _
+    done
+}
+
+# Ollama 本地模型部署与管理
+deploy_ollama_model() {
+    find_project_dir
+    load_config_lib
+
+    printf "\n"
+    printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
+    printf "${GREEN}  Ollama 本地模型管理${NC}\n"
+    printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
+    printf "${BLUE}用于部署及管理本地 Ollama AI 翻译和 RAG (知识库) 服务${NC}\n"
+    printf "\n"
+
+    # 检查 .env 文件是否存在
+    if [ ! -f ".env" ]; then
+        error "未找到 .env 文件，请先完成安装：poetize install"
+        return 1
+    fi
+
+    local enable_ollama
+    enable_ollama=$(read_env_config "ENABLE_OLLAMA" "false")
+
+    if [ "$enable_ollama" = "true" ]; then
+        info "当前状态：${GREEN}已启用${NC} Ollama 本地模型"
+        local current_model=$(read_env_config "OLLAMA_MODELS" "qwen3:0.6b")
+        local current_keep_alive=$(read_env_config "OLLAMA_KEEP_ALIVE" "5m")
+        local current_api_key=$(read_env_config "OLLAMA_API_KEY" "")
+        info "当前模型配置: ${GREEN}${current_model}${NC}"
+        info "当前休眠配置: ${GREEN}${current_keep_alive}${NC}"
+        info "当前 Key 配置: ${GREEN}${current_api_key:-(未启用安全验证)}${NC}"
+        printf "\n"
+
+        printf "请选择操作：\n"
+        printf "  ${YELLOW}[1]${NC} 修改 Ollama 配置 (模型/休眠/API Key)\n"
+        printf "  ${YELLOW}[2]${NC} 禁用并停止 Ollama 本地模型服务\n"
+        printf "  ${YELLOW}[0]${NC} 返回上一级\n"
+        printf "\n"
+        read -rp "请输入编号 [0-2]: " ollama_choice
+        case "$ollama_choice" in
+            1)
+                printf "请输入要使用的新 Ollama 模型名称（可输入多个，用逗号或空格分隔）\n"
+                read -rp "新模型名称 (默认: $current_model): " user_models
+                if [ -z "$user_models" ]; then
+                    user_models="$current_model"
+                fi
+
+                printf "请输入模型空闲休眠时间（例如 5m 表示 5分钟，0 表示不缓存，-1 表示永久保留不休眠）\n"
+                read -rp "休眠时间 (默认: $current_keep_alive): " user_keep_alive
+                if [ -z "$user_keep_alive" ]; then
+                    user_keep_alive="$current_keep_alive"
+                fi
+
+                printf "请输入访问所需的 API Key（直接回车保持不变，输入 'clear' 或 'none' 清空密钥并公开）\n"
+                read -rp "API Key (当前: ${current_api_key:-无}): " user_api_key
+                if [ -z "$user_api_key" ]; then
+                    user_api_key="$current_api_key"
+                elif [ "$user_api_key" = "clear" ] || [ "$user_api_key" = "none" ]; then
+                    user_api_key=""
+                fi
+
+                if [ "$user_models" != "$current_model" ] || [ "$user_keep_alive" != "$current_keep_alive" ] || [ "$user_api_key" != "$current_api_key" ]; then
+                    update_env_var "OLLAMA_MODELS" "$user_models"
+                    update_env_var "OLLAMA_KEEP_ALIVE" "$user_keep_alive"
+                    update_env_var "OLLAMA_API_KEY" "$user_api_key"
+                    info "正在重新配置并启动 Ollama 容器..."
+                    info "提示: 重新编译并拉取新模型可能需要一些时间，请耐心等待。"
+                    printf "\n"
+                    if $DOCKER_COMPOSE_CMD --profile ollama up -d --build --force-recreate translation-model; then
+                        success "Ollama 本地模型配置更新成功！"
+                        show_ollama_access_info "$user_models" "$user_keep_alive" "$user_api_key"
+                    else
+                        error "Ollama 启动失败，请检查 Docker 日志"
+                    fi
+                else
+                    info "配置未变更"
+                fi
+                ;;
+            2)
+                if auto_confirm "是否要禁用并停止 Ollama 本地模型服务? (y/N) " "n"; then
+                    update_env_var "ENABLE_OLLAMA" "false"
+                    sync_compose_profiles
+                    info "正在停止并清理 Ollama 容器..."
+                    $DOCKER_COMPOSE_CMD stop translation-model 2>/dev/null || true
+                    $DOCKER_COMPOSE_CMD rm -f translation-model 2>/dev/null || true
+                    success "Ollama 本地模型服务已禁用并停止"
+                else
+                    info "已取消"
+                fi
+                ;;
+            *)
+                info "返回菜单"
+                ;;
+        esac
+    else
+        info "当前状态：${YELLOW}已禁用${NC} Ollama 本地模型"
+        printf "\n"
+        if auto_confirm "是否要启用并部署 Ollama 本地模型服务? (y/N) " "y"; then
+            local default_model=$(read_env_config "OLLAMA_MODELS" "qwen3:0.6b")
+            printf "请输入要使用的 Ollama 模型名称（可输入多个，用逗号或空格分隔）\n"
+            read -rp "模型名称 (默认: $default_model): " user_models
+            if [ -z "$user_models" ]; then
+                user_models="$default_model"
+            fi
+
+            local default_keep_alive=$(read_env_config "OLLAMA_KEEP_ALIVE" "5m")
+            printf "请输入模型空闲休眠时间（例如 5m 表示 5分钟，0 表示不缓存，-1 表示永久保留不休眠）\n"
+            read -rp "休眠时间 (默认: $default_keep_alive): " user_keep_alive
+            if [ -z "$user_keep_alive" ]; then
+                user_keep_alive="$default_keep_alive"
+            fi
+
+            local default_api_key=$(read_env_config "OLLAMA_API_KEY" "")
+            printf "请输入要设置的 API Key（若不需要密钥验证，可直接按回车留空）\n"
+            read -rp "API Key (默认: 无): " user_api_key
+
+            update_env_var "OLLAMA_MODELS" "$user_models"
+            update_env_var "OLLAMA_KEEP_ALIVE" "$user_keep_alive"
+            update_env_var "OLLAMA_API_KEY" "$user_api_key"
+            update_env_var "ENABLE_OLLAMA" "true"
+            sync_compose_profiles
+
+            info "正在拉取镜像并启动 Ollama 容器..."
+            info "提示: 首次启动需要下载 Docker 镜像及模型，耗时可能较长，请耐心等待。"
+            printf "\n"
+            
+            if $DOCKER_COMPOSE_CMD --profile ollama up -d --build translation-model; then
+                success "Ollama 本地模型服务部署成功！"
+                show_ollama_access_info "$user_models" "$user_keep_alive" "$user_api_key"
+            else
+                error "Ollama 启动失败，请运行 'docker logs poetize-translation-model' 检查日志"
+                # 回滚状态
+                update_env_var "ENABLE_OLLAMA" "false"
+                sync_compose_profiles
+            fi
+        else
+            info "已取消部署"
+        fi
+    fi
+}
+
 # 主函数
 parse_version_selector() {
     local selector="${1:-}"
@@ -16637,6 +17092,14 @@ dispatch_command() {
         "-change-domain"|"change-domain"|"--change-domain")
             check_docker
             change_domain
+            ;;
+        "-edit-nginx"|"edit-nginx"|"--edit-nginx")
+            check_docker
+            edit_nginx_config
+            ;;
+        "-deploy-ollama"|"deploy-ollama"|"--deploy-ollama")
+            check_docker
+            deploy_ollama_model
             ;;
         "help"|"-help"|"--help"|"-h")
             show_help
