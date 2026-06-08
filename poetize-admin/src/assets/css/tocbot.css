@@ -51,7 +51,7 @@
     overflow-y: auto;
     max-height: 52vh;
     position: relative;
-    padding-inline-start: 28px !important;
+    padding-inline-start: 15px !important;
     padding-right: 5px;
     margin-top: 10px;
     margin-bottom: 10px;
@@ -98,6 +98,13 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.toc .toc-link .toc-text {
+    flex: 1;
+    box-sizing: border-box;
 }
 
 .toc .toc-link .toc-prefix {

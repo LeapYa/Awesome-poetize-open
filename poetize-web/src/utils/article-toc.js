@@ -4,36 +4,20 @@ import { getTocEmoji } from '@/composables/useArticleTheme'
 
 export function formatTocLinks() {
   const tocLinks = document.querySelectorAll('.toc a.toc-link')
-  const prefixRegex = /^(([0-9]+(?:\.[0-9]+)*|[一二三四五六七八九十百]+|[a-zA-Z]|[IVXLCDMivxlcdm]+)(?:\.|、|-|\s)+|[\(（][0-9a-zA-Z一二三四五六七八九十百]+[\)）](?:\.|、|-|\s)?)\s*(.*)$/
 
   tocLinks.forEach(link => {
-    if (link.querySelector('.toc-text')) return
+    const textSpan = link.querySelector('.toc-text')
+    const prefixSpan = link.querySelector('.toc-prefix')
+    const rawText = textSpan 
+      ? (prefixSpan ? prefixSpan.textContent : '') + textSpan.textContent 
+      : link.textContent.trim()
 
-    const text = link.textContent.trim()
-    const match = text.match(prefixRegex)
-    if (match) {
-      const prefix = match[1]
-      const titleText = match[3]
+    const newTextSpan = document.createElement('span')
+    newTextSpan.className = 'toc-text'
+    newTextSpan.textContent = rawText
 
-      const prefixSpan = document.createElement('span')
-      prefixSpan.className = 'toc-prefix'
-      prefixSpan.textContent = prefix
-
-      const textSpan = document.createElement('span')
-      textSpan.className = 'toc-text'
-      textSpan.textContent = titleText
-
-      link.textContent = ''
-      link.appendChild(prefixSpan)
-      link.appendChild(textSpan)
-    } else {
-      const textSpan = document.createElement('span')
-      textSpan.className = 'toc-text'
-      textSpan.textContent = text
-
-      link.textContent = ''
-      link.appendChild(textSpan)
-    }
+    link.textContent = ''
+    link.appendChild(newTextSpan)
   })
 }
 
