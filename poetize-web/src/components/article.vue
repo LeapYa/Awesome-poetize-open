@@ -220,7 +220,7 @@ import {
   resetTheme,
 } from '@/composables/useArticleTheme'
 import { decrypt } from '@/utils/crypto-utils'
-import { syncTocPosition, getTocbot } from '@/utils/article-toc'
+import { syncTocPosition, getTocbot, formatTocLinks } from '@/utils/article-toc'
 import {
   setDefaultMetaTags,
   updateMetaTags,
