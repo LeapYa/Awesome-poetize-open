@@ -238,6 +238,7 @@
                 class="my-el-image"
                 :src="article.articleCover"
                 fit="cover"
+                :alt="article.articleTitle"
               >
                 <template v-slot:error>
                   <div class="image-slot">
@@ -520,8 +521,7 @@ export default {
         await Promise.all([
           this.getRecommendArticles(),
           this.getAdmire(),
-          this.getContactList(),
-          this.getAsideBackground(),
+          this.getAsideResources(),
         ])
       } catch (error) {
         console.error('获取侧边栏数据失败:', error)
@@ -724,64 +724,38 @@ export default {
     showTip() {
       this.$router.push({ path: '/weiYan' })
     },
-    getContactList() {
-      // 从资源聚合中获取type为contact和quickEntry且启用的联系方式和快捷入口
-      return Promise.all([
-        this.$http.post(this.$constant.baseURL + '/webInfo/listResourcePath', {
-          current: 1,
-          size: 100,
-          resourceType: 'contact',
-          status: true,
-        }),
-        this.$http.post(this.$constant.baseURL + '/webInfo/listResourcePath', {
-          current: 1,
-          size: 100,
-          resourceType: 'quickEntry',
-          status: true,
-        }),
-      ])
-        .then((results) => {
-          // 分别存储联系方式和快捷入口
-          if (
-            !this.$common.isEmpty(results[0].data) &&
-            !this.$common.isEmpty(results[0].data.records)
-          ) {
-            this.contactList = results[0].data.records
-          }
-          if (
-            !this.$common.isEmpty(results[1].data) &&
-            !this.$common.isEmpty(results[1].data.records)
-          ) {
-            // 后端已经解析好了快捷入口的按钮样式，直接使用即可
-            this.quickEntryList = results[1].data.records
-          }
-        })
-        .catch((error) => {
-          console.error('获取联系方式和快捷入口失败:', error)
-        })
-    },
-    getAsideBackground() {
-      // 获取侧边栏背景配置
+    getAsideResources() {
+      // 合并获取联系方式、快捷入口和侧边栏背景
       return this.$http
         .post(this.$constant.baseURL + '/webInfo/listResourcePath', {
           current: 1,
-          size: 1,
-          resourceType: 'asideBackground',
+          size: 200,
+          resourceTypes: ['contact', 'quickEntry', 'asideBackground'],
           status: true,
         })
         .then((res) => {
           if (
             !this.$common.isEmpty(res.data) &&
-            !this.$common.isEmpty(res.data.records) &&
-            res.data.records.length > 0
+            !this.$common.isEmpty(res.data.records)
           ) {
-            const bgConfig = res.data.records[0]
-            this.asideBackgroundImage = bgConfig.cover // 主背景
-            this.asideExtraBackground = bgConfig.extraBackground || '' // 额外背景层（后端已解析）
+            const records = res.data.records
+            
+            // 过滤并存储联系方式
+            this.contactList = records.filter(item => item.type === 'contact')
+            
+            // 过滤并存储快捷入口
+            this.quickEntryList = records.filter(item => item.type === 'quickEntry')
+            
+            // 过滤并存储侧边栏背景
+            const bgConfig = records.find(item => item.type === 'asideBackground')
+            if (bgConfig) {
+              this.asideBackgroundImage = bgConfig.cover // 主背景
+              this.asideExtraBackground = bgConfig.extraBackground || '' // 额外背景层（后端已解析）
+            }
           }
         })
         .catch((error) => {
-          console.error('获取侧边栏背景失败:', error)
+          console.error('获取侧边栏资源失败:', error)
         })
     },
     clearSearchHistory() {

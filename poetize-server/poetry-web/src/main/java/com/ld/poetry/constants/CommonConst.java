@@ -31,7 +31,7 @@ public class CommonConst {
 
     public static final String TOKEN_HEADER = "Authorization";
 
-    public static final String AUTH_COOKIE = "POETIZE_AUTH";
+    public static final String AUTH_COOKIE = "s";
 
     /**
      * 保存次数

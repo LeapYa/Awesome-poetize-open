@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 import com.ld.poetry.service.MailService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.service.SeoService;
+import com.ld.poetry.service.SeoMetaService;
+import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.Sort;
 import com.ld.poetry.entity.Label;
@@ -76,6 +78,12 @@ public class ArticleController {
 
     @Autowired
     private SeoService seoService;
+
+    @Autowired
+    private SeoMetaService seoMetaService;
+
+    @Autowired
+    private SysAiConfigService sysAiConfigService;
 
     @Autowired
     private CacheService cacheService;
@@ -565,17 +573,7 @@ public class ArticleController {
     @GetMapping("/{id:\\d+}")
     public PoetryResult<ArticleVO> getArticleByPathId(@PathVariable Integer id, @RequestParam(value = "password", required = false) String password) {
         PoetryResult<ArticleVO> result = articleService.getArticleById(id, password);
-        // 附加文章主题配置
-        if (result.getCode() == 200 && result.getData() != null) {
-            try {
-                SysPlugin themePlugin = sysPluginService.getActivePlugin(SysPlugin.TYPE_ARTICLE_THEME);
-                if (themePlugin != null && StringUtils.hasText(themePlugin.getPluginConfig())) {
-                    result.getData().setArticleThemeConfig(themePlugin.getPluginConfig());
-                }
-            } catch (Exception e) {
-                log.warn("获取文章主题配置失败（不影响主流程）: {}", e.getMessage());
-            }
-        }
+        enrichArticleResponse(result, null);
         return result;
     }
 
@@ -594,34 +592,7 @@ public class ArticleController {
         // 获取文章
         PoetryResult<ArticleVO> result = articleService.getArticleById(id, password);
         
-        if (result.getCode() == 200 && result.getData() != null) {
-            ArticleVO article = result.getData();
-            
-            // 附加文章主题配置（与文章同时返回，前端可在渲染前应用主题，避免样式闪烁）
-            try {
-                SysPlugin themePlugin = sysPluginService.getActivePlugin(SysPlugin.TYPE_ARTICLE_THEME);
-                if (themePlugin != null && StringUtils.hasText(themePlugin.getPluginConfig())) {
-                    article.setArticleThemeConfig(themePlugin.getPluginConfig());
-                }
-            } catch (Exception e) {
-                log.warn("获取文章主题配置失败（不影响主流程）: {}", e.getMessage());
-            }
-            
-            // 如果请求了翻译，尝试附加翻译内容
-            if (StringUtils.hasText(language)) {
-                try {
-                    Map<String, String> translation = translationService.getArticleTranslation(id, language);
-                    if (translation != null && !translation.isEmpty()) {
-                        article.setTranslatedTitle(translation.get("title"));
-                        article.setTranslatedContent(translation.get("content"));
-                    }
-                } catch (Exception e) {
-                    // 翻译获取失败不影响主流程，前端会fallback到第二次请求
-                    log.warn("获取文章翻译失败（不影响主流程）: 文章ID={}, 语言={}, 错误={}", 
-                            id, language, e.getMessage());
-                }
-            }
-        }
+        enrichArticleResponse(result, language);
         
         return result;
     }
@@ -664,6 +635,8 @@ public class ArticleController {
         }
 
         ArticleVO article = result.getData();
+        Integer articleId = article.getId();
+
         try {
             SysPlugin themePlugin = sysPluginService.getActivePlugin(SysPlugin.TYPE_ARTICLE_THEME);
             if (themePlugin != null && StringUtils.hasText(themePlugin.getPluginConfig())) {
@@ -673,9 +646,43 @@ public class ArticleController {
             log.warn("获取文章主题配置失败（不影响主流程）: {}", e.getMessage());
         }
 
-        if (StringUtils.hasText(language) && article.getId() != null) {
+        if (articleId != null) {
             try {
-                Map<String, String> translation = translationService.getArticleTranslation(article.getId(), language);
+                article.setAvailableLanguages(translationService.getArticleAvailableLanguages(articleId));
+            } catch (Exception e) {
+                log.warn("获取文章可用翻译语言失败（不影响主流程）: 文章ID={}, 错误={}",
+                        articleId, e.getMessage());
+            }
+        }
+
+        try {
+            Map<String, Object> defaultLanguages = sysAiConfigService.getDefaultLanguages();
+            if (defaultLanguages != null) {
+                Object sourceLang = defaultLanguages.get("default_source_lang");
+                Object targetLang = defaultLanguages.get("default_target_lang");
+                article.setDefaultSourceLang(sourceLang == null ? "zh" : sourceLang.toString());
+                article.setDefaultTargetLang(targetLang == null ? "en" : targetLang.toString());
+            }
+            article.setLanguageMap(sysAiConfigService.getLanguageMapping());
+        } catch (Exception e) {
+            log.warn("获取文章语言基础配置失败（不影响主流程）: {}", e.getMessage());
+        }
+
+        if (articleId != null) {
+            try {
+                String metaLanguage = StringUtils.hasText(language)
+                        ? language
+                        : (StringUtils.hasText(article.getDefaultSourceLang()) ? article.getDefaultSourceLang() : "zh");
+                article.setSeoMeta(seoMetaService.generateArticleMeta(articleId, metaLanguage));
+            } catch (Exception e) {
+                log.warn("生成文章SEO元信息失败（不影响主流程）: 文章ID={}, 错误={}",
+                        articleId, e.getMessage());
+            }
+        }
+
+        if (StringUtils.hasText(language) && articleId != null) {
+            try {
+                Map<String, String> translation = translationService.getArticleTranslation(articleId, language);
                 if (translation != null && !translation.isEmpty()) {
                     article.setTranslatedTitle(translation.get("title"));
                     article.setTranslatedContent(translation.get("content"));
@@ -685,7 +692,7 @@ public class ArticleController {
                 }
             } catch (Exception e) {
                 log.warn("获取文章翻译失败（不影响主流程）: 文章ID={}, 语言={}, 错误={}",
-                        article.getId(), language, e.getMessage());
+                        articleId, language, e.getMessage());
             }
         }
     }

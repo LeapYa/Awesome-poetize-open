@@ -11,6 +11,7 @@
  * 刷新页面后恢复后端配置
  */
 import request from '@/utils/request'
+import { getPluginBootstrap } from '@/composables/usePluginBootstrap'
 
 // 效果类型列表（用于循环切换）
 let EFFECT_TYPES = ['none', 'text', 'firework']
@@ -143,53 +144,77 @@ async function executeCustomPlugin(pluginKey, x, y) {
 }
 
 /**
+ * 应用鼠标点击效果插件列表（更新效果类型/标签/代码缓存）
+ */
+function applyMouseClickPlugins(plugins) {
+  if (!Array.isArray(plugins)) return
+
+  const newTypes = []
+  const newLabels = {}
+
+  plugins.forEach(plugin => {
+    const key = plugin.pluginKey
+    if (!newTypes.includes(key)) {
+      newTypes.push(key)
+    }
+    newLabels[key] = plugin.pluginName
+
+    if (plugin.pluginCode) {
+      pluginCodeCache[key] = plugin.pluginCode
+      delete compiledPluginCache[key]
+    }
+    if (plugin.pluginConfig) {
+      pluginConfigCache[key] = plugin.pluginConfig
+    }
+  })
+
+  EFFECT_TYPES = newTypes
+  EFFECT_LABELS = newLabels
+}
+
+/**
+ * 应用当前激活的鼠标点击效果
+ */
+function applyActiveMouseClickEffect(active) {
+  if (active && active.pluginKey) {
+    localOverride = active.pluginKey
+  }
+}
+
+/**
  * 加载插件列表和当前激活状态
+ * 优先消费首屏聚合数据，缺失字段才回退到各自的旧接口
  */
 function loadPluginEffects() {
-  // 1. 加载可用插件列表
-  request.get('/sysPlugin/getMouseClickEffects').then(res => {
-    if (res && res.data) {
-      const plugins = res.data
+  getPluginBootstrap()
+    .then(data => {
+      // 效果列表
+      if (data && Array.isArray(data.mouseClickEffects)) {
+        applyMouseClickPlugins(data.mouseClickEffects)
+      } else {
+        request.get('/sysPlugin/getMouseClickEffects')
+          .then(res => applyMouseClickPlugins(res && res.data))
+          .catch(err => console.debug('加载鼠标点击效果插件失败，使用默认列表', err))
+      }
 
-      // 更新效果列表
-      const newTypes = []
-      const newLabels = {}
-
-      plugins.forEach(plugin => {
-        const key = plugin.pluginKey
-        if (!newTypes.includes(key)) {
-          newTypes.push(key)
-        }
-        newLabels[key] = plugin.pluginName
-
-        // 缓存代码和配置
-        if (plugin.pluginCode) {
-          pluginCodeCache[key] = plugin.pluginCode
-          // 清除旧的编译缓存，以便重新编译
-          delete compiledPluginCache[key]
-        }
-        if (plugin.pluginConfig) {
-          pluginConfigCache[key] = plugin.pluginConfig
-        }
-      })
-
-      EFFECT_TYPES = newTypes
-      EFFECT_LABELS = newLabels
-    }
-  }).catch(err => {
-    // 忽略错误，使用默认列表
-    console.debug('加载鼠标点击效果插件失败，使用默认列表', err)
-  })
-
-  // 2. 加载当前激活的插件
-  request.get('/sysPlugin/getActiveMouseClickEffect').then(res => {
-    if (res && res.data && res.data.pluginKey) {
-      // 设置本地覆盖为当前激活的插件
-      localOverride = res.data.pluginKey
-    }
-  }).catch(err => {
-    console.debug('获取当前激活鼠标点击效果失败:', err)
-  })
+      // 当前激活项
+      if (data && Object.prototype.hasOwnProperty.call(data, 'activeMouseClickEffect')) {
+        applyActiveMouseClickEffect(data.activeMouseClickEffect)
+      } else {
+        request.get('/sysPlugin/getActiveMouseClickEffect')
+          .then(res => applyActiveMouseClickEffect(res && res.data))
+          .catch(err => console.debug('获取当前激活鼠标点击效果失败:', err))
+      }
+    })
+    .catch(err => {
+      console.debug('加载鼠标点击效果聚合数据失败，回退旧接口', err)
+      request.get('/sysPlugin/getMouseClickEffects')
+        .then(res => applyMouseClickPlugins(res && res.data))
+        .catch(() => {})
+      request.get('/sysPlugin/getActiveMouseClickEffect')
+        .then(res => applyActiveMouseClickEffect(res && res.data))
+        .catch(() => {})
+    })
 }
 
 /**

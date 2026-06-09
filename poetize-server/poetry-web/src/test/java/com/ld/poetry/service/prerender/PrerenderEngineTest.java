@@ -90,7 +90,7 @@ class PrerenderEngineTest {
         assertTrue(html.contains("<meta name=\"google-site-verification\" content=\"verify-token\">"));
         assertTrue(html.contains("<meta name=\"custom-head\" content=\"1\">"));
         assertTrue(html.contains("<body data-prerender-type=\"article\" data-prerender-lang=\"en\">"));
-        assertTrue(html.contains("<div id=\"app\" class=\"article-detail\"><section>hello</section></div>"));
+        assertTrue(html.contains("<div id=\"app\" class=\"article-detail\"><main><article><section>hello</section></article></main></div>"));
     }
 
     @Test

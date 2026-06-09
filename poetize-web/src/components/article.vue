@@ -214,7 +214,10 @@ import markdownItTaskLists from 'markdown-it-task-lists'
 // KaTeX 改为按需动态加载，只有文章包含数学公式时才加载
 import { hasMathFormula, loadMarkdownItKatex } from '@/utils/katexLoader'
 import { transformAttachmentLinks } from '@/utils/attachmentCard'
-import { getLanguageMapping } from '@/utils/languageUtils'
+import {
+  applyLanguageBootstrap,
+  getLanguageMappingSync,
+} from '@/utils/languageUtils'
 import {
   applyThemeFromArticle,
   resetTheme,
@@ -433,11 +436,12 @@ export default {
     // 重置组件状态，防止缓存问题
     this.resetComponentState()
 
-    // 先初始化语言映射（从数据库统一配置读取）
-    this.languageMap = await getLanguageMapping()
+    // 首屏先使用内置/缓存语言映射，避免文章请求前额外打配置接口。
+    // 文章详情响应会带回后端语言配置，随后再精确校正。
+    this.languageMap = getLanguageMappingSync()
 
     // 然后初始化语言设置，确保语言状态正确
-    await this.initializeLanguageSettings()
+    await this.initializeLanguageSettings({ skipRemote: true })
 
     if (!this.$common.isEmpty(this.id)) {
       // 首次加载时强制清空预渲染内容，确保Vue重新渲染
@@ -1256,6 +1260,9 @@ export default {
         })
     },
     getNews() {
+      this.loadArticleNews()
+    },
+    loadArticleNews() {
       this.$http
         .post(this.$constant.baseURL + '/weiYan/listNews', {
           current: 1,
@@ -1276,12 +1283,7 @@ export default {
             this.treeHoleList = res.data.records
           }
         })
-        .catch((error) => {
-          this.$message({
-            message: error.message,
-            type: 'error',
-          })
-        })
+        .catch(() => {})
     },
     onScrollPage() {
       const scrollingElement =
@@ -1335,26 +1337,25 @@ export default {
       this.shouldLoadComments = false
       this.teardownCommentIntersectionObserver()
 
-      // 使用Promise.all并行处理所有请求
       // 如果当前语言不是源语言，在第一次请求时就带上语言参数
       const articleParams = { path: articlePathToken, password: password }
       if (this.currentLang && this.currentLang !== this.sourceLanguage) {
         articleParams.language = this.currentLang
       }
 
-      Promise.all([
-        this.$http.get(
+      this.$http
+        .get(
           this.$constant.baseURL + '/article/getArticleByPath',
           articleParams
-        ),
-        this.fetchArticleMeta(),
-      ])
-        .then(async ([articleRes]) => {
+        )
+        .then(async (articleRes) => {
           // 处理文章数据
           if (!this.$common.isEmpty(articleRes.data)) {
             this.article = articleRes.data
             this.id = this.article.id
             this.articlePathToken = this.article.articleSlug || String(this.article.id)
+
+            this.applyArticleBootstrapData()
 
             // 解密视频URL
             if (this.article.videoUrl) {
@@ -1423,8 +1424,13 @@ export default {
               ).includes(this.article.labelId)
             }
 
-            // 获取文章可用的翻译语言并生成动态按钮
-            this.getArticleAvailableLanguages()
+            // 获取文章可用的翻译语言并生成动态按钮（新接口已合并返回，旧接口回退）
+            if (Array.isArray(this.article.availableLanguages)) {
+              this.availableLanguages = this.article.availableLanguages
+              this.generateLanguageButtons()
+            } else {
+              this.getArticleAvailableLanguages()
+            }
             this.checkPendingSubscribe()
           } else {
             // 文章数据为空，说明文章不存在，跳转到404页面
@@ -1432,26 +1438,8 @@ export default {
             return
           }
 
-          // 处理"最新进展"数据
-          const newsRes = await this.$http
-            .post(this.$constant.baseURL + '/weiYan/listNews', {
-              current: 1,
-              size: 9999,
-              source: this.article.id,
-            })
-            .catch(() => ({ data: null }))
-          if (!this.$common.isEmpty(newsRes.data)) {
-            newsRes.data.records.forEach((c) => {
-              c.content = c.content.replace(
-                /\n{2,}/g,
-                '<div style="height: 12px"></div>'
-              )
-              c.content = c.content.replace(/\n/g, '<br/>')
-              c.content = this.$common.faceReg(c.content)
-              c.content = this.$common.pictureReg(c.content)
-            })
-            this.treeHoleList = newsRes.data.records
-          }
+          // 处理"最新进展"数据：不阻塞文章首屏渲染，异步加载
+          this.loadArticleNews()
         })
         .catch((error) => {
           console.error('获取文章失败:', error)
@@ -1501,6 +1489,42 @@ export default {
         })
     },
     fetchArticleMeta,
+    applyArticleBootstrapData() {
+      if (!this.article) return
+
+      if (this.article.languageMap) {
+        this.languageMap = this.article.languageMap
+      }
+
+      if (this.article.defaultSourceLang) {
+        this.sourceLanguage = this.article.defaultSourceLang
+        this.sourceLanguageName =
+          this.languageMap[this.sourceLanguage] || this.sourceLanguage
+      }
+
+      if (this.article.defaultTargetLang) {
+        this.targetLanguage = this.article.defaultTargetLang
+        this.targetLanguageName =
+          this.languageMap[this.targetLanguage] || this.targetLanguage
+      }
+
+      if (this.article.languageMap || this.article.defaultSourceLang || this.article.defaultTargetLang) {
+        applyLanguageBootstrap({
+          languageMap: this.article.languageMap,
+          articleDefaultLanguages: {
+            default_source_lang: this.sourceLanguage,
+            default_target_lang: this.targetLanguage,
+          },
+        })
+      }
+
+      if (this.article.seoMeta) {
+        this.metaTags = this.article.seoMeta
+        this.updateMetaTags()
+      } else {
+        this.fetchArticleMeta()
+      }
+    },
     highlight,
     
     /**

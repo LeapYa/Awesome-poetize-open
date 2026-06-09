@@ -314,6 +314,8 @@ public class ResourceAggregationController {
         wrapper.like(StringUtils.hasText(baseRequestVO.getSearchKey()), ResourcePath::getTitle, baseRequestVO.getSearchKey());
         if (StringUtils.hasText(baseRequestVO.getResourceType())) {
             wrapper.eq(ResourcePath::getType, baseRequestVO.getResourceType());
+        } else if (!CollectionUtils.isEmpty(baseRequestVO.getResourceTypes())) {
+            wrapper.in(ResourcePath::getType, baseRequestVO.getResourceTypes());
         }
         if (StringUtils.hasText(baseRequestVO.getClassify())) {
             wrapper.eq(ResourcePath::getClassify, baseRequestVO.getClassify());

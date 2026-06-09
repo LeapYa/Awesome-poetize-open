@@ -17,6 +17,7 @@
           lazy
           :src="article.articleCover"
           fit="cover"
+          :alt="article.articleTitle"
         >
           <template v-slot:error>
             <div

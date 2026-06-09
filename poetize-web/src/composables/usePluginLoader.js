@@ -4,6 +4,7 @@
  * 通过 PoetizePlugin SDK 注册并执行其 JS 代码 + 注入 CSS。
  */
 import request from '@/utils/request'
+import { getPluginBootstrap } from '@/composables/usePluginBootstrap'
 
 /** 已加载的插件 key 集合，防止重复加载 */
 const loadedPlugins = new Set()
@@ -87,14 +88,23 @@ export function initPluginLoader() {
     if (typeof window === 'undefined') return
 
     ensurePluginSdk().finally(() => {
-        // 从后端获取所有通用插件（pluginType 不是系统内置类型的插件）
-        request.get('/sysPlugin/listActivePlugins')
-            .then(res => {
-                if (res && res.data && Array.isArray(res.data)) {
-                    res.data.forEach(plugin => {
-                        if (plugin.enabled) loadFrontendPlugin(plugin)
-                    })
+        const applyPlugins = list => {
+            if (Array.isArray(list)) {
+                list.forEach(plugin => {
+                    if (plugin.enabled) loadFrontendPlugin(plugin)
+                })
+            }
+        }
+
+        getPluginBootstrap()
+            .then(data => {
+                if (data && Array.isArray(data.activePlugins)) {
+                    applyPlugins(data.activePlugins)
+                    return
                 }
+                // 聚合数据缺失，回退旧接口
+                return request.get('/sysPlugin/listActivePlugins')
+                    .then(res => applyPlugins(res && res.data))
             })
             .catch(err => {
                 console.debug('[PluginLoader] 加载插件失败:', err)

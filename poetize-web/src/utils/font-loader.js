@@ -8,6 +8,7 @@ let baseRange, level1Range, level2Range, otherRange
 
 const DYNAMIC_FONT_STYLE_ID = 'dynamic-font-style'
 const DYNAMIC_FONT_LINK_ID = 'dynamic-font-link'
+let activeFontConfigKey = ''
 
 function removeDynamicFontResources() {
   const oldStyle = document.getElementById(DYNAMIC_FONT_STYLE_ID)
@@ -55,16 +56,24 @@ async function loadFontCss(fontCssPath) {
   if (!cssText.includes('@font-face')) {
     throw new Error('字体 CSS 内容无效：未包含 @font-face 规则')
   }
-  // 注入根据 cn-font-split 生成的 CSS
-  const link = document.createElement('link')
-  link.id = DYNAMIC_FONT_LINK_ID
-  link.rel = 'stylesheet'
-  link.href = fontCssPath
+  // 直接注入已校验的 CSS，避免 fetch 校验 + link stylesheet 造成 font.css 双请求。
+  const style = document.createElement('style')
+  style.type = 'text/css'
+  style.id = DYNAMIC_FONT_STYLE_ID
+  style.textContent = rewriteFontUrls(cssText, fontCssPath)
   try {
-    appendToHead(link)
+    appendToHead(style)
   } catch (error) {
     throw error
   }
+}
+
+function rewriteFontUrls(cssText, fontCssPath) {
+  const baseUrl = new URL(fontCssPath, window.location.href).href
+  return cssText.replace(/url\((['"]?)(?!data:|https?:|\/\/)([^'")]+)\1\)/g, (_match, quote, rawUrl) => {
+    const absoluteUrl = new URL(rawUrl, baseUrl).href
+    return `url(${quote}${absoluteUrl}${quote})`
+  })
 }
 
 /**
@@ -103,12 +112,29 @@ export async function loadFonts(sysConfig) {
   const unicodeJsonPath =
     sysConfig['font.unicode.path'] ||
     '/static/assets/font_chunks/unicode_ranges.json'
+  const configKey = JSON.stringify({
+    fontCdnBaseUrl,
+    fontCssPath,
+    useSingleFont,
+    singleFontName,
+    loadUnicodeFromRemote,
+    unicodeJsonPath,
+  })
+
+  if (
+    activeFontConfigKey === configKey &&
+    (document.getElementById(DYNAMIC_FONT_STYLE_ID) ||
+      document.getElementById(DYNAMIC_FONT_LINK_ID))
+  ) {
+    return
+  }
 
   removeDynamicFontResources()
 
   if (!useSingleFont) {
     try {
       await loadFontCss(fontCssPath)
+      activeFontConfigKey = configKey
       return
     } catch (error) {
       console.warn('加载 cn-font-split 字体 CSS 失败，回退旧版分片方案', error)
@@ -203,6 +229,7 @@ export async function loadFonts(sysConfig) {
   // 安全地添加样式到head，避免appendChild在文本节点上的错误
   try {
     appendToHead(style)
+    activeFontConfigKey = configKey
   } catch (error) {
     console.error('添加字体样式失败:', error)
   }

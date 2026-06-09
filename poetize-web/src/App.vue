@@ -180,7 +180,7 @@ export default {
       }
 
       ensureSessionValid({
-        force: true,
+        force: false,
         source: 'visibility',
         currentPath: this.$route.fullPath,
       }).catch(() => {})

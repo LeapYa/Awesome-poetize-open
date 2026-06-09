@@ -260,13 +260,12 @@
           <div class="my-setting">
             <div>
               <!-- 太阳按钮 - 暗色模式时显示 -->
-              <i
+              <el-icon
                 v-if="isDark"
-                class="fa fa-sun-o iconRotate"
-                aria-hidden="true"
+                class="iconRotate"
                 title="切换亮色主题"
                 @click="changeColor()"
-              ></i>
+              ><Sunny /></el-icon>
               <!-- 月亮按钮 - 亮色模式时显示 -->
               <i
                 v-else
@@ -426,6 +425,8 @@
 <script>
 import { $on, $off, $once, $emit } from '../utils/gogocodeTransfer'
 import { useMainStore } from '@/stores/main'
+import { applyLanguageBootstrap } from '@/utils/languageUtils'
+import { Sunny } from '@element-plus/icons-vue'
 
 export default {
   data() {
@@ -610,10 +611,8 @@ export default {
     // 初始化分类菜单展开状态
     this.sortMenuExpanded = this.getInitialSortMenuState()
 
-    // 获取网站信息
-    this.getWebInfo()
-    this.getSysConfig()
-    this.getSortInfo()
+    // 获取站点启动配置（合并 webInfo/sysConfig/sortInfo，减少首屏并发请求）
+    this.getBootstrap()
 
     // 性能优化: resize事件防抖优化
     let resizeTimer = null
@@ -950,6 +949,49 @@ export default {
         .catch((error) => {
           // 即使接口调用失败（如token已过期），也执行本地退出
           clearAndRedirect()
+        })
+    },
+    getBootstrap() {
+      this.$http
+        .get(this.$constant.baseURL + '/webInfo/bootstrap')
+        .then((res) => {
+          const data = res.data || {}
+          const webInfo = data.webInfo
+          const sysConfig = data.sysConfig
+          const sortInfo = data.sortInfo
+
+          if (!this.$common.isEmpty(webInfo)) {
+            const originalWebTitle = webInfo.webTitle
+            this.mainStore.loadWebInfo(webInfo)
+
+            if (originalWebTitle) {
+              document.title = originalWebTitle
+              window.OriginTitile = originalWebTitle
+            }
+
+            this.maybeApplyAutoNight()
+          }
+
+          if (!this.$common.isEmpty(sysConfig)) {
+            this.mainStore.loadSysConfig(sysConfig)
+            this.buildCssPicture()
+            this.runWhenIdle(async () => {
+              const { loadFonts } = await import('@/utils/font-loader')
+              await loadFonts(this.mainStore.sysConfig)
+            })
+          }
+
+          if (!this.$common.isEmpty(sortInfo)) {
+            this.mainStore.loadSortInfo(sortInfo)
+          }
+
+          applyLanguageBootstrap(data)
+        })
+        .catch((error) => {
+          console.warn('获取站点启动配置失败，回退旧接口:', error)
+          this.getWebInfo()
+          this.getSysConfig()
+          this.getSortInfo()
         })
     },
     getWebInfo() {

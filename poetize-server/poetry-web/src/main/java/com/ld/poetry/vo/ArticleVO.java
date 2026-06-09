@@ -9,6 +9,8 @@ import org.springframework.format.annotation.DateTimeFormat;
 import jakarta.validation.constraints.NotBlank;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Data
 public class ArticleVO {
@@ -60,6 +62,7 @@ public class ArticleVO {
     // 需要查询封装
     private Integer commentCount;
     private String username;
+    private String avatar;
     private Sort sort;
     private Label label;
     private Boolean hasVideo = false;
@@ -102,6 +105,13 @@ public class ArticleVO {
 
     // 文章主题配置（合并到文章接口，避免额外请求导致样式闪烁）
     private String articleThemeConfig; // JSON 字符串，来自激活的 article_theme 插件的 pluginConfig
+
+    // 文章页首屏附加数据（合并到文章接口，减少额外请求）
+    private List<String> availableLanguages;
+    private Map<String, Object> seoMeta;
+    private Map<String, String> languageMap;
+    private String defaultSourceLang;
+    private String defaultTargetLang;
 
     // 付费阅读相关字段
     private Integer payType; // 付费类型 [0:免费, 1:按文章付费, 2:会员专属, 3:赞赏解锁, 4:固定金额解锁]

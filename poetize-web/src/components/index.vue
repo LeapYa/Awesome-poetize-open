@@ -14,6 +14,7 @@
           :style="bannerStyle"
           class="background-image-index"
           lazy
+          :alt="mainStore.webInfo.webName || '诗词网站背景'"
           :src="
             !$common.isEmpty(mainStore.webInfo.backgroundImage)
               ? mainStore.webInfo.backgroundImage

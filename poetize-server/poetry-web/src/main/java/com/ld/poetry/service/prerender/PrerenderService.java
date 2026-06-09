@@ -492,8 +492,10 @@ public class PrerenderService {
 
         String pageTitle = firstNonBlank(articleTitle, stringValue(meta.get("title")), siteName) + " - " + siteName;
         String contentHtml = engine.renderMarkdown(content);
-        String fullContent = "<h1 class=\"article-main-title\">" + text(firstNonBlank(articleTitle, stringValue(meta.get("title")), siteName))
-                + "</h1>\n" + contentHtml;
+        String fullContent = "<header><h1 class=\"article-main-title\">" + text(firstNonBlank(articleTitle, stringValue(meta.get("title")), siteName))
+                + "</h1></header>\n<section>" + contentHtml + "</section>\n<footer>"
+                + (article.getCreateTime() != null ? "<time datetime=\"" + article.getCreateTime() + "\">" + text(formatDate(article.getCreateTime())) + "</time>" : "")
+                + "</footer>";
 
         String outputLang = sourceLanguage.equals(lang) ? null : lang;
 

@@ -1,4 +1,5 @@
 import { getArticlePath } from './article-url'
+import { getCachedArticleDefaultLanguages } from './languageUtils'
 
 export function setupLanguageSwitchEventDelegation() {
   if (this.languageSwitchHandler) {
@@ -201,9 +202,9 @@ export function updateUrlWithLanguage(lang) {
     })
 }
 
-export async function initializeLanguageSettings() {
+export async function initializeLanguageSettings(options = {}) {
   try {
-    await this.getDefaultTargetLanguage()
+    await this.getDefaultTargetLanguage(options)
 
     const langParam = this.$route.params.lang
     const articleLangKey = `article_${this.id}_preferredLanguage`
@@ -233,7 +234,25 @@ export async function initializeLanguageSettings() {
   }
 }
 
-export async function getDefaultTargetLanguage() {
+export async function getDefaultTargetLanguage(options = {}) {
+  const cachedDefaultLanguages = getCachedArticleDefaultLanguages()
+  if (cachedDefaultLanguages) {
+    this.targetLanguage = cachedDefaultLanguages.default_target_lang || 'en'
+    this.targetLanguageName =
+      this.languageMap[this.targetLanguage] || 'English'
+    this.sourceLanguage = cachedDefaultLanguages.default_source_lang || 'zh'
+    this.sourceLanguageName = this.languageMap[this.sourceLanguage] || '中文'
+    return
+  }
+
+  if (options.skipRemote) {
+    this.targetLanguage = 'en'
+    this.targetLanguageName = this.languageMap[this.targetLanguage] || 'English'
+    this.sourceLanguage = 'zh'
+    this.sourceLanguageName = this.languageMap[this.sourceLanguage] || '中文'
+    return
+  }
+
   try {
     const response = await this.$http.get(
       this.$constant.baseURL + '/webInfo/ai/config/articleAi/defaultLang'

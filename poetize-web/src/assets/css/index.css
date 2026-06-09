@@ -97,9 +97,14 @@ html.loaded .article-detail::before,
 }
 
 /* 性能优化: 为动画元素启用GPU硬件加速 */
+/*
+ * 注意：不要在此列表加入 .article-detail。
+ * 预渲染会把 article-detail 类加到 #app 根节点上，
+ * 若 #app 拥有 transform，会成为所有 position:fixed 后代的 containing block，
+ * 导致 AI 助手按钮等固定浮层退化为相对整篇文档定位（沉到页面底部）。
+ */
 .article-head,
 .article-info-container,
-.article-detail,
 .article-content {
     /* 提示浏览器这些元素会变化，提前优化 */
     will-change: transform, opacity;
@@ -764,8 +769,16 @@ body.dark-mode .el-popover .my-setting .el-icon {
     color: #ffffff !important;
 }
 
+body.dark-mode .el-popover .my-setting .iconRotate {
+    color: #f0c040 !important;
+}
+
 body.dark-mode .el-popover .my-setting i:hover,
 body.dark-mode .el-popover .my-setting .el-icon:hover {
+    color: var(--lightGreen) !important;
+}
+
+body.dark-mode .el-popover .my-setting .iconRotate:hover {
     color: var(--lightGreen) !important;
 }
 

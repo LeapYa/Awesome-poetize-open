@@ -526,7 +526,8 @@ public class PrerenderEngine {
                 + "      html:not(.loaded) .article-detail::before, html:not(.loaded) .home-prerender::before, html:not(.loaded) .favorite-prerender::before, html:not(.loaded) .favorites-prerender::before, html:not(.loaded) .sort-prerender::before, html:not(.loaded) .sort-list-prerender::before { opacity: 1; }\n"
                 + "      @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }\n"
                 + "      @media (max-width: 768px) { .article-detail, .home-prerender, .favorite-prerender, .favorites-prerender, .sort-prerender, .sort-list-prerender { min-height: 150px; padding: 1rem; } }\n"
-                + "    </style>";
+                + "    </style>\n"
+                + "  <noscript><style>html #app{visibility:visible!important;opacity:1!important}</style></noscript>";
     }
 
     private String reorderWebpackCss(String html) {
@@ -567,8 +568,15 @@ public class PrerenderEngine {
     }
 
     private String replaceAppContent(String html, String pageType, String content) {
+        String wrappedContent;
+        if ("article".equals(pageType)) {
+            wrappedContent = "<main><article>" + content + "</article></main>";
+        } else {
+            wrappedContent = "<main>" + content + "</main>";
+        }
         String appClass = "article".equals(pageType) ? " class=\"article-detail\"" : "";
-        return APP_PATTERN.matcher(html).replaceFirst(Matcher.quoteReplacement("<div id=\"app\"" + appClass + ">" + content + "</div>"));
+        return APP_PATTERN.matcher(html).replaceFirst(
+                Matcher.quoteReplacement("<div id=\"app\"" + appClass + ">" + wrappedContent + "</div>"));
     }
 
     private String buildLoadingScript() {

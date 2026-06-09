@@ -10,7 +10,7 @@
  * @returns {string} 头像 URL
  */
 export function getAiDefaultAvatar() {
-  return '/static/assets/ai_avatar.png';
+  return '/static/assets/ai_avatar_thumb.png';
 }
 
 /**

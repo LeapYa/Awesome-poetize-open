@@ -2421,6 +2421,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 User user = userTask.get();
                 if (user != null && StringUtils.hasText(user.getUsername())) {
                     articleVO.setUsername(user.getUsername());
+                    articleVO.setAvatar(user.getAvatar());
                 } else if (!isAdmin) {
                     articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
                 }

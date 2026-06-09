@@ -47,6 +47,11 @@
               :prefix="'aiBotAvatar'"
               :maxSize="2"
               :maxNumber="1"
+              :compress="true"
+              :compressMaxWidth="256"
+              :compressMaxHeight="256"
+              :compressQuality="0.85"
+              :compressTargetSize="61440"
               @addPicture="addBotAvatar"
             ></uploadPicture>
           </div>

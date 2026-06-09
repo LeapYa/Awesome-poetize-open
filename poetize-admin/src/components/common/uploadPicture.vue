@@ -84,6 +84,31 @@ import upload from '../../utils/ajaxUpload';
       maxNumber: {
         type: Number,
         default: 5
+      },
+      // 开启后，图片经后端 uploadImageWithCompress 接口压缩再存储（qiniu 前端直传不受影响）
+      compress: {
+        type: Boolean,
+        default: false
+      },
+      // 压缩目标最大宽度（仅 compress=true 生效）
+      compressMaxWidth: {
+        type: Number,
+        default: 1920
+      },
+      // 压缩目标最大高度（仅 compress=true 生效）
+      compressMaxHeight: {
+        type: Number,
+        default: 1080
+      },
+      // 压缩质量 0-1（仅 compress=true 生效）
+      compressQuality: {
+        type: Number,
+        default: 0.85
+      },
+      // 压缩目标体积，单位字节（仅 compress=true 生效）
+      compressTargetSize: {
+        type: Number,
+        default: 512000
       }
     },
 
@@ -219,6 +244,9 @@ import upload from '../../utils/ajaxUpload';
           fd.append("type", this.prefix);
           fd.append("storeType", this.currentStoreType);
 
+          if (this.compress && this.isPictureUpload) {
+            return this.uploadImageWithCompress(fd, options);
+          }
           if (this.shouldUseChunkUpload(options.file)) {
             return this.uploadLocalFileInChunks(options.file, fd, options);
           }
@@ -256,6 +284,14 @@ import upload from '../../utils/ajaxUpload';
 
           return this.$http.upload(this.$constant.baseURL + "/resource/upload", fd, this.isAdmin, options);
         }
+      },
+
+      async uploadImageWithCompress(fd, options) {
+        fd.append("maxWidth", String(this.compressMaxWidth));
+        fd.append("maxHeight", String(this.compressMaxHeight));
+        fd.append("quality", String(this.compressQuality));
+        fd.append("targetSize", String(this.compressTargetSize));
+        return this.$http.upload(this.$constant.baseURL + "/resource/uploadImageWithCompress", fd, this.isAdmin, options);
       },
 
       async uploadLocalFileInChunks(file, fd, options) {
@@ -338,7 +374,10 @@ import upload from '../../utils/ajaxUpload';
         const rawFile = file.raw || file;
         try {
           if (this.currentStoreType === "local") {
-            url = response.data;
+            // 压缩上传(uploadImageWithCompress)返回对象，URL 在 visitPath；普通上传 data 直接是 URL 字符串
+            url = (response.data && typeof response.data === "object")
+              ? response.data.visitPath
+              : response.data;
           } else if (this.currentStoreType === "qiniu") {
             url = this.mainStore.sysConfig['qiniu.downloadUrl'] + response.key;
             await this.$common.saveResource(this, this.prefix, url, rawFile.size, rawFile.type, file.name, "qiniu", this.isAdmin);

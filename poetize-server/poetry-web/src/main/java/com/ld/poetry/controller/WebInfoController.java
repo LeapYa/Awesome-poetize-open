@@ -9,7 +9,10 @@ import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.dao.*;
 import com.ld.poetry.entity.*;
+import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.service.CacheService;
+import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.service.WebInfoService;
 import com.ld.poetry.service.ThirdPartyOauthConfigService;
@@ -83,6 +86,12 @@ public class WebInfoController {
 
     @Autowired
     private CacheService cacheService;
+
+    @Autowired
+    private SysConfigService sysConfigService;
+
+    @Autowired
+    private SysAiConfigService sysAiConfigService;
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
@@ -394,6 +403,9 @@ public class WebInfoController {
                 result.setRandomAvatar(null);
                 result.setRandomName(null);
                 result.setWaifuJson(null);
+                // 开放 API 鉴权密钥与 IP 白名单属于敏感配置，仅后台受保护端点可见
+                result.setApiKey(null);
+                result.setApiIpWhitelist(null);
 
                 // 覆盖鼠标点击效果，使用插件系统的配置
                 try {
@@ -449,6 +461,59 @@ public class WebInfoController {
             log.error("获取网站信息时发生错误", e);
             return PoetryResult.success();
         }
+    }
+
+    /**
+     * 获取前台首屏需要的站点启动数据。
+     * 合并 webInfo、sysConfig、sortInfo 和语言基础配置，减少首页/文章页初始化并发请求。
+     */
+    @GetMapping("/bootstrap")
+    public PoetryResult<Map<String, Object>> getBootstrap() {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        try {
+            PoetryResult<WebInfo> webInfoResult = getWebInfo();
+            result.put("webInfo", webInfoResult == null ? null : webInfoResult.getData());
+        } catch (Exception e) {
+            log.warn("bootstrap 获取 webInfo 失败", e);
+            result.put("webInfo", null);
+        }
+
+        try {
+            result.put("sysConfig", listPublicSysConfig());
+        } catch (Exception e) {
+            log.warn("bootstrap 获取 sysConfig 失败", e);
+            result.put("sysConfig", Collections.emptyMap());
+        }
+
+        try {
+            result.put("sortInfo", commonQuery.getSortInfo());
+        } catch (Exception e) {
+            log.warn("bootstrap 获取 sortInfo 失败", e);
+            result.put("sortInfo", Collections.emptyList());
+        }
+
+        try {
+            result.put("languageMap", sysAiConfigService.getLanguageMapping());
+            result.put("articleDefaultLanguages", sysAiConfigService.getDefaultLanguages());
+        } catch (Exception e) {
+            log.warn("bootstrap 获取语言配置失败", e);
+        }
+
+        return PoetryResult.success(result);
+    }
+
+    private Map<String, String> listPublicSysConfig() {
+        LambdaQueryChainWrapper<SysConfig> wrapper = new LambdaQueryChainWrapper<>(sysConfigService.getBaseMapper());
+        List<SysConfig> sysConfigs = wrapper
+                .eq(SysConfig::getConfigType, Integer.toString(PoetryEnum.SYS_CONFIG_PUBLIC.getCode()))
+                .list();
+
+        return sysConfigs.stream().collect(Collectors.toMap(
+                SysConfig::getConfigKey,
+                SysConfig::getConfigValue,
+                (oldValue, newValue) -> newValue
+        ));
     }
 
     /**

@@ -474,19 +474,29 @@ router.afterEach((to, from) => {
   // 同一页面不重复统计
   if (from.name && to.fullPath === from.fullPath) return
 
-  try {
-    const params = new URLSearchParams({ path: to.fullPath })
-    appendVisitSignals(params)
-    const url = constant.baseURL + '/track/pageview'
-    // 使用 fetch + keepalive + credentials 代替 sendBeacon，cookie会自动携带用户身份
-    fetch(url, {
-      method: 'POST',
-      keepalive: true,
-      credentials: 'include',
-      body: params
-    }).catch(() => { })
-  } catch (e) {
-    // 统计失败不影响用户
+  // 采集信号（含 WebGL/canvas 探测）与上报整体放入空闲期，
+  // 彻底移出路由切换关键路径，避免拖慢切页后的首帧。
+  const reportPageview = () => {
+    try {
+      const params = new URLSearchParams({ path: to.fullPath })
+      appendVisitSignals(params)
+      const url = constant.baseURL + '/track/pageview'
+      // 使用 fetch + keepalive + credentials 代替 sendBeacon，cookie会自动携带用户身份
+      fetch(url, {
+        method: 'POST',
+        keepalive: true,
+        credentials: 'include',
+        body: params
+      }).catch(() => { })
+    } catch (e) {
+      // 统计失败不影响用户
+    }
+  }
+
+  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(reportPageview, { timeout: 2000 })
+  } else {
+    setTimeout(reportPageview, 0)
   }
 })
 

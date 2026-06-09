@@ -3,6 +3,7 @@ package com.ld.poetry.vo;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import java.util.List;
 
 @Data
 @EqualsAndHashCode(callSuper = false)
@@ -39,6 +40,8 @@ public class BaseRequestVO extends Page {
     private Integer userId;
 
     private String resourceType;
+
+    private List<String> resourceTypes;
 
     private Boolean status;
 

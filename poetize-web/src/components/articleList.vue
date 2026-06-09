@@ -42,6 +42,7 @@
             lazy
             :src="article.articleCover"
             fit="cover"
+            :alt="article.articleTitle"
           >
             <!--
               安全说明：文章标题、正文和翻译内容仅由站长/管理员写入，普通用户没有发布入口。
