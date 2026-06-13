@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a read-only smoke test for the Poetize OpenClaw skill runtime contract."""
+"""Run a read-only smoke test for the Poetize Agent skill runtime contract."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ import json
 import os
 from typing import Any
 
-from manage_blog import build_url
+from manage_blog import build_url, extract_records
 from publish_post import normalize_base_url, request_json
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate the Poetize OpenClaw skill wiring with a read-only API call."
+        description="Validate the Poetize Agent skill wiring with a read-only API call."
     )
     parser.add_argument(
         "--base-url",
@@ -40,17 +40,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def die(message: str, code: int = 1) -> None:
-    print(message, file=sys.stderr)
-    raise SystemExit(code)
-
-
-def extract_records(response: dict[str, Any]) -> list[dict[str, Any]]:
-    data = response.get("data")
-    if isinstance(data, dict):
-        records = data.get("records")
-        if isinstance(records, list):
-            return [item for item in records if isinstance(item, dict)]
-    return []
+    exc = SystemExit(code)
+    exc._poetize_detail = message  # type: ignore[attr-defined]
+    raise exc
 
 
 def main() -> None:
@@ -92,4 +84,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import sys
+
+    # Delegate to the unified CLI: openclaw_smoke_test.py <args> -> poetize_cli.py smoke-test <args>
+    sys.argv = [sys.argv[0].replace("openclaw_smoke_test.py", "poetize_cli.py"), "smoke-test"] + sys.argv[1:]
+    from poetize_cli import main
+
     main()

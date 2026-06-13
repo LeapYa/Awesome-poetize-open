@@ -156,4 +156,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import sys
+
+    # Delegate to the unified CLI: run_strategy_evals.py -> poetize_cli.py eval
+    sys.argv = [sys.argv[0].replace("run_strategy_evals.py", "poetize_cli.py"), "eval"] + sys.argv[1:]
+    from poetize_cli import main
     main()

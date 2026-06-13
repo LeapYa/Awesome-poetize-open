@@ -44,7 +44,7 @@
 - [项目简介](#-项目简介)
 - [快速开始](#-快速开始)
 - [部署文档](#-部署文档)
-- [OpenClaw 博客自动化](#-openclaw-博客自动化)
+- [智能体/OpenClaw 博客自动化](#-智能体openclaw-博客自动化)
 - [贡献与许可](#-贡献与许可)
 - [开发指南](#-开发指南)
 - [排障指南](#-排障指南)
@@ -84,7 +84,7 @@
 1. ✅ 页脚优化 —— 页脚信息更丰富、可自定义
 1. ✅ 图片压缩和转换WebP格式 —— 自动压缩图片，提升网站加载速度
 1. ✅ 智能摘要 —— 自动生成文章摘要，提升阅读体验
-1. ✅ OpenClaw 博客自动化 —— 支持通过仓库内置的 OpenClaw skill 使用站点 API 完成文章发布、更新、隐藏、主题切换、SEO运维与博客运营自动化（要求 `awesome-poetize-open v4.0.0` 及以上版本）
+1. ✅ 智能体/OpenClaw 博客自动化 —— 支持通过仓库内置的 Agent skill 使用站点 API 完成文章发布、更新、隐藏、主题切换、SEO运维与博客运营自动化（要求 `awesome-poetize-open v4.0.0` 及以上版本）
 1. ✅ 暗色模式优化、定时暗色模式 —— 支持夜间自动切换暗色主题，优化暗色模式
 1. ✅ 灰色模式 —— 支持全站灰色纪念模式
 1. ✅ 自定义错误页面 —— 提供友好的404、403等错误页面
@@ -106,7 +106,7 @@
 bash <(curl -sL install.leapya.com)
 ```
 
-脚本将自动完成所有配置，包括代理配置、Docker安装、数据库初始化和HTTPS配置。为了避免建站初期踩坑，并解锁 **SEO优化**、**本地AI翻译**、**OpenClaw 博客自动化** 等高级功能，**强烈建议新手继续阅读下方的 [部署文档](#-部署文档)**。
+脚本将自动完成所有配置，包括代理配置、Docker安装、数据库初始化和HTTPS配置。为了避免建站初期踩坑，并解锁 **SEO优化**、**本地AI翻译**、**智能体/OpenClaw 博客自动化** 等高级功能，**强烈建议新手继续阅读下方的 [部署文档](#-部署文档)**。
 
 ## 📋 部署文档
 
@@ -441,50 +441,50 @@ bash <(curl -sL install.leapya.com)
   ```
 - ❌ **不要绕过 `poetize-nginx` 直接暴露 Java 服务** — 会失去防伪造保护，访问统计地域数据可能被污染。
 
-## 🤖 OpenClaw 博客自动化
+## 🤖 智能体/OpenClaw 博客自动化
 
-项目在 `awesome-poetize-open v4.0.0` 中引入了面向 OpenClaw 的博客自动化能力。你可以通过仓库内置的 skill，让 OpenClaw 直接调用站点 API 来完成文章发布、异步更新、隐藏文章、分类标签安全维护、主题切换、SEO状态查询，以及部分受控 SEO 运维动作。
+项目在 `v4.0.0` 中引入了面向多智能体（OpenClaw、Hermes、Trae、Qoder、腾讯等）的博客自动化能力。你可以通过仓库内置的 skill，让智能体直接调用站点 API 来完成文章发布、异步更新、隐藏文章、分类标签安全维护、主题切换、SEO状态查询，以及部分受控 SEO 运维动作。
 
-**注意：该能力当前要求 `awesome-poetize-open v4.0.0` 及以上版本，更早版本不要直接接入。**
+**注意：该能力当前要求 `v4.0.0` 及以上版本，更早版本不要直接接入。**
 
 ### 适合做什么
 
 - 根据主题草拟并发布博客文章
 - 更新已有文章，或将文章切换为隐藏状态
 - 查询文章、分类、标签、主题和 SEO 状态
-- 结合 OpenClaw 的 agent 工作流做博客运营自动化
+- 结合各类智能体的 agent 工作流做博客运营自动化
 
 ### 接入前准备
 
-1. 使用 `awesome-poetize-open v4.0.0` 或更高版本
+1. 使用 `v4.0.0` 或更高版本
 2. 进入后台管理的 `API 配置` 页面，开启 API 并生成 API 密钥
-3. 如果开启了 API IP 白名单，需要把 OpenClaw 服务器出口 IP 或 CIDR 加进去
+3. 如果开启了 API IP 白名单，需要把智能体服务器出口 IP 或 CIDR 加进去
 4. 将 `POETIZE_BASE_URL` 设置为站点公网根地址，例如 `https://your-blog.example.com`
 5. 不要把 `/api` 写进 `POETIZE_BASE_URL`，skill 会自动拼接成 `${POETIZE_BASE_URL}/api/...`
 
-### 安装方式一：让 OpenClaw 按提示词帮你安装（最推荐）
+### 安装方式一：让智能体（以 OpenClaw 为例）按提示词帮你安装（最推荐）
 
-如果你希望直接通过对话让 OpenClaw 帮你处理安装，可以把下面这段提示词发给 OpenClaw。
+如果你希望直接通过对话让智能体（如 OpenClaw、Hermes、Trae 等）帮你处理安装，可以把下面这段提示词发给智能体。
 
 ```text
 请先检查是否已安装 ClawHub CLI。
 
-若未安装，请根据 OpenClaw 官方 ClawHub 文档先安装 ClawHub CLI，然后尝试安装技能 `awesome-poetize-open-blog-automation`。
+若未安装，请根据官方 ClawHub 文档先安装 ClawHub CLI，然后尝试安装技能 `awesome-poetize-open-blog-automation`。
 
 若已安装，则直接尝试安装技能 `awesome-poetize-open-blog-automation`。
 
-如果该技能尚未发布、在 ClawHub 中搜索不到，或者遇到 ClawHub 限流，请改为克隆项目 `https://github.com/LeapYa/awesome-poetize-open.git`，然后按手动安装方式把 `openclaw-skills/poetize-blog-automation` 复制到 OpenClaw 的 `skills/` 目录中完成安装。
+如果该技能尚未发布、在 ClawHub 中搜索不到，或者遇到 ClawHub 限流，请改为克隆项目 `https://github.com/LeapYa/awesome-poetize-open.git`，然后按手动安装方式把 `openclaw-skills/poetize-blog-automation` 复制到智能体对应的 `skills/` 目录中完成安装。
 
-安装目标默认使用 OpenClaw 的 `~/.openclaw/workspace/skills/` 目录，配置默认写入 `~/.openclaw/openclaw.json`。
+安装目标默认使用智能体的 `skills/` 目录（例如 OpenClaw 的 `~/.openclaw/workspace/skills/`），配置默认写入智能体对应的配置文件（例如 OpenClaw 的 `~/.openclaw/openclaw.json`）。
 安装完成后，请务必主动向我索要本技能所需的两项配置项，并附带以下获取指引：
 1. `POETIZE_BASE_URL`：仅填站点根地址（提醒我不要带 `/api` 前缀，例如 `https://your-blog.example.com`）。
 2. `POETIZE_API_KEY`：API 密钥（提醒我可以在“后台管理 -> 导航与接口 -> API 配置”界面中获取）。
 收到完整配置后，请帮我写入配置文件。
 ```
 
-### 安装方式二：使用 OpenClaw 安装
+### 安装方式二：手动通过 ClawHub CLI 安装
 
-默认在 OpenClaw 的 `~/.openclaw/workspace/` 目录执行：
+默认在智能体的工作目录（例如 OpenClaw 的 `~/.openclaw/workspace/`）执行：
 
 ```bash
 cd ~/.openclaw/workspace
@@ -523,7 +523,7 @@ clawhub install awesome-poetize-open-blog-automation
 openclaw-skills/poetize-blog-automation/
 ```
 
-手动安装时，默认把 `poetize-blog-automation` 整个目录复制到 OpenClaw 的 `~/.openclaw/workspace/skills/` 目录下：
+手动安装时，默认把 `poetize-blog-automation` 整个目录复制到智能体对应的 `skills/` 目录下（例如 OpenClaw 的 `~/.openclaw/workspace/skills/`）：
 
 ```text
 ~/.openclaw/workspace/
@@ -531,9 +531,9 @@ openclaw-skills/poetize-blog-automation/
     poetize-blog-automation/
 ```
 
-如果你自定义过 OpenClaw 的 workspace，就放到你自己的 `skills/` 目录里。
+如果你自定义过智能体的 workspace，就放到你自己的 `skills/` 目录里。
 
-然后在默认配置文件 `~/.openclaw/openclaw.json` 中加入和上面相同的配置：
+然后在默认配置文件（例如 OpenClaw 的 `~/.openclaw/openclaw.json`）中加入和上面相同的配置：
 
 ```json
 {
@@ -573,15 +573,15 @@ openclaw-skills/poetize-blog-automation/
 
 后续只更新版本号和 skill 内容，不要随意改上面这几个标识。
 
-**推荐直接把下面这段升级提示词发送给 OpenClaw 让它帮你更新：**
+**推荐直接把下面这段升级提示词发送给智能体让它帮你更新（以 OpenClaw 为例）：**
 
 ```text
 请帮我升级技能 `awesome-poetize-open-blog-automation`。
 
 请直接执行 `clawhub update awesome-poetize-open-blog-automation`。
-如果因为网络受限或在 ClawHub 找不到对应版本，请回退到克隆仓库的手动方式覆盖更新，目录在 `~/.openclaw/workspace/skills/poetize-blog-automation/`。
+如果因为网络受限或在 ClawHub 找不到对应版本，请回退到克隆仓库的手动方式覆盖更新，目录在智能体对应的 `skills/poetize-blog-automation/` 目录下。
 
-升级完成后，请主动向我确认是否需要更新以前的配置。如果要更新，请向我索要 `POETIZE_BASE_URL`（不带`/api`）与 `POETIZE_API_KEY`（在后台管理->导航与接口->API 配置中获取），并写入 `~/.openclaw/openclaw.json`。
+升级完成后，请主动向我确认是否需要更新以前的配置。如果要更新，请向我索要 `POETIZE_BASE_URL`（不带`/api`）与 `POETIZE_API_KEY`（在后台管理->导航与接口->API 配置中获取），并写入智能体对应的配置文件（如 `~/.openclaw/openclaw.json`）。
 ```
 
 **或者你也可以选择自己手动在命令行执行更新：**
@@ -608,7 +608,7 @@ clawhub update awesome-poetize-open-blog-automation --force
 
 ### 参考文档
 
-- [OpenClaw skill 接入说明](openclaw-skills/poetize-blog-automation/references/openclaw-setup.md)
+- [智能体技能接入说明 (OpenClaw/Hermes/Trae/Tencent)](openclaw-skills/poetize-blog-automation/references/agent-setup.md)
 - [Skill 规范与工作流](openclaw-skills/poetize-blog-automation/SKILL.md)
 - [POETIZE API 参考](openclaw-skills/poetize-blog-automation/references/poetize-api.md)
 

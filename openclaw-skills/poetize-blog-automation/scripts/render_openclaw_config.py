@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate or merge an OpenClaw config for the Poetize blog automation skill."""
+"""Generate or merge an OpenClaw config for the Poetize blog automation skill (OpenClaw specific)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ PLACEHOLDER_API_KEY = "replace-with-poetize-api-key"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate a usable OpenClaw config for the Poetize blog automation skill."
+        description="Generate a usable OpenClaw config for the Poetize blog automation skill (OpenClaw specific)."
     )
     parser.add_argument(
         "--output",
@@ -52,8 +52,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def die(message: str, code: int = 1) -> None:
-    print(message, file=sys.stderr)
-    raise SystemExit(code)
+    exc = SystemExit(code)
+    exc._poetize_detail = message  # type: ignore[attr-defined]
+    raise exc
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -216,4 +217,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import sys
+
+    # Delegate to the unified CLI: render_openclaw_config.py <args> -> poetize_cli.py config <args>
+    sys.argv = [sys.argv[0].replace("render_openclaw_config.py", "poetize_cli.py"), "config"] + sys.argv[1:]
+    from poetize_cli import main
     main()

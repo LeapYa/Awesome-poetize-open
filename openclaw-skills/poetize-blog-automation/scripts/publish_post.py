@@ -36,34 +36,10 @@ def configure_stdio() -> None:
             reconfigure(encoding="utf-8", errors="replace")
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Create or update a Poetize article from Markdown front matter."
-    )
-    parser.add_argument("--markdown-file", required=True, help="Path to a Markdown file.")
-    parser.add_argument("--article-id", type=int, help="Existing article ID to update.")
-    parser.add_argument("--brief-file", required=True, help="JSON brief file for strategy validation.")
-    parser.add_argument("--base-url", default=os.getenv("POETIZE_BASE_URL"), help="Poetize base URL.")
-    parser.add_argument("--api-key", default=os.getenv("POETIZE_API_KEY"), help="Poetize API key.")
-    parser.add_argument("--publish", action="store_true", help="Force public publish.")
-    parser.add_argument("--draft", action="store_true", help="Force draft/private save.")
-    parser.add_argument("--cover-file", help="Optional local cover file path.")
-    parser.add_argument("--payment-plugin-key", help="Optional payment plugin key to target for paid articles.")
-    parser.add_argument("--payment-config-file", help="Optional JSON file used to configure the payment plugin.")
-    parser.add_argument("--require-paid", action="store_true", help="Fail instead of downgrading when paid publishing is not available.")
-    parser.add_argument("--allow-create-taxonomy", action="store_true", help="Allow creating missing categories and tags.")
-    parser.add_argument("--allow-create-sort", action="store_true", help="Allow creating a missing category.")
-    parser.add_argument("--allow-create-label", action="store_true", help="Allow creating a missing tag.")
-    parser.add_argument("--print-payload", action="store_true", help="Print the JSON payload before sending.")
-    parser.add_argument("--wait", action="store_true", help="Poll the async task until the article finishes processing.")
-    parser.add_argument("--poll-interval", type=float, default=2.0, help="Task polling interval in seconds.")
-    parser.add_argument("--timeout", type=int, default=900, help="Maximum wait time in seconds when --wait is set.")
-    return parser.parse_args()
-
-
 def die(message: str, code: int = 1) -> None:
-    print(message, file=sys.stderr)
-    raise SystemExit(code)
+    exc = SystemExit(code)
+    exc._poetize_detail = message  # type: ignore[attr-defined]
+    raise exc
 
 
 def normalize_base_url(base_url: str) -> str:
@@ -468,12 +444,17 @@ def upload_resource(
     file_path: str,
     *,
     resource_type: str,
+    relative_path: str | None = None,
     store_type: str | None = None,
 ) -> str:
     if not os.path.isfile(file_path):
         die(f"Upload file does not exist: {file_path}")
 
-    fields = {"type": resource_type}
+    # Backend requires relativePath; derive from filename if not provided
+    if not relative_path:
+        relative_path = os.path.basename(file_path)
+
+    fields = {"type": resource_type, "relativePath": relative_path}
     if store_type:
         fields["storeType"] = store_type
 
@@ -519,6 +500,7 @@ def upload_cover(base_url: str, api_key: str, cover_file: str, store_type: str |
         api_key,
         cover_file,
         resource_type="articleCover",
+        relative_path=f"articleCover/{os.path.basename(cover_file)}",
         store_type=store_type,
     )
 
@@ -683,12 +665,14 @@ def upload_local_article_asset(
 
     store_type = meta_string(meta, "markdownImageStoreType") or meta_string(meta, "imageStoreType")
     resource_type = meta_string(meta, "markdownImageType") or "articlePicture"
+    relative_path = f"articlePicture/{os.path.basename(str(resolved_path))}"
     print(f"Uploading local article asset: {resolved_path}", file=sys.stderr)
     uploaded_url = upload_resource(
         base_url,
         api_key,
         str(resolved_path),
         resource_type=resource_type,
+        relative_path=relative_path,
         store_type=store_type,
     )
     upload_cache[cache_key] = uploaded_url
@@ -1053,59 +1037,10 @@ def build_payload(markdown_text: str, args: argparse.Namespace) -> tuple[dict[st
     return {key: value for key, value in payload.items() if value is not None}, meta
 
 
-def main() -> None:
-    configure_stdio()
-    args = parse_args()
-    args.base_url = normalize_base_url(str(args.base_url or ""))
-
-    if not args.base_url:
-        die("Missing --base-url or POETIZE_BASE_URL.")
-    if not args.api_key:
-        die("Missing --api-key or POETIZE_API_KEY.")
-
-    try:
-        brief = load_json_object(args.brief_file, label="Brief file")
-
-        with open(args.markdown_file, "r", encoding="utf-8") as handle:
-            markdown_text = handle.read()
-
-        payload, meta = build_payload(markdown_text, args)
-        payload = apply_article_strategy(
-            brief,
-            payload,
-            is_update=args.article_id is not None,
-            cli_publish=args.publish,
-            cli_draft=args.draft,
-        )
-        payload = ensure_taxonomy_ready(payload, meta, args)
-        payload = ensure_payment_plugin_ready(payload, meta, args)
-        if args.print_payload:
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
-            return
-
-        endpoint = "/api/api/article/updateAsync" if args.article_id is not None else "/api/api/article/createAsync"
-        response = request_json("POST", f"{args.base_url.rstrip('/')}{endpoint}", args.api_key, payload)
-
-        if response.get("code") != 200:
-            die(json.dumps(response, ensure_ascii=False, indent=2))
-
-        if not args.wait:
-            print(json.dumps(response, ensure_ascii=False, indent=2))
-            return
-
-        task_id = extract_task_id(response)
-        if not task_id:
-            die("Async article API did not return a taskId.")
-
-        final_response = poll_task(args.base_url, args.api_key, task_id, args.poll_interval, args.timeout)
-        final_data = final_response.get("data")
-        if isinstance(final_data, dict) and final_data.get("status") == "failed":
-            die(json.dumps(final_response, ensure_ascii=False, indent=2))
-
-        print(json.dumps(final_response, ensure_ascii=False, indent=2))
-    except StrategyValidationError as exc:
-        die(exc.render())
-
-
 if __name__ == "__main__":
+    import sys
+
+    # Delegate to the unified CLI: publish_post.py <args> -> poetize_cli.py publish <args>
+    sys.argv = [sys.argv[0].replace("publish_post.py", "poetize_cli.py"), "publish"] + sys.argv[1:]
+    from poetize_cli import main
     main()

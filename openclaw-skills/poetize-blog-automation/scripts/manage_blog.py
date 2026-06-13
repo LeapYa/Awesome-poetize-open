@@ -6,96 +6,18 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
-import os
 import sys
 import urllib.parse
 from typing import Any
 
-from blog_strategy import StrategyValidationError, apply_ops_strategy, load_json_object
+from blog_strategy import apply_ops_strategy, load_json_object
 from publish_post import die, extract_task_id, normalize_base_url, poll_task, request_json
-
-
-def configure_stdio() -> None:
-    for stream_name in ("stdout", "stderr"):
-        stream = getattr(sys, stream_name, None)
-        reconfigure = getattr(stream, "reconfigure", None)
-        if callable(reconfigure):
-            reconfigure(encoding="utf-8", errors="replace")
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Manage Poetize articles, themes, analytics, and SEO through the public API."
-    )
-    parser.add_argument("--base-url", default=os.getenv("POETIZE_BASE_URL"), help="Poetize base URL.")
-    parser.add_argument("--api-key", default=os.getenv("POETIZE_API_KEY"), help="Poetize API key.")
-
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    list_parser = subparsers.add_parser("list-articles", help="List articles with filters.")
-    list_parser.add_argument("--current", type=int, default=1)
-    list_parser.add_argument("--size", type=int, default=10)
-    list_parser.add_argument("--search-key")
-    list_parser.add_argument("--sort-id", type=int)
-    list_parser.add_argument("--sort-name")
-    list_parser.add_argument("--label-id", type=int)
-    list_parser.add_argument("--label-name")
-    list_parser.add_argument("--exact-title")
-
-    article_parser = subparsers.add_parser("get-article", help="Get article detail.")
-    add_article_target_args(article_parser)
-
-    update_parser = subparsers.add_parser("update-article", help="Update an existing article.")
-    add_article_target_args(update_parser)
-    update_parser.add_argument("--payload-file", required=True, help="JSON payload file for article update.")
-    update_parser.add_argument("--brief-file", required=True, help="JSON brief file for strategy validation.")
-    update_parser.add_argument("--wait", action="store_true", help="Poll async task until completion.")
-    update_parser.add_argument("--poll-interval", type=float, default=2.0)
-    update_parser.add_argument("--timeout", type=int, default=900)
-    update_parser.add_argument("--print-payload", action="store_true")
-
-    hide_parser = subparsers.add_parser("hide-article", help="Hide an article by setting viewStatus=false.")
-    add_article_target_args(hide_parser)
-    hide_parser.add_argument("--brief-file", required=True, help="JSON brief file for strategy validation.")
-    hide_parser.add_argument("--password", help="Password for hidden article.")
-    hide_parser.add_argument("--tips", help="Preview tip for hidden article.")
-    hide_parser.add_argument("--wait", action="store_true", help="Poll async task until completion.")
-    hide_parser.add_argument("--poll-interval", type=float, default=2.0)
-    hide_parser.add_argument("--timeout", type=int, default=900)
-
-    analytics_parser = subparsers.add_parser("article-analytics", help="Get article analytics.")
-    add_article_target_args(analytics_parser)
-
-    visits_parser = subparsers.add_parser("site-visits", help="Get site visit trends.")
-    visits_parser.add_argument("--days", type=int, choices=[7, 30], default=7)
-
-    subparsers.add_parser("theme-status", help="Get article theme status.")
-
-    activate_theme_parser = subparsers.add_parser("activate-theme", help="Activate a global article theme.")
-    activate_theme_parser.add_argument("--plugin-key", required=True)
-
-    subparsers.add_parser("seo-status", help="Get SEO status.")
-    subparsers.add_parser("seo-get-config", help="Get controlled SEO config.")
-
-    seo_set_parser = subparsers.add_parser("seo-set-config", help="Update controlled SEO config.")
-    seo_set_parser.add_argument("--config-file", required=True, help="JSON file with allowed SEO fields.")
-
-    subparsers.add_parser("sitemap-update", help="Trigger sitemap update.")
-
-    return parser.parse_args()
 
 
 def add_article_target_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--article-id", type=int, help="Target article ID.")
     parser.add_argument("--article-slug", help="Target article URL slug.")
     parser.add_argument("--article-title-exact", help="Resolve target article by exact title.")
-
-
-def ensure_base_args(args: argparse.Namespace) -> None:
-    if not args.base_url:
-        die("Missing --base-url or POETIZE_BASE_URL.")
-    if not args.api_key:
-        die("Missing --api-key or POETIZE_API_KEY.")
 
 
 def read_json_file(path: str) -> dict[str, Any]:
@@ -372,143 +294,14 @@ def post_async_update(
     print(json.dumps(final_response, ensure_ascii=False, indent=2))
 
 
-def main() -> None:
-    configure_stdio()
-    args = parse_args()
-    args.base_url = normalize_base_url(str(args.base_url or ""))
-    ensure_base_args(args)
-
-    if args.command == "list-articles":
-        response = list_articles(
-            args,
-            search_key=args.search_key,
-            current=args.current,
-            size=args.size,
-            sort_id=args.sort_id,
-            sort_name=args.sort_name,
-            label_id=args.label_id,
-            label_name=args.label_name,
-        )
-        if args.exact_title:
-            records = [
-                item for item in extract_records(response)
-                if str(item.get("articleTitle", "")).strip() == args.exact_title.strip()
-            ]
-            response = {
-                "code": response.get("code"),
-                "message": response.get("message"),
-                "data": {
-                    "records": records,
-                    "matched": len(records)
-                }
-            }
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "get-article":
-        article_id = resolve_article_id(args)
-        response = request_json("GET", f"{args.base_url.rstrip('/')}/api/api/article/{article_id}", args.api_key)
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "update-article":
-        try:
-            article_id = resolve_article_id(args)
-            payload = read_json_file(args.payload_file)
-            brief = load_json_object(args.brief_file, label="Brief file")
-            payload["id"] = article_id
-            payload = apply_ops_strategy(brief, payload, expected_task_type="update_article")
-            if args.print_payload:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-                return
-            post_async_update(args, payload)
-            return
-        except StrategyValidationError as exc:
-            die(exc.render())
-
-    if args.command == "hide-article":
-        try:
-            article_id = resolve_article_id(args)
-            brief = load_json_object(args.brief_file, label="Brief file")
-            payload = {
-                "id": article_id,
-                "viewStatus": False,
-                "password": args.password or f"hidden-{article_id}",
-                "tips": args.tips or "文章已隐藏，仅供受控预览"
-            }
-            payload = apply_ops_strategy(brief, payload, expected_task_type="hide_article")
-            post_async_update(args, payload)
-            return
-        except StrategyValidationError as exc:
-            die(exc.render())
-
-    if args.command == "article-analytics":
-        article_id = resolve_article_id(args)
-        response = request_json(
-            "GET",
-            f"{args.base_url.rstrip('/')}/api/api/article/analytics/{article_id}",
-            args.api_key,
-        )
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "site-visits":
-        response = request_json(
-            "GET",
-            build_url(args.base_url, "/api/api/analytics/site/visits", {"days": args.days}),
-            args.api_key,
-        )
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "theme-status":
-        response = request_json("GET", f"{args.base_url.rstrip('/')}/api/api/article-theme/status", args.api_key)
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "activate-theme":
-        response = request_json(
-            "POST",
-            f"{args.base_url.rstrip('/')}/api/api/article-theme/activate",
-            args.api_key,
-            {"pluginKey": args.plugin_key},
-        )
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "seo-status":
-        response = request_json("GET", f"{args.base_url.rstrip('/')}/api/api/seo/status", args.api_key)
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "seo-get-config":
-        response = request_json("GET", f"{args.base_url.rstrip('/')}/api/api/seo/config", args.api_key)
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "seo-set-config":
-        payload = read_json_file(args.config_file)
-        response = request_json(
-            "POST",
-            f"{args.base_url.rstrip('/')}/api/api/seo/config",
-            args.api_key,
-            payload,
-        )
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    if args.command == "sitemap-update":
-        response = request_json(
-            "POST",
-            f"{args.base_url.rstrip('/')}/api/api/seo/sitemap/update",
-            args.api_key,
-            {},
-        )
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
-
-    die(f"Unsupported command: {args.command}")
-
-
 if __name__ == "__main__":
+    import sys
+
+    # Delegate to the unified CLI: manage_blog.py <subcommand> -> poetize_cli.py manage <subcommand>
+    args = sys.argv[1:]
+    if args:
+        sys.argv = [sys.argv[0].replace("manage_blog.py", "poetize_cli.py"), "manage"] + args
+    else:
+        sys.argv = [sys.argv[0].replace("manage_blog.py", "poetize_cli.py"), "manage", "--help"]
+    from poetize_cli import main
     main()

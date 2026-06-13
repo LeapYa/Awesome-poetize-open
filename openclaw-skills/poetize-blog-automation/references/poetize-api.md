@@ -9,9 +9,9 @@ For personal blogs, treat free publishing as the default and paid publishing as 
 The backend API itself is unchanged, but this skill now adds a strategy layer on top:
 
 - mutating commands require `--brief-file`
-- `publish_post.py` always requires an article brief
-- `manage_blog.py update-article` requires an ops brief
-- `manage_blog.py hide-article` requires an ops brief
+- `poetize_cli.py publish` always requires an article brief
+- `poetize_cli.py manage update-article` requires an ops brief
+- `poetize_cli.py manage hide-article` requires an ops brief
 - template files live in `assets/article-brief.template.json` and `assets/ops-brief.template.json`
 
 ## Auth
@@ -67,7 +67,7 @@ The backend API itself is unchanged, but this skill now adds a strategy layer on
   - `pendingTranslationContent`
 - Draft saves are implemented as private articles; the helper script auto-generates `password` and `tips` if omitted
 - The skill runtime can override `viewStatus` and `payType` to satisfy brief validation rules before calling the backend
-- `publish_post.py` can upload local Markdown images and local HTML `<img src="...">` references through `/api/api/resource/upload` before article creation or update
+- `poetize_cli.py publish` can upload local Markdown images and local HTML `<img src="...">` references through `/api/api/resource/upload` before article creation or update
 - Local article images default to resource type `articlePicture`
 
 ## Recommended Front Matter
@@ -217,17 +217,18 @@ Content-Type: multipart/form-data
 
 Fields:
 
-- `file`: binary file
-- `type`: optional, usually `articleCover`
-- `relativePath`: optional custom storage path
+- `file`: binary file (required)
+- `type`: resource type (required), e.g. `articleCover`, `articlePicture`, `friendLinkCover`, `seoSiteIcon`, `seoFavicon`
+- `relativePath`: storage relative path (required), e.g. `articleCover/cover.png`, `articlePicture/diagram.png`
 - `storeType`: optional storage backend override
 
 Recommended OpenClaw asset flow:
 
 1. Save the user-provided image into the same working directory tree as the Markdown draft
 2. Reference it from Markdown with a relative path such as `![截图](./assets/screenshot.png)`
-3. Let `publish_post.py` upload that file through `/api/api/resource/upload`
-4. Let the script replace the local path with the returned URL before it calls `/api/api/article/createAsync` or `/api/api/article/updateAsync`
+3. Let the CLI upload that file through `/api/api/resource/upload` (the `poetize_cli.py publish` command does this automatically for local images)
+4. Or use `poetize_cli.py upload-image` to upload first and get a remote URL, then embed it directly in Markdown
+5. Let the script replace the local path with the returned URL before it calls `/api/api/article/createAsync` or `/api/api/article/updateAsync`
 
 ## Async Task Flow
 
@@ -281,10 +282,10 @@ For existing article operations:
 
 For article listing by taxonomy:
 
-- `manage_blog.py list-articles --sort-id <id>`
-- `manage_blog.py list-articles --label-id <id>`
-- `manage_blog.py list-articles --sort-name "<exact category name>"`
-- `manage_blog.py list-articles --label-name "<exact tag name>"`
+- `poetize_cli.py manage list-articles --sort-id <id>`
+- `poetize_cli.py manage list-articles --label-id <id>`
+- `poetize_cli.py manage list-articles --sort-name "<exact category name>"`
+- `poetize_cli.py manage list-articles --label-name "<exact tag name>"`
 - When name-based filters are used, the script first calls `/api/api/categories` or `/api/api/tags`
 - It prefers exact matches
 - If exact matches fail, it returns close candidates and stops for confirmation

@@ -1,31 +1,50 @@
 ---
 name: poetize-blog-automation
-description: 专为开源版 awesome-poetize-open 设计的 POETIZE 博客自动化技能。通过 `/api/api/*` 接口完成文章发布、更新、隐藏、分类标签维护、主题切换、数据分析和 SEO 运维。Use only when the task explicitly targets a POETIZE site or POETIZE admin API workflow. Do not use for generic writing, generic SEO advice, or non-POETIZE CMS work.
+description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。仅支持 awesome-poetize-open 开源版，不适用于原版 POETIZE。开源仓库：https://github.com/LeapYa/awesome-poetize-open
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/openclaw-skills/poetize-blog-automation
-metadata: {"openclaw":{"skillKey":"poetize-blog-automation","emoji":"✍️","primaryEnv":"POETIZE_API_KEY","requires":{"anyBins":["python","python3"],"env":["POETIZE_BASE_URL","POETIZE_API_KEY"]},"install":[{"id":"brew-python","kind":"brew","formula":"python","bins":["python3"],"label":"Install Python 3 (brew)"}]}}
+version: 1.1.0
+primaryEnv: POETIZE_API_KEY
+requires:
+  anyBins:
+    - python
+    - python3
+  env:
+    - POETIZE_BASE_URL
+    - POETIZE_API_KEY
+install:
+  - id: brew-python
+    kind: brew
+    formula: python
+    bins:
+      - python3
+    label: "Install Python 3 (brew)"
+metadata:
+  openclaw:
+    skillKey: poetize-blog-automation
+    emoji: "✍️"
 user-invocable: true
 disable-model-invocation: false
 ---
+# POETIZE 博客自动化
 
-# POETIZE Blog Automation
+装上这个技能，你可以让 AI 帮你完成 POETIZE 博客的日常运营：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。
+
+仅支持 `awesome-poetize-open` 开源版，不适用于原版 POETIZE。开源仓库：https://github.com/LeapYa/awesome-poetize-open
+
+定位是个人博客运营助手。发文默认策略：免费优先、维护优先、质量优先。
+
+## English Overview
 
 Use this skill to operate a POETIZE blog as a personal publishing and maintenance system.
 It is built on the existing POETIZE API feature, not browser automation.
 It is free-first, growth-first, and maintenance-first.
 It is not monetization-first.
 
-## 中文简介
-
-- 这是一个面向 POETIZE 博客的 OpenClaw skill，用来通过 POETIZE 的 `/api/api/*` 接口进行文章发布、更新、隐藏、分类标签维护、主题切换、数据分析和 SEO 运维。
-- 目前仅支持 `awesome-poetize-open` 开源分支，不适用于原版 POETIZE。
-- 专为开源版 `awesome-poetize-open` 设计。
-- 它更适合“个人博客运营”而不是“泛内容生成”，默认坚持免费优先、维护优先、质量优先。
-
 ## Public Distribution Position
 
-- Treat this as an OpenClaw integration for the open-source awesome-poetize-open release.
+- Treat this as an Agent skill integration for the open-source awesome-poetize-open release.
 - It is designed for the open-source branch of POETIZE.
-- Before publishing to ClawHub, remove secrets, local machine paths, and private content from any bundled files.
+- Before publishing to registries (like ClawHub), remove secrets, local machine paths, and private content from any bundled files.
 - When publishing publicly, link back to the source repository and keep the applicable license and attribution notices intact.
 - Prefer a project-prefixed public slug such as `awesome-poetize-open-blog-automation` so the registry entry stays tied to the open-source project.
 
@@ -36,29 +55,34 @@ It is not monetization-first.
 - Do not use this skill with the original POETIZE project.
 - For other forks, verify endpoint names and payload shapes before the first write action.
 
-## OpenClaw-First Execution Rules
+## Agent-First Execution Rules
 
 - Use `{baseDir}` for any file path that points inside this skill folder.
 - Prefer single-line shell commands in examples so they remain portable across shells.
 - Use `python` in examples and switch to `python3` when that is the installed binary.
+- All commands go through the unified CLI: `python {baseDir}/scripts/poetize_cli.py <command> [subcommand] ...`.
+- Legacy scripts (`publish_post.py`, `manage_blog.py`, etc.) can still be invoked directly; their entry points delegate to the unified CLI.
 - Invoke this skill only for explicit POETIZE tasks. Do not route generic writing or generic SEO requests here.
-- Prefer `scripts/render_openclaw_config.py` to generate OpenClaw config instead of hand-writing JSON.
-- Run `scripts/openclaw_smoke_test.py` before the first real write action on a new OpenClaw environment.
+- Prefer `poetize_cli.py config` to generate OpenClaw config instead of hand-writing JSON.
+- Run `poetize_cli.py smoke-test` before the first real write action on a new Agent environment.
 - Point `POETIZE_BASE_URL` at the public nginx/domain origin.
 - Actual request path = `${POETIZE_BASE_URL}/api/api/...`; do not append `/api` inside the variable value itself.
+- For mutating commands, use `--stdin-brief` to pipe brief JSON from stdin instead of writing a temporary file. This avoids CLI escaping issues with Agent runtimes.
 
 Read [references/poetize-api.md](references/poetize-api.md) before publishing, updating, querying, or operating articles.
-Read [references/openclaw-setup.md](references/openclaw-setup.md) when connecting the skill to OpenClaw.
+Read [references/agent-setup.md](references/agent-setup.md) when connecting the skill to your Agent framework.
 Read [references/strategy-playbook.md](references/strategy-playbook.md) before deciding whether to create, refresh, or hide content.
 Read [references/decision-matrix.md](references/decision-matrix.md) before setting publish posture, search posture, or paywall posture.
 Read [references/creativity-workflow.md](references/creativity-workflow.md) before drafting article copy.
 Read [references/evaluation-scenarios.md](references/evaluation-scenarios.md) when validating the strategy layer.
-Run `scripts/run_strategy_evals.py` to verify the local strategy layer before shipping skill changes.
+Run `python {baseDir}/scripts/poetize_cli.py eval` to verify the local strategy layer before shipping skill changes.
 
-Breaking change:
+### Breaking Changes
 
-- All mutating commands now require `--brief-file`.
-- OpenClaw should treat `assets/article-brief.template.json` and `assets/ops-brief.template.json` as the starting point for strategy briefs.
+- All mutating commands now require a strategy brief. Provide it via `--brief-file <path>` or `--stdin-brief` (pipe JSON from stdin). The `--stdin-brief` option avoids writing temporary files and is recommended for Agent workflows to save tokens.
+- `manage update-article` also accepts `--stdin-payload` as an alternative to `--payload-file` for the same reason.
+- `manage hide-article` also requires `--brief-file` or `--stdin-brief`.
+- The Agent should treat `assets/article-brief.template.json` and `assets/ops-brief.template.json` as the starting point for strategy briefs.
 
 ## Operating Position
 
@@ -112,28 +136,25 @@ Before drafting a new article or doing a major article refresh, answer these que
    Default to free content unless the user explicitly asks for a draft or a paywalled post.
    Complete the Pre-Writing Topic Validation before drafting any new article.
    Create a strategy brief before any mutating action.
-
 2. Create the strategy brief.
    Use `{baseDir}/assets/article-brief.template.json` for article creation or article refresh work.
    Use `{baseDir}/assets/ops-brief.template.json` for update or hide operations.
    Fill `targetKeyword`, `serpValidation`, `internalLinkPlan`, `contentLayoutPlan`, `primaryGoal`, `reasoning`, and the required brief fields before calling any mutating script.
    If required brief information is missing, stop and ask for it.
-
 3. Diverge, then converge.
    Produce 2 or 3 candidate angles first.
    Choose one final direction and record it as `selectedAngle`.
    Record the rejected candidates in `alternativesConsidered`.
-
 4. Write the article in Markdown.
    Prefer a single H1 at the top.
    Keep the body as clean Markdown.
    Use short lead paragraphs, clear section headings, lists only when they improve readability, and avoid HTML unless required.
    Follow the Writing Voice rules before optimizing for SEO density.
    Follow the Content Layout Rules before publishing or updating the article.
-   If the article includes images, save them as local files first and reference them from the Markdown file with relative paths such as `![示意图](./assets/diagram.png)`.
-   `publish_post.py` will upload those local article images through `/api/resource/upload` before publishing and replace them with returned URLs.
+   If the article includes images, you have two options:
+   a. Save images as local files and reference them from the Markdown file with relative paths such as `![示意图](./assets/diagram.png)`. The CLI will upload those local images through `/api/resource/upload` before publishing and replace them with returned URLs.
+   b. Upload images first using `poetize_cli.py upload-image`, get the remote URL, and embed it directly in the Markdown. This avoids local file management and is recommended for Agent workflows.
    When the task is maintenance, prefer revising existing articles over creating duplicates.
-
 5. Add front matter for routing and publishing metadata.
    Use the front matter keys documented in [references/poetize-api.md](references/poetize-api.md).
    At minimum provide `title`, `sort` or `sortId`, and `label` or `labelId`.
@@ -151,19 +172,17 @@ Before drafting a new article or doing a major article refresh, answer these que
    Only set paid fields when the user explicitly wants a paywall and the content clearly deserves it.
    For most personal blogs, keep `payType: 0`.
    When the user does not want to upload a cover, set `coverBlank: true` or `cover: " "`.
-
-6. Publish through the bundled publish script.
-   Use `{baseDir}/scripts/publish_post.py` for create or content update flows driven by Markdown.
-   OpenClaw runtime only needs:
+6. Publish through the unified CLI.
+   Use `python {baseDir}/scripts/poetize_cli.py publish --markdown-file <file> --brief-file <file>` for create or content update flows driven by Markdown.
+   Agent runtime only needs:
    `POETIZE_BASE_URL`
    `POETIZE_API_KEY`
    `--brief-file` is mandatory.
-   If the markdown body references local images or local `<img src="...">` files, the script uploads them automatically before sending the article payload.
+  - If the markdown body references local images or local `<img src="...">` files, the `poetize_cli.py publish` command uploads them automatically before sending the article payload.
    For paid posts, the script will check `/api/payment/plugin/status` first, but paid publishing is not the default path for this skill.
    If the payment plugin is installed but not configured, provide `paymentPluginKey` in front matter and optionally pass `--payment-config-file payment.json`.
-
-7. Operate existing articles, themes, analytics, and SEO through the management script.
-   Use `{baseDir}/scripts/manage_blog.py`.
+7. Operate existing articles, themes, analytics, and SEO through the unified CLI.
+   Use `python {baseDir}/scripts/poetize_cli.py manage <subcommand>`.
    It supports:
    article listing
    exact-title lookup
@@ -178,7 +197,6 @@ Before drafting a new article or doing a major article refresh, answer these que
    It does not support article deletion.
    If the user wants a post effectively removed from public view, hide it by setting `viewStatus: false`.
    `update-article` and `hide-article` now require `--brief-file`.
-
 8. Return the final result.
    Prefer `--wait` so the script polls until the async task finishes.
    Report the returned `articleId`, `articleSlug`, `articleUrl`, task status, visibility state, and any follow-up analytics when requested.
@@ -210,21 +228,34 @@ Before drafting a new article or doing a major article refresh, answer these que
 - If no cover should be uploaded, prefer `coverBlank: true` over inventing a fake cover URL.
 - If the user provides images, keep them as local files until publish time and reference them from Markdown instead of inventing remote URLs.
 - If a Markdown image points to a local file that does not exist, stop and fix the file path before publishing.
-- `publish_post.py` uses hard strategy validation.
-- `manage_blog.py update-article` and `hide-article` use hard strategy validation.
+- `poetize_cli.py publish` uses hard strategy validation.
+- `poetize_cli.py manage update-article` and `hide-article` use hard strategy validation.
 
 ## Script Usage
 
-Generate a usable OpenClaw config that points OpenClaw at this repo's `openclaw-skills` directory:
+Show command usage or subcommand usage:
 
 ```bash
-python {baseDir}/scripts/render_openclaw_config.py --output openclaw.poetize.local.json --api-key "replace-with-poetize-api-key"
+# Show root help
+python {baseDir}/scripts/poetize_cli.py help
+
+# Show help for the publish command
+python {baseDir}/scripts/poetize_cli.py help publish
+
+# Show help for the manage list-articles command
+python {baseDir}/scripts/poetize_cli.py help manage list-articles
+```
+
+Generate a usable OpenClaw config (when using OpenClaw):
+
+```bash
+python {baseDir}/scripts/poetize_cli.py config --output openclaw.poetize.local.json --api-key "replace-with-poetize-api-key"
 ```
 
 Run a read-only smoke test before the first publish or update:
 
 ```bash
-python {baseDir}/scripts/openclaw_smoke_test.py --base-url "https://your-blog.example.com" --api-key "replace-with-poetize-api-key"
+python {baseDir}/scripts/poetize_cli.py smoke-test --base-url "https://your-blog.example.com" --api-key "replace-with-poetize-api-key"
 ```
 
 Start from the bundled strategy templates:
@@ -267,57 +298,76 @@ label: "自动化"
 ![流程图](./assets/flow.png)
 ```
 
-At publish time, `publish_post.py` uploads `./assets/flow.png` and rewrites the Markdown image target to the returned URL.
+At publish time, the CLI uploads `./assets/flow.png` and rewrites the Markdown image target to the returned URL.
+
+Upload an image first and get its URL (recommended for Agent workflows):
+
+```bash
+# Upload a local image file
+python {baseDir}/scripts/poetize_cli.py upload-image --file ./assets/flow.png --type articleImage
+
+# Upload a base64-encoded image from stdin (e.g. AI-generated image)
+echo "iVBORw0KGgo..." | python {baseDir}/scripts/poetize_cli.py upload-image --stdin-base64 --filename diagram.png --type articleImage
+
+# Upload a cover image
+python {baseDir}/scripts/poetize_cli.py upload-image --file ./cover.jpg --type articleCover
+```
+
+After uploading, embed the returned URL directly in Markdown:
+
+```md
+![流程图](https://your-blog.example.com/resource/uploaded-flow.png)
+```
 
 Publish a new draft and wait:
 
 ```bash
-python {baseDir}/scripts/publish_post.py --markdown-file draft.md --brief-file article-brief.json --draft --wait
+python {baseDir}/scripts/poetize_cli.py publish --markdown-file draft.md --brief-file article-brief.json --draft --wait
 ```
 
 Publish a public article and wait:
 
 ```bash
-python {baseDir}/scripts/publish_post.py --markdown-file article.md --brief-file article-brief.json --publish --wait
+python {baseDir}/scripts/poetize_cli.py publish --markdown-file article.md --brief-file article-brief.json --publish --wait
 ```
 
 Update an existing article:
 
 ```bash
-python {baseDir}/scripts/publish_post.py --markdown-file article.md --brief-file article-brief.json --article-id 123 --publish --wait
+python {baseDir}/scripts/poetize_cli.py publish --markdown-file article.md --brief-file article-brief.json --article-id 123 --publish --wait
 ```
 
 Publish a paid article and require payment readiness:
 
 ```bash
-python {baseDir}/scripts/publish_post.py --markdown-file paid-article.md --brief-file article-brief.json --payment-plugin-key afdian --payment-config-file payment.json --require-paid --publish --wait
+python {baseDir}/scripts/poetize_cli.py publish --markdown-file paid-article.md --brief-file article-brief.json --payment-plugin-key afdian --payment-config-file payment.json --require-paid --publish --wait
 ```
 
 Start an async task without waiting:
 
 ```bash
-python {baseDir}/scripts/publish_post.py --markdown-file article.md --brief-file article-brief.json
+python {baseDir}/scripts/poetize_cli.py publish --markdown-file article.md --brief-file article-brief.json
 ```
 
 Allow creating a missing category and tag only when explicitly confirmed:
 
 ```bash
-python {baseDir}/scripts/publish_post.py --markdown-file article.md --brief-file article-brief.json --allow-create-taxonomy --publish --wait
+python {baseDir}/scripts/poetize_cli.py publish --markdown-file article.md --brief-file article-brief.json --allow-create-taxonomy --publish --wait
 ```
 
 List articles for运营筛选:
 
 ```bash
-python {baseDir}/scripts/manage_blog.py list-articles --search-key "AI" --sort-name "AI实践" --label-name "自动化" --current 1 --size 10
+python {baseDir}/scripts/poetize_cli.py manage list-articles --search-key "AI" --sort-name "AI实践" --label-name "自动化" --current 1 --size 10
 ```
 
 If an exact category or tag name does not match, the management script returns close candidates and stops.
-OpenClaw should surface those candidates for confirmation instead of guessing.
+The Agent should surface those candidates for confirmation instead of guessing.
 
 Hide an existing article:
 
 ```bash
-python {baseDir}/scripts/manage_blog.py hide-article --article-id 123 --brief-file ops-brief.json --wait
+python {baseDir}/scripts/poetize_cli.py manage hide-article --article-id 123 --brief-file ops-brief.json --wait
 ```
 
 Deletion policy:
@@ -329,13 +379,13 @@ Deletion policy:
 Switch the global article theme:
 
 ```bash
-python {baseDir}/scripts/manage_blog.py activate-theme --plugin-key academic
+python {baseDir}/scripts/poetize_cli.py manage activate-theme --plugin-key academic
 ```
 
 Update controlled SEO config:
 
 ```bash
-python {baseDir}/scripts/manage_blog.py seo-set-config --config-file seo.json
+python {baseDir}/scripts/poetize_cli.py manage seo-set-config --config-file seo.json
 ```
 
 ## Expected Inputs
@@ -352,7 +402,7 @@ python {baseDir}/scripts/manage_blog.py seo-set-config --config-file seo.json
 - Whether the article includes local images that should be uploaded and rewritten during publish
 - Whether to switch the global article theme
 - Whether to read article analytics, site visit trends, or controlled SEO status/config
-- Base URL and API key, usually via OpenClaw runtime variables
+- Base URL and API key, usually via Agent runtime variables
 
 ## Expected Outputs
 
