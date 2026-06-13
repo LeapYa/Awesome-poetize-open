@@ -1,4 +1,5 @@
 package com.ld.poetry.service;
+import com.ld.poetry.utils.JsonUtils;
 
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.dao.ArticleMapper;
@@ -70,7 +71,7 @@ public class WebmasterVisitRollbackTest {
         redisRecord.put("ip", webmasterIp);
         redisRecord.put("pageUri", "/article/123");
         redisRecord.put("createTime", LocalDateTime.now().minusMinutes(1).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-        String recordJson = com.alibaba.fastjson.JSON.toJSONString(redisRecord);
+        String recordJson = JsonUtils.toJsonString(redisRecord);
         
         when(redisUtil.lGet(anyString(), anyLong(), anyLong())).thenReturn(List.of(recordJson));
 

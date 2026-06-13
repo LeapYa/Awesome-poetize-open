@@ -1,6 +1,6 @@
 package com.ld.poetry.plugin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.SysPlugin;
 import com.ld.poetry.dao.SysPluginMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -44,7 +44,7 @@ public class PluginInstallService {
     private GroovyPluginEngine groovyPluginEngine;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     /** 插件包允许的最大大小（10MB） */
     private static final long MAX_PLUGIN_SIZE = 10 * 1024 * 1024L;
@@ -266,7 +266,7 @@ public class PluginInstallService {
         }
 
         try {
-            ObjectMapper mapper = new ObjectMapper();
+            JsonMapper mapper = JsonMapper.builder().build();
             pkg.manifest = mapper.readValue(pkg.manifestJson, PluginManifest.class);
         } catch (Exception e) {
             throw new IllegalArgumentException("manifest.json 格式错误: " + e.getMessage());

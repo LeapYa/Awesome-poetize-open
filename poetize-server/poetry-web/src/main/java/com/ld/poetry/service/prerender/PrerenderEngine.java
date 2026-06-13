@@ -1,6 +1,6 @@
 package com.ld.poetry.service.prerender;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.vladsch.flexmark.ext.tables.TablesExtension;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
@@ -101,14 +101,14 @@ public class PrerenderEngine {
 
     private final Parser markdownParser;
     private final HtmlRenderer htmlRenderer;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
     private volatile String cachedTemplate;
     private volatile long templateLastModified = -1L;
     private volatile String cachedAdminTemplate;
     private volatile long adminTemplateLastModified = -1L;
 
-    public PrerenderEngine(ObjectMapper objectMapper) {
+    public PrerenderEngine(JsonMapper objectMapper) {
         this.objectMapper = objectMapper;
         MutableDataSet options = new MutableDataSet()
                 .set(Parser.EXTENSIONS, List.of(TablesExtension.create()))
@@ -526,7 +526,8 @@ public class PrerenderEngine {
                 + "      html:not(.loaded) .article-detail::before, html:not(.loaded) .home-prerender::before, html:not(.loaded) .favorite-prerender::before, html:not(.loaded) .favorites-prerender::before, html:not(.loaded) .sort-prerender::before, html:not(.loaded) .sort-list-prerender::before { opacity: 1; }\n"
                 + "      @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }\n"
                 + "      @media (max-width: 768px) { .article-detail, .home-prerender, .favorite-prerender, .favorites-prerender, .sort-prerender, .sort-list-prerender { min-height: 150px; padding: 1rem; } }\n"
-                + "    </style>";
+                + "    </style>\n"
+                + "  <noscript><style>html #app{visibility:visible!important;opacity:1!important}</style></noscript>";
     }
 
     private String reorderWebpackCss(String html) {
@@ -567,8 +568,15 @@ public class PrerenderEngine {
     }
 
     private String replaceAppContent(String html, String pageType, String content) {
+        String wrappedContent;
+        if ("article".equals(pageType)) {
+            wrappedContent = "<main><article>" + content + "</article></main>";
+        } else {
+            wrappedContent = "<main>" + content + "</main>";
+        }
         String appClass = "article".equals(pageType) ? " class=\"article-detail\"" : "";
-        return APP_PATTERN.matcher(html).replaceFirst(Matcher.quoteReplacement("<div id=\"app\"" + appClass + ">" + content + "</div>"));
+        return APP_PATTERN.matcher(html).replaceFirst(
+                Matcher.quoteReplacement("<div id=\"app\"" + appClass + ">" + wrappedContent + "</div>"));
     }
 
     private String buildLoadingScript() {

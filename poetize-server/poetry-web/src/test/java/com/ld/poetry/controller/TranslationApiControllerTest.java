@@ -1,6 +1,6 @@
 package com.ld.poetry.controller;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.SysAiConfig;
@@ -185,7 +185,7 @@ class TranslationApiControllerTest {
         private String lastText;
         private String lastSourceLang;
         private String lastTargetLang;
-        private JSONObject lastConfig;
+        private JsonUtils.JsonObj lastConfig;
 
         private RecordingProvider(String key, String name, String translated) {
             this.key = key;
@@ -204,7 +204,7 @@ class TranslationApiControllerTest {
         }
 
         @Override
-        public String translate(String text, String sourceLang, String targetLang, JSONObject config) {
+        public String translate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
             this.lastText = text;
             this.lastSourceLang = sourceLang;
             this.lastTargetLang = targetLang;

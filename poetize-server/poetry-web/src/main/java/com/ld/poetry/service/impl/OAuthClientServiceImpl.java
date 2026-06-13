@@ -1,6 +1,6 @@
 package com.ld.poetry.service.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
 import com.ld.poetry.service.OAuthClientService;
 import com.ld.poetry.service.ThirdPartyOauthConfigService;
@@ -34,7 +34,7 @@ public class OAuthClientServiceImpl implements OAuthClientService {
     private ThirdPartyOauthConfigService configService;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @Autowired
     @Qualifier("oauthRestTemplate")

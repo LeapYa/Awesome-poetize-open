@@ -1,7 +1,6 @@
 package com.ld.poetry.utils;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
@@ -44,13 +43,13 @@ public class ToonFormatter {
     }
 
     /**
-     * 将 JSONObject 编码为 TOON 格式
+     * 将 JsonUtils.JsonObj 编码为 TOON 格式
      */
-    public static String encode(JSONObject json) {
+    public static String encode(JsonUtils.JsonObj json) {
         if (json == null || json.isEmpty()) {
             return "";
         }
-        Map<String, Object> map = new LinkedHashMap<>(json);
+        Map<String, Object> map = json.toMap();
         return encode(map);
     }
 
@@ -72,16 +71,16 @@ public class ToonFormatter {
                     sb.append(indent).append(key).append(":\n");
                     encodeObject(nested, sb, depth + 1);
                 }
-            } else if (value instanceof JSONObject jsonObj) {
+            } else if (value instanceof JsonUtils.JsonObj jsonObj) {
                 if (jsonObj.isEmpty()) {
                     sb.append(indent).append(key).append(":\n");
                 } else {
                     sb.append(indent).append(key).append(":\n");
-                    encodeObject(new LinkedHashMap<>(jsonObj), sb, depth + 1);
+                    encodeObject(jsonObj.toMap(), sb, depth + 1);
                 }
-            } else if (value instanceof List || value instanceof JSONArray) {
-                List<?> list = value instanceof JSONArray
-                        ? ((JSONArray) value).toJavaList(Object.class)
+            } else if (value instanceof List || value instanceof JsonUtils.JsonArr) {
+                List<?> list = value instanceof JsonUtils.JsonArr
+                        ? ((JsonUtils.JsonArr) value).toJavaList(Object.class)
                         : (List<?>) value;
                 encodeArray(key, list, sb, depth);
             } else {

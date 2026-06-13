@@ -1,6 +1,6 @@
 package com.ld.poetry.oauth.base;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
 import com.ld.poetry.oauth.exception.OAuthException;
 import com.ld.poetry.oauth.exception.TokenException;
@@ -35,7 +35,7 @@ public abstract class OAuth2Provider implements BaseOAuthProvider {
     protected RestTemplate restTemplate;
 
     @Autowired
-    protected ObjectMapper objectMapper;
+    protected JsonMapper objectMapper;
 
     @Value("${oauth.proxy.domain:}")
     protected String oauthProxyDomain;

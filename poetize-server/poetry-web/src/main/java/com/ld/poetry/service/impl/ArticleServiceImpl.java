@@ -1,7 +1,7 @@
 package com.ld.poetry.service.impl;
 
 import cn.hutool.crypto.SecureUtil;
-import com.alibaba.fastjson.JSON;
+import com.ld.poetry.utils.JsonUtils;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -1319,7 +1319,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             List<User> users = userService.lambdaQuery().select(User::getEmail, User::getSubscribe)
                     .eq(User::getUserStatus, PoetryEnum.STATUS_ENABLE.getCode()).list();
             List<String> emails = users.stream().filter(u -> {
-                List<Integer> sub = JSON.parseArray(u.getSubscribe(), Integer.class);
+                List<Integer> sub = JsonUtils.parseArray(u.getSubscribe(), Integer.class);
                 return !CollectionUtils.isEmpty(sub) && sub.contains(labelId);
             }).map(User::getEmail).collect(Collectors.toList());
 
@@ -2421,6 +2421,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 User user = userTask.get();
                 if (user != null && StringUtils.hasText(user.getUsername())) {
                     articleVO.setUsername(user.getUsername());
+                    articleVO.setAvatar(user.getAvatar());
                 } else if (!isAdmin) {
                     articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
                 }

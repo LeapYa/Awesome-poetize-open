@@ -2,8 +2,8 @@ package com.ld.poetry.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.dao.SysMailConfigMapper;
 import com.ld.poetry.entity.SysMailConfig;
 import com.ld.poetry.entity.dto.MailConfigDTO;
@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 public class SysMailConfigServiceImpl extends ServiceImpl<SysMailConfigMapper, SysMailConfig> 
         implements SysMailConfigService {
     
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final JsonMapper objectMapper = JsonMapper.builder().build();
     
     @Override
     public List<MailConfigDTO> getAllConfigs() {

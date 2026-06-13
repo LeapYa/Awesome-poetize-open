@@ -1,8 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.utils.RetryUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -45,16 +43,16 @@ public abstract class AbstractApiTranslationProvider implements ApiTranslationPr
 
     protected Clock clock = Clock.systemUTC();
 
-    protected abstract String doTranslate(String text, String sourceLang, String targetLang, JSONObject config)
+    protected abstract String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config)
             throws Exception;
 
     @Override
-    public String translate(String text, String sourceLang, String targetLang, JSONObject config) {
+    public String translate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         return translate(text, sourceLang, targetLang, config, null);
     }
 
     @Override
-    public String translate(String text, String sourceLang, String targetLang, JSONObject config,
+    public String translate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config,
             TranslationService.TranslationProgressListener progressListener) {
         if (!StringUtils.hasText(text)) {
             return text;
@@ -62,7 +60,7 @@ public abstract class AbstractApiTranslationProvider implements ApiTranslationPr
         try {
             String translated = RetryUtil.executeWithRetry(() -> {
                 try {
-                    return doTranslate(text, sourceLang, targetLang, config == null ? new JSONObject() : config);
+                    return doTranslate(text, sourceLang, targetLang, config == null ? new JsonUtils.JsonObj() : config);
                 } catch (Exception e) {
                     if (e instanceof RuntimeException re) {
                         throw re;
@@ -94,14 +92,14 @@ public abstract class AbstractApiTranslationProvider implements ApiTranslationPr
         return restTemplate.exchange(uri, method, new HttpEntity<>(body, headers), String.class);
     }
 
-    protected JSONObject parseObject(String responseBody) {
+    protected JsonUtils.JsonObj parseObject(String responseBody) {
         if (!StringUtils.hasText(responseBody)) {
             return null;
         }
-        return JSON.parseObject(responseBody);
+        return JsonUtils.parseObject(responseBody);
     }
 
-    protected String firstText(JSONObject json, String... keys) {
+    protected String firstText(JsonUtils.JsonObj json, String... keys) {
         if (json == null) {
             return null;
         }
@@ -127,7 +125,7 @@ public abstract class AbstractApiTranslationProvider implements ApiTranslationPr
         return null;
     }
 
-    protected String required(JSONObject config, String... keys) {
+    protected String required(JsonUtils.JsonObj config, String... keys) {
         String value = firstText(config, keys);
         if (!StringUtils.hasText(value)) {
             throw new IllegalArgumentException(displayName() + " 缺少配置: " + String.join("/", keys));
@@ -135,7 +133,7 @@ public abstract class AbstractApiTranslationProvider implements ApiTranslationPr
         return value.trim();
     }
 
-    protected String optional(JSONObject config, String key, String defaultValue) {
+    protected String optional(JsonUtils.JsonObj config, String key, String defaultValue) {
         String value = config == null ? null : config.getString(key);
         return StringUtils.hasText(value) ? value.trim() : defaultValue;
     }
@@ -212,15 +210,15 @@ public abstract class AbstractApiTranslationProvider implements ApiTranslationPr
                 .replace("%7E", "~");
     }
 
-    protected String extractFirstFromArray(JSONObject json, String arrayKey, String textKey) {
+    protected String extractFirstFromArray(JsonUtils.JsonObj json, String arrayKey, String textKey) {
         if (json == null) {
             return null;
         }
-        JSONArray array = json.getJSONArray(arrayKey);
-        if (array == null || array.isEmpty()) {
+        JsonUtils.JsonArr array = json.getJSONArray(arrayKey);
+        if (array == null || array.size() == 0) {
             return null;
         }
-        JSONObject first = array.getJSONObject(0);
+        JsonUtils.JsonObj first = array.getJSONObject(0);
         return first == null ? null : first.getString(textKey);
     }
 

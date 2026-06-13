@@ -62,7 +62,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
     private com.ld.poetry.service.SysAiConfigService sysAiConfigService;
 
     @Autowired
-    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private tools.jackson.databind.json.JsonMapper objectMapper;
 
     @Autowired
     private com.ld.poetry.utils.mail.MailUtil mailUtil;

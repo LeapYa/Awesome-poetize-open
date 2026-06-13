@@ -337,6 +337,7 @@ public final class UserAgentClassifier {
         if (lower.contains("twitterbot")) return "TwitterBot";
         if (lower.contains("semrushbot")) return "SemrushBot";
         if (lower.contains("ahrefsbot")) return "AhrefsBot";
+        if (lower.contains("seranking")) return "SERankingBot";
         if (lower.contains("sosospider")) return "Sosospider";
         if (lower.contains("bot")) return "Bot";
         if (lower.contains("spider")) return "Spider";

@@ -93,7 +93,17 @@ public class RedisUtil {
      * @return 值
      */
     public Object get(String key) {
-        return key == null ? null : redisTemplate.opsForValue().get(key);
+        try {
+            return key == null ? null : redisTemplate.opsForValue().get(key);
+        } catch (Exception e) {
+            log.warn("获取缓存失败，已自动清除损坏的键: {}, 错误信息: {}", key, e.getMessage());
+            try {
+                redisTemplate.delete(key);
+            } catch (Exception ex) {
+                // ignore
+            }
+            return null;
+        }
     }
 
     /**

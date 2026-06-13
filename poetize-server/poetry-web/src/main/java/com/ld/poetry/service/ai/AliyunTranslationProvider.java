@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -31,7 +31,7 @@ public class AliyunTranslationProvider extends AbstractApiTranslationProvider {
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String accessKeyId = required(config, "access_key_id");
         String accessKeySecret = required(config, "access_key_secret");
         String region = optional(config, "region", "cn-hangzhou");
@@ -64,8 +64,8 @@ public class AliyunTranslationProvider extends AbstractApiTranslationProvider {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         ResponseEntity<String> response = exchange(URI.create(endpoint), HttpMethod.POST, headers, formData);
-        JSONObject body = parseObject(response.getBody());
-        JSONObject data = body == null ? null : body.getJSONObject("Data");
+        JsonUtils.JsonObj body = parseObject(response.getBody());
+        JsonUtils.JsonObj data = body == null ? null : body.getJSONObject("Data");
         String translated = data == null ? null : firstText(data, "Translated", "TranslatedText");
         if (StringUtils.hasText(translated)) {
             return translated;

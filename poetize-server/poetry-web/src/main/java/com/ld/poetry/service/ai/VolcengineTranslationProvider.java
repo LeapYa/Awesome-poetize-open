@@ -1,7 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -28,7 +27,7 @@ public class VolcengineTranslationProvider extends AbstractApiTranslationProvide
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String accessKeyId = required(config, "access_key_id");
         String secretKey = required(config, "secret_key");
         String region = optional(config, "region", "cn-north-1");
@@ -38,8 +37,8 @@ public class VolcengineTranslationProvider extends AbstractApiTranslationProvide
         String query = "Action=" + encode(action) + "&Version=" + encode(version);
         URI uri = URI.create("https://" + host + "/?" + query);
 
-        JSONObject payload = new JSONObject(true);
-        JSONArray texts = new JSONArray();
+        JsonUtils.JsonObj payload = new JsonUtils.JsonObj(true);
+        JsonUtils.JsonArr texts = new JsonUtils.JsonArr();
         texts.add(text);
         payload.put("TextList", texts);
         payload.put("SourceLanguage", TranslationLanguageMapper.map(providerKey(), sourceLang, true));
@@ -77,27 +76,27 @@ public class VolcengineTranslationProvider extends AbstractApiTranslationProvide
         headers.set("Authorization", authorization);
 
         ResponseEntity<String> response = exchange(uri, HttpMethod.POST, headers, payloadText);
-        JSONObject body = parseObject(response.getBody());
-        JSONObject metadata = body == null ? null : body.getJSONObject("ResponseMetadata");
-        JSONObject error = metadata == null ? null : metadata.getJSONObject("Error");
+        JsonUtils.JsonObj body = parseObject(response.getBody());
+        JsonUtils.JsonObj metadata = body == null ? null : body.getJSONObject("ResponseMetadata");
+        JsonUtils.JsonObj error = metadata == null ? null : metadata.getJSONObject("Error");
         if (error != null) {
             throw new IllegalStateException("火山引擎错误: "
                     + error.getString("Code") + " " + error.getString("Message"));
         }
-        JSONArray translations = body == null ? null : firstTranslationArray(body);
+        JsonUtils.JsonArr translations = body == null ? null : firstTranslationArray(body);
         if (translations == null || translations.isEmpty()) {
             return firstText(body, "Translation", "TranslatedText");
         }
-        JSONObject first = translations.getJSONObject(0);
+        JsonUtils.JsonObj first = translations.getJSONObject(0);
         return first == null ? null : firstText(first, "Translation", "TranslatedText", "Text");
     }
 
-    private JSONArray firstTranslationArray(JSONObject body) {
-        JSONArray array = body.getJSONArray("TranslationList");
+    private JsonUtils.JsonArr firstTranslationArray(JsonUtils.JsonObj body) {
+        JsonUtils.JsonArr array = body.getJSONArray("TranslationList");
         if (array != null) {
             return array;
         }
-        JSONObject result = body.getJSONObject("Result");
+        JsonUtils.JsonObj result = body.getJSONObject("Result");
         return result == null ? null : result.getJSONArray("TranslationList");
     }
 }

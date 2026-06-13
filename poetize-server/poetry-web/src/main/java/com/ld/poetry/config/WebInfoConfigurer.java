@@ -25,6 +25,7 @@ public class WebInfoConfigurer implements WebMvcConfigurer {
                     "/*.ico", "/*.png", "/*.jpg", "/*.gif", "/*.svg",
                     "/user/login", 
                     "/admin/**", 
+                    "/webInfo/bootstrap",
                     "/webInfo/getWebInfo",
                     "/webInfo/updateWebInfo",
                     "/webInfo/getSortInfo",
@@ -40,6 +41,7 @@ public class WebInfoConfigurer implements WebMvcConfigurer {
                     "/api/sysConfig/saveOrUpdateConfig",
                     "/api/sysConfig/deleteConfig",
                     "/api/sysConfig/listConfig",
+                    "/api/webInfo/bootstrap",
                     "/api/webInfo/getUserIP",
                     "/api/track/**"
                 );

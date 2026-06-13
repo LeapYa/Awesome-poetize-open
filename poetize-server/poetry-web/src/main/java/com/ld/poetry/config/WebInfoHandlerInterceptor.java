@@ -1,6 +1,6 @@
 package com.ld.poetry.config;
 
-import com.alibaba.fastjson.JSON;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.enums.CodeMsg;
 import com.ld.poetry.service.CacheService;
@@ -26,7 +26,7 @@ public class WebInfoHandlerInterceptor implements HandlerInterceptor {
             if (cacheService == null) {
                 log.error("CacheService未正确注入到WebInfoHandlerInterceptor中");
                 response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write(JSON.toJSONString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), "系统初始化中，请稍后重试")));
+                response.getWriter().write(JsonUtils.toJsonString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), "系统初始化中，请稍后重试")));
                 return false;
             }
 
@@ -39,14 +39,14 @@ public class WebInfoHandlerInterceptor implements HandlerInterceptor {
             if (webInfo == null) {
                 log.error("无法获取网站信息，缓存和数据库中均不存在");
                 response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write(JSON.toJSONString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), CodeMsg.SYSTEM_REPAIR.getMsg())));
+                response.getWriter().write(JsonUtils.toJsonString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), CodeMsg.SYSTEM_REPAIR.getMsg())));
                 return false;
             }
 
             // 检查网站状态
             if (!webInfo.getStatus()) {
                 response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write(JSON.toJSONString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), CodeMsg.SYSTEM_REPAIR.getMsg())));
+                response.getWriter().write(JsonUtils.toJsonString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), CodeMsg.SYSTEM_REPAIR.getMsg())));
                 return false;
             } else {
                 return true;
@@ -54,7 +54,7 @@ public class WebInfoHandlerInterceptor implements HandlerInterceptor {
         } catch (Exception e) {
             log.error("WebInfoHandlerInterceptor处理请求时发生异常", e);
             response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write(JSON.toJSONString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), "系统发生错误，请稍后重试")));
+            response.getWriter().write(JsonUtils.toJsonString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), "系统发生错误，请稍后重试")));
             return false;
         }
     }

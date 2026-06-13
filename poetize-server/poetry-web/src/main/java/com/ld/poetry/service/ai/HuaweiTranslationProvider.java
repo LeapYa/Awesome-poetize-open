@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -25,7 +25,7 @@ public class HuaweiTranslationProvider extends AbstractApiTranslationProvider {
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String endpoint = required(config, "endpoint");
         String projectId = required(config, "project_id");
         String authType = optional(config, "auth_type", "token");
@@ -35,7 +35,7 @@ public class HuaweiTranslationProvider extends AbstractApiTranslationProvider {
         String path = "/v1/" + projectId + "/machine-translation/text-translation";
         URI uri = URI.create(endpoint + path);
 
-        JSONObject payload = new JSONObject(true);
+        JsonUtils.JsonObj payload = new JsonUtils.JsonObj(true);
         payload.put("text", text);
         payload.put("from", TranslationLanguageMapper.map(providerKey(), sourceLang, true));
         payload.put("to", TranslationLanguageMapper.map(providerKey(), targetLang, false));
@@ -54,12 +54,12 @@ public class HuaweiTranslationProvider extends AbstractApiTranslationProvider {
         }
 
         ResponseEntity<String> response = exchange(uri, HttpMethod.POST, headers, payloadText);
-        JSONObject body = parseObject(response.getBody());
+        JsonUtils.JsonObj body = parseObject(response.getBody());
         String translated = firstText(body, "translated_text", "translatedText");
         if (StringUtils.hasText(translated)) {
             return translated;
         }
-        JSONObject result = body == null ? null : body.getJSONObject("result");
+        JsonUtils.JsonObj result = body == null ? null : body.getJSONObject("result");
         translated = firstText(result, "translated_text", "translatedText");
         if (StringUtils.hasText(translated)) {
             return translated;
@@ -72,7 +72,7 @@ public class HuaweiTranslationProvider extends AbstractApiTranslationProvider {
         return null;
     }
 
-    private void applyAkSkSignature(HttpHeaders headers, URI uri, String payloadText, JSONObject config) {
+    private void applyAkSkSignature(HttpHeaders headers, URI uri, String payloadText, JsonUtils.JsonObj config) {
         String accessKeyId = required(config, "access_key_id", "ak");
         String secretKey = required(config, "access_key_secret", "sk");
         String requestDateTime = utcTimestamp();

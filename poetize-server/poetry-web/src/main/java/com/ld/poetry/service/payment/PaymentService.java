@@ -1,14 +1,14 @@
 package com.ld.poetry.service.payment;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import tools.jackson.core.JacksonException;
 import com.ld.poetry.dao.ArticlePaymentMapper;
 import com.ld.poetry.entity.ArticlePayment;
 import com.ld.poetry.entity.SysPlugin;
 import com.ld.poetry.plugin.GroovyPluginEngine;
 import com.ld.poetry.service.SysPluginService;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,7 +56,7 @@ public class PaymentService {
     @Autowired
     private GroovyPaymentAdapter groovyPaymentAdapter;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final JsonMapper objectMapper = JsonMapper.builder().build();
 
     /**
      * 获取当前激活的 Provider
@@ -217,7 +217,7 @@ public class PaymentService {
     public String serializePluginConfig(Map<String, Object> config) {
         try {
             return objectMapper.writeValueAsString(config == null ? Collections.emptyMap() : config);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("序列化支付插件配置失败", e);
         }
     }

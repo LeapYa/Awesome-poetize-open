@@ -1,7 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SummaryService;
 import com.ld.poetry.service.TranslationService;
@@ -128,7 +127,15 @@ public class LlmTranslationService {
                     }
 
                     lastException = new IllegalStateException("流式翻译结果不完整");
-                    log.warn("第{}次流式翻译结果不完整，准备重试", attempt);
+                    log.warn("第{}次流式翻译结果不完整。state: titleClosed={}, contentClosed={}, titleLength={}, contentLength={}, isTitleSame={}, isContentSame={}. Raw response:\n{}",
+                            attempt,
+                            state.titleClosed(),
+                            state.contentClosed(),
+                            state.title().length(),
+                            state.content().length(),
+                            state.title().equals(title),
+                            state.content().equals(content),
+                            state.rawResponse());
                 } catch (Exception e) {
                     lastException = e;
                     log.warn("第{}次流式翻译失败: {}", attempt, e.getMessage());
@@ -337,8 +344,7 @@ public class LlmTranslationService {
             Map<String, Object> toonData = new LinkedHashMap<>();
             toonData.put("summaries", exampleSummaries);
             String toonExample = ToonFormatter.encode(toonData);
-            String jsonExample = com.alibaba.fastjson.JSON.toJSONString(
-                    exampleSummaries, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
+            String jsonExample = JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(exampleSummaries);
             StringBuilder csvBuilder = new StringBuilder("lang,summary\n");
             for (Map.Entry<String, Object> e : exampleSummaries.entrySet()) {
                 csvBuilder.append(csvEscape(e.getKey()))
@@ -452,11 +458,11 @@ public class LlmTranslationService {
     private ChatModel createSummaryChatModel(SysAiConfig config) {
         if (config.getSummaryConfig() != null) {
             try {
-                JSONObject summaryJson = JSON.parseObject(config.getSummaryConfig());
+                JsonUtils.JsonObj summaryJson = JsonUtils.parseObject(config.getSummaryConfig());
                 String summaryMode = summaryJson.getString("summaryMode");
 
                 if ("dedicated".equals(summaryMode)) {
-                    JSONObject dedicatedLlm = summaryJson.getJSONObject("dedicated_llm");
+                    JsonUtils.JsonObj dedicatedLlm = summaryJson.getJSONObject("dedicated_llm");
                     if (dedicatedLlm != null) {
                         return createChatModelFromJson(dedicatedLlm.toJSONString(), "摘要独立LLM");
                     }
@@ -487,7 +493,7 @@ public class LlmTranslationService {
      */
     private ChatModel createChatModelFromJson(String jsonConfig, String label) {
         try {
-            JSONObject json = JSON.parseObject(jsonConfig);
+            JsonUtils.JsonObj json = JsonUtils.parseObject(jsonConfig);
 
             // 构建临时 SysAiConfig 对象传给 factory
             SysAiConfig tempConfig = new SysAiConfig();
@@ -537,8 +543,8 @@ public class LlmTranslationService {
         }
     }
 
-    private void applyThinkingAdapterConfig(SysAiConfig tempConfig, JSONObject json) {
-        JSONObject extraConfig = new JSONObject();
+    private void applyThinkingAdapterConfig(SysAiConfig tempConfig, JsonUtils.JsonObj json) {
+        JsonUtils.JsonObj extraConfig = new JsonUtils.JsonObj();
         String thinkingProfile = json.getString("thinking_profile");
         if (thinkingProfile != null && !thinkingProfile.isBlank()) {
             extraConfig.put("thinkingProfile", thinkingProfile);
@@ -562,7 +568,7 @@ public class LlmTranslationService {
         if (config.getSummaryConfig() == null)
             return null;
         try {
-            JSONObject summaryJson = JSON.parseObject(config.getSummaryConfig());
+            JsonUtils.JsonObj summaryJson = JsonUtils.parseObject(config.getSummaryConfig());
             return summaryJson.getString("prompt");
         } catch (Exception e) {
             log.warn("解析 summaryConfig 获取 prompt 失败: {}", e.getMessage());
@@ -578,7 +584,7 @@ public class LlmTranslationService {
         String style = "concise";
         if (config.getSummaryConfig() != null) {
             try {
-                JSONObject summaryJson = JSON.parseObject(config.getSummaryConfig());
+                JsonUtils.JsonObj summaryJson = JsonUtils.parseObject(config.getSummaryConfig());
                 String configStyle = summaryJson.getString("style");
                 if (configStyle != null && !configStyle.isBlank()) {
                     style = configStyle;
@@ -643,14 +649,16 @@ public class LlmTranslationService {
                         parsed.getOrDefault("title", ""),
                         parsed.getOrDefault("content", ""),
                         true,
-                        true);
+                        true,
+                        rawResponse);
             }
         }
         return new StreamingTranslationState(
                 finalView.title().trim(),
                 finalView.content().trim(),
                 finalView.titleClosed(),
-                finalView.contentClosed());
+                finalView.contentClosed(),
+                rawResponse);
     }
 
     private String executeSummaryWithTimeout(SysAiConfig config, SummaryCall call) throws TimeoutException {
@@ -686,13 +694,13 @@ public class LlmTranslationService {
             }
 
             if (config.getSummaryConfig() != null) {
-                JSONObject summaryJson = JSON.parseObject(config.getSummaryConfig());
+                JsonUtils.JsonObj summaryJson = JsonUtils.parseObject(config.getSummaryConfig());
                 Integer summaryTimeout = readPositiveTimeout(summaryJson, "timeout");
                 if (summaryTimeout != null) {
                     return summaryTimeout;
                 }
 
-                JSONObject dedicatedLlm = summaryJson.getJSONObject("dedicated_llm");
+                JsonUtils.JsonObj dedicatedLlm = summaryJson.getJSONObject("dedicated_llm");
                 Integer dedicatedTimeout = readPositiveTimeout(dedicatedLlm, "timeout");
                 if (dedicatedTimeout != null) {
                     return dedicatedTimeout;
@@ -700,7 +708,7 @@ public class LlmTranslationService {
             }
 
             if (config.getLlmConfig() != null) {
-                Integer llmTimeout = readPositiveTimeout(JSON.parseObject(config.getLlmConfig()), "timeout");
+                Integer llmTimeout = readPositiveTimeout(JsonUtils.parseObject(config.getLlmConfig()), "timeout");
                 if (llmTimeout != null) {
                     return llmTimeout;
                 }
@@ -711,7 +719,7 @@ public class LlmTranslationService {
         return defaultTimeoutSeconds;
     }
 
-    private Integer readPositiveTimeout(JSONObject jsonObject, String key) {
+    private Integer readPositiveTimeout(JsonUtils.JsonObj jsonObject, String key) {
         if (jsonObject == null) {
             return null;
         }
@@ -829,7 +837,13 @@ public class LlmTranslationService {
             return null;
         }
 
-        if (state.title().equals(originalTitle) || state.content().equals(originalContent)) {
+        boolean isOriginalContentPureAscii = originalContent.matches("^[\\x00-\\x7F]*$");
+        if (!isOriginalContentPureAscii && state.content().equals(originalContent)) {
+            return null;
+        }
+
+        boolean isOriginalTitlePureAscii = originalTitle.matches("^[\\x00-\\x7F]*$");
+        if (!isOriginalTitlePureAscii && state.title().equals(originalTitle)) {
             return null;
         }
 
@@ -878,17 +892,36 @@ public class LlmTranslationService {
         return raw.substring(valueStart, valueEnd).trim();
     }
 
+    private int findClosingQuoteIndex(String token) {
+        if (token == null || token.length() < 2 || !token.startsWith("\"")) {
+            return -1;
+        }
+        for (int i = 1; i < token.length(); i++) {
+            if (token.charAt(i) == '"') {
+                int backslashCount = 0;
+                for (int j = i - 1; j >= 0 && token.charAt(j) == '\\'; j--) {
+                    backslashCount++;
+                }
+                if (backslashCount % 2 == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
     private String decodeToonToken(String token) {
         if (token == null || token.isEmpty()) {
             return "";
         }
 
         if (token.startsWith("\"")) {
-            String partial = token.substring(1);
-            if (partial.endsWith("\"") && !endsWithUnescapedQuote(partial.substring(0, partial.length() - 1))) {
-                partial = partial.substring(0, partial.length() - 1);
+            int closingIndex = findClosingQuoteIndex(token);
+            if (closingIndex != -1) {
+                return unescapePartialToonString(token.substring(1, closingIndex));
+            } else {
+                return unescapePartialToonString(token.substring(1));
             }
-            return unescapePartialToonString(partial);
         }
 
         return token;
@@ -903,19 +936,7 @@ public class LlmTranslationService {
             return true;
         }
 
-        return token.length() >= 2 && endsWithUnescapedQuote(token);
-    }
-
-    private boolean endsWithUnescapedQuote(String token) {
-        if (token == null || token.length() < 1 || token.charAt(token.length() - 1) != '"') {
-            return false;
-        }
-
-        int backslashCount = 0;
-        for (int i = token.length() - 2; i >= 0 && token.charAt(i) == '\\'; i--) {
-            backslashCount++;
-        }
-        return backslashCount % 2 == 0;
+        return findClosingQuoteIndex(token) != -1;
     }
 
     private String unescapePartialToonString(String value) {
@@ -968,7 +989,7 @@ public class LlmTranslationService {
 
         if (llmJsonConfig != null) {
             try {
-                JSONObject json = JSON.parseObject(llmJsonConfig);
+                JsonUtils.JsonObj json = JsonUtils.parseObject(llmJsonConfig);
                 customPrompt = json.getString("prompt");
             } catch (Exception ignored) {
             }
@@ -982,7 +1003,7 @@ public class LlmTranslationService {
             Map<String, Object> toonDataMap = new LinkedHashMap<>();
             toonDataMap.put("article", articleData);
             String toonData = ToonFormatter.encode(toonDataMap);
-            String jsonData = JSON.toJSONString(articleData);
+            String jsonData = JsonUtils.toJsonString(articleData);
             String csvData = buildArticleCsv(title, content);
             String inputFormat = inferPromptDataFormat(customPrompt, "toon");
 
@@ -1074,7 +1095,7 @@ public class LlmTranslationService {
     private record StreamingTranslationView(String title, String content, boolean titleClosed, boolean contentClosed) {
     }
 
-    private record StreamingTranslationState(String title, String content, boolean titleClosed, boolean contentClosed) {
+    private record StreamingTranslationState(String title, String content, boolean titleClosed, boolean contentClosed, String rawResponse) {
     }
 
     /**
@@ -1086,7 +1107,7 @@ public class LlmTranslationService {
             // 尝试提取 JSON
             String jsonStr = extractJson(response);
             if (jsonStr != null) {
-                JSONObject json = JSON.parseObject(jsonStr);
+                JsonUtils.JsonObj json = JsonUtils.parseObject(jsonStr);
                 String translatedTitle = firstJsonString(json, "translated_title", "title");
                 String translatedContent = firstJsonString(json, "translated_content", "content");
 
@@ -1136,7 +1157,7 @@ public class LlmTranslationService {
         }
     }
 
-    private String firstJsonString(JSONObject json, String... keys) {
+    private String firstJsonString(JsonUtils.JsonObj json, String... keys) {
         for (String key : keys) {
             String value = json.getString(key);
             if (value != null && !value.isBlank()) {
@@ -1405,7 +1426,7 @@ public class LlmTranslationService {
         try {
             String jsonStr = extractJson(response);
             if (jsonStr != null) {
-                Map<String, Object> jsonMap = JSON.parseObject(jsonStr, Map.class);
+                Map<String, Object> jsonMap = JsonUtils.parseObject(jsonStr, Map.class);
                 // 检查是否有 summaries/result/data 等嵌套
                 Map<String, String> nestedResult = extractNestedSummaries(jsonMap, languageContents, maxLength);
                 if (nestedResult != null) {

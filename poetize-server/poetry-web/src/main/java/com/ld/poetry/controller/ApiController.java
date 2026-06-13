@@ -1,6 +1,6 @@
 package com.ld.poetry.controller;
 
-import com.alibaba.fastjson.JSON;
+import com.ld.poetry.utils.JsonUtils;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -1605,7 +1605,7 @@ public class ApiController {
             return new LinkedHashMap<>();
         }
         try {
-            return JSON.parse(rawConfig);
+            return JsonUtils.parseObject(rawConfig);
         } catch (Exception e) {
             return rawConfig;
         }
@@ -1705,7 +1705,7 @@ public class ApiController {
 
             for (Object record : todayRecords) {
                 try {
-                    Object visitRecordObject = JSON.parseObject(String.valueOf(record), Map.class);
+                    Object visitRecordObject = JsonUtils.parseObject(String.valueOf(record), Map.class);
                     Map<String, Object> visitRecord = toObjectMap(visitRecordObject);
                     String ip = cacheService.normalizeVisitIp(valueAsString(visitRecord.get("ip")));
                     if (ignoredIps.contains(ip)) {

@@ -1,8 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import lombok.extern.slf4j.Slf4j;
@@ -49,7 +47,7 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
                 log.error("自定义HTTP翻译配置未找到");
                 return null;
             }
-            return translate(text, sourceLang, targetLang, JSON.parseObject(config.getCustomConfig()));
+            return translate(text, sourceLang, targetLang, JsonUtils.parseObject(config.getCustomConfig()));
         } catch (Exception e) {
             log.error("自定义HTTP翻译失败: {}", e.getMessage(), e);
             return null;
@@ -58,7 +56,7 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
 
     public String translateWithConfig(String text, String sourceLang, String targetLang, String apiUrl,
             String apiKey, String appSecret) {
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("api_url", apiUrl);
         config.put("api_key", apiKey);
         config.put("app_secret", appSecret);
@@ -67,7 +65,7 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
 
     public java.util.Map<String, String> translateArticleWithConfig(String title, String content, String sourceLang,
             String targetLang, String apiUrl, String apiKey, String appSecret) {
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("api_url", apiUrl);
         config.put("api_key", apiKey);
         config.put("app_secret", appSecret);
@@ -75,7 +73,7 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String apiUrl = required(config, "api_url", "url", "endpoint");
         String fromLang = StringUtils.hasText(sourceLang) ? sourceLang.trim() : "auto";
         String toLang = StringUtils.hasText(targetLang) ? targetLang.trim() : "en";
@@ -102,7 +100,7 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
         return translated;
     }
 
-    private void applyAuthHeaders(HttpHeaders headers, JSONObject config) {
+    private void applyAuthHeaders(HttpHeaders headers, JsonUtils.JsonObj config) {
         String apiKey = firstText(config, "api_key", "token");
         if (StringUtils.hasText(apiKey)) {
             String trimmedApiKey = apiKey.trim();
@@ -133,7 +131,7 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
         }
 
         try {
-            return valueToText(JSON.parse(trimmed));
+            return valueToText(JsonUtils.parseObject(trimmed));
         } catch (Exception e) {
             log.warn("自定义HTTP翻译响应不是标准JSON，按纯文本处理: {}", e.getMessage());
             return trimmed;
@@ -147,16 +145,16 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
         if (value instanceof String text) {
             return text;
         }
-        if (value instanceof JSONObject json) {
+        if (value instanceof JsonUtils.JsonObj json) {
             return textFromObject(json);
         }
-        if (value instanceof JSONArray array) {
+        if (value instanceof JsonUtils.JsonArr array) {
             return textFromArray(array);
         }
         return String.valueOf(value);
     }
 
-    private String textFromObject(JSONObject json) {
+    private String textFromObject(JsonUtils.JsonObj json) {
         String direct = firstText(json,
                 "translated_text",
                 "translatedText",
@@ -189,11 +187,11 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
         if (StringUtils.hasText(translationsText)) {
             return translationsText;
         }
-        JSONArray baiduStyle = json.getJSONArray("trans_result");
+        JsonUtils.JsonArr baiduStyle = json.getJSONArray("trans_result");
         return baiduStyle == null ? null : textFromArray(baiduStyle);
     }
 
-    private String textFromArray(JSONArray array) {
+    private String textFromArray(JsonUtils.JsonArr array) {
         if (array == null || array.isEmpty()) {
             return null;
         }
@@ -206,15 +204,15 @@ public class CustomHttpTranslationProvider extends AbstractApiTranslationProvide
         return null;
     }
 
-    private String textFromOpenAiChoices(JSONArray choices) {
+    private String textFromOpenAiChoices(JsonUtils.JsonArr choices) {
         if (choices == null || choices.isEmpty()) {
             return null;
         }
         Object first = choices.get(0);
-        if (!(first instanceof JSONObject choice)) {
+        if (!(first instanceof JsonUtils.JsonObj choice)) {
             return valueToText(first);
         }
-        JSONObject message = choice.getJSONObject("message");
+        JsonUtils.JsonObj message = choice.getJSONObject("message");
         if (message != null) {
             String content = message.getString("content");
             if (StringUtils.hasText(content)) {

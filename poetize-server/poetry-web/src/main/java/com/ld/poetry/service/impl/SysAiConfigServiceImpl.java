@@ -2,9 +2,9 @@ package com.ld.poetry.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.dao.SysAiConfigMapper;
 import com.ld.poetry.entity.SysAiConfig;
@@ -49,7 +49,7 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
     private final AESCryptoUtil aesCryptoUtil;
     private final DynamicChatClientFactory dynamicChatClientFactory;
     private final AiThinkingAdapterRegistry aiThinkingAdapterRegistry;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
     private final Environment environment;
     private final JdbcTemplate jdbcTemplate;
 

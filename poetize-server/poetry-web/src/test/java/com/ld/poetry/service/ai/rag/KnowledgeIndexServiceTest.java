@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai.rag;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.dao.AiKnowledgeDocumentMapper;
 import com.ld.poetry.entity.AiKnowledgeDocument;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +40,7 @@ class KnowledgeIndexServiceTest {
                 knowledgeDocumentMapper,
                 ragRuntimeFactory,
                 ragVersionService,
-                new ObjectMapper(),
+                JsonMapper.builder().build(),
                 List.of());
         config = new AiRagConfig(
                 true,

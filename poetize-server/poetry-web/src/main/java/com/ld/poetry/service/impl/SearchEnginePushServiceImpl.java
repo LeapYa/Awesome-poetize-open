@@ -1,7 +1,6 @@
 package com.ld.poetry.service.impl;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.service.SearchEnginePushService;
 import com.ld.poetry.service.SeoConfigService;
 import com.ld.poetry.service.ArticleService;
@@ -65,6 +64,7 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
     private CacheService cacheService;
     
     @Autowired
+    @Lazy
     private TranslationService translationService;
     
     @Autowired
@@ -436,7 +436,7 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             ResponseEntity<String> response = restTemplate.postForEntity(pushUri, entity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
-                JSONObject responseJson = JSON.parseObject(response.getBody());
+                JsonUtils.JsonObj responseJson = JsonUtils.parseObject(response.getBody());
                 result.put("success", true);
                 result.put("message", "百度推送成功");
                 result.put("response", responseJson);
@@ -702,7 +702,7 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             ResponseEntity<String> response = restTemplate.postForEntity(shenmaUri, entity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
-                JSONObject responseJson = JSON.parseObject(response.getBody());
+                JsonUtils.JsonObj responseJson = JsonUtils.parseObject(response.getBody());
                 result.put("success", true);
                 result.put("message", "神马推送成功");
                 result.put("response", responseJson);

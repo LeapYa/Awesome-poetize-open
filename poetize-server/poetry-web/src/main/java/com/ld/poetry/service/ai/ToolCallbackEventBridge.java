@@ -1,7 +1,7 @@
 package com.ld.poetry.service.ai;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -25,9 +25,9 @@ public class ToolCallbackEventBridge {
     public static final String USER_ID_CONTEXT_KEY = "userId";
     public static final String STREAM_CANCELLED_CONTEXT_KEY = "streamCancelled";
 
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
-    public ToolCallbackEventBridge(ObjectMapper objectMapper) {
+    public ToolCallbackEventBridge(JsonMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
@@ -141,7 +141,7 @@ public class ToolCallbackEventBridge {
 
         try {
             return objectMapper.readValue(value, Object.class);
-        } catch (JsonProcessingException ignored) {
+        } catch (JacksonException ignored) {
             return value;
         }
     }
@@ -155,7 +155,7 @@ public class ToolCallbackEventBridge {
 
         try {
             return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException ignored) {
+        } catch (JacksonException ignored) {
             return "{\"success\":false,\"status\":\"failed\",\"error\":\"工具暂时不可用\"}";
         }
     }
@@ -169,7 +169,7 @@ public class ToolCallbackEventBridge {
 
         try {
             return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException ignored) {
+        } catch (JacksonException ignored) {
             return "{\"success\":false,\"status\":\"cancelled\",\"error\":\"客户端已断开\"}";
         }
     }

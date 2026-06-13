@@ -4,16 +4,18 @@ import com.ld.poetry.constants.CommonConst;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 @Component
 public class AuthCookieUtil {
 
     public void writeAuthCookie(HttpServletRequest request, HttpServletResponse response, String token) {
-        response.addHeader(HttpHeaders.SET_COOKIE, buildCookie(request, token, CommonConst.TOKEN_EXPIRE).toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, buildCookie(request, CryptoUtil.encrypt(token), CommonConst.TOKEN_EXPIRE).toString());
     }
 
     public void clearAuthCookie(HttpServletRequest request, HttpServletResponse response) {
@@ -26,7 +28,14 @@ public class AuthCookieUtil {
         }
         for (Cookie cookie : request.getCookies()) {
             if (CommonConst.AUTH_COOKIE.equals(cookie.getName()) && StringUtils.hasText(cookie.getValue())) {
-                return cookie.getValue().trim();
+                String rawValue = cookie.getValue().trim();
+                String decrypted = CryptoUtil.decrypt(rawValue);
+                if (decrypted != null) {
+                    return decrypted;
+                }
+                // 解密失败视为无效
+                log.warn("Token 解密失败，cookie 值无效或为旧格式");
+                return null;
             }
         }
         return null;

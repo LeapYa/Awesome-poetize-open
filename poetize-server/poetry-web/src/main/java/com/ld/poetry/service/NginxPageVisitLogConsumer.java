@@ -1,7 +1,6 @@
 package com.ld.poetry.service;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.utils.CommonQuery;
 import com.ld.poetry.utils.IpUtil;
@@ -84,7 +83,7 @@ public class NginxPageVisitLogConsumer {
         }
 
         try {
-            JSONObject json = JSON.parseObject(line);
+            JsonUtils.JsonObj json = JsonUtils.parseObject(line);
             String method = json.getString("method");
             if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
                 return;
@@ -121,7 +120,7 @@ public class NginxPageVisitLogConsumer {
         }
     }
 
-    private Map<String, Object> buildUaSignals(JSONObject json) {
+    private Map<String, Object> buildUaSignals(JsonUtils.JsonObj json) {
         Map<String, Object> signals = new HashMap<>();
         signals.put("visitSource", "nginx");
         if (hasHeaderSnapshot(json)) {
@@ -139,7 +138,7 @@ public class NginxPageVisitLogConsumer {
         return signals;
     }
 
-    private boolean hasHeaderSnapshot(JSONObject json) {
+    private boolean hasHeaderSnapshot(JsonUtils.JsonObj json) {
         return json.containsKey("accept")
                 || json.containsKey("accept_language")
                 || json.containsKey("sec_fetch_site")
@@ -151,7 +150,7 @@ public class NginxPageVisitLogConsumer {
                 || json.containsKey("upgrade_insecure_requests");
     }
 
-    private void putJsonText(Map<String, Object> signals, JSONObject json, String key, String jsonKey) {
+    private void putJsonText(Map<String, Object> signals, JsonUtils.JsonObj json, String key, String jsonKey) {
         String value = json.getString(jsonKey);
         if (hasText(value) && !"-".equals(value.trim())) {
             signals.put(key, value.trim());

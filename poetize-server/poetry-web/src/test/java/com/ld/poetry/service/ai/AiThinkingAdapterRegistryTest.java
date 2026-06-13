@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiThinkingAdapterRegistryTest {
 
-    private final AiThinkingAdapterRegistry registry = new AiThinkingAdapterRegistry(new ObjectMapper());
+    private final AiThinkingAdapterRegistry registry = new AiThinkingAdapterRegistry(JsonMapper.builder().build());
 
     @Test
     void resolvesDeepSeekOfficialThinkingParameters() {

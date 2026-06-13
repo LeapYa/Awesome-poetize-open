@@ -1,12 +1,12 @@
 package com.ld.poetry.service.ai.rag;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.dao.AiKnowledgeDocumentMapper;
 import com.ld.poetry.entity.AiKnowledgeDocument;
 import com.ld.poetry.service.ai.rag.dto.KnowledgeSourceDocument;
-import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
@@ -28,13 +28,13 @@ public class KnowledgeIndexService {
     private final AiKnowledgeDocumentMapper knowledgeDocumentMapper;
     private final RagRuntimeFactory ragRuntimeFactory;
     private final RagVersionService ragVersionService;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
     private final Map<String, KnowledgeDocumentProvider> providerMap;
 
     public KnowledgeIndexService(AiKnowledgeDocumentMapper knowledgeDocumentMapper,
             RagRuntimeFactory ragRuntimeFactory,
             RagVersionService ragVersionService,
-            ObjectMapper objectMapper,
+            JsonMapper objectMapper,
             List<KnowledgeDocumentProvider> providers) {
         this.knowledgeDocumentMapper = knowledgeDocumentMapper;
         this.ragRuntimeFactory = ragRuntimeFactory;
@@ -58,7 +58,7 @@ public class KnowledgeIndexService {
         if (!config.isRunnable()) {
             throw new IllegalStateException(config.runnableBlockReason());
         }
-        OpenAiEmbeddingModel embeddingModel = ragRuntimeFactory.createEmbeddingModel(config);
+        EmbeddingModel embeddingModel = ragRuntimeFactory.createEmbeddingModel(config);
         knowledgeDocumentMapper.delete(new LambdaQueryWrapper<AiKnowledgeDocument>()
                 .eq(AiKnowledgeDocument::getIndexName, config.indexName()));
         for (KnowledgeDocumentProvider provider : providerMap.values()) {
@@ -81,7 +81,7 @@ public class KnowledgeIndexService {
             ragVersionService.bumpVersion(config.indexName());
             return;
         }
-        OpenAiEmbeddingModel embeddingModel = ragRuntimeFactory.createEmbeddingModel(config);
+        EmbeddingModel embeddingModel = ragRuntimeFactory.createEmbeddingModel(config);
         Optional<KnowledgeSourceDocument> document = provider.getDocument(sourceId);
         document.ifPresent(value -> upsertDocument(config, embeddingModel, value));
         ragVersionService.bumpVersion(config.indexName());
@@ -122,7 +122,7 @@ public class KnowledgeIndexService {
         return result;
     }
 
-    private void upsertDocument(AiRagConfig config, OpenAiEmbeddingModel embeddingModel,
+    private void upsertDocument(AiRagConfig config, EmbeddingModel embeddingModel,
             KnowledgeSourceDocument sourceDocument) {
         String normalized = RagTextUtils.normalize(sourceDocument.content());
         if (!StringUtils.hasText(normalized)) {
@@ -176,7 +176,7 @@ public class KnowledgeIndexService {
     private String toJson(Map<String, Object> metadata) {
         try {
             return objectMapper.writeValueAsString(metadata != null ? metadata : Map.of());
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return "{}";
         }
     }

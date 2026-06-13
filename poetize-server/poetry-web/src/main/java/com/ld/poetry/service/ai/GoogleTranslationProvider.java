@@ -1,7 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -29,7 +28,7 @@ public class GoogleTranslationProvider extends AbstractApiTranslationProvider {
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String apiKey = required(config, "api_key");
         String source = TranslationLanguageMapper.map(providerKey(), sourceLang, true);
         String target = TranslationLanguageMapper.map(providerKey(), targetLang, false);
@@ -51,13 +50,13 @@ public class GoogleTranslationProvider extends AbstractApiTranslationProvider {
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         URI uri = URI.create(GOOGLE_API_URL + "?key=" + encode(apiKey));
         ResponseEntity<String> response = exchange(uri, HttpMethod.POST, headers, formData);
-        JSONObject body = parseObject(response.getBody());
-        JSONObject data = body == null ? null : body.getJSONObject("data");
-        JSONArray translations = data == null ? null : data.getJSONArray("translations");
+        JsonUtils.JsonObj body = parseObject(response.getBody());
+        JsonUtils.JsonObj data = body == null ? null : body.getJSONObject("data");
+        JsonUtils.JsonArr translations = data == null ? null : data.getJSONArray("translations");
         if (translations != null && !translations.isEmpty()) {
             return translations.getJSONObject(0).getString("translatedText");
         }
-        JSONObject error = body == null ? null : body.getJSONObject("error");
+        JsonUtils.JsonObj error = body == null ? null : body.getJSONObject("error");
         if (error != null) {
             throw new IllegalStateException("Google 翻译错误: " + error.getString("code")
                     + " " + error.getString("message"));

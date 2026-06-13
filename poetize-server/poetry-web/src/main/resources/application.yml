@@ -50,10 +50,11 @@ spring:
       pool:
         virtual-threads: true
   
-  # HTTP Client 配置 (Spring Boot 3.4+ 需要, 防止默认 reactor 导致问题)
+  # HTTP Client 配置 (Spring Boot 4.0+ 需要, 防止默认 reactor 导致问题)
   http:
-    client:
-      factory: jdk
+    clients:
+      imperative:
+        factory: jdk
   
   # Spring AI 配置 (默认占位值, 实际由 DynamicChatClientFactory 从数据库动态读取)
   ai:
@@ -126,21 +127,22 @@ spring:
       validation-query: SELECT 1
 
   # Redis配置
-  redis:
-    host: ${SPRING_REDIS_HOST:localhost}
-    port: ${SPRING_REDIS_PORT:6379}
-    # 如果Redis没有设置密码，则留空或注释掉password配置
-    password: ${SPRING_REDIS_PASSWORD:123456}
-    database: ${SPRING_REDIS_DATABASE:0}
-    timeout: ${SPRING_REDIS_TIMEOUT:5000}ms
-    lettuce:
-      pool:
-        max-active: ${SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE:20}
-        max-idle: ${SPRING_REDIS_LETTUCE_POOL_MAX_IDLE:10}
-        min-idle: ${SPRING_REDIS_LETTUCE_POOL_MIN_IDLE:5}
-        max-wait: -1ms
-      shutdown-timeout: 100ms
-    connect-timeout: 5000ms
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+      # 如果Redis没有设置密码，则留空或注释掉password配置
+      password: ${SPRING_REDIS_PASSWORD:123456}
+      database: ${SPRING_REDIS_DATABASE:0}
+      timeout: ${SPRING_REDIS_TIMEOUT:5000}ms
+      lettuce:
+        pool:
+          max-active: ${SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE:20}
+          max-idle: ${SPRING_REDIS_LETTUCE_POOL_MAX_IDLE:10}
+          min-idle: ${SPRING_REDIS_LETTUCE_POOL_MIN_IDLE:5}
+          max-wait: -1ms
+        shutdown-timeout: 100ms
+      connect-timeout: 5000ms
 
   # 缓存配置
   cache:

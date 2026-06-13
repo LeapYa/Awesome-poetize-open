@@ -1,7 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -27,16 +26,16 @@ public class YandexTranslationProvider extends AbstractApiTranslationProvider {
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String token = required(config, "api_key_or_iam_token", "api_key", "iam_token");
-        JSONObject payload = new JSONObject(true);
+        JsonUtils.JsonObj payload = new JsonUtils.JsonObj(true);
         String source = TranslationLanguageMapper.map(providerKey(), sourceLang, true);
         if (StringUtils.hasText(source) && !"auto".equalsIgnoreCase(source)) {
             payload.put("sourceLanguageCode", source);
         }
         payload.put("targetLanguageCode", TranslationLanguageMapper.map(providerKey(), targetLang, false));
         payload.put("format", optional(config, "format", "PLAIN_TEXT"));
-        JSONArray texts = new JSONArray();
+        JsonUtils.JsonArr texts = new JsonUtils.JsonArr();
         texts.add(text);
         payload.put("texts", texts);
         String folderId = config.getString("folder_id");
@@ -54,8 +53,8 @@ public class YandexTranslationProvider extends AbstractApiTranslationProvider {
 
         ResponseEntity<String> response = exchange(
                 URI.create(YANDEX_API_URL), HttpMethod.POST, headers, payload.toJSONString());
-        JSONObject body = parseObject(response.getBody());
-        JSONArray translations = body == null ? null : body.getJSONArray("translations");
+        JsonUtils.JsonObj body = parseObject(response.getBody());
+        JsonUtils.JsonArr translations = body == null ? null : body.getJSONArray("translations");
         return translations == null || translations.isEmpty() ? null : translations.getJSONObject(0).getString("text");
     }
 

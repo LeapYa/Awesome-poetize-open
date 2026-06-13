@@ -1,7 +1,6 @@
 package com.ld.poetry.im.websocket;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.serializer.SerializerFeature;
+import com.ld.poetry.utils.JsonUtils;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.entity.User;
@@ -119,7 +118,7 @@ public class ImWebSocketHandler extends TextWebSocketHandler {
         }
 
         try {
-            ImMessage imMessage = JSON.parseObject(text, ImMessage.class);
+            ImMessage imMessage = JsonUtils.parseObject(text, ImMessage.class);
             String content = StringUtil.removeHtml(imMessage.getContent());
             if (!StringUtils.hasText(content)) {
                 return;
@@ -127,11 +126,7 @@ public class ImWebSocketHandler extends TextWebSocketHandler {
             imMessage.setContent(content);
             imMessage.setCreateTime(LocalDateTime.now().toString());
 
-            String jsonString = JSON.toJSONString(imMessage,
-                    SerializerFeature.WriteMapNullValue,
-                    SerializerFeature.WriteNullStringAsEmpty,
-                    SerializerFeature.WriteNonStringKeyAsString,
-                    SerializerFeature.DisableCircularReferenceDetect);
+            String jsonString = imMessage.toJsonString();
 
             if (imMessage.getMessageType().intValue() == ImEnum.MESSAGE_TYPE_MSG_SINGLE.getCode()) {
                 // 单聊
@@ -212,11 +207,7 @@ public class ImWebSocketHandler extends TextWebSocketHandler {
                         imMessage.setAvatar(friend.getAvatar());
                     }
 
-                    String jsonString = JSON.toJSONString(imMessage,
-                            SerializerFeature.WriteMapNullValue,
-                            SerializerFeature.WriteNullStringAsEmpty,
-                            SerializerFeature.WriteNonStringKeyAsString,
-                            SerializerFeature.DisableCircularReferenceDetect);
+                    String jsonString = imMessage.toJsonString();
 
                     session.sendMessage(new TextMessage(jsonString));
                 }
@@ -325,11 +316,7 @@ public class ImWebSocketHandler extends TextWebSocketHandler {
             syncMessage.put("friendLastMessages", friendLastMessages);
             syncMessage.put("groupLastMessages", groupLastMessages);
 
-            String jsonString = JSON.toJSONString(syncMessage,
-                    SerializerFeature.WriteMapNullValue,
-                    SerializerFeature.WriteNullListAsEmpty,
-                    SerializerFeature.WriteNonStringKeyAsString,
-                    SerializerFeature.DisableCircularReferenceDetect);
+            String jsonString = JsonUtils.toJsonString(syncMessage);
 
             session.sendMessage(new TextMessage(jsonString));
 

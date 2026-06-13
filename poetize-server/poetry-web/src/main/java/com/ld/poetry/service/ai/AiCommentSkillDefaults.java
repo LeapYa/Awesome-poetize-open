@@ -1,8 +1,8 @@
 package com.ld.poetry.service.ai;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.entity.WebInfo;
 import org.springframework.util.StringUtils;
@@ -57,7 +57,7 @@ public final class AiCommentSkillDefaults {
     private AiCommentSkillDefaults() {
     }
 
-    public static String ensureCommentSkill(String extraConfig, ObjectMapper objectMapper) {
+    public static String ensureCommentSkill(String extraConfig, JsonMapper objectMapper) {
         try {
             ObjectNode root = readObjectNode(extraConfig, objectMapper);
             JsonNode commentSkillNode = root.get("commentSkill");
@@ -78,7 +78,7 @@ public final class AiCommentSkillDefaults {
         }
     }
 
-    public static String resolveCommentSkillDocument(SysAiConfig config, ObjectMapper objectMapper) {
+    public static String resolveCommentSkillDocument(SysAiConfig config, JsonMapper objectMapper) {
         if (config != null && StringUtils.hasText(config.getExtraConfig())) {
             try {
                 JsonNode root = objectMapper.readTree(config.getExtraConfig());
@@ -103,7 +103,7 @@ public final class AiCommentSkillDefaults {
                 .replace("{{siteAddress}}", safe(webInfo != null ? webInfo.getSiteAddress() : null, ""));
     }
 
-    private static ObjectNode readObjectNode(String extraConfig, ObjectMapper objectMapper) throws Exception {
+    private static ObjectNode readObjectNode(String extraConfig, JsonMapper objectMapper) throws Exception {
         if (!StringUtils.hasText(extraConfig)) {
             return objectMapper.createObjectNode();
         }

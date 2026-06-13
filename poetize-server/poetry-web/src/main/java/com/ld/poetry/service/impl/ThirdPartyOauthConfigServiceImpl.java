@@ -1,8 +1,8 @@
 package com.ld.poetry.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.dao.ThirdPartyOauthConfigMapper;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
@@ -35,7 +35,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
     private ThirdPartyOauthConfigMapper configMapper;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @Override
     public ThirdPartyOauthConfig getByPlatformType(String platformType) {

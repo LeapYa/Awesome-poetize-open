@@ -1,4 +1,5 @@
 package com.ld.poetry.service;
+import com.ld.poetry.utils.JsonUtils;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
@@ -641,7 +642,7 @@ public class CacheService {
                             continue;
                         }
                         try {
-                            Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), Map.class);
+                            Map<String, Object> record = JsonUtils.parseObject(recordJson.toString(), Map.class);
                             String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
                             LocalDateTime recordTime = resolveVisitRecordTime(record);
                             if (normalizedIp.equals(recordIp) && recordTime != null && !recordTime.isBefore(since)) {
@@ -701,7 +702,7 @@ public class CacheService {
     }
 
     private void saveVisitIgnoreIps(Set<String> ignoreIps) {
-        String configValue = com.alibaba.fastjson.JSON.toJSONString(new ArrayList<>(ignoreIps));
+        String configValue = JsonUtils.toJsonString(new ArrayList<>(ignoreIps));
         SysConfig config = sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfig>()
                 .eq(SysConfig::getConfigKey, VISIT_IGNORE_IP_CONFIG_KEY)
                 .eq(SysConfig::getConfigType, VISIT_IGNORE_IP_CONFIG_TYPE)
@@ -728,7 +729,7 @@ public class CacheService {
         }
 
         try {
-            List<String> parsedIps = com.alibaba.fastjson.JSON.parseArray(configValue, String.class);
+            List<String> parsedIps = JsonUtils.parseArray(configValue, String.class);
             if (parsedIps != null) {
                 for (String ip : parsedIps) {
                     String normalizedIp = normalizeVisitIp(ip);
@@ -1463,7 +1464,7 @@ public class CacheService {
             }
             
             // 将记录序列化为JSON字符串并添加到Redis List中
-            String recordJson = com.alibaba.fastjson.JSON.toJSONString(visitRecord);
+            String recordJson = JsonUtils.toJsonString(visitRecord);
             redisUtil.lSet(recordsKey, recordJson);
             
             // 设置记录的过期时间为7天
@@ -1493,7 +1494,7 @@ public class CacheService {
             if (recordJsonList != null) {
                 for (Object recordJson : recordJsonList) {
                     try {
-                        java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
+                        java.util.Map<String, Object> record = JsonUtils.parseObject(recordJson.toString(), java.util.Map.class);
                         String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
                         if (!ignoredIps.contains(recordIp)) {
                             records.add(record);
@@ -1606,7 +1607,7 @@ public class CacheService {
                 }
                 String recordText = recordJson.toString();
                 try {
-                    Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordText, Map.class);
+                    Map<String, Object> record = JsonUtils.parseObject(recordText, Map.class);
                     String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
                     if (normalizedIp.equals(recordIp)) {
                         removedCount++;
@@ -1661,7 +1662,7 @@ public class CacheService {
                 }
                 String recordText = recordJson.toString();
                 try {
-                    Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordText, Map.class);
+                    Map<String, Object> record = JsonUtils.parseObject(recordText, Map.class);
                     Object userAgentObj = record != null ? Optional.ofNullable(record.get("userAgent"))
                             .orElse(record.get("user_agent")) : null;
                     String recordUserAgent = normalizeVisitUserAgent(userAgentObj != null ? userAgentObj.toString() : "");
@@ -1718,7 +1719,7 @@ public class CacheService {
                 }
                 String recordText = recordJson.toString();
                 try {
-                    Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordText, Map.class);
+                    Map<String, Object> record = JsonUtils.parseObject(recordText, Map.class);
                     String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
                     LocalDateTime recordTime = resolveVisitRecordTime(record);
                     if (normalizedIp.equals(recordIp) && recordTime != null && !recordTime.isBefore(since)) {
@@ -1766,7 +1767,7 @@ public class CacheService {
             if (recordJsonList != null) {
                 for (Object recordJson : recordJsonList) {
                     try {
-                        java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
+                        java.util.Map<String, Object> record = JsonUtils.parseObject(recordJson.toString(), java.util.Map.class);
                         String recordIp = normalizeVisitIp(record != null ? String.valueOf(record.get("ip")) : "");
                         if (ignoredIps.contains(recordIp)) {
                             continue;
@@ -1818,7 +1819,7 @@ public class CacheService {
             java.util.List<String> updatedRecords = new java.util.ArrayList<>();
             for (Object recordJson : recordJsonList) {
                 try {
-                    java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
+                    java.util.Map<String, Object> record = JsonUtils.parseObject(recordJson.toString(), java.util.Map.class);
                     String recordId = record.get("ip") + "_" + record.get("createTime");
                     
                     // 如果这条记录已同步，则标记为已同步
@@ -1826,7 +1827,7 @@ public class CacheService {
                         record.put("synced", true);
                     }
                     
-                    updatedRecords.add(com.alibaba.fastjson.JSON.toJSONString(record));
+                    updatedRecords.add(JsonUtils.toJsonString(record));
                 } catch (Exception e) {
                     log.warn("更新访问记录同步标记失败: {}", recordJson, e);
                     // 保留原记录

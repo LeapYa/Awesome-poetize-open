@@ -1,7 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -25,7 +24,7 @@ public class AzureTranslatorProvider extends AbstractApiTranslationProvider {
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String endpoint = optional(config, "endpoint", "https://api.cognitive.microsofttranslator.com");
         String subscriptionKey = required(config, "subscription_key", "api_key");
         if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
@@ -44,8 +43,8 @@ public class AzureTranslatorProvider extends AbstractApiTranslationProvider {
             query.append("&category=").append(encode(category));
         }
 
-        JSONArray payload = new JSONArray();
-        JSONObject item = new JSONObject(true);
+        JsonUtils.JsonArr payload = new JsonUtils.JsonArr();
+        JsonUtils.JsonObj item = new JsonUtils.JsonObj(true);
         item.put("Text", text);
         payload.add(item);
 
@@ -62,11 +61,16 @@ public class AzureTranslatorProvider extends AbstractApiTranslationProvider {
                 HttpMethod.POST,
                 headers,
                 payload.toJSONString());
-        JSONArray body = JSONArray.parseArray(response.getBody());
-        if (body == null || body.isEmpty()) {
+        // Azure Translator API 返回数组: [{translations:[{text:"..."}]}]
+        JsonUtils.JsonArr outerArray = JsonUtils.parseArray(response.getBody());
+        if (outerArray == null || outerArray.size() == 0) {
             return null;
         }
-        JSONArray translations = body.getJSONObject(0).getJSONArray("translations");
-        return translations == null || translations.isEmpty() ? null : translations.getJSONObject(0).getString("text");
+        JsonUtils.JsonObj firstElement = outerArray.getJSONObject(0);
+        if (firstElement == null) {
+            return null;
+        }
+        JsonUtils.JsonArr translations = firstElement.getJSONArray("translations");
+        return translations == null || translations.size() == 0 ? null : translations.getJSONObject(0).getString("text");
     }
 }

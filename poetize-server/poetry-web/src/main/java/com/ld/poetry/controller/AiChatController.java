@@ -1,7 +1,7 @@
 package com.ld.poetry.controller;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.controller.dto.AiChatRequest;
 import com.ld.poetry.service.ai.AiChatService;
@@ -33,7 +33,7 @@ import java.util.Map;
 public class AiChatController {
 
     private static final Logger logger = LoggerFactory.getLogger(AiChatController.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @Autowired
     private AiChatService aiChatService;

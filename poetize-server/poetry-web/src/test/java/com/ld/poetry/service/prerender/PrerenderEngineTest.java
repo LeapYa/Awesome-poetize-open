@@ -1,6 +1,6 @@
 package com.ld.poetry.service.prerender;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -90,7 +90,7 @@ class PrerenderEngineTest {
         assertTrue(html.contains("<meta name=\"google-site-verification\" content=\"verify-token\">"));
         assertTrue(html.contains("<meta name=\"custom-head\" content=\"1\">"));
         assertTrue(html.contains("<body data-prerender-type=\"article\" data-prerender-lang=\"en\">"));
-        assertTrue(html.contains("<div id=\"app\" class=\"article-detail\"><section>hello</section></div>"));
+        assertTrue(html.contains("<div id=\"app\" class=\"article-detail\"><main><article><section>hello</section></article></main></div>"));
     }
 
     @Test
@@ -115,6 +115,6 @@ class PrerenderEngineTest {
     }
 
     private PrerenderEngine createEngine() {
-        return new PrerenderEngine(new ObjectMapper());
+        return new PrerenderEngine(JsonMapper.builder().build());
     }
 }

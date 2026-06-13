@@ -1,7 +1,6 @@
 package com.ld.poetry.websocket.article;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -51,7 +50,7 @@ public class ArticleDraftWebSocketHandler extends TextWebSocketHandler {
 
     private String enrichAwarenessPayload(WebSocketSession session, String draftId, String payload) {
         try {
-            JSONObject jsonObject = JSON.parseObject(payload);
+            JsonUtils.JsonObj jsonObject = JsonUtils.parseObject(payload);
             if (!"awareness".equals(jsonObject.getString("type"))) {
                 return payload;
             }
@@ -107,7 +106,7 @@ public class ArticleDraftWebSocketHandler extends TextWebSocketHandler {
                 "onlineCount", onlineUsers.size(),
                 "onlineUsers", onlineUsers
         );
-        broadcast(draftId, JSON.toJSONString(payload), null);
+        broadcast(draftId, JsonUtils.toJsonString(payload), null);
     }
 
     private List<Map<String, Object>> getOnlineUsers(String draftId) {

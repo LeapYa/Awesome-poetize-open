@@ -5,7 +5,7 @@ import com.ld.poetry.entity.AiKnowledgeDocument;
 import com.ld.poetry.service.ai.ContentSanitizer;
 import com.ld.poetry.service.ai.rag.dto.KnowledgePromptContext;
 import com.ld.poetry.service.ai.rag.dto.KnowledgeSearchHit;
-import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -51,7 +51,7 @@ public class KnowledgeRetrievalService {
             return KnowledgePromptContext.empty(retrievalQuery, ragVersion, System.currentTimeMillis() - startedAt);
         }
 
-        OpenAiEmbeddingModel embeddingModel = ragRuntimeFactory.createEmbeddingModel(config);
+        EmbeddingModel embeddingModel = ragRuntimeFactory.createEmbeddingModel(config);
         float[] embedding = embeddingModel.embed(retrievalQuery);
         List<KnowledgeSearchHit> rawHits = dedupeRawHits(knowledgeDocumentMapper.searchSimilarChunks(
                 config.indexName(),

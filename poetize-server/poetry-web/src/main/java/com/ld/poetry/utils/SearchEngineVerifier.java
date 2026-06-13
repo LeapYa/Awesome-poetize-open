@@ -1,8 +1,8 @@
 package com.ld.poetry.utils;
 
 import com.ld.poetry.constants.CacheConstants;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -446,7 +446,7 @@ public class SearchEngineVerifier {
     }
 
     private static final class HttpIpPrefixProvider implements IpPrefixProvider {
-        private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+        private static final JsonMapper OBJECT_MAPPER = JsonMapper.builder().build();
         private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
         private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(3);
         private static final long CACHE_MILLIS = Duration.ofHours(1).toMillis();

@@ -1,36 +1,38 @@
 package com.ld.poetry.service.ai.rag;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.ai.AiApiBaseUrlNormalizer;
+import com.openai.client.OpenAIClient;
+import com.openai.client.OpenAIClientImpl;
+import org.springframework.ai.document.MetadataMode;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.ai.document.MetadataMode;
-import org.springframework.ai.openai.OpenAiEmbeddingModel;
-import org.springframework.ai.openai.OpenAiEmbeddingOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClient;
 
 @Component
 public class RagRuntimeFactory {
 
     private final SysAiConfigService sysAiConfigService;
-    private final ObjectMapper objectMapper;
     private final Environment environment;
     private final JdbcTemplate jdbcTemplate;
-    private final RestClient.Builder aiRestClientBuilder;
+    private final JsonMapper jsonMapper;
 
-    public RagRuntimeFactory(SysAiConfigService sysAiConfigService, ObjectMapper objectMapper, Environment environment,
-            JdbcTemplate jdbcTemplate, RestClient.Builder aiRestClientBuilder) {
+    public RagRuntimeFactory(SysAiConfigService sysAiConfigService,
+            Environment environment,
+            JdbcTemplate jdbcTemplate,
+            JsonMapper jsonMapper) {
         this.sysAiConfigService = sysAiConfigService;
-        this.objectMapper = objectMapper;
         this.environment = environment;
         this.jdbcTemplate = jdbcTemplate;
-        this.aiRestClientBuilder = aiRestClientBuilder;
+        this.jsonMapper = jsonMapper;
     }
 
     public AiRagConfig getCurrentConfig() {
@@ -38,11 +40,11 @@ public class RagRuntimeFactory {
         String databaseType = resolveDatabaseType();
         boolean runtimeEnabled = resolveRuntimeEnabled();
         RagDatabaseCapability capability = detectDatabaseCapability(databaseType, runtimeEnabled);
-        return AiRagConfig.from(config, objectMapper, databaseType, capability.version(),
+        return AiRagConfig.from(config, jsonMapper, databaseType, capability.version(),
                 capability.vectorSearchSupported(), runtimeEnabled, capability.disabledReason());
     }
 
-    public OpenAiEmbeddingModel createEmbeddingModel(AiRagConfig config) {
+    public EmbeddingModel createEmbeddingModel(AiRagConfig config) {
         if (config == null || !config.isRunnable()) {
             throw new IllegalStateException("RAG embedding 配置未就绪");
         }
@@ -53,19 +55,24 @@ public class RagRuntimeFactory {
             throw new IllegalStateException("当前 RAG 暂不支持 Anthropic Embedding");
         }
 
-        OpenAiApi openAiApi = OpenAiApi.builder()
-                .apiKey(config.embeddingApiKey())
-                .baseUrl(AiApiBaseUrlNormalizer.normalizeOpenAiCompatibleBaseUrl(
-                        config.embeddingApiBase(), "https://api.openai.com"))
-                .restClientBuilder(aiRestClientBuilder)
-                .build();
+        OpenAIClient client = new OpenAIClientImpl(
+                com.openai.core.ClientOptions.builder()
+                        .apiKey(config.embeddingApiKey())
+                        .baseUrl(AiApiBaseUrlNormalizer.normalizeOpenAiCompatibleBaseUrl(
+                                config.embeddingApiBase(), "https://api.openai.com"))
+                        .httpClient(org.springframework.ai.openai.http.okhttp.SpringAiOpenAiHttpClient.builder().build())
+                        .build());
 
         OpenAiEmbeddingOptions options = OpenAiEmbeddingOptions.builder()
                 .model(config.embeddingModel())
                 .dimensions(config.embeddingDimensions())
                 .build();
 
-        return new OpenAiEmbeddingModel(openAiApi, MetadataMode.NONE, options);
+        return OpenAiEmbeddingModel.builder()
+                .openAiClient(client)
+                .options(options)
+                .metadataMode(MetadataMode.NONE)
+                .build();
     }
 
     private String resolveDatabaseType() {
@@ -73,16 +80,11 @@ public class RagRuntimeFactory {
         if (StringUtils.hasText(databaseType)) {
             return databaseType;
         }
-
         String datasourceUrl = environment.getProperty("spring.datasource.url");
         if (StringUtils.hasText(datasourceUrl)) {
             String lowerUrl = datasourceUrl.toLowerCase();
-            if (lowerUrl.startsWith("jdbc:mysql:")) {
-                return "mysql";
-            }
-            if (lowerUrl.startsWith("jdbc:mariadb:")) {
-                return "mariadb";
-            }
+            if (lowerUrl.startsWith("jdbc:mysql:")) return "mysql";
+            if (lowerUrl.startsWith("jdbc:mariadb:")) return "mariadb";
         }
         return "mariadb";
     }
@@ -102,7 +104,6 @@ public class RagRuntimeFactory {
         if (!isMariaDb(databaseType)) {
             return new RagDatabaseCapability(readDatabaseVersionSafely(), false, "当前数据库为 MySQL，已关闭向量搜索。");
         }
-
         String version = readDatabaseVersionSafely();
         DatabaseVersion databaseVersion = parseDatabaseVersion(version);
         if (databaseVersion == null) {
@@ -126,16 +127,14 @@ public class RagRuntimeFactory {
     }
 
     private DatabaseVersion parseDatabaseVersion(String version) {
-        if (!StringUtils.hasText(version)) {
-            return null;
-        }
+        if (!StringUtils.hasText(version)) return null;
         String normalized = version.trim();
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(\\d+)\\.(\\d+)").matcher(normalized);
-        if (!matcher.find()) {
-            return null;
-        }
+        if (!matcher.find()) return null;
         try {
-            return new DatabaseVersion(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)));
+            return new DatabaseVersion(
+                    Integer.parseInt(matcher.group(1)),
+                    Integer.parseInt(matcher.group(2)));
         } catch (NumberFormatException ex) {
             return null;
         }
@@ -152,7 +151,10 @@ public class RagRuntimeFactory {
         }
     }
 
-    private record RagDatabaseCapability(String version, boolean vectorSearchSupported, String disabledReason) {
+    private record RagDatabaseCapability(
+            String version,
+            boolean vectorSearchSupported,
+            String disabledReason) {
     }
 
     private record DatabaseVersion(int major, int minor) {

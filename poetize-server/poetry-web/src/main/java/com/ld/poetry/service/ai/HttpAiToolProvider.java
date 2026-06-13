@@ -1,10 +1,10 @@
 package com.ld.poetry.service.ai;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.SysPlugin;
 import com.ld.poetry.plugin.PluginManifest;
 import lombok.extern.slf4j.Slf4j;
@@ -43,9 +43,9 @@ public class HttpAiToolProvider {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final com.ld.poetry.service.SysPluginService sysPluginService;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
-    public HttpAiToolProvider(com.ld.poetry.service.SysPluginService sysPluginService, ObjectMapper objectMapper) {
+    public HttpAiToolProvider(com.ld.poetry.service.SysPluginService sysPluginService, JsonMapper objectMapper) {
         this.sysPluginService = sysPluginService;
         this.objectMapper = objectMapper;
     }
@@ -77,7 +77,7 @@ public class HttpAiToolProvider {
                 .toList();
     }
 
-    private ToolCallback buildToolCallback(SysPlugin plugin) throws JsonProcessingException {
+    private ToolCallback buildToolCallback(SysPlugin plugin) throws JacksonException {
         if (!StringUtils.hasText(plugin.getManifest())) {
             log.warn("AI工具插件缺少 manifest，已跳过: {}", plugin.getPluginKey());
             return null;
@@ -156,7 +156,7 @@ public class HttpAiToolProvider {
         return String.join("\n", parts);
     }
 
-    private <T> T parseManifestNode(JsonNode node, Class<T> type) throws JsonProcessingException {
+    private <T> T parseManifestNode(JsonNode node, Class<T> type) throws JacksonException {
         if (node == null || node.isNull() || !node.isObject()) {
             return null;
         }
@@ -181,7 +181,7 @@ public class HttpAiToolProvider {
     }
 
     private String executeHttpTool(SysPlugin plugin, PluginManifest.HttpRuntimeConfig runtimeConfig,
-            Map<String, Object> pluginConfig, Map<String, Object> args) throws JsonProcessingException {
+            Map<String, Object> pluginConfig, Map<String, Object> args) throws JacksonException {
         HttpMethod httpMethod = HttpMethod.valueOf(
                 StringUtils.hasText(runtimeConfig.getMethod()) ? runtimeConfig.getMethod().toUpperCase() : "GET");
 
@@ -228,7 +228,7 @@ public class HttpAiToolProvider {
     }
 
     private HttpEntity<?> buildRequestEntity(HttpHeaders headers, Object resolvedBody, HttpMethod method)
-            throws JsonProcessingException {
+            throws JacksonException {
         if (method == HttpMethod.GET || method == HttpMethod.DELETE) {
             return new HttpEntity<>(headers);
         }

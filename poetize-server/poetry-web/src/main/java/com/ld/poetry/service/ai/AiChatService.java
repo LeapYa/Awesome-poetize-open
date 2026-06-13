@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.ai.dto.AiChatResponsePayload;
@@ -86,7 +86,7 @@ public class AiChatService {
     @Autowired
     private KnowledgeRetrievalService knowledgeRetrievalService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     /** Redis 缓存前缀 & TTL */
     private static final String CACHE_PREFIX = "poetize:ai:chat:response:";
@@ -807,8 +807,7 @@ public class AiChatService {
             }
             toolContext.put(ToolCallbackEventBridge.STREAM_CANCELLED_CONTEXT_KEY, streamCancelled);
             builder.toolContext(toolContext);
-            // 使用框架管理的工具执行（Spring AI 自动处理 tool_call → 执行 → 二次请求循环）
-            builder.internalToolExecutionEnabled(true);
+
         }
 
         return builder.build();

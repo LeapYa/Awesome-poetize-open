@@ -5,7 +5,7 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.dao.ThirdPartyOauthConfigMapper;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
 import com.ld.poetry.service.impl.ThirdPartyOauthConfigServiceImpl;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,7 +34,7 @@ class ThirdPartyOauthConfigServiceTest {
     private ThirdPartyOauthConfigMapper configMapper;
 
     @Mock
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @Spy
     @InjectMocks

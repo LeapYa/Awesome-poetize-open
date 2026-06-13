@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -32,13 +32,13 @@ public class TencentTranslationProvider extends AbstractApiTranslationProvider {
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String secretId = required(config, "secret_id");
         String secretKey = required(config, "secret_key");
         String region = optional(config, "region", "ap-guangzhou");
         int projectId = config.getInteger("project_id") == null ? 0 : config.getInteger("project_id");
 
-        JSONObject payload = new JSONObject(true);
+        JsonUtils.JsonObj payload = new JsonUtils.JsonObj(true);
         payload.put("SourceText", text);
         payload.put("Source", TranslationLanguageMapper.map(providerKey(), sourceLang, true));
         payload.put("Target", TranslationLanguageMapper.map(providerKey(), targetLang, false));
@@ -77,12 +77,12 @@ public class TencentTranslationProvider extends AbstractApiTranslationProvider {
         headers.set("X-TC-Region", region);
 
         ResponseEntity<String> response = exchange(URI.create("https://" + HOST), HttpMethod.POST, headers, payloadText);
-        JSONObject body = parseObject(response.getBody());
-        JSONObject responseObject = body == null ? null : body.getJSONObject("Response");
+        JsonUtils.JsonObj body = parseObject(response.getBody());
+        JsonUtils.JsonObj responseObject = body == null ? null : body.getJSONObject("Response");
         if (responseObject == null) {
             return null;
         }
-        JSONObject error = responseObject.getJSONObject("Error");
+        JsonUtils.JsonObj error = responseObject.getJSONObject("Error");
         if (error != null) {
             throw new IllegalStateException("腾讯云错误: " + error.getString("Code") + " " + error.getString("Message"));
         }

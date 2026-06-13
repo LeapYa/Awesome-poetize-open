@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -36,7 +36,7 @@ class CloudTranslationProvidersTest {
     @Test
     void tencentProvider_signsTc3RequestAndParsesResponse() {
         TencentTranslationProvider provider = provider(new TencentTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("secret_id", "sid");
         config.put("secret_key", "skey");
         config.put("region", "ap-guangzhou");
@@ -59,7 +59,7 @@ class CloudTranslationProvidersTest {
     @Test
     void aliyunProvider_signsRpcFormAndParsesResponse() {
         AliyunTranslationProvider provider = provider(new FixedNonceAliyunTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("access_key_id", "ak");
         config.put("access_key_secret", "sk");
         config.put("region", "cn-hangzhou");
@@ -79,7 +79,7 @@ class CloudTranslationProvidersTest {
     @Test
     void volcengineProvider_signsRequestAndParsesResponse() {
         VolcengineTranslationProvider provider = provider(new VolcengineTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("access_key_id", "ak");
         config.put("secret_key", "sk");
         config.put("region", "cn-north-1");
@@ -101,7 +101,7 @@ class CloudTranslationProvidersTest {
     @Test
     void huaweiProvider_signsAkSkRequestAndParsesResponse() {
         HuaweiTranslationProvider provider = provider(new HuaweiTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("endpoint", "https://nlp-ext.cn-north-4.myhuaweicloud.com");
         config.put("project_id", "project");
         config.put("auth_type", "aksk");
@@ -124,7 +124,7 @@ class CloudTranslationProvidersTest {
     @Test
     void googleProvider_postsRestFormAndParsesResponse() {
         GoogleTranslationProvider provider = provider(new GoogleTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("api_key", "key");
 
         server.expect(requestTo("https://translation.googleapis.com/language/translate/v2?key=key"))
@@ -141,7 +141,7 @@ class CloudTranslationProvidersTest {
     @Test
     void azureProvider_postsRestJsonAndParsesResponse() {
         AzureTranslatorProvider provider = provider(new AzureTranslatorProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("endpoint", "https://api.cognitive.microsofttranslator.com");
         config.put("subscription_key", "key");
         config.put("region", "eastasia");
@@ -160,7 +160,7 @@ class CloudTranslationProvidersTest {
     @Test
     void deeplProvider_postsRestJsonAndParsesResponse() {
         DeepLTranslationProvider provider = provider(new DeepLTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("auth_key", "key");
         config.put("endpoint_type", "free");
 
@@ -180,7 +180,7 @@ class CloudTranslationProvidersTest {
     @Test
     void awsProvider_signsSigV4RequestAndParsesResponse() {
         AwsTranslationProvider provider = provider(new AwsTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("access_key_id", "ak");
         config.put("secret_access_key", "sk");
         config.put("region", "us-east-1");
@@ -202,7 +202,7 @@ class CloudTranslationProvidersTest {
     @Test
     void yandexProvider_postsRestJsonAndParsesResponse() {
         YandexTranslationProvider provider = provider(new YandexTranslationProvider());
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("api_key_or_iam_token", "key");
         config.put("folder_id", "folder");
 

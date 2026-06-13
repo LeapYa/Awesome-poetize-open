@@ -1,8 +1,8 @@
 package com.ld.poetry.service.impl;
 
 import cn.hutool.core.date.ChineseDate;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.service.HolidayCalendarService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,7 +46,7 @@ public class HolidayCalendarServiceImpl implements HolidayCalendarService {
             "元旦", "春节", "清明节", "劳动节", "端午节", "中秋节", "国庆节");
 
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
     @Override
     public FestivalInfo getFestivalInfo(LocalDate date) {

@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import com.ld.poetry.service.TranslationService;
 
 import java.util.LinkedHashMap;
@@ -17,15 +17,15 @@ public interface ApiTranslationProvider {
         return providerKey();
     }
 
-    String translate(String text, String sourceLang, String targetLang, JSONObject config);
+    String translate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config);
 
     default Map<String, String> translateArticle(String title, String content, String sourceLang,
-            String targetLang, JSONObject config) {
+            String targetLang, JsonUtils.JsonObj config) {
         return translateArticle(title, content, sourceLang, targetLang, config, null);
     }
 
     default Map<String, String> translateArticle(String title, String content, String sourceLang,
-            String targetLang, JSONObject config,
+            String targetLang, JsonUtils.JsonObj config,
             TranslationService.TranslationProgressListener progressListener) {
         String translatedTitle = translate(title, sourceLang, targetLang, config, progressListener);
         String translatedContent = translate(content, sourceLang, targetLang, config, progressListener);
@@ -42,7 +42,7 @@ public interface ApiTranslationProvider {
         return null;
     }
 
-    default String translate(String text, String sourceLang, String targetLang, JSONObject config,
+    default String translate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config,
             TranslationService.TranslationProgressListener progressListener) {
         return translate(text, sourceLang, targetLang, config);
     }

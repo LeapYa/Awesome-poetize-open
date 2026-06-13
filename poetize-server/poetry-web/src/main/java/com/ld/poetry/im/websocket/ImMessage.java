@@ -1,12 +1,13 @@
 package com.ld.poetry.im.websocket;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 @Data
 @Slf4j
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ImMessage {
 
     private Integer messageType;
@@ -27,12 +28,7 @@ public class ImMessage {
 
     private String createTime;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-    
-    static {
-        // 配置ObjectMapper，只序列化非null字段
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-    }
+    private static final JsonMapper objectMapper = JsonMapper.builder().build();
 
     public String toJsonString() {
         try {

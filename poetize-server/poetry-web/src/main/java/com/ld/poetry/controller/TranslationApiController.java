@@ -1,6 +1,6 @@
 package com.ld.poetry.controller;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.SysAiConfigService;
@@ -136,7 +136,7 @@ public class TranslationApiController {
                 toonDataMap.put("title", title);
                 toonDataMap.put("content", content);
                 String toonData = ToonFormatter.encode(toonDataMap);
-                String jsonData = com.alibaba.fastjson.JSON.toJSONString(toonDataMap);
+                String jsonData = JsonUtils.toJsonString(toonDataMap);
                 String csvData = buildArticleCsv(title, content);
                 String inputFormat = inferPromptDataFormat(customPrompt, "json");
 
@@ -341,8 +341,7 @@ public class TranslationApiController {
             Map<String, Object> toonData = new LinkedHashMap<>();
             toonData.put("summaries", exampleSummaries);
             String toonExample = ToonFormatter.encode(toonData);
-            String jsonExample = com.alibaba.fastjson.JSON.toJSONString(
-                    exampleSummaries, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
+            String jsonExample = JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(exampleSummaries);
             StringBuilder csvBuilder = new StringBuilder("lang,summary\n");
             for (Map.Entry<String, Object> e : exampleSummaries.entrySet()) {
                 csvBuilder.append(csvEscape(e.getKey()))
@@ -492,7 +491,7 @@ public class TranslationApiController {
             result.put("roundTrip", decoded);
 
             // Token 对比（粗略计算）
-            String jsonStr = com.alibaba.fastjson.JSON.toJSONString(body);
+            String jsonStr = JsonUtils.toJsonString(body);
             result.put("jsonLength", jsonStr.length());
             result.put("toonLength", toonEncoded.length());
             double saved = jsonStr.length() > 0
@@ -525,7 +524,7 @@ public class TranslationApiController {
             return PoetryResult.fail("API翻译配置为空或服务商不支持，请选择已支持的 API 翻译服务商");
         }
 
-        JSONObject providerConfig = resolveTempProviderConfig(config, providerKey);
+        JsonUtils.JsonObj providerConfig = resolveTempProviderConfig(config, providerKey);
         mergeSavedProviderSecrets(providerKey, providerConfig);
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -575,12 +574,12 @@ public class TranslationApiController {
     }
 
     @SuppressWarnings("unchecked")
-    private JSONObject resolveTempProviderConfig(Map<String, Object> config, String providerKey) {
+    private JsonUtils.JsonObj resolveTempProviderConfig(Map<String, Object> config, String providerKey) {
         Object rawProviderConfig = config.get(providerKey);
         if (rawProviderConfig == null && !"baidu".equals(providerKey)) {
             rawProviderConfig = config.get("custom");
         }
-        JSONObject providerConfig = new JSONObject();
+        JsonUtils.JsonObj providerConfig = new JsonUtils.JsonObj();
         if (rawProviderConfig instanceof Map<?, ?> rawMap) {
             rawMap.forEach((key, value) -> providerConfig.put(String.valueOf(key), value));
         }
@@ -590,8 +589,8 @@ public class TranslationApiController {
         return providerConfig;
     }
 
-    private void mergeSavedProviderSecrets(String providerKey, JSONObject providerConfig) {
-        JSONObject savedConfig = "baidu".equals(providerKey)
+    private void mergeSavedProviderSecrets(String providerKey, JsonUtils.JsonObj providerConfig) {
+        JsonUtils.JsonObj savedConfig = "baidu".equals(providerKey)
                 ? getSavedBaiduConfig()
                 : getSavedCustomConfig(providerKey);
         if (savedConfig == null) {
@@ -605,12 +604,12 @@ public class TranslationApiController {
         }
     }
 
-    private JSONObject getSavedCustomConfig(String providerKey) {
+    private JsonUtils.JsonObj getSavedCustomConfig(String providerKey) {
         SysAiConfig savedConfig = sysAiConfigService.getArticleAiConfigInternal("default");
         if (savedConfig == null || !StringUtils.hasText(savedConfig.getCustomConfig())) {
             return null;
         }
-        JSONObject customConfig = com.alibaba.fastjson.JSON.parseObject(savedConfig.getCustomConfig());
+        JsonUtils.JsonObj customConfig = JsonUtils.parseObject(savedConfig.getCustomConfig());
         String savedProvider = customConfig.getString("provider");
         boolean sameProvider = providerKey.equals(savedProvider)
                 || (StringUtils.hasText(savedConfig.getTranslationType())
@@ -619,12 +618,12 @@ public class TranslationApiController {
         return sameProvider ? customConfig : null;
     }
 
-    private JSONObject getSavedBaiduConfig() {
+    private JsonUtils.JsonObj getSavedBaiduConfig() {
         SysAiConfig savedConfig = sysAiConfigService.getArticleAiConfigInternal("default");
         if (savedConfig == null || !StringUtils.hasText(savedConfig.getBaiduConfig())) {
             return null;
         }
-        return com.alibaba.fastjson.JSON.parseObject(savedConfig.getBaiduConfig());
+        return JsonUtils.parseObject(savedConfig.getBaiduConfig());
     }
 
     private String stringValue(Object value) {
@@ -795,7 +794,7 @@ public class TranslationApiController {
     }
 
     private void applyThinkingAdapterConfig(SysAiConfig tempConfig, Map<String, Object> llmConfig) {
-        JSONObject extraConfig = new JSONObject();
+        JsonUtils.JsonObj extraConfig = new JsonUtils.JsonObj();
         Object thinkingProfile = llmConfig.get("thinking_profile");
         if (thinkingProfile instanceof String profile && !profile.isBlank()) {
             extraConfig.put("thinkingProfile", profile);
@@ -837,9 +836,8 @@ public class TranslationApiController {
             // 3. 尝试匹配摘要配置中的 dedicated_llm
             if (savedConfig.getSummaryConfig() != null) {
                 try {
-                    com.alibaba.fastjson.JSONObject summaryJson = com.alibaba.fastjson.JSON
-                            .parseObject(savedConfig.getSummaryConfig());
-                    com.alibaba.fastjson.JSONObject dedicatedLlm = summaryJson.getJSONObject("dedicated_llm");
+                    JsonUtils.JsonObj summaryJson = JsonUtils.parseObject(savedConfig.getSummaryConfig());
+                    JsonUtils.JsonObj dedicatedLlm = summaryJson.getJSONObject("dedicated_llm");
                     if (dedicatedLlm != null) {
                         String key = dedicatedLlm.getString("api_key");
                         if (key != null && !key.isBlank())
@@ -870,7 +868,7 @@ public class TranslationApiController {
         if (jsonConfig == null || jsonConfig.isBlank())
             return null;
         try {
-            com.alibaba.fastjson.JSONObject json = com.alibaba.fastjson.JSON.parseObject(jsonConfig);
+            JsonUtils.JsonObj json = JsonUtils.parseObject(jsonConfig);
             String key = json.getString("api_key");
             if (key != null && !key.isBlank()) {
                 return key;
@@ -920,13 +918,16 @@ public class TranslationApiController {
     /**
      * 从 LLM 响应中提取 JSON 对象
      */
-    private com.alibaba.fastjson.JSONObject extractJsonResponse(String text) {
+    private JsonUtils.JsonObj extractJsonResponse(String text) {
         if (text == null)
             return null;
 
         // 尝试直接解析
         try {
-            return com.alibaba.fastjson.JSON.parseObject(text.trim());
+            JsonUtils.JsonObj parsed = JsonUtils.parseObject(text.trim());
+            if (parsed != null) {
+                return parsed;
+            }
         } catch (Exception ignored) {
         }
 
@@ -945,7 +946,10 @@ public class TranslationApiController {
         }
 
         try {
-            return com.alibaba.fastjson.JSON.parseObject(cleaned.trim());
+            JsonUtils.JsonObj parsed = JsonUtils.parseObject(cleaned.trim());
+            if (parsed != null) {
+                return parsed;
+            }
         } catch (Exception ignored) {
         }
 
@@ -954,7 +958,10 @@ public class TranslationApiController {
         int last = text.lastIndexOf('}');
         if (first >= 0 && last > first) {
             try {
-                return com.alibaba.fastjson.JSON.parseObject(text.substring(first, last + 1));
+                JsonUtils.JsonObj parsed = JsonUtils.parseObject(text.substring(first, last + 1));
+                if (parsed != null) {
+                    return parsed;
+                }
             } catch (Exception ignored) {
             }
         }
@@ -1076,8 +1083,7 @@ public class TranslationApiController {
             return;
         }
 
-        String traditionalJson = com.alibaba.fastjson.JSON.toJSONString(
-                articleData, com.alibaba.fastjson.serializer.SerializerFeature.PrettyFormat);
+        String traditionalJson = JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(articleData);
         result.put("format_tokens", selectedData.length());
         result.put("toon_tokens", selectedData.length());
         result.put("token_baseline", "traditional_json");
@@ -1209,15 +1215,15 @@ public class TranslationApiController {
     }
 
     private Map<String, String> parseJsonSummary(String response, Map<String, String> languages) {
-        com.alibaba.fastjson.JSONObject json = extractJsonResponse(response);
+        JsonUtils.JsonObj json = extractJsonResponse(response);
         if (json == null) return null;
 
-        Map<String, String> nested = collectNestedSummaryStrings(json, languages);
+        Map<String, String> nested = collectNestedSummaryStrings(json.toMap(), languages);
         if (!nested.isEmpty()) return nested;
 
-        Map<String, String> result = collectSummaryStrings(json, languages, true);
+        Map<String, String> result = collectSummaryStrings(json.toMap(), languages, true);
         if (!result.isEmpty()) return result;
-        result = collectSummaryStrings(json, languages, false);
+        result = collectSummaryStrings(json.toMap(), languages, false);
         return result.isEmpty() ? null : result;
     }
 
@@ -1334,7 +1340,7 @@ public class TranslationApiController {
         return result.isEmpty() ? null : result;
     }
 
-    private String firstJsonString(com.alibaba.fastjson.JSONObject json, String... keys) {
+    private String firstJsonString(JsonUtils.JsonObj json, String... keys) {
         for (String key : keys) {
             String value = json.getString(key);
             if (StringUtils.hasText(value)) {
@@ -1350,7 +1356,7 @@ public class TranslationApiController {
     private Map<String, String> parseTranslationResponse(String response) {
         String format = detectResponseFormat(response);
         if ("json".equals(format)) {
-            com.alibaba.fastjson.JSONObject json = extractJsonResponse(response);
+            JsonUtils.JsonObj json = extractJsonResponse(response);
             if (json != null) {
                 Map<String, String> result = new LinkedHashMap<>();
                 result.put("title", firstJsonString(json, "title", "translated_title"));

@@ -1,7 +1,7 @@
 package com.ld.poetry.service.ai;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ArticleMapper;
@@ -62,7 +62,7 @@ public class CommentAiReplyService {
     private final LabelMapper labelMapper;
     private final UserMapper userMapper;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @Async
     @EventListener

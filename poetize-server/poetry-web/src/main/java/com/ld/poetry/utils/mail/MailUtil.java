@@ -1,6 +1,6 @@
 package com.ld.poetry.utils.mail;
 
-import com.alibaba.fastjson.JSON;
+import com.ld.poetry.utils.JsonUtils;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
@@ -187,12 +187,12 @@ public class MailUtil {
         
         // 记录异步任务开始
         AsyncTaskUtil.logUserOperation("邮件发送", String.format("收件人: %s, 主题: %s", 
-                JSON.toJSONString(to), subject));
+                JsonUtils.toJsonString(to), subject));
         
         log.info("异步邮件发送开始 - 用户: {}{}, 收件人: {}, 主题: {}", 
                 username, 
                 userId != null ? " (ID: " + userId + ")" : "",
-                JSON.toJSONString(to), subject);
+                JsonUtils.toJsonString(to), subject);
         
         try {
             // 验证用户上下文（邮件发送通常不强制要求用户上下文）
@@ -210,18 +210,18 @@ public class MailUtil {
             boolean success = mailService.sendMailWithSequentialRetry(to, subject, text, true);
             
             if (success) {
-                AsyncTaskUtil.logUserOperation("邮件发送成功", String.format("收件人: %s", JSON.toJSONString(to)));
+                AsyncTaskUtil.logUserOperation("邮件发送成功", String.format("收件人: %s", JsonUtils.toJsonString(to)));
                 log.info("异步邮件发送成功 - 用户: {}, 收件人: {}", 
-                        AsyncTaskUtil.getCurrentUsername(), JSON.toJSONString(to));
+                        AsyncTaskUtil.getCurrentUsername(), JsonUtils.toJsonString(to));
             } else {
                 AsyncTaskUtil.logUserOperation("邮件发送失败", "邮件服务返回失败");
                 log.error("异步邮件发送失败 - 用户: {}, 收件人: {}, 原因: 邮件服务返回失败", 
-                        AsyncTaskUtil.getCurrentUsername(), JSON.toJSONString(to));
+                        AsyncTaskUtil.getCurrentUsername(), JsonUtils.toJsonString(to));
             }
         } catch (Exception e) {
             AsyncTaskUtil.logUserOperation("邮件发送异常", e.getMessage());
             log.error("异步邮件发送异常 - 用户: {}, 收件人: {}, 异常: {}", 
-                    AsyncTaskUtil.getCurrentUsername(), JSON.toJSONString(to), e.getMessage(), e);
+                    AsyncTaskUtil.getCurrentUsername(), JsonUtils.toJsonString(to), e.getMessage(), e);
         } finally {
             // 记录任务执行时间
             AsyncTaskUtil.logTaskExecutionTime("邮件发送");

@@ -45,9 +45,13 @@ public class SysPluginController {
      */
     @GetMapping("/getMouseClickEffects")
     public PoetryResult<List<SysPlugin>> getMouseClickEffects() {
+        return PoetryResult.success(loadMouseClickEffects());
+    }
+
+    private List<SysPlugin> loadMouseClickEffects() {
         List<SysPlugin> plugins = sysPluginService.getMouseClickEffectPlugins();
         plugins.forEach(plugin -> stripSensitiveFields(plugin, true));
-        return PoetryResult.success(plugins);
+        return plugins;
     }
 
     /**
@@ -55,6 +59,10 @@ public class SysPluginController {
      */
     @GetMapping("/getActiveMouseClickEffect")
     public PoetryResult<Map<String, Object>> getActiveMouseClickEffect() {
+        return PoetryResult.success(loadActiveMouseClickEffect());
+    }
+
+    private Map<String, Object> loadActiveMouseClickEffect() {
         String activeKey = sysPluginService.getActiveMouseClickEffect();
         SysPlugin plugin = sysPluginService.getPluginByTypeAndKey(SysPlugin.TYPE_MOUSE_CLICK_EFFECT, activeKey);
 
@@ -66,7 +74,7 @@ public class SysPluginController {
             result.put("pluginCode", plugin.getPluginCode());
             result.put("enabled", plugin.getEnabled());
         }
-        return PoetryResult.success(result);
+        return result;
     }
 
     /**
@@ -125,6 +133,10 @@ public class SysPluginController {
      */
     @GetMapping("/listActivePlugins")
     public PoetryResult<List<Map<String, Object>>> listActivePlugins() {
+        return PoetryResult.success(loadActivePlugins());
+    }
+
+    private List<Map<String, Object>> loadActivePlugins() {
         LambdaQueryWrapper<SysPluginActive> activeWrapper = new LambdaQueryWrapper<>();
         activeWrapper.orderByAsc(SysPluginActive::getId);
         List<SysPluginActive> activePlugins = sysPluginActiveMapper.selectList(activeWrapper);
@@ -144,7 +156,7 @@ public class SysPluginController {
             result.add(buildFrontendPluginPayload(plugin));
         }
 
-        return PoetryResult.success(result);
+        return result;
     }
 
     /**
@@ -152,11 +164,54 @@ public class SysPluginController {
      */
     @GetMapping("/getActiveParticleEffect")
     public PoetryResult<Map<String, Object>> getActiveParticleEffect() {
+        return PoetryResult.success(loadActiveParticleEffect());
+    }
+
+    private Map<String, Object> loadActiveParticleEffect() {
         SysPlugin plugin = sysPluginService.getActivePlugin(SysPlugin.TYPE_PARTICLE_EFFECT);
         if (plugin == null || !Boolean.TRUE.equals(plugin.getEnabled())) {
-            return PoetryResult.success(null);
+            return null;
         }
-        return PoetryResult.success(buildFrontendPluginPayload(plugin));
+        return buildFrontendPluginPayload(plugin);
+    }
+
+    /**
+     * 前台首屏插件聚合接口（公开接口）。
+     * 一次性返回首屏初始化需要的插件数据，替代 listActivePlugins、
+     * getMouseClickEffects、getActiveMouseClickEffect、getActiveParticleEffect 的多次并发请求。
+     * 每一项独立兜底，单项失败不影响其余字段。
+     */
+    @GetMapping("/frontendBootstrap")
+    public PoetryResult<Map<String, Object>> frontendBootstrap() {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            result.put("activePlugins", loadActivePlugins());
+        } catch (Exception e) {
+            log.warn("frontendBootstrap 获取通用激活插件失败", e);
+            result.put("activePlugins", java.util.Collections.emptyList());
+        }
+
+        try {
+            result.put("mouseClickEffects", loadMouseClickEffects());
+        } catch (Exception e) {
+            log.warn("frontendBootstrap 获取鼠标点击效果列表失败", e);
+            result.put("mouseClickEffects", java.util.Collections.emptyList());
+        }
+
+        try {
+            result.put("activeMouseClickEffect", loadActiveMouseClickEffect());
+        } catch (Exception e) {
+            log.warn("frontendBootstrap 获取激活鼠标点击效果失败", e);
+        }
+
+        try {
+            result.put("activeParticleEffect", loadActiveParticleEffect());
+        } catch (Exception e) {
+            log.warn("frontendBootstrap 获取激活粒子特效失败", e);
+        }
+
+        return PoetryResult.success(result);
     }
 
     private Map<String, Object> buildFrontendPluginPayload(SysPlugin plugin) {

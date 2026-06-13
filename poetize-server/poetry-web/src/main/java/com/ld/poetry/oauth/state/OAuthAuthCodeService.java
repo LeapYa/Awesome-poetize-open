@@ -1,6 +1,6 @@
 package com.ld.poetry.oauth.state;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +37,7 @@ public class OAuthAuthCodeService {
     private StringRedisTemplate redisTemplate;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @Value("${oauth.authcode.ttl:30}")
     private int authCodeTtl;  // 默认30秒，极短有效期

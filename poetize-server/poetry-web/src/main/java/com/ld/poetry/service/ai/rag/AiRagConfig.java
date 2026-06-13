@@ -1,7 +1,7 @@
 package com.ld.poetry.service.ai.rag;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import org.springframework.util.StringUtils;
 
@@ -42,11 +42,11 @@ public record AiRagConfig(
                 DEFAULT_EMBEDDING_DIMENSIONS, "mariadb", null, true, true, null);
     }
 
-    public static AiRagConfig from(SysAiConfig config, ObjectMapper objectMapper) {
+    public static AiRagConfig from(SysAiConfig config, JsonMapper objectMapper) {
         return from(config, objectMapper, "mariadb", null, true, true, null);
     }
 
-    public static AiRagConfig from(SysAiConfig config, ObjectMapper objectMapper, String databaseType,
+    public static AiRagConfig from(SysAiConfig config, JsonMapper objectMapper, String databaseType,
             String databaseVersion, boolean vectorSearchSupported, boolean runtimeEnabled, String disabledReason) {
         if (config == null) {
             return disabled().withRuntime(databaseType, databaseVersion, vectorSearchSupported, runtimeEnabled, disabledReason);

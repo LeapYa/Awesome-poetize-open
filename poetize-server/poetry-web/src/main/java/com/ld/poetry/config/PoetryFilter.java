@@ -1,6 +1,6 @@
 package com.ld.poetry.config;
 
-import com.alibaba.fastjson.JSON;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.enums.CodeMsg;
 import com.ld.poetry.utils.storage.FileFilter;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +30,7 @@ public class PoetryFilter extends OncePerRequestFilter {
             if (fileFilter.doFilterFile(httpServletRequest, httpServletResponse)) {
                 httpServletResponse.setHeader("Access-Control-Allow-Origin", "*");
                 httpServletResponse.setContentType("application/json;charset=UTF-8");
-                httpServletResponse.getWriter().write(JSON.toJSONString(com.ld.poetry.config.PoetryResult.fail(CodeMsg.PARAMETER_ERROR.getCode(), CodeMsg.PARAMETER_ERROR.getMsg())));
+                httpServletResponse.getWriter().write(JsonUtils.toJsonString(com.ld.poetry.config.PoetryResult.fail(CodeMsg.PARAMETER_ERROR.getCode(), CodeMsg.PARAMETER_ERROR.getMsg())));
                 return;
             }
         }

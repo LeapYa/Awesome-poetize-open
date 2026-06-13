@@ -1,6 +1,6 @@
 package com.ld.poetry.service.ai;
+import com.ld.poetry.utils.JsonUtils;
 
-import com.alibaba.fastjson.JSONObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -28,14 +28,14 @@ public class AwsTranslationProvider extends AbstractApiTranslationProvider {
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String accessKeyId = required(config, "access_key_id");
         String secretAccessKey = required(config, "secret_access_key", "access_key_secret");
         String region = required(config, "region");
         String host = "translate." + region + ".amazonaws.com";
         URI uri = URI.create("https://" + host + "/");
 
-        JSONObject payload = new JSONObject(true);
+        JsonUtils.JsonObj payload = new JsonUtils.JsonObj(true);
         payload.put("Text", text);
         payload.put("SourceLanguageCode", normalizeSource(sourceLang));
         payload.put("TargetLanguageCode", TranslationLanguageMapper.map(providerKey(), targetLang, false));
@@ -80,7 +80,7 @@ public class AwsTranslationProvider extends AbstractApiTranslationProvider {
         }
 
         ResponseEntity<String> response = exchange(uri, HttpMethod.POST, headers, payloadText);
-        JSONObject body = parseObject(response.getBody());
+        JsonUtils.JsonObj body = parseObject(response.getBody());
         String translated = body == null ? null : body.getString("TranslatedText");
         if (StringUtils.hasText(translated)) {
             return translated;

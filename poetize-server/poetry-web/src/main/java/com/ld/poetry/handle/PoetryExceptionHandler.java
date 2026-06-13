@@ -1,6 +1,6 @@
 package com.ld.poetry.handle;
 
-import com.alibaba.fastjson.JSON;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.enums.CodeMsg;
 import com.ld.poetry.service.ai.SseRequestUtils;
@@ -131,7 +131,7 @@ public class PoetryExceptionHandler {
                             FieldError::getField,
                             FieldError::getDefaultMessage
                     ));
-            return PoetryResult.fail(JSON.toJSONString(fieldErrors));
+            return PoetryResult.fail(JsonUtils.toJsonString(fieldErrors));
         }
 
         // 缺少必填参数异常

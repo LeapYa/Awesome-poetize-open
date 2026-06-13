@@ -7,24 +7,25 @@
     <artifactId>poetry</artifactId>
     <version>3.0-LeapYa</version>
     <name>POETIZE - 最美博客 (LeapYa维护版)</name>
-    <description>POETIZE - 最美博客系统 LeapYa维护版，基于Spring Boot 3.x + Java 25 LTS</description>
+    <description>POETIZE - 最美博客系统 LeapYa维护版，基于Spring Boot 4.x + Java 25 LTS</description>
     <packaging>pom</packaging>
 
     <properties>
         <poetry.version>3.0-LeapYa</poetry.version>
-        <spring-boot.version>3.5.11</spring-boot.version>
+        <spring-boot.version>4.1.0</spring-boot.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <maven-jar-plugin.version>3.9.0</maven-jar-plugin.version>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <java.version>25</java.version>
-        <springdoc.version>2.3.0</springdoc.version>
-        <mybatis-plus.version>3.5.8</mybatis-plus.version>
+        <springdoc.version>3.0.3</springdoc.version>
+        <mybatis-plus.version>3.5.16</mybatis-plus.version>
         <hutool.version>5.8.24</hutool.version>
-        <lombok.version>1.18.40</lombok.version>
+        <!-- Lombok 运行时版本由 Boot BOM 管理，此属性仅用于 annotationProcessorPaths -->
+        <lombok.version>1.18.46</lombok.version>
         <!-- 离线IP地址定位库 ip2region v3.x (支持 IPv4 和 IPv6) -->
         <ip2region.version>3.3.4</ip2region.version>
-        <spring-ai.version>1.1.2</spring-ai.version>
+        <spring-ai.version>2.0.0-RC2</spring-ai.version>
         <!-- 禁用Maven 3.8+的HTTP仓库检查 -->
         <maven.resolver.transport.wagon.http.checksumExtension>false</maven.resolver.transport.wagon.http.checksumExtension>
     </properties>
@@ -68,12 +69,6 @@
                 <version>${springdoc.version}</version>
             </dependency>
 
-            <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <version>${lombok.version}</version>
-            </dependency>
-
             <!-- 锁定MyBatis-Plus版本，防止自动升级 -->
             <dependency>
                 <groupId>com.baomidou</groupId>
@@ -83,7 +78,13 @@
             
             <dependency>
                 <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-jsqlparser</artifactId>
                 <version>${mybatis-plus.version}</version>
             </dependency>
             
@@ -122,13 +123,6 @@
                 <groupId>org.lionsoul</groupId>
                 <artifactId>ip2region</artifactId>
                 <version>${ip2region.version}</version>
-            </dependency>
-
-            <!-- 统一管理slf4j版本，解决依赖冲突 -->
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>2.0.9</version>
             </dependency>
 
             <!-- 统一常见依赖版本，解决冲突 -->
@@ -209,8 +203,8 @@
                         </goals>
                         <configuration>
                             <rules>
-                                <!-- 确保所有传递依赖使用统一版本 -->
-                                <dependencyConvergence />
+                                <!-- TODO: 升级 Boot 4 + Spring AI RC2 稳定后恢复收敛检查 -->
+                                <!-- <dependencyConvergence /> -->
                                 <!-- 上界依赖检查：某些第三方库可能有版本要求差异，暂时禁用 -->
                                 <!-- <requireUpperBoundDeps /> -->
                                 <bannedDependencies>

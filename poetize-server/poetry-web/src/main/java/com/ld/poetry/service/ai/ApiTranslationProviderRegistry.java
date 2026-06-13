@@ -1,7 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.TranslationService;
 import lombok.extern.slf4j.Slf4j;
@@ -71,7 +70,7 @@ public class ApiTranslationProviderRegistry {
             return null;
         }
 
-        JSONObject providerConfig = "baidu".equals(providerKey)
+        JsonUtils.JsonObj providerConfig = "baidu".equals(providerKey)
                 ? parse(config.getBaiduConfig())
                 : parse(config.getCustomConfig());
         if (providerConfig == null) {
@@ -86,23 +85,23 @@ public class ApiTranslationProviderRegistry {
         if (provider == null) {
             return null;
         }
-        JSONObject providerConfig = new JSONObject();
+        JsonUtils.JsonObj providerConfig = new JsonUtils.JsonObj();
         if (rawConfig != null) {
             rawConfig.forEach(providerConfig::put);
         }
         return new ApiTranslationContext(providerKey, provider, providerConfig);
     }
 
-    private JSONObject parse(String json) {
+    private JsonUtils.JsonObj parse(String json) {
         if (!StringUtils.hasText(json)) {
             return null;
         }
-        return JSON.parseObject(json);
+        return JsonUtils.parseObject(json);
     }
 
     public record ApiTranslationContext(
             String providerKey,
             ApiTranslationProvider provider,
-            JSONObject providerConfig) {
+            JsonUtils.JsonObj providerConfig) {
     }
 }

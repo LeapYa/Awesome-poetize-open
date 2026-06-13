@@ -1,6 +1,6 @@
 package com.ld.poetry.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
@@ -30,7 +30,7 @@ class ThirdPartyOauthConfigControllerTest {
     @InjectMocks
     private ThirdPartyOauthConfigController controller;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @Test
     void enabledConfigsRequireAdminAndDoNotExposeSecrets() throws Exception {

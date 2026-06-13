@@ -1,8 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +49,7 @@ public class YoudaoTranslationProvider extends AbstractApiTranslationProvider {
                 log.error("有道云翻译配置未找到");
                 return null;
             }
-            return translate(text, sourceLang, targetLang, JSON.parseObject(config.getCustomConfig()));
+            return translate(text, sourceLang, targetLang, JsonUtils.parseObject(config.getCustomConfig()));
         } catch (Exception e) {
             log.error("有道云翻译失败: {}", e.getMessage(), e);
             return null;
@@ -60,7 +58,7 @@ public class YoudaoTranslationProvider extends AbstractApiTranslationProvider {
 
     public String translateWithConfig(String text, String sourceLang, String targetLang,
             String appKey, String appSecret) {
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("app_key", appKey);
         config.put("app_secret", appSecret);
         return translate(text, sourceLang, targetLang, config);
@@ -68,14 +66,14 @@ public class YoudaoTranslationProvider extends AbstractApiTranslationProvider {
 
     public java.util.Map<String, String> translateArticleWithConfig(String title, String content, String sourceLang,
             String targetLang, String appKey, String appSecret) {
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("app_key", appKey);
         config.put("app_secret", appSecret);
         return translateArticle(title, content, sourceLang, targetLang, config);
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String appKey = required(config, "app_key", "api_key");
         String appSecret = required(config, "app_secret");
         String from = TranslationLanguageMapper.map(providerKey(), sourceLang, true);
@@ -97,7 +95,7 @@ public class YoudaoTranslationProvider extends AbstractApiTranslationProvider {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         ResponseEntity<String> response = exchange(URI.create(YOUDAO_API_URL), HttpMethod.POST, headers, formData);
-        JSONObject json = parseObject(response.getBody());
+        JsonUtils.JsonObj json = parseObject(response.getBody());
         if (json == null) {
             return null;
         }
@@ -106,7 +104,7 @@ public class YoudaoTranslationProvider extends AbstractApiTranslationProvider {
             log.error("有道云翻译 API 错误: code={}, body={}", errorCode, abbreviate(response.getBody()));
             return null;
         }
-        JSONArray translations = json.getJSONArray("translation");
+        JsonUtils.JsonArr translations = json.getJSONArray("translation");
         return translations == null || translations.isEmpty() ? null : translations.getString(0);
     }
 

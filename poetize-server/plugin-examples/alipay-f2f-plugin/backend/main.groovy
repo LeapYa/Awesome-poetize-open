@@ -1,4 +1,4 @@
-import com.fasterxml.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
 import java.net.URI
 import java.net.URLEncoder
@@ -31,7 +31,7 @@ import java.util.TreeMap
  */
 
 static final String ALIPAY_SDK_VERSION = "alipay-sdk-java-4.38.10.ALL"
-static final ObjectMapper JSON = new ObjectMapper()
+static final JsonMapper JSON = new JsonMapper()
 
 // ──────────────────────────────────────────────
 // 1. 生成支付链接（实际是支付宝二维码 URL）

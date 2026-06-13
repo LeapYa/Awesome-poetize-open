@@ -1,6 +1,6 @@
 package com.ld.poetry.oauth.state;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +33,7 @@ public class OAuthStateService {
     private StringRedisTemplate redisTemplate;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @Value("${oauth.state.ttl:600}")
     private int stateTtl;  // 默认10分钟

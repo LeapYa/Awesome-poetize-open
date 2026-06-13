@@ -1,7 +1,7 @@
 package com.ld.poetry.service.ai;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -28,9 +28,9 @@ public class AiThinkingAdapterRegistry {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
-    public AiThinkingAdapterRegistry(ObjectMapper objectMapper) {
+    public AiThinkingAdapterRegistry(JsonMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 

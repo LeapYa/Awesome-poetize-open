@@ -1,8 +1,6 @@
 package com.ld.poetry.service.ai;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +49,7 @@ public class BaiduTranslationProvider extends AbstractApiTranslationProvider {
                 log.error("百度翻译配置未找到");
                 return null;
             }
-            return translate(text, sourceLang, targetLang, JSON.parseObject(config.getBaiduConfig()));
+            return translate(text, sourceLang, targetLang, JsonUtils.parseObject(config.getBaiduConfig()));
         } catch (Exception e) {
             log.error("百度翻译失败: {}", e.getMessage(), e);
             return null;
@@ -60,14 +58,14 @@ public class BaiduTranslationProvider extends AbstractApiTranslationProvider {
 
     public String translateWithConfig(String text, String sourceLang, String targetLang,
             String appId, String appSecret) {
-        JSONObject config = new JSONObject();
+        JsonUtils.JsonObj config = new JsonUtils.JsonObj();
         config.put("app_id", appId);
         config.put("app_secret", appSecret);
         return translate(text, sourceLang, targetLang, config);
     }
 
     @Override
-    protected String doTranslate(String text, String sourceLang, String targetLang, JSONObject config) {
+    protected String doTranslate(String text, String sourceLang, String targetLang, JsonUtils.JsonObj config) {
         String appId = required(config, "app_id");
         String appSecret = required(config, "app_secret");
         String from = TranslationLanguageMapper.map(providerKey(), sourceLang, true);
@@ -86,9 +84,9 @@ public class BaiduTranslationProvider extends AbstractApiTranslationProvider {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         ResponseEntity<String> response = exchange(URI.create(BAIDU_API_URL), HttpMethod.POST, headers, formData);
-        JSONObject body = parseObject(response.getBody());
-        JSONArray results = body == null ? null : body.getJSONArray("trans_result");
-        if (results != null && !results.isEmpty()) {
+        JsonUtils.JsonObj body = parseObject(response.getBody());
+        JsonUtils.JsonArr results = body == null ? null : body.getJSONArray("trans_result");
+        if (results != null && results.size() != 0) {
             return results.getJSONObject(0).getString("dst");
         }
         log.error("百度翻译 API 错误: code={}, msg={}",

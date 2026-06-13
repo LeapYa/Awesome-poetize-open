@@ -1,4 +1,5 @@
 package com.ld.poetry.service.impl;
+import com.ld.poetry.utils.JsonUtils;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ld.poetry.dao.ArticleTranslationMapper;
@@ -64,7 +65,7 @@ public class SummaryServiceImpl implements SummaryService {
             if (config == null || !StringUtils.hasText(config.getSummaryConfig())) {
                 return SUMMARY_MODE_DISABLED;
             }
-            var summaryJson = com.alibaba.fastjson.JSON.parseObject(config.getSummaryConfig());
+            var summaryJson = JsonUtils.parseObject(config.getSummaryConfig());
             String summaryMode = summaryJson.getString("summaryMode");
             return StringUtils.hasText(summaryMode) ? summaryMode : SUMMARY_MODE_DISABLED;
         } catch (Exception e) {
@@ -277,7 +278,7 @@ public class SummaryServiceImpl implements SummaryService {
             if (config == null || !StringUtils.hasText(config.getSummaryConfig())) {
                 return DEFAULT_SUMMARY_MAX_LENGTH;
             }
-            var summaryJson = com.alibaba.fastjson.JSON.parseObject(config.getSummaryConfig());
+            var summaryJson = JsonUtils.parseObject(config.getSummaryConfig());
             Integer maxLength = summaryJson.getInteger("max_length");
             return maxLength != null && maxLength > 0 ? maxLength : DEFAULT_SUMMARY_MAX_LENGTH;
         } catch (Exception e) {
