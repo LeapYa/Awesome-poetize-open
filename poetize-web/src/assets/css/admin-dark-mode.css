@@ -437,11 +437,9 @@ body.dark-mode .el-divider__text {
 
 /* 上传组件暗色模式 */
 body.dark-mode .el-upload-dragger {
+  padding: 10px var(--el-upload-dragger-padding-horizontal, 20px) !important;
   background-color: #2d2d2d !important;
-  border-color: #4a4a4a !important;
-  padding: var(--el-upload-dragger-padding-horizontal) var(--el-upload-dragger-padding-vertical);
-  background-color: var(--el-fill-color-blank);
-  border: 1px dashed var(--el-border-color);
+  border: 1px dashed #4a4a4a !important;
   border-radius: 6px;
   box-sizing: border-box;
   text-align: center;

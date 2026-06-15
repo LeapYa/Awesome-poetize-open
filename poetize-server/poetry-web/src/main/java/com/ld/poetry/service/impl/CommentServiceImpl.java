@@ -168,7 +168,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                 comment.getCommentContent(),
                 comment.getCommentInfo()));
 
-        return PoetryResult.success();
+        return PoetryResult.success(comment);
     }
 
     @Override

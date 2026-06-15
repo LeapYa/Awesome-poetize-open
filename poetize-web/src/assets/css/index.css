@@ -472,7 +472,7 @@ body {
 .el-upload-dragger {
     width: 100% !important;
     height: 100px !important;
-    padding: var(--el-upload-dragger-padding-horizontal) var(--el-upload-dragger-padding-vertical);
+    padding: 10px var(--el-upload-dragger-padding-horizontal, 20px) !important;
     background-color: var(--el-fill-color-blank);
     border: 1px dashed var(--el-border-color);
     border-radius: 6px;

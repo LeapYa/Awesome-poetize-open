@@ -20,6 +20,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.support.ToolCallbacks;
@@ -192,7 +193,7 @@ public class AiChatService {
                     resolvedUserId, ragContext);
 
             // 构建选项（含工具）
-            ToolCallingChatOptions options = buildChatOptions(enableTools, null, resolvedConversationId, resolvedUserId,
+            ChatOptions options = buildChatOptions(chatModel, enableTools, null, resolvedConversationId, resolvedUserId,
                     new AtomicBoolean(false));
 
             // 使用流式调用避免同步阻塞超时
@@ -250,7 +251,7 @@ public class AiChatService {
             boolean enableTools = Boolean.TRUE.equals(config.getEnableTools());
             List<Message> messages = buildCommentReplyMessages(config, message, pageContext, resolvedUserId,
                     ragContext, loadedSkill);
-            ToolCallingChatOptions options = buildChatOptions(enableTools, null, resolvedConversationId, resolvedUserId,
+            ChatOptions options = buildChatOptions(chatModel, enableTools, null, resolvedConversationId, resolvedUserId,
                     new AtomicBoolean(false));
 
             // 使用流式调用避免同步阻塞超时（与翻译和流式聊天一致）
@@ -319,7 +320,7 @@ public class AiChatService {
                 resolvedUserId, ragContext);
 
         // 构建选项（含工具）
-        ToolCallingChatOptions options = buildChatOptions(enableTools, emitter, resolvedConversationId, resolvedUserId,
+        ChatOptions options = buildChatOptions(chatModel, enableTools, emitter, resolvedConversationId, resolvedUserId,
                 streamCancelled);
 
         Prompt prompt = new Prompt(messages, options);
@@ -779,23 +780,16 @@ public class AiChatService {
         }
     }
 
-    // ========== Tool Calling ==========
-
-    /**
-     * 构建 ChatOptions，包含工具注册
-     */
-    private ToolCallingChatOptions buildChatOptions(boolean enableTools, SseEmitter emitter,
-            String conversationId, String userId, AtomicBoolean streamCancelled) {
-        ToolCallingChatOptions.Builder builder = ToolCallingChatOptions.builder();
-
+    private void configureToolsAndContext(org.springframework.ai.model.tool.DefaultToolCallingChatOptions.Builder<?> builder,
+            boolean enableTools, SseEmitter emitter, String conversationId, String userId, AtomicBoolean streamCancelled) {
         if (enableTools) {
             List<ToolCallback> toolCallbacks = new ArrayList<>();
             toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(articleTools, timeTools, calculatorTools, commentTools)));
             toolCallbacks.addAll(httpAiToolProvider.getEnabledToolCallbacks());
 
-            ToolCallback[] tools = toolCallbacks.stream()
+            List<ToolCallback> tools = toolCallbacks.stream()
                     .map(toolCallbackEventBridge::wrap)
-                    .toArray(ToolCallback[]::new);
+                    .toList();
             builder.toolCallbacks(tools);
             Map<String, Object> toolContext = new HashMap<>();
             toolContext.put(ToolCallbackEventBridge.CONVERSATION_ID_CONTEXT_KEY,
@@ -807,10 +801,32 @@ public class AiChatService {
             }
             toolContext.put(ToolCallbackEventBridge.STREAM_CANCELLED_CONTEXT_KEY, streamCancelled);
             builder.toolContext(toolContext);
-
         }
+    }
 
-        return builder.build();
+    /**
+     * 构建 ChatOptions，包含工具注册
+     */
+    private ChatOptions buildChatOptions(ChatModel chatModel, boolean enableTools, SseEmitter emitter,
+            String conversationId, String userId, AtomicBoolean streamCancelled) {
+        if (chatModel instanceof org.springframework.ai.openai.OpenAiChatModel openAiModel) {
+            var builder = openAiModel.getOptions().mutate();
+            configureToolsAndContext(builder, enableTools, emitter, conversationId, userId, streamCancelled);
+            return builder.build();
+        } else if (chatModel instanceof org.springframework.ai.anthropic.AnthropicChatModel anthropicModel) {
+            var builder = anthropicModel.getOptions().mutate();
+            configureToolsAndContext(builder, enableTools, emitter, conversationId, userId, streamCancelled);
+            return builder.build();
+        }
+        log.warn("未知的 ChatModel 类型, 回退使用默认 ChatOptions. modelClass={}", chatModel != null ? chatModel.getClass().getName() : "null");
+        if (chatModel != null) {
+            var defaultOptions = chatModel.getDefaultOptions();
+            if (defaultOptions instanceof ChatOptions co) {
+                return co;
+            }
+        }
+        // 无法构建有效 ChatOptions 时抛出异常，避免下游 Prompt 构造 NPE
+        throw new IllegalStateException("无法为 ChatModel 构建 ChatOptions: " + (chatModel != null ? chatModel.getClass().getName() : "null"));
     }
 
     // ========== Memory 自动保存 ==========

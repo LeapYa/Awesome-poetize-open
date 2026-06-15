@@ -159,7 +159,10 @@ export const useAIChatStore = defineStore('aiChat', {
 
       try {
         const response = await fetch(
-          `${constant.baseURL}/webInfo/ai/config/chat/getStreamingConfig?configName=default`
+          `${constant.baseURL}/webInfo/ai/config/chat/getStreamingConfig?configName=default`,
+          {
+            credentials: 'include',
+          }
         )
 
         if (response.ok) {
@@ -656,6 +659,7 @@ export const useAIChatStore = defineStore('aiChat', {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({
             message: content,
             conversationId: 'default',
@@ -715,6 +719,7 @@ export const useAIChatStore = defineStore('aiChat', {
             headers: {
               'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({
               message: content,
               conversationId: 'default',

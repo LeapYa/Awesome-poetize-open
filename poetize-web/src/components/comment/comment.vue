@@ -105,35 +105,15 @@
           </div>
           <!-- 懒加载子评论展示 -->
           <div v-if="item.childComments && item.childComments.total > 0">
-            <!-- 展开按钮（当回复未展开时显示） -->
-            <div v-if="!item.expanded" class="pagination-wrap">
-              <div
-                class="expand-replies-btn"
-                @click="expandReplies(item)"
-                :disabled="item.loadingReplies"
-              >
-                <span class="expand-text" v-if="!item.loadingReplies">
-                  展开{{ item.childComments.total }}条回复
-                </span>
-                <span class="expand-text" v-else>
-                  <el-icon><el-icon-loading /></el-icon> 加载中...
-                </span>
-                <el-icon class="expand-icon"><el-icon-arrow-down /></el-icon>
-              </div>
-            </div>
-
-            <!-- 子评论列表（展开时显示） -->
+            <!-- 子评论列表 -->
             <div
               v-if="
-                item.expanded &&
-                item.childComments &&
-                item.childComments.records &&
-                item.childComments.records.length > 0
+                getDisplayReplies(item).length > 0
               "
             >
               <div
                 class="commentInfo-detail"
-                v-for="replyItem in item.childComments.records"
+                v-for="replyItem in getDisplayReplies(item)"
                 :key="replyItem.id"
               >
                 <!-- 头像 -->
@@ -213,7 +193,7 @@
               </div>
 
               <!-- 加载更多回复按钮 -->
-              <div class="pagination-wrap" v-if="item.hasMoreReplies">
+              <div class="pagination-wrap" v-if="item.expanded && item.hasMoreReplies">
                 <div
                   class="pagination"
                   @click="loadMoreReplies(item)"
@@ -227,7 +207,7 @@
               </div>
 
               <!-- 折叠回复按钮 -->
-              <div class="pagination-wrap">
+              <div class="pagination-wrap" v-if="item.expanded && !item.hasMoreReplies">
                 <div
                   class="collapse-replies-btn"
                   @click="collapseReplies(item)"
@@ -235,6 +215,23 @@
                   <span class="collapse-text">折叠回复</span>
                   <el-icon class="collapse-icon"><el-icon-arrow-up /></el-icon>
                 </div>
+              </div>
+            </div>
+
+            <!-- 展开按钮（当回复未展开或有更多未展开回复时显示） -->
+            <div v-if="!item.expanded && (item.childComments.total > (item.newLocalReplies ? item.newLocalReplies.length : 0))" class="pagination-wrap">
+              <div
+                class="expand-replies-btn"
+                @click="expandReplies(item)"
+                :disabled="item.loadingReplies"
+              >
+                <span class="expand-text" v-if="!item.loadingReplies">
+                  展开 {{ item.childComments.total }} 条回复
+                </span>
+                <span class="expand-text" v-else>
+                  <el-icon><el-icon-loading /></el-icon> 加载中...
+                </span>
+                <el-icon class="expand-icon"><el-icon-arrow-down /></el-icon>
               </div>
             </div>
           </div>
@@ -369,13 +366,15 @@ export default {
       // 折叠显示相关状态
       expandedComments: {}, // 记录每个一级评论的展开状态 {commentId: {expanded: boolean, displayCount: number}}
       pageSize: 10, // 每次展开显示的回复数量
-      // 🔧 新增：懒加载相关状态
       isLoadingMore: false, // 是否正在加载更多评论
       hasMoreComments: true, // 是否还有更多评论
       enableLazyLoad: true, // 是否启用懒加载模式
       scrollThreshold: 200, // 距离底部多少像素时触发加载
       scrollTimer: null, // 滚动防抖定时器
       likedComments: {},
+      aiChatConfig: null, // AI 聊天配置以获取机器人名字
+      pollingInterval: null, // 轮询定时器
+      pendingAiReplies: [], // 等待 AI 回复的任务列表
     }
   },
   computed: {
@@ -383,27 +382,52 @@ export default {
       return useMainStore()
     },
   },
+  watch: {
+    source: {
+      immediate: true,
+      handler(newVal) {
+        this.stopAiReplyPolling()
+        if (newVal !== undefined && newVal !== null) {
+          this.pagination.source = newVal
+          this.pagination.current = 1
+          this.comments = []
+          this.expandedComments = {}
+          this.isLoadingMore = false
+          this.hasMoreComments = true
+          this.getComments(this.pagination)
+          this.getTotal()
+        } else {
+          this.comments = []
+          this.total = 0
+          this.pagination.source = null
+        }
+      }
+    }
+  },
   created() {
-    // 🔧 关键修复：强制重置组件状态
     this.expandedComments = {}
     this.comments = []
     this.isLoadingMore = false
     this.hasMoreComments = true
 
-    this.getComments(this.pagination)
-    this.getTotal()
     this.loadLikedComments()
   },
   mounted() {
-    // 🔧 添加滚动监听
+    // 滚动监听
     if (this.enableLazyLoad) {
       this.addScrollListener()
     }
 
-    // 🔧 新策略：监听页面状态恢复事件
+    // 监听页面状态恢复事件
     $on(this.$bus, 'restore-page-state', this.handleRestorePageState)
+
+    // 加载 AI 配置
+    this.loadAiChatConfig()
   },
   beforeUnmount() {
+    // 停止 AI 回复轮询
+    this.stopAiReplyPolling()
+
     // 🔧 移除滚动监听
     if (this.enableLazyLoad) {
       this.removeScrollListener()
@@ -412,10 +436,162 @@ export default {
     if (this.scrollTimer) {
       clearTimeout(this.scrollTimer)
     }
-    // 🔧 新策略：移除页面状态恢复事件监听
+    // 移除页面状态恢复事件监听
     $off(this.$bus, 'restore-page-state', this.handleRestorePageState)
   },
   methods: {
+    loadAiChatConfig() {
+      this.$http
+        .get(
+          this.$constant.baseURL + '/webInfo/ai/config/chat/getStreamingConfig',
+          { configName: 'default' }
+        )
+        .then((res) => {
+          if (res.data) {
+            this.aiChatConfig = res.data
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to load AI chat config:', err)
+        })
+    },
+    isMentioningAi(content) {
+      if (!content) return false
+      const botName =
+        (this.aiChatConfig && this.aiChatConfig.chat_name) || 'AI助手'
+      return (
+        content.includes('@' + botName) ||
+        content.includes('@AI助手') ||
+        content.includes('@AI')
+      )
+    },
+    registerAiReplyPolling(task) {
+      task.startTime = Date.now()
+      task.pollCount = 0
+      this.pendingAiReplies.push(task)
+
+      if (!this.pollingInterval) {
+        this.pollingInterval = setInterval(() => {
+          this.pollPendingAiReplies()
+        }, 5000)
+      }
+    },
+    pollPendingAiReplies() {
+      if (this.pendingAiReplies.length === 0) {
+        this.stopAiReplyPolling()
+        return
+      }
+
+      const now = Date.now()
+      this.pendingAiReplies = this.pendingAiReplies.filter((task) => {
+        if (now - task.startTime > 120000) {
+          console.warn(`AI reply polling timed out for comment ID: ${task.commentId}`)
+          return false
+        }
+        return true
+      })
+
+      if (this.pendingAiReplies.length === 0) {
+        this.stopAiReplyPolling()
+        return
+      }
+
+      this.pendingAiReplies.forEach((task) => {
+        this.checkAiReplyForTask(task)
+      })
+    },
+    checkAiReplyForTask(task) {
+      const baseUrl = this.$constant.baseURL + '/comment/listChildComments'
+      const floorComment = this.comments.find(
+        (c) => c.id === task.floorCommentId
+      )
+      const currentRecordsCount = floorComment && floorComment.childComments && floorComment.childComments.records
+        ? floorComment.childComments.records.length : 10
+      const size = Math.max(Math.ceil(currentRecordsCount / 10) * 10 + 10, 10)
+      const urlParams = new URLSearchParams({
+        parentCommentId: task.floorCommentId.toString(),
+        current: '1',
+        size: size.toString(),
+      })
+      const fullUrl = `${baseUrl}?${urlParams.toString()}`
+      const requestBody = {
+        source: this.source,
+        commentType: this.type,
+      }
+
+      this.$http
+        .post(fullUrl, requestBody)
+        .then((res) => {
+          let childCommentsData = null
+          if (res.data && res.data.data && res.data.data.records) {
+            childCommentsData = res.data.data
+          } else if (res.data && res.data.records) {
+            childCommentsData = res.data
+          }
+
+          if (childCommentsData && childCommentsData.records) {
+            const aiReply = childCommentsData.records.find(
+              (c) => c.aiReply === true && c.parentCommentId === task.commentId
+            )
+
+            if (aiReply) {
+              this.pendingAiReplies = this.pendingAiReplies.filter(
+                (t) => t.commentId !== task.commentId
+              )
+              this.handleAiReplyFound(task, childCommentsData)
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('Error checking AI reply status:', err)
+        })
+    },
+    handleAiReplyFound(task, childCommentsData) {
+      const floorComment = this.comments.find(
+        (c) => c.id === task.floorCommentId
+      )
+      if (floorComment) {
+        if (!floorComment.childComments) {
+          floorComment.childComments = { records: [], total: 0 }
+        }
+
+        floorComment.childComments.records = childCommentsData.records
+        floorComment.childComments.total = childCommentsData.total
+        floorComment.totalReplies = childCommentsData.total
+        floorComment.expanded = true
+        floorComment.collapsedByUser = false
+        floorComment.newLocalReplies = []
+
+        const loadedCount = childCommentsData.records.length
+        floorComment.currentPage = Math.max(1, Math.ceil(loadedCount / 10))
+        floorComment.hasMoreReplies = loadedCount < childCommentsData.total
+
+        this.emoji(floorComment.childComments.records, false)
+        this.getTotal()
+        this.$forceUpdate()
+
+        const botName =
+          (this.aiChatConfig && this.aiChatConfig.chat_name) || 'AI'
+        this.$message({
+          type: 'success',
+          message: `${botName}已回复你的消息啦！`,
+        })
+      } else {
+        this.getComments(this.pagination)
+      }
+    },
+    stopAiReplyPolling() {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval)
+        this.pollingInterval = null
+      }
+      this.pendingAiReplies = []
+    },
+    bindCommentImages() {
+      this.$nextTick(() => {
+        this.$common.imgShow('#comment-content .pictureReg')
+      })
+    },
     getAvatarForComment(item) {
       if (item.aiReply) {
         // AI 回复：只使用 displayAvatar，不回退到用户表 avatar
@@ -548,12 +724,7 @@ export default {
       }
       this.getComments(pagination, floorComment, true)
     },
-
-    // 折叠/展开相关方法
-    // 🔧 移除旧的展开状态检查方法，改用comment.expanded属性
-
-    // 🔧 移除旧的展开/折叠方法，改用新的懒加载机制
-
+    
     /**
      * 加载更多回复
      */
@@ -620,19 +791,23 @@ export default {
     /**
      * 获取当前应该显示的回复列表
      */
-    getDisplayedReplies(comment) {
-      if (!comment.flatReplies) return []
-
-      const expandState = this.expandedComments[comment.id]
-      if (!expandState) {
-        // 🔧 修复：如果没有展开状态，返回所有平铺回复（用于调试）
-        return comment.flatReplies
+    getDisplayReplies(item) {
+      if (item.collapsedByUser) {
+        return []
       }
 
-      const displayCount =
-        expandState.displayCount || comment.flatReplies.length
-      const result = comment.flatReplies.slice(0, displayCount)
-      return result
+      const records = (item.childComments && item.childComments.records) ? item.childComments.records : []
+      const locals = item.newLocalReplies ? item.newLocalReplies : []
+
+      if (item.expanded) {
+        // 返回所有已加载记录 + 不在记录中的本地 session 回复（以避免重复）
+        const recordIds = new Set(records.map(r => r.id))
+        const uniqueLocals = locals.filter(l => !recordIds.has(l.id))
+        return [...records, ...uniqueLocals]
+      } else {
+        // 如果未展开，只显示本地 session 发表的回复
+        return locals
+      }
     },
 
     /**
@@ -696,14 +871,14 @@ export default {
     },
 
     /**
-     * 🔧 新方法：处理主评论数据，只处理统计信息，不平铺子评论
+     * 处理主评论数据，只处理统计信息，不平铺子评论
      * @param {Array} comments - 主评论列表
      */
     processMainComments(comments) {
       if (!comments || !comments.length) return
 
       comments.forEach((comment, index) => {
-        // 🔧 新逻辑：只处理子评论统计信息，不加载子评论内容
+        // 只处理子评论统计信息，不加载子评论内容
         if (comment.childComments && comment.childComments.total > 0) {
           // 初始化懒加载状态
           comment.expanded = false
@@ -737,6 +912,7 @@ export default {
     async expandReplies(comment) {
       if (comment.loadingReplies) return
 
+      comment['collapsedByUser'] = false
       comment.loadingReplies = true
 
       try {
@@ -868,6 +1044,7 @@ export default {
      */
     collapseReplies(comment) {
       comment['expanded'] = false
+      comment['collapsedByUser'] = true
       this.$forceUpdate()
     },
 
@@ -1081,7 +1258,7 @@ export default {
             message: '保存成功！',
           })
 
-          // 🔧 修复：评论提交成功后，确保评论框被清空
+          // 评论提交成功后，确保评论框被清空
           this.pendingCommentContent = null
           this.clearCommentBox()
 
@@ -1099,6 +1276,15 @@ export default {
           }
           this.getComments(this.pagination)
           this.getTotal()
+
+          if (this.isMentioningAi(comment.commentContent)) {
+            const serverComment = res.data || {}
+            this.registerAiReplyPolling({
+              commentId: serverComment.id,
+              floorCommentId: serverComment.id,
+              isFloor: true,
+            })
+          }
         })
         .catch((error) => {
           if (error && (error.code === 460 || error.code === 461)) {
@@ -1121,7 +1307,7 @@ export default {
         })
     },
     submitReply(commentContent) {
-      // 🔧 简化：此时用户必须已登录（因为未登录用户不会看到回复对话框）
+      // 此时用户必须已登录（因为未登录用户不会看到回复对话框）
       let comment = {
         source: this.source,
         type: this.type,
@@ -1132,6 +1318,7 @@ export default {
       }
 
       let floorComment = this.floorComment
+      const parentComment = { ...this.replyComment }
 
       // 保存回复内容和对话框状态，以便验证码取消时恢复
       this.pendingReplyContent = {
@@ -1149,13 +1336,13 @@ export default {
             action: 'comment',
             isReplyComment: true, // 回复评论
             onSuccess: (token) =>
-              this.saveReplyToServer(comment, floorComment, token),
+              this.saveReplyToServer(comment, floorComment, parentComment, token),
             onCancel: () => this.restorePendingReply(),
           })
           this.mainStore.showCaptcha(true)
         } else {
           // 不需要验证码，直接发表回复并关闭对话框
-          this.saveReplyToServer(comment, floorComment)
+          this.saveReplyToServer(comment, floorComment, parentComment)
           this.handleClose()
           // 清除待恢复的回复内容
           this.pendingReplyContent = null
@@ -1164,7 +1351,7 @@ export default {
     },
 
     // 将回复保存到服务器
-    saveReplyToServer(comment, floorComment, verificationToken) {
+    saveReplyToServer(comment, floorComment, parentComment, verificationToken) {
       // 如果有验证token，添加到请求中
       if (verificationToken) {
         comment.verificationToken = verificationToken
@@ -1178,30 +1365,64 @@ export default {
             message: '回复成功！',
           })
 
-          // 🔧 修复：回复提交成功后，确保对话框关闭
+          // 回复提交成功后，确保对话框关闭
           this.pendingReplyContent = null
           this.handleClose()
 
-          // 根据评论类型选择合适的刷新策略
+          // 确保新回复是可见的（不处于折叠状态）
+          floorComment['collapsedByUser'] = false
 
-          if (comment.parentCommentId === floorComment.id) {
-            // 二级评论：直接回复一级评论，刷新楼层评论
-            let pagination = {
-              current: 1,
-              size: 5,
-              total: 0,
-              source: this.source,
-              commentType: this.type,
-              floorCommentId: floorComment.id,
-            }
-            this.getComments(pagination, floorComment)
-          } else {
-            // 三级及以上评论：回复的是子评论，需要使用懒加载接口刷新
+          // 将回复加入到本 session 的本地回复列表中，确保用户能立即看到
+          if (!floorComment.newLocalReplies) {
+            floorComment.newLocalReplies = []
+          }
+
+          const serverComment = res.data || {}
+          let newReply = {
+            id: serverComment.id || ('local_' + Date.now()),
+            username: this.mainStore.currentUser.username || '我',
+            displayUsername: this.mainStore.currentUser.nickname || this.mainStore.currentUser.username || '我',
+            avatar: this.mainStore.currentUser.avatar || '',
+            displayAvatar: this.mainStore.currentUser.avatar || '',
+            userId: this.mainStore.currentUser.id,
+            commentContent: comment.commentContent,
+            createTime: serverComment.createTime || new Date().toISOString(),
+            location: serverComment.location || '内网IP',
+            parentCommentId: comment.parentCommentId,
+            parentUserId: parentComment.userId,
+            parentUsername: parentComment.username || parentComment.displayUsername,
+          }
+
+          // 处理表情和图片渲染
+          newReply.commentContent = newReply.commentContent.replace(/\n/g, '<br/>')
+          newReply.commentContent = this.$common.faceReg(newReply.commentContent)
+          newReply.commentContent = this.$common.pictureReg(newReply.commentContent)
+
+          floorComment.newLocalReplies.push(newReply)
+
+          // 更新子评论总数计数
+          if (!floorComment.childComments) {
+            floorComment.childComments = { records: [], total: 0 }
+          }
+          floorComment.childComments.total += 1
+          floorComment.totalReplies = (floorComment.totalReplies || 0) + 1
+
+          // 如果已经处于展开状态，从服务器重新拉取最新数据以保持同步
+          if (floorComment.expanded) {
             this.refreshNestedReplies(floorComment)
           }
 
-          // 更新总评论数
+          // 更新文章总评论数
           this.getTotal()
+          this.$forceUpdate()
+
+          if (this.isMentioningAi(comment.commentContent)) {
+            this.registerAiReplyPolling({
+              commentId: serverComment.id,
+              floorCommentId: floorComment.id,
+              isFloor: false,
+            })
+          }
         })
         .catch((error) => {
           if (error && (error.code === 460 || error.code === 461)) {
@@ -1209,7 +1430,7 @@ export default {
               action: 'comment',
               isReplyComment: true,
               onSuccess: (token) =>
-                this.saveReplyToServer(comment, floorComment, token),
+                this.saveReplyToServer(comment, floorComment, parentComment, token),
               onCancel: () => this.restorePendingReply(),
             })
             this.mainStore.showCaptcha(true)
@@ -1226,11 +1447,11 @@ export default {
     },
 
     /**
-     * 🔧 新方法：刷新嵌套回复（用于三级评论提交后的显示更新）
+     * 刷新嵌套回复（用于三级评论提交后的显示更新）
      * @param {Object} floorComment - 楼层评论对象
      */
     async refreshNestedReplies(floorComment) {
-      // 🔧 添加楼层评论对象验证
+      // 楼层评论对象验证
       if (!floorComment || !floorComment.id) {
         console.error('楼层评论对象无效:', floorComment)
         return
@@ -1239,10 +1460,13 @@ export default {
       try {
         // 使用懒加载接口重新获取所有子评论
         const baseUrl = this.$constant.baseURL + '/comment/listChildComments'
+        const currentRecordsCount = floorComment.childComments && floorComment.childComments.records ? floorComment.childComments.records.length : 10
+        // 将 size 对齐到 10 的整数倍，与 loadMoreReplies 的分页基准一致
+        const size = Math.max(Math.ceil(currentRecordsCount / 10) * 10, 10)
         const urlParams = new URLSearchParams({
           parentCommentId: floorComment.id.toString(),
           current: '1',
-          size: '50', // 获取更多评论确保新评论能显示
+          size: size.toString(), // 获取当前已加载的回复数量，避免自动展开多余的评论
         })
         const fullUrl = `${baseUrl}?${urlParams.toString()}`
 
@@ -1261,7 +1485,7 @@ export default {
         }
 
         if (childCommentsData && childCommentsData.records) {
-          // 🔧 确保楼层评论有childComments属性
+          // 确保楼层评论有childComments属性
           if (!floorComment.childComments) {
             floorComment['childComments'] = { records: [], total: 0 }
           }
@@ -1270,9 +1494,12 @@ export default {
           floorComment.childComments['records'] = childCommentsData.records
           floorComment.childComments['total'] = childCommentsData.total
           floorComment['expanded'] = true
-          floorComment['currentPage'] = 1
+          floorComment['currentPage'] = Math.ceil(size / 10)
           floorComment['hasMoreReplies'] =
             childCommentsData.records.length < childCommentsData.total
+
+          // 刷新成功后清空本地回复，避免与服务器数据重复
+          floorComment['newLocalReplies'] = []
 
           // 强制更新视图
           this.$forceUpdate()
@@ -1293,7 +1520,7 @@ export default {
       }
     },
     replyDialog(comment, floorComment) {
-      // 🔧 新策略：检查用户登录状态
+      // 检查用户登录状态
       if (this.$common.isEmpty(this.mainStore.currentUser)) {
         // 未登录用户：保存页面状态并直接跳转到登录页面
         this.savePageStateAndRedirectToLogin(comment, floorComment)
@@ -1307,7 +1534,7 @@ export default {
     },
 
     /**
-     * 🔧 新方法：保存页面状态并跳转到登录页面
+     * 保存页面状态并跳转到登录页面
      * @param {Object} comment - 被回复的评论对象
      * @param {Object} floorComment - 楼层评论对象
      */
@@ -1397,7 +1624,7 @@ export default {
     },
 
     /**
-     * 🔧 新方法：处理登录后的页面状态恢复
+     * 处理登录后的页面状态恢复
      * @param {Object} stateData - 保存的页面状态数据
      */
     handleRestorePageState(stateData) {
@@ -1413,7 +1640,7 @@ export default {
 
       const context = stateData.replyContext
 
-      // 🔧 优化：确保楼层评论的展开状态正确恢复
+      // 确保楼层评论的展开状态正确恢复
       const targetFloorComment = this.comments.find(
         (c) => c.id === context.floorComment.id
       )
@@ -1430,12 +1657,12 @@ export default {
         }
       }
 
-      // 🔧 优化：使用更智能的等待机制确保评论列表完全加载
+      // 智能的等待机制确保评论列表完全加载
       const waitForCommentAndOpenDialog = (retryCount = 0) => {
         const maxRetries = 10 // 最多重试10次
         const retryDelay = 300 // 每次重试间隔300ms
 
-        // 🔧 关键修复：从实际的评论列表中找到完整的楼层评论对象
+        // 从实际的评论列表中找到完整的楼层评论对象
         const actualFloorComment = this.comments.find(
           (c) => c.id === context.floorComment.id
         )
@@ -1461,7 +1688,7 @@ export default {
           commentContent: context.replyComment.commentContent,
         }
 
-        // 🔧 关键修复：使用实际的楼层评论对象，确保包含所有必要的属性和状态
+        // 使用实际的楼层评论对象，确保包含所有必要的属性和状态
         this.floorComment = actualFloorComment
 
         // 打开回复对话框
