@@ -239,9 +239,6 @@
           <el-form-item label="站点Logo">
             <el-input v-model="seoForm.site_logo"></el-input>
           </el-form-item>
-          <el-form-item label="OG站点名">
-            <el-input v-model="seoForm.og_site_name"></el-input>
-          </el-form-item>
           <el-form-item label="OG类型">
             <el-input v-model="seoForm.og_type"></el-input>
           </el-form-item>
@@ -294,7 +291,6 @@ function createDefaultSeoForm() {
     default_author: '',
     og_image: '',
     site_logo: '',
-    og_site_name: '',
     og_type: '',
     twitter_card: '',
     twitter_site: '',

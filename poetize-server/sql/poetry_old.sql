@@ -603,7 +603,6 @@ CREATE TABLE IF NOT EXISTS `poetize`.`seo_social_media` (
   `twitter_site` varchar(128) COMMENT 'Twitter站点账号',
   `twitter_creator` varchar(128) COMMENT 'Twitter创建者账号',
   `og_type` varchar(32) DEFAULT 'article' COMMENT 'Open Graph类型',
-  `og_site_name` varchar(128) DEFAULT 'POETIZE' COMMENT 'Open Graph站点名称',
   `og_image` varchar(512) COMMENT 'Open Graph图片',
   `fb_app_id` varchar(128) COMMENT 'Facebook应用ID',
   `fb_page_url` varchar(512) COMMENT 'Facebook页面URL',

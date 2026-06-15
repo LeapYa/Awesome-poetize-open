@@ -181,7 +181,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             meta.put("description", seoConfig.get("site_description"));
             meta.put("keywords", seoConfig.get("site_keywords"));
             meta.put("author", seoConfig.get("default_author"));
-            meta.put("site_name", seoConfig.get("og_site_name"));
+            meta.put("site_name", getSiteTitle());
 
             // 网站图标
             addIconMeta(meta, seoConfig);
@@ -585,7 +585,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
         meta.put("og:type", seoConfig.get("og_type"));
         meta.put("og:title", title);
         meta.put("og:description", description);
-        meta.put("og:site_name", seoConfig.get("og_site_name"));
+        meta.put("og:site_name", getSiteTitle());
         meta.put("og:image", seoConfig.get("og_image"));
 
         // Twitter Card
@@ -817,7 +817,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
     }
 
     /**
-     * 获取网站标题，优先使用webInfo.webTitle，然后尝试SEO配置中的og_site_name
+     * 获取网站标题，优先使用webInfo.webTitle，其次使用webInfo.webName，最后兜底使用"POETIZE"
      */
     private String getSiteTitle() {
         try {
@@ -828,18 +828,8 @@ public class SeoMetaServiceImpl implements SeoMetaService {
                 return webInfo.getWebName();
             }
         } catch (Exception e) {
-            log.warn("获取webInfo失败，尝试从SEO配置获取站点名称", e);
+            log.warn("获取webInfo失败", e);
         }
-        // 尝试从SEO配置获取og_site_name作为备选
-        try {
-            Map<String, Object> seoConfig = seoConfigService.getSeoConfigAsJson();
-            Object ogSiteName = seoConfig.get("og_site_name");
-            if (ogSiteName != null && StringUtils.hasText(ogSiteName.toString())) {
-                return ogSiteName.toString();
-            }
-        } catch (Exception e) {
-            log.warn("获取SEO配置失败", e);
-        }
-        return "My Blog";
+        return "POETIZE";
     }
 }

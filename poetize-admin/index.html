@@ -11,6 +11,39 @@
 
     <!-- 静态CSS资源 -->
     <link rel="stylesheet" href="/static/css/inline-styles.css">
+    
+    <!-- 自动检测更新或资源加载失败，并自动刷新恢复，防止白屏 -->
+    <script>
+      (function handleAssetsLoadError() {
+        function reloadPage(reason) {
+          var key = 'assets-reload-timestamp';
+          var lastReload = sessionStorage.getItem(key);
+          var now = Date.now();
+          // 限制 10 秒内只能自动刷新一次，避免因网络彻底断开等原因导致无限循环刷新
+          if (!lastReload || now - parseInt(lastReload) > 10000) {
+            sessionStorage.setItem(key, now.toString());
+            console.warn('检测到资源加载失败 (' + reason + ')，正在自动刷新页面恢复...');
+            window.location.reload(true);
+          }
+        }
+
+        // 1. 捕获动态 import / preload 加载失败（Vite 预加载错误）
+        window.addEventListener('vite:preloadError', function (event) {
+          reloadPage('preloadError');
+        });
+
+        // 2. 捕获静态 JS/CSS 资源 404/加载失败（Script/Link 标签加载失败）
+        window.addEventListener('error', function (event) {
+          var target = event.target;
+          if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
+            // 排除非静态资源的普通脚本运行错误
+            if (target.src || target.href) {
+              reloadPage('assetLoadError: ' + (target.src || target.href));
+            }
+          }
+        }, true);
+      })();
+    </script>
     <title></title>
     <!-- SEO相关元数据占位符 - 将由Nginx动态替换 -->
     <!-- SEO_META_PLACEHOLDER -->

@@ -209,7 +209,6 @@ public class SeoController {
             
             // Open Graph增强
             configForNginx.put("og_type", seoConfig.get("og_type"));
-            configForNginx.put("og_site_name", seoConfig.get("og_site_name"));
             
             // LinkedIn支持
             configForNginx.put("linkedin_company_id", seoConfig.get("linkedin_company_id"));

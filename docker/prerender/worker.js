@@ -875,7 +875,7 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
       'yandex_site_verification', 'sogou_site_verification', 'so_site_verification',
       'shenma_site_verification', 'yahoo_site_verification', 'duckduckgo_site_verification',
       'twitter_site', 'twitter_creator', 'fb_app_id', 'fb_page_url',
-      'og_type', 'og_site_name', 'linkedin_company_id',
+      'og_type', 'linkedin_company_id',
       'pinterest_verification', 'pinterest_description',
       'wechat_miniprogram_id', 'wechat_miniprogram_path', 'qq_miniprogram_path',
       '_rawHtmlSnippets'
@@ -954,7 +954,6 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
       'fb_app_id': 'fb:app_id',
       'fb_page_url': 'fb:page_url',
       'og_type': 'og:type',
-      'og_site_name': 'og:site_name',
       'linkedin_company_id': 'linkedin:company',
       'pinterest_verification': 'p:domain_verify',
       'pinterest_description': 'pinterest:description',

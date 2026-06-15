@@ -169,8 +169,12 @@ public class PrerenderService {
         String keywords = firstNonBlank(stringValue(seoConfig.get("site_keywords")), "博客,个人网站,技术分享");
         String ogImage = ensureAbsoluteImageUrl(firstNonBlank(stringValue(seoConfig.get("og_image")), webInfo.getAvatar()), baseUrl);
 
-        Map<String, Object> meta = createWebsiteMeta(title, description, keywords, baseUrl, "", "website", ogImage, webInfo, seoConfig);
-        meta.put("twitter:card", firstNonBlank(stringValue(seoConfig.get("twitter_card")), "summary_large_image"));
+        Map<String, Object> meta = new LinkedHashMap<>(seoMetaService.generateSiteMeta(sourceLanguage));
+        if (meta.isEmpty() || meta.containsKey("error") || !meta.containsKey("title")) {
+            meta = createWebsiteMeta(title, description, keywords, baseUrl, "", "website", ogImage, webInfo, seoConfig);
+        } else {
+            meta.putIfAbsent("twitter:card", firstNonBlank(stringValue(seoConfig.get("twitter_card")), "summary_large_image"));
+        }
 
         String homeContent = "<div class=\"home-prerender\"><div class=\"home-hero\"><h1>" + text(firstNonBlank(webInfo.getWebName(), webInfo.getWebTitle(), siteName))
                 + "</h1><p>" + text(description)
@@ -578,16 +582,23 @@ public class PrerenderService {
     }
 
     private void renderPlaceholderPage(String route, String pageType, String heading, String description, String keywordSuffix, String content) {
-        renderSimplePageWithTitle(route, pageType, heading + " - " + getSiteName(getWebInfo()), description, keywordSuffix + "," + getSiteName(getWebInfo()), content, "website");
+        renderSimplePageWithTitle(route, pageType, heading + " - " + getSiteName(getWebInfo()), description, keywordSuffix + "," + getSiteName(getWebInfo()), content, "website", "noindex, follow");
     }
 
     private void renderSimplePageWithTitle(String route, String pageType, String title, String description, String keywords, String content, String ogType) {
+        renderSimplePageWithTitle(route, pageType, title, description, keywords, content, ogType, null);
+    }
+
+    private void renderSimplePageWithTitle(String route, String pageType, String title, String description, String keywords, String content, String ogType, String robots) {
         WebInfo webInfo = getWebInfo();
         Map<String, Object> seoConfig = getSeoConfig();
         String sourceLanguage = getSourceLanguage();
         String baseUrl = getBaseUrl(webInfo);
         String ogImage = ensureAbsoluteImageUrl(firstNonBlank(stringValue(seoConfig.get("og_image")), webInfo.getAvatar()), baseUrl);
         Map<String, Object> meta = createWebsiteMeta(title, description, keywords, baseUrl, "/" + route, ogType, ogImage, webInfo, seoConfig);
+        if (StringUtils.hasText(robots)) {
+            meta.put("robots", robots);
+        }
 
         writePage(route, PrerenderPageData.builder()
                 .title(title)
@@ -618,7 +629,7 @@ public class PrerenderService {
         meta.put("og:type", ogType);
         meta.put("og:url", canonicalUrl);
         meta.put("og:image", ogImage);
-        meta.put("og:site_name", firstNonBlank(stringValue(seoConfig.get("og_site_name")), getSiteName(webInfo)));
+        meta.put("og:site_name", getSiteName(webInfo));
         meta.put("twitter:card", firstNonBlank(stringValue(seoConfig.get("twitter_card")), "summary"));
         meta.put("twitter:title", title);
         meta.put("twitter:description", description);

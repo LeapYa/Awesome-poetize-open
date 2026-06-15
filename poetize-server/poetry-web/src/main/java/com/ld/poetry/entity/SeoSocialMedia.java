@@ -55,11 +55,6 @@ public class SeoSocialMedia implements Serializable {
     @TableField("og_type")
     private String ogType;
 
-    /**
-     * Open Graph站点名称
-     */
-    @TableField("og_site_name")
-    private String ogSiteName;
 
     /**
      * Open Graph图片

@@ -60,7 +60,7 @@ public class PrerenderEngine {
             "yandex_site_verification", "sogou_site_verification", "so_site_verification",
             "shenma_site_verification", "yahoo_site_verification", "duckduckgo_site_verification",
             "twitter_site", "twitter_creator", "fb_app_id", "fb_page_url",
-            "og_type", "og_site_name", "linkedin_company_id",
+            "og_type", "linkedin_company_id",
             "pinterest_verification", "pinterest_description",
             "wechat_miniprogram_id", "wechat_miniprogram_path", "qq_miniprogram_path",
             "_rawHtmlSnippets");
@@ -79,7 +79,6 @@ public class PrerenderEngine {
             Map.entry("fb_app_id", "fb:app_id"),
             Map.entry("fb_page_url", "fb:page_url"),
             Map.entry("og_type", "og:type"),
-            Map.entry("og_site_name", "og:site_name"),
             Map.entry("linkedin_company_id", "linkedin:company"),
             Map.entry("pinterest_verification", "p:domain_verify"),
             Map.entry("pinterest_description", "pinterest:description"),

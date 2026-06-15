@@ -86,7 +86,6 @@ public class ApiController {
             "default_author",
             "og_image",
             "site_logo",
-            "og_site_name",
             "og_type",
             "twitter_card",
             "twitter_site",

@@ -284,7 +284,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
                 jsonConfig.put("twitter_site", nullSafeString(social.getTwitterSite(), ""));
                 jsonConfig.put("twitter_creator", nullSafeString(social.getTwitterCreator(), ""));
                 jsonConfig.put("og_type", nullSafeString(social.getOgType(), "article"));
-                jsonConfig.put("og_site_name", nullSafeString(social.getOgSiteName(), "POETIZE"));
                 jsonConfig.put("og_image", nullSafeString(social.getOgImage(), ""));
                 jsonConfig.put("fb_app_id", nullSafeString(social.getFbAppId(), ""));
                 jsonConfig.put("fb_page_url", nullSafeString(social.getFbPageUrl(), ""));
@@ -480,7 +479,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
         jsonConfig.put("twitter_site", "");
         jsonConfig.put("twitter_creator", "");
         jsonConfig.put("og_type", "article");
-        jsonConfig.put("og_site_name", "POETIZE");
         jsonConfig.put("og_image", "");
         jsonConfig.put("fb_app_id", "");
         jsonConfig.put("fb_page_url", "");
@@ -726,7 +724,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
         social.setTwitterSite(getStringValue(jsonConfig, "twitter_site", ""));
         social.setTwitterCreator(getStringValue(jsonConfig, "twitter_creator", ""));
         social.setOgType(getStringValue(jsonConfig, "og_type", "article"));
-        social.setOgSiteName(getStringValue(jsonConfig, "og_site_name", "POETIZE"));
         social.setOgImage(getStringValue(jsonConfig, "og_image", ""));
         social.setFbAppId(getStringValue(jsonConfig, "fb_app_id", ""));
         social.setFbPageUrl(getStringValue(jsonConfig, "fb_page_url", ""));
@@ -815,7 +812,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
         social.setSeoConfigId(configId);
         social.setTwitterCard("summary_large_image");
         social.setOgType("article");
-        social.setOgSiteName("POETIZE");
         social.setLinkedinMode("standard");
         social.setCreateTime(LocalDateTime.now());
         social.setUpdateTime(LocalDateTime.now());

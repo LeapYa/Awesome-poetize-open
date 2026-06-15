@@ -713,7 +713,6 @@ X-API-KEY: {{apiConfig.apiKey}}
   "default_author": "Admin",
   "og_image": "https://example.com/og.png",
   "site_logo": "https://example.com/logo.png",
-  "og_site_name": "POETIZE",
   "og_type": "article",
   "twitter_card": "summary_large_image",
   "twitter_site": "@poetize",
