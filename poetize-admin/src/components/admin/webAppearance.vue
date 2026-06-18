@@ -131,7 +131,9 @@
               <AiModelConfig
                 v-model="aiConfigs.modelConfig"
                 :advanced-config="aiConfigs.advancedConfig"
-                @update-advanced-config="updateAiAdvancedConfig" />
+                :vision-supported="aiConfigs.visionConfig.visionSupported"
+                @update-advanced-config="updateAiAdvancedConfig"
+                @update-vision-supported="updateAiVisionSupported" />
             </el-collapse-item>
             <el-collapse-item title="聊天设置" name="chat">
               <AiChatSettings v-model="aiConfigs.chatConfig" />
@@ -140,7 +142,10 @@
               <AiAppearanceConfig v-model="aiConfigs.appearanceConfig" />
             </el-collapse-item>
             <el-collapse-item title="AI扩展工具" name="tools">
-              <AiToolsConfig v-model="aiConfigs.toolsConfig" />
+              <AiToolsConfig
+                v-model="aiConfigs.toolsConfig"
+                :vision-config-prop="aiConfigs.visionConfig"
+                @update-vision-config="updateAiVisionConfig" />
             </el-collapse-item>
             <el-collapse-item title="高级设置" name="advanced">
               <AiAdvancedConfig
@@ -194,10 +199,17 @@
               v-if="currentMobileConfig === 'model'"
               v-model="aiConfigs.modelConfig"
               :advanced-config="aiConfigs.advancedConfig"
-              @update-advanced-config="updateAiAdvancedConfig" />
+              :vision-supported="aiConfigs.visionConfig.visionSupported"
+              @update-advanced-config="updateAiAdvancedConfig"
+              @update-vision-supported="updateAiVisionSupported" />
             <AiChatSettings v-if="currentMobileConfig === 'chat'" v-model="aiConfigs.chatConfig" />
             <AiAppearanceConfig v-if="currentMobileConfig === 'appearance'" v-model="aiConfigs.appearanceConfig" />
-            <AiToolsConfig v-if="currentMobileConfig === 'tools'" v-model="aiConfigs.toolsConfig" @close-dialog="mobileConfigDialogVisible = false" />
+            <AiToolsConfig
+              v-if="currentMobileConfig === 'tools'"
+              v-model="aiConfigs.toolsConfig"
+              :vision-config-prop="aiConfigs.visionConfig"
+              @update-vision-config="updateAiVisionConfig"
+              @close-dialog="mobileConfigDialogVisible = false" />
             <AiAdvancedConfig
               v-if="currentMobileConfig === 'advanced'"
               v-model="aiConfigs.advancedConfig"
@@ -772,6 +784,13 @@ export default {
             chunkSize: 700,
             chunkOverlap: 120
           }
+        },
+        visionConfig: {
+          visionSupported: false,
+          visionProvider: '',
+          visionApiKey: '',
+          visionApiBase: '',
+          visionModel: ''
         }
       },
       // 字体管理状态
@@ -1470,6 +1489,13 @@ export default {
               chunkOverlap: rag.chunkOverlap || 120
             }
           };
+          this.aiConfigs.visionConfig = {
+            visionSupported: config.visionSupported === true || config.vision_supported === true,
+            visionProvider: config.visionProvider || config.vision_provider || '',
+            visionApiKey: config.visionApiKey || config.vision_api_key || '',
+            visionApiBase: config.visionApiBase || config.vision_api_base || '',
+            visionModel: config.visionModel || config.vision_model || ''
+          };
         }
       } catch (error) {
         console.error('加载AI配置失败:', error);
@@ -1519,6 +1545,11 @@ export default {
           memoryAutoSave: this.aiConfigs.toolsConfig.memoryAutoSave,
           memoryAutoRecall: this.aiConfigs.toolsConfig.memoryAutoRecall,
           memoryRecallLimit: this.aiConfigs.toolsConfig.memoryRecallLimit,
+          // 视觉模型配置（图像识别）
+          visionSupported: this.aiConfigs.visionConfig.visionSupported === true,
+          visionProvider: this.aiConfigs.visionConfig.visionProvider || '',
+          visionApiBase: this.aiConfigs.visionConfig.visionApiBase || '',
+          visionModel: this.aiConfigs.visionConfig.visionModel || '',
           extraConfig: JSON.stringify({
             commentSkill: this.aiConfigs.chatConfig.commentSkill || DEFAULT_COMMENT_SKILL_DOCUMENT,
             thinkingProfile: this.aiConfigs.advancedConfig.thinkingProfile || 'auto',
@@ -1542,6 +1573,9 @@ export default {
         }
         if (this.aiConfigs.toolsConfig.mem0ApiKey && !this.aiConfigs.toolsConfig.mem0ApiKey.includes('*')) {
           saveData.mem0ApiKey = this.aiConfigs.toolsConfig.mem0ApiKey;
+        }
+        if (this.aiConfigs.visionConfig.visionApiKey && !this.aiConfigs.visionConfig.visionApiKey.includes('*')) {
+          saveData.visionApiKey = this.aiConfigs.visionConfig.visionApiKey;
         }
         if (this.aiConfigs.toolsConfig.rag.embeddingApiKey && !this.aiConfigs.toolsConfig.rag.embeddingApiKey.includes('*')) {
           const extraConfig = JSON.parse(saveData.extraConfig);
@@ -1580,7 +1614,8 @@ export default {
         model: this.aiConfigs.modelConfig,
         chat: this.aiConfigs.chatConfig,
         appearance: this.aiConfigs.appearanceConfig,
-        advanced: this.aiConfigs.advancedConfig
+        advanced: this.aiConfigs.advancedConfig,
+        vision: this.aiConfigs.visionConfig
       };
       const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -1596,6 +1631,7 @@ export default {
         if (config.chat) Object.assign(this.aiConfigs.chatConfig, config.chat);
         if (config.appearance) Object.assign(this.aiConfigs.appearanceConfig, config.appearance);
         if (config.advanced) Object.assign(this.aiConfigs.advancedConfig, config.advanced);
+        if (config.vision) Object.assign(this.aiConfigs.visionConfig, config.vision);
         this.$message.success('配置导入成功');
       } catch (error) {
         this.$message.error('配置导入失败：' + error.message);
@@ -1604,6 +1640,14 @@ export default {
 
     updateAiAdvancedConfig(config) {
       Object.assign(this.aiConfigs.advancedConfig, config);
+    },
+
+    updateAiVisionConfig(config) {
+      Object.assign(this.aiConfigs.visionConfig, config);
+    },
+
+    updateAiVisionSupported(val) {
+      this.aiConfigs.visionConfig.visionSupported = val === true;
     },
 
     parseJsonObject(text) {

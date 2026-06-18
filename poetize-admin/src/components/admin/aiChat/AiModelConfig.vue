@@ -38,7 +38,7 @@
       <el-form-item id="field-ai-model-name" label="模型名称">
         <el-select 
           v-model="modelConfig.model" 
-          placeholder="请输入模型名称（如：gpt-5、claude-3-5-sonnet-20241022、deepseek-v4-flash等）"
+          placeholder="请输入模型名称（如：qwen-3.7-plus、glm-5、gpt-5.5、deepseek-v4-flash等）"
           filterable 
           allow-create
           class="custom-model-select">
@@ -186,6 +186,14 @@
         <small class="help-text">启用后AI回复将实时显示，提供更流畅的对话体验，包括工具调用过程可视化</small>
       </el-form-item>
 
+      <el-form-item id="field-ai-vision-supported" label="原生视觉能力">
+        <el-switch v-model="localVisionSupported" @change="emitVisionSupportedChange"></el-switch>
+        <small class="help-text">
+          开启表示当前主模型原生具备多模态视觉理解能力（如 Qwen-3.7-Plus、GLM-5V-Turbo、MiniMax-M3、GPT-5.5 等），用户上传图片将以多模态消息直接交由主模型处理；
+          关闭时若在「AI扩展工具」中配置了独立视觉模型，则改由 analyze_image 工具按需调用。
+        </small>
+      </el-form-item>
+
       <el-form-item label="连接测试">
         <el-button @click="testConnection" :loading="testing">测试连接</el-button>
         <span v-if="isApiKeyMasked" class="help-text" style="margin-left: 10px;">
@@ -211,7 +219,7 @@ export default {
       default: () => ({
         provider: 'openai',
         apiKey: '',
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-5.5',
         baseUrl: '',
         temperature: 0.7,
         maxTokens: 1000,
@@ -230,6 +238,10 @@ export default {
     advancedConfig: {
       type: Object,
       default: () => ({})
+    },
+    visionSupported: {
+      type: Boolean,
+      default: false
     }
   },
   
@@ -241,6 +253,7 @@ export default {
       isApiKeyMasked: true,
       showingFullKey: false,
       originalMaskedKey: '',
+      localVisionSupported: this.visionSupported === true,
       thinkingConfig: {
         enableThinking: false,
         reasoningEffort: 'medium',
@@ -265,6 +278,7 @@ export default {
              model.includes('o3') ||
              model.includes('o4') ||
              model.includes('gpt-5') ||
+             model.includes('claude-4') ||
              model.includes('reasoner') ||
              model.includes('deepseek-r1') ||
              model.includes('deepseek-v4') ||
@@ -336,10 +350,23 @@ export default {
         }
       },
       deep: true
+    },
+
+    visionSupported: {
+      handler(newVal) {
+        const normalized = newVal === true;
+        if (normalized !== this.localVisionSupported) {
+          this.localVisionSupported = normalized;
+        }
+      }
     }
   },
   
   methods: {
+    emitVisionSupportedChange() {
+      this.$emit('update-vision-supported', this.localVisionSupported === true);
+    },
+
     onMaxTokensInput(value) {
       const normalized = String(value == null ? '' : value).replace(/[^\d]/g, '');
       if (value !== normalized) {
@@ -382,7 +409,7 @@ export default {
       };
       const defaultModels = {
         deepseek: 'deepseek-v4-flash',
-        worldrouter: 'gpt-5.4'
+        worldrouter: 'gpt-5.5'
       };
       if (defaultBaseUrls[this.modelConfig.provider]
           && (!this.modelConfig.baseUrl || this.modelConfig.provider === 'worldrouter')) {

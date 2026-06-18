@@ -4,6 +4,15 @@
  */
 import { defineStore } from 'pinia'
 import constant from '@/utils/constant'
+import {
+  saveImage,
+  getMessageImages,
+  associateImagesToMessage,
+  deleteImage,
+  clearAllImages,
+  cleanupOldImages,
+} from '@/utils/aiImageStorage'
+import { calculateTotalSizeMB } from '@/utils/imageCompress'
 
 const DEFAULT_AI_CHAT_CONFIG = {
   enabled: false,
@@ -21,6 +30,8 @@ const DEFAULT_AI_CHAT_CONFIG = {
   max_message_length: 500,
   max_conversation_length: 20,
   rate_limit: 20,
+  vision_supported: false,
+  vision_configured: false,
 }
 
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key)
@@ -56,6 +67,8 @@ const normalizeAIChatConfig = (config = {}) => {
     max_message_length: pickConfigValue(config, 'max_message_length', 'maxMessageLength', DEFAULT_AI_CHAT_CONFIG.max_message_length),
     max_conversation_length: pickConfigValue(config, 'max_conversation_length', 'maxConversationLength', DEFAULT_AI_CHAT_CONFIG.max_conversation_length),
     rate_limit: pickConfigValue(config, 'rate_limit', 'rateLimit', DEFAULT_AI_CHAT_CONFIG.rate_limit),
+    vision_supported: pickConfigValue(config, 'vision_supported', 'visionSupported', DEFAULT_AI_CHAT_CONFIG.vision_supported),
+    vision_configured: pickConfigValue(config, 'vision_configured', 'visionConfigured', DEFAULT_AI_CHAT_CONFIG.vision_configured),
   }
 
   if (!hasOwn(config, 'enable_streaming') && hasOwn(config, 'streaming_enabled')) {
@@ -84,6 +97,7 @@ export const useAIChatStore = defineStore('aiChat', {
     editingContent: '',
     editingOriginalAttachedPage: null,
     attachedPageContext: null,
+    attachedImages: [],
   }),
 
   getters: {
@@ -119,6 +133,14 @@ export const useAIChatStore = defineStore('aiChat', {
           role: msg.role,
           content: msg.content,
         }))
+    },
+    /** 是否允许上传图片：主模型支持视觉 或 已配置视觉模型工具 */
+    visionEnabled: (state) => {
+      return state.config?.vision_supported === true || state.config?.vision_configured === true
+    },
+    /** 主模型原生支持视觉（决定前端是否构造多模态展示） */
+    visionNative: (state) => {
+      return state.config?.vision_supported === true
     },
   },
 
@@ -476,7 +498,20 @@ export const useAIChatStore = defineStore('aiChat', {
           url: this.attachedPageContext.url,
         }
       }
-      this.addMessage(content, 'user', messageMetadata)
+      // 携带图片附件到用户消息（用于前端展示）
+      const pendingImages = (this.attachedImages || []).slice()
+      if (pendingImages.length > 0) {
+        messageMetadata.images = pendingImages.map((img) => img.url)
+        messageMetadata.imageIds = pendingImages.map((img) => img.imageId).filter(Boolean)
+      }
+      const userMessage = this.addMessage(content, 'user', messageMetadata)
+
+      // 将图片关联到用户消息（持久化到 IndexedDB）
+      if (messageMetadata.imageIds && messageMetadata.imageIds.length > 0) {
+        associateImagesToMessage(String(userMessage.id), messageMetadata.imageIds).catch(
+          (err) => console.error('关联图片到消息失败:', err)
+        )
+      }
 
       this.checkUserLogin()
 
@@ -490,9 +525,9 @@ export const useAIChatStore = defineStore('aiChat', {
 
       try {
         if (this.isStreamingEnabled) {
-          return await this.sendStreamingMessage(content)
+          return await this.sendStreamingMessage(content, messageMetadata.images || [])
         }
-        return await this.sendNormalMessage(content)
+        return await this.sendNormalMessage(content, messageMetadata.images || [])
       } catch (error) {
         console.error('发送消息失败:', error)
         return {
@@ -648,7 +683,106 @@ export const useAIChatStore = defineStore('aiChat', {
       this.attachedPageContext = null
     },
 
-    async sendNormalMessage(content) {
+    /**
+     * 添加图片附件（base64 dataUrl，存入 IndexedDB）
+     * @param {string} dataUrl base64 data URL
+     * @param {string} name 图片名称（可选）
+     * @param {number} size 原始字节大小（可选）
+     * @returns {Promise<boolean>} 是否添加成功
+     */
+    async attachImage(dataUrl, name = '', size = 0) {
+      if (!dataUrl) return false
+      // 限制最多 4 张图片
+      if (this.attachedImages.length >= 4) {
+        return false
+      }
+      // 校验总大小不超过 20MB
+      const currentTotal = calculateTotalSizeMB(
+        this.attachedImages.map((img) => img.url)
+      )
+      const newTotal = calculateTotalSizeMB([dataUrl])
+      if (currentTotal + newTotal > 20) {
+        return false
+      }
+      try {
+        const imageId = await saveImage(
+          dataUrl,
+          dataUrl.substring(dataUrl.indexOf(':') + 1, dataUrl.indexOf(';')),
+          size || Math.round((dataUrl.length * 3) / 4)
+        )
+        this.attachedImages.push({ url: dataUrl, name, imageId })
+        return true
+      } catch (error) {
+        console.error('保存图片到 IndexedDB 失败:', error)
+        // 即使 IndexedDB 失败也允许发送（base64 已在内存中）
+        this.attachedImages.push({ url: dataUrl, name, imageId: null })
+        return true
+      }
+    },
+
+    /**
+     * 上传图片到服务端压缩，返回 base64 dataUrl 后存入 IndexedDB
+     * @param {File} file 图片文件
+     * @returns {Promise<boolean>} 是否添加成功
+     */
+    async attachImageFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        return false
+      }
+      // 限制单张 5MB
+      if (file.size > 5 * 1024 * 1024) {
+        return false
+      }
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const response = await fetch(
+          `${constant.baseURL}/ai/chat/compressImage`,
+          {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+          }
+        )
+        const result = await response.json()
+        if (!result.flag || !result.data || !result.data.dataUrl) {
+          console.error('服务端图片压缩失败:', result.message)
+          return false
+        }
+        return await this.attachImage(
+          result.data.dataUrl,
+          file.name,
+          result.data.compressedSize
+        )
+      } catch (error) {
+        console.error('上传图片压缩失败:', error)
+        return false
+      }
+    },
+
+    /**
+     * 移除指定索引的图片附件
+     */
+    async removeAttachedImage(index) {
+      if (index < 0 || index >= this.attachedImages.length) return
+      const img = this.attachedImages[index]
+      if (img && img.imageId) {
+        deleteImage(img.imageId).catch((err) =>
+          console.error('从 IndexedDB 删除图片失败:', err)
+        )
+      }
+      this.attachedImages.splice(index, 1)
+    },
+
+    /**
+     * 清空所有图片附件
+     */
+    clearAttachedImages() {
+      // 注意：这里只清空当前附件列表，不删 IndexedDB 中已关联到消息的图片
+      this.attachedImages = []
+    },
+
+    async sendNormalMessage(content, images = []) {
       this.typing = true
       this.shouldStop = false
       this.abortController = new AbortController()
@@ -666,6 +800,7 @@ export const useAIChatStore = defineStore('aiChat', {
             history: this.messageHistory,
             userId: this.currentUser?.id || 'anonymous',
             pageContext: this.attachedPageContext,
+            images: images,
           }),
           signal: this.abortController.signal,
         })
@@ -684,6 +819,9 @@ export const useAIChatStore = defineStore('aiChat', {
           }
           if (this.attachedPageContext) {
             this.attachedPageContext = null
+          }
+          if (this.attachedImages && this.attachedImages.length > 0) {
+            this.attachedImages = []
           }
           return {
             success: true,
@@ -705,7 +843,7 @@ export const useAIChatStore = defineStore('aiChat', {
       }
     },
 
-    async sendStreamingMessage(content) {
+    async sendStreamingMessage(content, images = []) {
       this.typing = true
       this.streaming = true
       this.shouldStop = false
@@ -726,6 +864,7 @@ export const useAIChatStore = defineStore('aiChat', {
               history: this.messageHistory,
               userId: this.currentUser?.id || 'anonymous',
               pageContext: this.attachedPageContext,
+              images: images,
             }),
             signal: this.abortController.signal,
           }
@@ -857,6 +996,64 @@ export const useAIChatStore = defineStore('aiChat', {
                   continue
                 }
 
+                if (currentEventName === 'memory_search') {
+                  const searchData = eventData.data || eventData
+                  const requestId = searchData.requestId
+                  const query = searchData.query || ''
+                  const limit = searchData.limit || 10
+
+                  if (!aiMessage) {
+                    this.typing = false
+                    aiMessage = this.addMessage('', 'assistant', {
+                      streaming: true,
+                    })
+                    firstChunkReceived = true
+                  }
+
+                  this.addOrUpdateToolEvent(aiMessage.id, {
+                    type: 'call',
+                    tool: 'search_memory',
+                    arguments: JSON.stringify({ query, limit }),
+                    status: 'executing',
+                  })
+                  await this.flushStreamingToolState()
+
+                  // 搜索本地历史（IndexedDB/localStorage），返回 JSON（text + images）
+                  const searchResult = await this.searchLocalMemory(query, limit)
+
+                  // POST 结果回后端，解除工具阻塞
+                  try {
+                    await fetch(
+                      `${constant.baseURL}/ai/chat/memorySearchResult`,
+                      {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({
+                          requestId,
+                          result: searchResult,
+                        }),
+                      }
+                    )
+
+                    this.addOrUpdateToolEvent(aiMessage.id, {
+                      type: 'result',
+                      tool: 'search_memory',
+                      result: searchResult,
+                      status: 'completed',
+                    })
+                  } catch (searchErr) {
+                    console.error('记忆搜索结果提交失败:', searchErr)
+                    this.addOrUpdateToolEvent(aiMessage.id, {
+                      type: 'result',
+                      tool: 'search_memory',
+                      error: searchErr.message || '搜索失败',
+                      status: 'failed',
+                    })
+                  }
+                  continue
+                }
+
                 if (eventData.content) {
                   fullText += eventData.content
 
@@ -892,6 +1089,10 @@ export const useAIChatStore = defineStore('aiChat', {
 
         if (this.attachedPageContext) {
           this.attachedPageContext = null
+        }
+
+        if (this.attachedImages && this.attachedImages.length > 0) {
+          this.attachedImages = []
         }
 
         return {
@@ -952,17 +1153,134 @@ export const useAIChatStore = defineStore('aiChat', {
       return { pass: true }
     },
 
+    /**
+     * 搜索本地聊天历史 — 供 MemorySearchTool 两轮调用使用。
+     * 基于关键词匹配 this.messages（内存中最近 100 条，由 saveHistory 持久化到 localStorage）
+     * 中的消息内容，返回相关历史片段。
+     * <p>
+     * 图片处理：搜索结果中相关消息的图片会从 IndexedDB 加载 base64 数据，
+     * 一并返回给后端。后端调用视觉模型识别图片内容，让 AI 能"看到"历史图片。
+     * 限制最多返回 2 张图片，避免结果过大。
+     */
+    async searchLocalMemory(query, limit = 10) {
+      try {
+        const queryLower = (query || '').toLowerCase().trim()
+        if (!queryLower) {
+          return JSON.stringify({ text: '搜索关键词为空，未找到相关记忆。', images: [] })
+        }
+
+        // 分词：按空格/标点拆分，过滤过短的词
+        const keywords = queryLower
+          .split(/[\s,，。.!！?？;；:：、]+/)
+          .filter((k) => k.length > 1)
+
+        if (keywords.length === 0) {
+          keywords.push(queryLower)
+        }
+
+        // 搜索当前内存中的消息（saveHistory 保留最近100条）
+        const candidates = this.messages
+          .filter((msg) => msg && typeof msg.content === 'string' && msg.content.trim())
+          .map((msg, index) => {
+            const content = msg.content.toLowerCase()
+            let score = 0
+            for (const kw of keywords) {
+              if (content.includes(kw)) {
+                score += kw.length
+              }
+            }
+            return { msg, index, score }
+          })
+          .filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit)
+
+        if (candidates.length === 0) {
+          return JSON.stringify({ text: `未找到与 "${query}" 相关的对话记忆。`, images: [] })
+        }
+
+        // 格式化文字结果
+        let textResult = `找到 ${candidates.length} 条相关记忆：\n\n`
+        candidates.forEach((item, i) => {
+          const role = item.msg.role === 'user' ? '用户' : 'AI'
+          const content = item.msg.content
+          const truncated =
+            content.length > 500
+              ? content.substring(0, 500) + '...'
+              : content
+
+          const imageCount =
+            (item.msg.imageIds && item.msg.imageIds.length) ||
+            (item.msg.images && item.msg.images.length) ||
+            0
+          const imageMarker = imageCount > 0 ? ` [包含${imageCount}张图片]` : ''
+
+          const timeStr = item.msg.timestamp
+            ? new Date(item.msg.timestamp).toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : ''
+
+          textResult += `${i + 1}. [${role}]${timeStr ? `(${timeStr})` : ''}${imageMarker} ${truncated}\n\n`
+        })
+
+        // 从 IndexedDB 加载相关消息的图片（最多 2 张，避免结果过大）
+        const images = []
+        const MAX_IMAGES = 2
+        for (const item of candidates) {
+          if (images.length >= MAX_IMAGES) break
+          // 只加载用户消息的图片
+          if (item.msg.role !== 'user') continue
+          const imageIds = item.msg.imageIds || []
+          if (imageIds.length === 0) continue
+
+          try {
+            const msgImages = await getMessageImages(String(item.msg.id))
+            for (const dataUrl of msgImages) {
+              if (images.length >= MAX_IMAGES) break
+              // 限制单张图片大小（base64 字符串长度不超过 1.5M，约 1MB 原始数据）
+              if (dataUrl && dataUrl.length < 1500000) {
+                images.push(dataUrl)
+              }
+            }
+          } catch (e) {
+            console.warn('加载历史图片失败:', e)
+          }
+        }
+
+        return JSON.stringify({ text: textResult, images })
+      } catch (error) {
+        console.error('搜索本地记忆失败:', error)
+        return JSON.stringify({
+          text: '记忆搜索失败：' + (error.message || '未知错误'),
+          images: [],
+        })
+      }
+    },
+
     saveHistory() {
       try {
         const maxMessages = 100
-        const toSave = this.messages.slice(-maxMessages)
+        const toSave = this.messages.slice(-maxMessages).map((msg) => {
+          // 不把 base64 图片数据存入 localStorage（太大）
+          // 只保留 imageIds 引用，图片数据在 IndexedDB 中
+          const { images, imageIds, ...rest } = msg
+          const slim = { ...rest }
+          if (imageIds && imageIds.length > 0) {
+            slim.imageIds = imageIds
+          }
+          return slim
+        })
         localStorage.setItem('ai_chat_history', JSON.stringify(toSave))
       } catch (error) {
         console.error('保存聊天历史失败:', error)
       }
     },
 
-    restoreHistory() {
+    async restoreHistory() {
       try {
         const saved = localStorage.getItem('ai_chat_history')
         if (saved) {
@@ -972,14 +1290,26 @@ export const useAIChatStore = defineStore('aiChat', {
           this.messages = parsed.filter(
             (msg) => msg && typeof msg.content === 'string' && allowedRoles.includes(msg.role)
           )
-          this.messages.forEach((msg) => {
+          // 异步从 IndexedDB 恢复图片
+          for (const msg of this.messages) {
             msg.isNew = false
             if (msg.role === 'assistant') {
               this.ensureMessageStructure(msg)
               this.syncToolEvents(msg)
             }
-          })
+            // 如果消息有关联图片，从 IndexedDB 加载
+            if (msg.imageIds && msg.imageIds.length > 0) {
+              const imageUrls = await getMessageImages(String(msg.id))
+              if (imageUrls && imageUrls.length > 0) {
+                msg.images = imageUrls
+              }
+            }
+          }
         }
+        // 清理超过 7 天的旧图片
+        cleanupOldImages(7).catch((err) =>
+          console.error('清理旧图片失败:', err)
+        )
       } catch (error) {
         console.error('恢复聊天历史失败:', error)
         this.messages = []
@@ -989,6 +1319,9 @@ export const useAIChatStore = defineStore('aiChat', {
     clearHistory() {
       this.messages = []
       localStorage.removeItem('ai_chat_history')
+      clearAllImages().catch((err) =>
+        console.error('清空 IndexedDB 图片失败:', err)
+      )
       this.addWelcomeMessage()
     },
 

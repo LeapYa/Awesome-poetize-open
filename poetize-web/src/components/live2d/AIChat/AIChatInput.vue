@@ -30,13 +30,41 @@
       </button>
     </div>
 
-    <!-- 附加页面按钮区域 -->
+    <!-- 已附加图片预览条 -->
+    <div v-if="attachedImages.length > 0" class="attached-images-bar">
+      <div class="attached-images-list">
+        <div
+          v-for="(img, index) in attachedImages"
+          :key="index"
+          class="attached-image-item"
+        >
+          <img :src="img.url" :alt="img.name || '图片'" class="attached-image-thumb" />
+          <button
+            class="remove-image-btn"
+            @click="handleRemoveImage(index)"
+            title="移除图片"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      <button
+        v-if="attachedImages.length > 0"
+        class="clear-images-btn"
+        @click="handleClearImages"
+        title="清空所有图片"
+      >
+        清空
+      </button>
+    </div>
+
+    <!-- 附加按钮区域（弹出菜单：页面 / 图片） -->
     <div v-if="!attachedPage" class="attach-page-container">
       <button
         class="attach-page-btn"
         :disabled="sending"
-        @click="handleAttachPage"
-        title="附加当前页面内容"
+        @click="toggleAttachMenu"
+        title="附加内容"
       >
         <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
           <path
@@ -46,6 +74,44 @@
         </svg>
         <span class="attach-text">附加</span>
       </button>
+
+      <!-- 附加内容弹出菜单 -->
+      <transition name="attach-menu">
+        <div v-if="showAttachMenu" class="attach-menu" @click.stop>
+          <button class="attach-menu-item" @click="handleAttachPage">
+            <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326z m1.8 562H232V136h302v216c0 23.2 18.8 42 42 42h216v494z"
+                fill="currentColor"
+              />
+            </svg>
+            <span>页面</span>
+          </button>
+          <button
+            v-if="visionEnabled"
+            class="attach-menu-item"
+            @click="triggerImageUpload"
+          >
+            <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M864 128H160C107 128 64 171 64 224v576c0 53 43 96 96 96h704c53 0 96-43 96-96V224c0-53-43-96-96-96z m0 672H160V224h704v576z M320 384m-64 0a64 64 0 1 0 128 0 64 64 0 1 0-128 0Z M832 736H192v-64l160-160 128 128 192-192 160 160z"
+                fill="currentColor"
+              />
+            </svg>
+            <span>图片</span>
+          </button>
+        </div>
+      </transition>
+
+      <!-- 隐藏的图片上传 input -->
+      <input
+        ref="imageInputRef"
+        type="file"
+        accept="image/*"
+        multiple
+        style="display: none"
+        @change="handleImageSelected"
+      />
     </div>
 
     <div class="chat-input-container">
@@ -84,7 +150,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAIChatStore } from '@/stores/aiChat'
 
 const DEFAULT_THEME_COLOR = '#4facfe'
@@ -164,7 +230,10 @@ export default {
   setup(props, { emit }) {
     const aiChatStore = useAIChatStore()
     const inputRef = ref(null)
+    const imageInputRef = ref(null)
     const localValue = ref(props.modelValue)
+    const showAttachMenu = ref(false)
+    const imageUploading = ref(false)
     const themeColor = computed(() => aiChatStore.themeColor || DEFAULT_THEME_COLOR)
     const themeStyleVars = computed(() => {
       const rgb =
@@ -188,10 +257,104 @@ export default {
     // 已附加的页面
     const attachedPage = computed(() => aiChatStore.attachedPageContext)
 
+    // 已附加的图片
+    const attachedImages = computed(() => aiChatStore.attachedImages)
+
+    // 视觉能力是否启用（控制图片上传入口可见性）
+    const visionEnabled = computed(() => aiChatStore.visionEnabled)
+
     // 是否可发送
     const canSend = computed(() => {
       return localValue.value.trim().length > 0 && !props.sending
     })
+
+    /**
+     * 切换附加菜单显示
+     */
+    const toggleAttachMenu = () => {
+      showAttachMenu.value = !showAttachMenu.value
+    }
+
+    /**
+     * 关闭附加菜单（点击外部时）
+     */
+    const closeAttachMenu = (event) => {
+      if (!showAttachMenu.value) return
+      const container = event.target.closest('.attach-page-container')
+      if (!container) {
+        showAttachMenu.value = false
+      }
+    }
+
+    /**
+     * 触发图片上传
+     */
+    const triggerImageUpload = () => {
+      showAttachMenu.value = false
+      if (imageInputRef.value) {
+        imageInputRef.value.value = ''
+        imageInputRef.value.click()
+      }
+    }
+
+    /**
+     * 处理图片选择
+     * 图片在本地压缩为 base64，存入 IndexedDB，不再上传到服务器
+     */
+    const handleImageSelected = async (event) => {
+      const files = event.target.files
+      if (!files || files.length === 0) return
+
+      // 检查图片数量限制
+      const remaining = 4 - aiChatStore.attachedImages.length
+      if (remaining <= 0) {
+        emit('image-upload-error', '最多只能上传4张图片')
+        return
+      }
+
+      const toUpload = Array.from(files).slice(0, remaining)
+      imageUploading.value = true
+
+      try {
+        for (const file of toUpload) {
+          // 校验文件类型和大小（最大 5MB，压缩前）
+          if (!file.type.startsWith('image/')) {
+            emit('image-upload-error', '只能上传图片文件')
+            continue
+          }
+          if (file.size > 5 * 1024 * 1024) {
+            emit('image-upload-error', '图片大小不能超过5MB')
+            continue
+          }
+
+          // 压缩并存储到 IndexedDB，返回是否成功
+          const success = await aiChatStore.attachImageFile(file)
+          if (!success) {
+            emit('image-upload-error', '图片处理失败，可能超出总大小限制')
+          }
+        }
+        emit('images-attached', aiChatStore.attachedImages)
+      } catch (error) {
+        console.error('图片处理失败:', error)
+        emit('image-upload-error', error.message || '图片处理失败')
+      } finally {
+        imageUploading.value = false
+      }
+    }
+
+    /**
+     * 移除指定图片
+     */
+    const handleRemoveImage = (index) => {
+      aiChatStore.removeAttachedImage(index)
+    }
+
+    /**
+     * 清空所有图片
+     */
+    const handleClearImages = () => {
+      aiChatStore.clearAttachedImages()
+    }
 
     /**
      * 输入处理
@@ -243,6 +406,7 @@ export default {
      * 附加当前页面
      */
     const handleAttachPage = () => {
+      showAttachMenu.value = false
       const success = aiChatStore.attachCurrentPage()
       if (success) {
         // 可以发射事件通知父组件显示提示
@@ -287,13 +451,27 @@ export default {
       }
     )
 
+    // 组件挂载时添加全局点击监听（用于关闭附加菜单）
+    onMounted(() => {
+      document.addEventListener('click', closeAttachMenu)
+    })
+
+    onBeforeUnmount(() => {
+      document.removeEventListener('click', closeAttachMenu)
+    })
+
     return {
       inputRef,
+      imageInputRef,
       localValue,
       themeStyleVars,
       isMobile,
       canSend,
       attachedPage,
+      attachedImages,
+      visionEnabled,
+      showAttachMenu,
+      imageUploading,
       handleInput,
       handleKeyDown,
       handleSend,
@@ -301,9 +479,23 @@ export default {
       handleCancelEdit,
       handleAttachPage,
       handleRemovePage,
+      toggleAttachMenu,
+      triggerImageUpload,
+      handleImageSelected,
+      handleRemoveImage,
+      handleClearImages,
     }
   },
-  emits: ['update:modelValue', 'send', 'stop', 'cancel-edit', 'page-attached', 'page-removed'],
+  emits: [
+    'update:modelValue',
+    'send',
+    'stop',
+    'cancel-edit',
+    'page-attached',
+    'page-removed',
+    'images-attached',
+    'image-upload-error',
+  ],
 }
 </script>
 
@@ -398,6 +590,131 @@ export default {
   background: rgba(255, 255, 255, 0.3);
   backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+}
+.attach-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 20px;
+  margin-bottom: 6px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 100;
+  min-width: 120px;
+}
+.attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: #2c3e50;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  white-space: nowrap;
+}
+.attach-menu-item:hover {
+  background: rgba(var(--ai-chat-theme-rgb), 0.1);
+  color: var(--ai-chat-theme-color);
+}
+.attach-menu-item svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+.attach-menu-enter-active,
+.attach-menu-leave-active {
+  transition: all 0.2s ease;
+}
+.attach-menu-enter-from,
+.attach-menu-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.attached-images-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  background: linear-gradient(90deg, rgba(var(--ai-chat-theme-rgb), 0.08) 0%, rgba(var(--ai-chat-theme-rgb), 0.14) 100%);
+  border-top: 1px solid rgba(var(--ai-chat-theme-rgb), 0.2);
+}
+.attached-images-list {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  overflow-x: auto;
+  min-width: 0;
+}
+.attached-images-list::-webkit-scrollbar {
+  height: 4px;
+}
+.attached-images-list::-webkit-scrollbar-thumb {
+  background: rgba(var(--ai-chat-theme-rgb), 0.3);
+  border-radius: 2px;
+}
+.attached-image-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--ai-chat-theme-rgb), 0.3);
+}
+.attached-image-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.remove-image-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.2s;
+}
+.remove-image-btn:hover {
+  background: rgba(255, 59, 48, 0.85);
+}
+.clear-images-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(var(--ai-chat-theme-rgb), 0.26);
+  border-radius: 4px;
+  color: var(--ai-chat-theme-color-deep);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.clear-images-btn:hover {
+  background: white;
+  border-color: var(--ai-chat-theme-color);
+  color: var(--ai-chat-theme-color);
 }
 .chat-input-container {
   display: flex;
@@ -600,5 +917,33 @@ export default {
   background: rgba(var(--ai-chat-theme-rgb), 0.18);
   border-color: var(--ai-chat-theme-color);
   box-shadow: 0 2px 10px rgba(var(--ai-chat-theme-rgb), 0.28);
+}
+.dark-mode .attach-menu {
+  background: #2c2c2c;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+.dark-mode .attach-menu-item {
+  color: #e0e0e0;
+}
+.dark-mode .attach-menu-item:hover {
+  background: rgba(var(--ai-chat-theme-rgb), 0.22);
+  color: var(--ai-chat-theme-color);
+}
+.dark-mode .attached-images-bar {
+  background: linear-gradient(90deg, rgba(var(--ai-chat-theme-rgb), 0.2) 0%, rgba(var(--ai-chat-theme-rgb), 0.3) 100%);
+  border-top-color: rgba(var(--ai-chat-theme-rgb), 0.3);
+}
+.dark-mode .attached-image-item {
+  border-color: rgba(var(--ai-chat-theme-rgb), 0.4);
+}
+.dark-mode .clear-images-btn {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(var(--ai-chat-theme-rgb), 0.35);
+  color: #eef4ff;
+}
+.dark-mode .clear-images-btn:hover {
+  background: rgba(var(--ai-chat-theme-rgb), 0.18);
+  border-color: var(--ai-chat-theme-color);
+  color: #fff;
 }
 </style>

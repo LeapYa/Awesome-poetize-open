@@ -332,6 +332,92 @@
         <el-button size="small" type="primary" @click="ragDialogVisible = false">知道了</el-button>
       </div>
     </el-dialog>
+
+    <!-- 视觉模型配置弹窗 -->
+    <el-dialog
+      title="配置图像识别 (视觉模型)"
+      :visible.sync="visionDialogVisible"
+      width="560px"
+      custom-class="centered-dialog"
+      :close-on-click-modal="false"
+      append-to-body>
+
+      <el-form v-if="visionDialogVisible" label-width="140px" class="compact-form">
+        <div class="form-tip" style="margin-bottom: 12px; color: #909399;">
+          此处配置独立视觉模型，作为图像识别工具（analyze_image）的后端。
+          仅当主模型不具备原生视觉能力时由主模型按需调用。若主模型已具备原生视觉能力，请在「AI模型配置」中开启对应开关。
+        </div>
+
+        <el-form-item id="field-ai-vision-provider" label="视觉模型服务商">
+          <el-select v-model="visionConfig.visionProvider" placeholder="请选择视觉模型服务商" clearable @change="emitVisionChange">
+            <el-option label="OpenAI / ChatGPT API" value="openai"></el-option>
+            <el-option label="Claude (Anthropic)" value="anthropic"></el-option>
+            <el-option label="DeepSeek" value="deepseek"></el-option>
+            <el-option label="硅基流动" value="siliconflow"></el-option>
+            <el-option label="OpenRouter" value="openrouter"></el-option>
+            <el-option label="WorldRouter" value="worldrouter"></el-option>
+            <el-option label="自定义API" value="custom"></el-option>
+          </el-select>
+          <div class="form-tip">作为图像识别工具的后端模型。留空则禁用图片识别能力。</div>
+        </el-form-item>
+
+        <el-form-item id="field-ai-vision-api-key" label="视觉模型API密钥" v-if="visionConfig.visionProvider">
+          <el-input
+            v-model="visionConfig.visionApiKey"
+            type="password"
+            show-password
+            placeholder="请输入视觉模型API密钥"
+            @input="onVisionApiKeyInput">
+          </el-input>
+          <div v-if="isVisionApiKeyMasked" class="form-tip" style="color: #67c23a;">
+            密钥已保存（出于安全考虑部分隐藏）
+            <el-button type="text" size="small" @click="showFullVisionApiKey" v-if="!showingFullVisionKey">重新输入密钥</el-button>
+          </div>
+          <div v-else class="form-tip">
+            API密钥保存后会自动隐藏敏感信息，这是正常的安全保护措施
+          </div>
+        </el-form-item>
+
+        <el-form-item id="field-ai-vision-base-url" label="视觉模型API基础URL" v-if="visionConfig.visionProvider && !['openai', 'anthropic'].includes(visionConfig.visionProvider)">
+          <el-input
+            v-model="visionConfig.visionApiBase"
+            placeholder="例如: https://api.example.com/v1"
+            @change="emitVisionChange">
+          </el-input>
+        </el-form-item>
+
+        <el-form-item id="field-ai-vision-model" label="视觉模型名称" v-if="visionConfig.visionProvider">
+          <el-select
+            v-model="visionConfig.visionModel"
+            placeholder="请输入视觉模型名称（如：qwen-3.7-plus、glm-5v-turbo、gpt-5.5 等）"
+            filterable
+            allow-create
+            style="width: 100%"
+            @change="emitVisionChange">
+            <el-option label="Qwen-3.7-Plus (通义千问)" value="qwen-3.7-plus"></el-option>
+            <el-option label="Qwen3-VL-72B (硅基流动)" value="Qwen/Qwen3-VL-72B-Instruct"></el-option>
+            <el-option label="GLM-5V-Turbo (智谱)" value="glm-5v-turbo"></el-option>
+            <el-option label="MiniMax-M3 (MiniMax)" value="minimax-m3"></el-option>
+            <el-option label="GPT-5.5 (OpenAI)" value="gpt-5.5"></el-option>
+            <el-option label="GPT-5.5 mini (OpenAI)" value="gpt-5.5-mini"></el-option>
+            <el-option label="Claude Opus 4.8 (Anthropic)" value="claude-opus-4-8"></el-option>
+          </el-select>
+          <div class="form-tip">支持任何模型名称，请根据您选择的服务商输入对应的视觉模型标识符</div>
+        </el-form-item>
+
+        <el-form-item label="当前状态">
+          <div class="form-tip">
+            <span v-if="visionConfig.visionProvider && visionConfig.visionModel && visionConfig.visionApiKey" style="color: #67c23a;">● 工具模式（analyze_image 工具已就绪）</span>
+            <span v-else style="color: #909399;">○ 未配置独立视觉模型</span>
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <div slot="footer" class="dialog-footer">
+        <el-button size="small" @click="visionDialogVisible = false">关闭</el-button>
+        <el-button size="small" type="primary" @click="visionDialogVisible = false">完成</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -362,6 +448,16 @@ export default {
           chunkOverlap: 120
         }
       })
+    },
+    visionConfigProp: {
+      type: Object,
+      default: () => ({
+        visionSupported: false,
+        visionProvider: '',
+        visionApiKey: '',
+        visionApiBase: '',
+        visionModel: ''
+      })
     }
   },
   data() {
@@ -377,6 +473,10 @@ export default {
       previewQuery: '',
       previewResult: null,
       externalTools: [],
+      visionDialogVisible: false,
+      visionConfig: this.normalizeVisionConfig(this.visionConfigProp),
+      isVisionApiKeyMasked: false,
+      showingFullVisionKey: false,
       // 硬编码的系统内置原生工具 (基于 ArticleTools.java、TimeTools.java、CalculatorTools.java 提取)
       nativeTools: [
         {
@@ -415,6 +515,14 @@ export default {
           svgIcon: '<path d="M10 3H5a2 2 0 0 0-2 2v5"></path><path d="M14 21h5a2 2 0 0 0 2-2v-5"></path><path d="M21 10V5a2 2 0 0 0-2-2h-5"></path><path d="M3 14v5a2 2 0 0 0 2 2h5"></path><circle cx="12" cy="12" r="3"></circle><path d="M12 2v4"></path><path d="M12 18v4"></path><path d="M2 12h4"></path><path d="M18 12h4"></path>',
           features: ['标题/摘要/正文检索', '文章增量同步', 'MariaDB 向量搜索', '手动重建'],
           configurable: true
+        },
+        {
+          id: 'ai_vision',
+          name: '图像识别 (视觉模型)',
+          description: '配置独立视觉模型作为 analyze_image 工具后端，让不具备原生视觉能力的主模型也能识别图片。主模型原生视觉能力请在「AI模型配置」中开启。',
+          svgIcon: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>',
+          features: ['独立视觉模型', 'analyze_image 工具', 'Function Calling', '多模态识别'],
+          configurable: true
         }
       ]
     }
@@ -423,6 +531,16 @@ export default {
     value: {
       handler(val) {
         this.localConfig = this.normalizeConfig(val);
+      },
+      deep: true
+    },
+    visionConfigProp: {
+      handler(val) {
+        const normalized = this.normalizeVisionConfig(val);
+        if (JSON.stringify(normalized) !== JSON.stringify(this.visionConfig)) {
+          this.visionConfig = normalized;
+          this.isVisionApiKeyMasked = !!(this.visionConfig.visionApiKey && this.visionConfig.visionApiKey.includes('*'));
+        }
       },
       deep: true
     }
@@ -490,6 +608,10 @@ export default {
         this.ragDialogVisible = true;
         this.previewResult = null;
         this.refreshRagStatus();
+        return;
+      }
+      if (id === 'ai_vision') {
+        this.visionDialogVisible = true;
       }
     },
     refreshRagStatus() {
@@ -566,6 +688,51 @@ export default {
     },
     emitChange() {
       this.$emit('input', { ...this.normalizeConfig(this.localConfig) });
+    },
+    normalizeVisionConfig(config = {}) {
+      return {
+        visionSupported: config.visionSupported === true,
+        visionProvider: config.visionProvider || '',
+        visionApiKey: config.visionApiKey || '',
+        visionApiBase: config.visionApiBase || '',
+        visionModel: config.visionModel || ''
+      };
+    },
+    onVisionApiKeyInput() {
+      if (this.visionConfig.visionApiKey && !this.visionConfig.visionApiKey.includes('*')) {
+        this.isVisionApiKeyMasked = false;
+        this.showingFullVisionKey = false;
+      }
+      if (!this.visionConfig.visionApiKey) {
+        this.isVisionApiKeyMasked = false;
+        this.showingFullVisionKey = false;
+      }
+      this.emitVisionChange();
+    },
+    showFullVisionApiKey() {
+      this.$confirm('要重新输入视觉模型API密钥吗？当前密钥将被清空。', '重新输入密钥', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }).then(() => {
+        this.isVisionApiKeyMasked = false;
+        this.showingFullVisionKey = false;
+        this.visionConfig.visionApiKey = '';
+        this.$message.info('请重新输入您的视觉模型API密钥');
+        this.emitVisionChange();
+      }).catch(() => {
+        // 用户取消操作
+      });
+    },
+    emitVisionChange() {
+      // 仅 emit 独立视觉模型配置字段，visionSupported 由 AiModelConfig 管理
+      const normalized = this.normalizeVisionConfig(this.visionConfig);
+      this.$emit('update-vision-config', {
+        visionProvider: normalized.visionProvider,
+        visionApiKey: normalized.visionApiKey,
+        visionApiBase: normalized.visionApiBase,
+        visionModel: normalized.visionModel
+      });
     }
   }
 }

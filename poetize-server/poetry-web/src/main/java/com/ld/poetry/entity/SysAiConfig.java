@@ -222,6 +222,40 @@ public class SysAiConfig implements Serializable {
      */
     private Boolean enableTools;
 
+    // ========== 视觉模型配置（图像识别） ==========
+
+    /**
+     * 主模型是否支持视觉 (0:否 1:是)
+     * <p>
+     * 开启时：前端上传图片后端直接构造多模态 UserMessage 发给主模型，无需调用视觉工具。
+     * 关闭时：若已配置视觉模型（vision_provider/vision_api_key/vision_model），则注册
+     * analyze_image 工具，主模型通过 Function Calling 按需调用视觉模型识别图片。
+     * 默认关闭，由用户在管理后台根据主模型能力手动开启。
+     */
+    private Boolean visionSupported;
+
+    /**
+     * 视觉模型服务商 (openai/anthropic/deepseek/siliconflow/custom等)
+     * <p>
+     * 仅在主模型不支持视觉（vision_supported=0）时使用，作为图像识别工具的后端模型。
+     */
+    private String visionProvider;
+
+    /**
+     * 视觉模型API密钥(加密存储)
+     */
+    private String visionApiKey;
+
+    /**
+     * 视觉模型API基础地址
+     */
+    private String visionApiBase;
+
+    /**
+     * 视觉模型名称
+     */
+    private String visionModel;
+
     // ========== 记忆管理功能 ==========
 
     /**

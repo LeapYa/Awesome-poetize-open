@@ -131,6 +131,8 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 result.put("max_message_length", 500);
                 result.put("max_conversation_length", 20);
                 result.put("rate_limit", 20);
+                result.put("vision_supported", false);
+                result.put("vision_configured", false);
                 return result;
             }
 
@@ -163,6 +165,14 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             result.put("show_timestamp", !Boolean.FALSE.equals(config.getShowTimestamp()));
             result.put("enable_chat_history", Boolean.TRUE.equals(config.getEnableChatHistory()));
 
+            // 视觉配置：前端据此决定是否展示图片上传入口
+            boolean visionSupported = Boolean.TRUE.equals(config.getVisionSupported());
+            boolean visionModelConfigured = StringUtils.hasText(config.getVisionProvider())
+                    && StringUtils.hasText(config.getVisionApiKey())
+                    && StringUtils.hasText(config.getVisionModel());
+            result.put("vision_supported", visionSupported);
+            result.put("vision_configured", visionSupported || visionModelConfigured);
+
         } catch (Exception e) {
             log.error("获取流式响应配置失败: {}", e.getMessage(), e);
             // 返回默认配置
@@ -180,6 +190,8 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             result.put("max_message_length", 500);
             result.put("max_conversation_length", 20);
             result.put("rate_limit", 20);
+            result.put("vision_supported", false);
+            result.put("vision_configured", false);
         }
 
         return result;
@@ -609,6 +621,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             config.setMem0ApiKey(encrypted);
         }
 
+        // 加密视觉模型API密钥
+        if (StringUtils.hasText(config.getVisionApiKey())) {
+            String encrypted = aesCryptoUtil.encrypt(config.getVisionApiKey());
+            config.setVisionApiKey(encrypted);
+        }
+
         // 加密JSON字段中的敏感信息
         encryptJsonFields(config);
     }
@@ -706,6 +724,14 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             String decrypted = aesCryptoUtil.decrypt(config.getMem0ApiKey());
             if (decrypted != null) {
                 config.setMem0ApiKey(aesCryptoUtil.mask(decrypted));
+            }
+        }
+
+        // 解密并脱敏视觉模型API密钥
+        if (StringUtils.hasText(config.getVisionApiKey())) {
+            String decrypted = aesCryptoUtil.decrypt(config.getVisionApiKey());
+            if (decrypted != null) {
+                config.setVisionApiKey(aesCryptoUtil.mask(decrypted));
             }
         }
 
@@ -820,6 +846,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             if (StringUtils.hasText(config.getMem0ApiKey())) {
                 String decrypted = aesCryptoUtil.decrypt(config.getMem0ApiKey());
                 config.setMem0ApiKey(decrypted);
+            }
+
+            // 解密视觉模型API密钥（不脱敏，供内部调用使用）
+            if (StringUtils.hasText(config.getVisionApiKey())) {
+                String decrypted = aesCryptoUtil.decrypt(config.getVisionApiKey());
+                config.setVisionApiKey(decrypted);
             }
 
             // 解密JSON字段（不脱敏，供Python服务使用）

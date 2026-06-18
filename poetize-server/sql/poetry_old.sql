@@ -722,7 +722,14 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   `enable_thinking` tinyint(1) DEFAULT 0 COMMENT '启用思考模式 (0:否 1:是)',
   `reasoning_effort` varchar(20) DEFAULT NULL COMMENT '思考程度 (low/medium/high/xhigh)',
   `enable_tools` tinyint(1) DEFAULT 1 COMMENT '启用MCP工具 (0:否 1:是)',
-  
+
+  -- ========== 视觉模型配置（图像识别） ==========
+  `vision_supported` tinyint(1) DEFAULT 0 COMMENT '主模型是否支持视觉(0:否 1:是)',
+  `vision_provider` varchar(50) DEFAULT NULL COMMENT '视觉模型服务商(openai/anthropic/deepseek/siliconflow/custom等)',
+  `vision_api_key` varchar(500) DEFAULT NULL COMMENT '视觉模型API密钥(加密存储)',
+  `vision_api_base` varchar(500) DEFAULT NULL COMMENT '视觉模型API基础地址',
+  `vision_model` varchar(100) DEFAULT NULL COMMENT '视觉模型名称',
+
   -- ========== 记忆管理功能 ==========
   `enable_memory` tinyint(1) DEFAULT 0 COMMENT '启用Mem0记忆功能 (0:否 1:是)',
   `mem0_api_key` varchar(500) DEFAULT NULL COMMENT 'Mem0 API密钥(加密存储)',
