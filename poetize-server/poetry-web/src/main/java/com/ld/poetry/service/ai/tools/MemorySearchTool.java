@@ -256,7 +256,7 @@ public class MemorySearchTool {
             return "视觉模型返回空结果。";
         } catch (Exception e) {
             log.error("视觉模型识别历史图片失败: error={}", e.getMessage(), e);
-            return "图片识别失败: " + e.getMessage();
+            return "历史图片识别失败，无法获取图片描述。";
         }
     }
 }

@@ -7,12 +7,27 @@ import constant from '@/utils/constant'
 import {
   saveImage,
   getMessageImages,
+  getBatchMessageImages,
   associateImagesToMessage,
   deleteImage,
   clearAllImages,
   cleanupOldImages,
 } from '@/utils/aiImageStorage'
+import {
+  saveMessages as saveMessagesToIDB,
+  replaceAllMessages as replaceAllMessagesInIDB,
+  getAllMessages as getAllMessagesFromIDB,
+  clearMessages as clearMessagesFromIDB,
+} from '@/utils/aiHistoryStorage'
 import { calculateTotalSizeMB } from '@/utils/imageCompress'
+
+// 混合存储配置
+// localStorage 只保留最近 HOT_MESSAGE_COUNT 条热数据，保证启动快、写入不卡顿
+// IndexedDB 存储完整历史，突破 localStorage 5-10MB 容量限制
+const HOT_MESSAGE_COUNT = 50
+// saveHistory 防抖间隔（毫秒），避免流式输出时频繁全量写入
+const SAVE_HISTORY_DEBOUNCE_MS = 300
+let saveHistoryTimer = null
 
 const DEFAULT_AI_CHAT_CONFIG = {
   enabled: false,
@@ -96,6 +111,8 @@ export const useAIChatStore = defineStore('aiChat', {
     editingMessageId: null,
     editingContent: '',
     editingOriginalAttachedPage: null,
+    // 已写入 IndexedDB 的消息数（用于增量写入判断）
+    lastSavedCount: 0,
     attachedPageContext: null,
     attachedImages: [],
   }),
@@ -152,6 +169,7 @@ export const useAIChatStore = defineStore('aiChat', {
       if (this.messages.length === 0) {
         this.addWelcomeMessage()
       }
+      this._registerUnloadHandler()
     },
 
     lightInit() {
@@ -1155,7 +1173,7 @@ export const useAIChatStore = defineStore('aiChat', {
 
     /**
      * 搜索本地聊天历史 — 供 MemorySearchTool 两轮调用使用。
-     * 基于关键词匹配 this.messages（内存中最近 100 条，由 saveHistory 持久化到 localStorage）
+     * 基于关键词匹配 this.messages（当前会话内存中的全部消息）
      * 中的消息内容，返回相关历史片段。
      * <p>
      * 图片处理：搜索结果中相关消息的图片会从 IndexedDB 加载 base64 数据，
@@ -1178,7 +1196,7 @@ export const useAIChatStore = defineStore('aiChat', {
           keywords.push(queryLower)
         }
 
-        // 搜索当前内存中的消息（saveHistory 保留最近100条）
+        // 搜索当前内存中的全部消息
         const candidates = this.messages
           .filter((msg) => msg && typeof msg.content === 'string' && msg.content.trim())
           .map((msg, index) => {
@@ -1262,11 +1280,51 @@ export const useAIChatStore = defineStore('aiChat', {
     },
 
     saveHistory() {
+      // 防抖：流式输出/频繁更新时合并写入，避免主线程抖动
+      if (saveHistoryTimer) {
+        clearTimeout(saveHistoryTimer)
+      }
+      saveHistoryTimer = setTimeout(() => {
+        saveHistoryTimer = null
+        this._flushHistory()
+      }, SAVE_HISTORY_DEBOUNCE_MS)
+    },
+
+    /**
+     * 立即取消防抖并同步执行持久化。
+     * 用于页面卸载（pagehide）等必须立即落盘的场景。
+     * 注意：IndexedDB 异步写入无法在卸载时保证完成，至少保证 localStorage 热数据不丢。
+     */
+    flushNow() {
+      if (saveHistoryTimer) {
+        clearTimeout(saveHistoryTimer)
+        saveHistoryTimer = null
+      }
+      this._flushHistory()
+    },
+
+    /**
+     * 注册页面卸载监听器，确保防抖中的待写数据不丢失。
+     * 使用 pagehide 而非 beforeunload：在移动端和 bfcache 场景下更可靠。
+     * 用标记位避免重复注册；不使用 once，确保从 bfcache 恢复后再次隐藏仍能 flush。
+     */
+    _registerUnloadHandler() {
+      if (typeof window === 'undefined' || this._unloadRegistered) {
+        return
+      }
+      this._unloadRegistered = true
+      window.addEventListener('pagehide', () => {
+        this.flushNow()
+      })
+    },
+
+    /**
+     * 只写 localStorage 热数据（不含 IndexedDB 写入）。
+     * 供 _flushHistory 和 saveEditAndResend 复用。
+     */
+    _flushLocalStorage() {
       try {
-        const maxMessages = 100
-        const toSave = this.messages.slice(-maxMessages).map((msg) => {
-          // 不把 base64 图片数据存入 localStorage（太大）
-          // 只保留 imageIds 引用，图片数据在 IndexedDB 中
+        const hot = this.messages.slice(-HOT_MESSAGE_COUNT).map((msg) => {
           const { images, imageIds, ...rest } = msg
           const slim = { ...rest }
           if (imageIds && imageIds.length > 0) {
@@ -1274,54 +1332,207 @@ export const useAIChatStore = defineStore('aiChat', {
           }
           return slim
         })
-        localStorage.setItem('ai_chat_history', JSON.stringify(toSave))
+        localStorage.setItem('ai_chat_history', JSON.stringify(hot))
       } catch (error) {
-        console.error('保存聊天历史失败:', error)
+        console.error('localStorage 写入失败，降级处理:', error)
+        try {
+          const hot = this.messages.slice(-Math.ceil(HOT_MESSAGE_COUNT / 2)).map((msg) => {
+            const { images, imageIds, ...rest } = msg
+            const slim = { ...rest }
+            if (imageIds && imageIds.length > 0) {
+              slim.imageIds = imageIds
+            }
+            return slim
+          })
+          localStorage.setItem('ai_chat_history', JSON.stringify(hot))
+        } catch (fallbackError) {
+          console.error('localStorage 降级写入仍失败，仅依赖 IndexedDB:', fallbackError)
+        }
       }
     },
 
+    /**
+     * 实际执行持久化的方法（由 saveHistory 防抖触发）。
+     * 混合存储策略：
+     * - localStorage：只写最近 HOT_MESSAGE_COUNT 条（含 imageIds 引用），保证启动快
+     * - IndexedDB：增量写入，只 put 新增的消息；消息数减少时全量替换
+     */
+    _flushHistory() {
+      const totalCount = this.messages.length
+
+      // 1. localStorage 只保留最近 N 条热数据
+      this._flushLocalStorage()
+
+      // 2. IndexedDB 增量写入
+      if (totalCount < this.lastSavedCount) {
+        // 消息数减少（截断场景）：全量替换，删除被丢弃的旧记录
+        const toSave = this.messages.map((msg) => {
+          const { images, imageIds, ...rest } = msg
+          const slim = { ...rest }
+          if (imageIds && imageIds.length > 0) {
+            slim.imageIds = imageIds
+          }
+          return slim
+        })
+        replaceAllMessagesInIDB(toSave)
+          .then(() => { this.lastSavedCount = this.messages.length })
+          .catch((error) => console.error('IndexedDB 替换历史失败:', error))
+      } else if (totalCount > this.lastSavedCount) {
+        // 消息数增加：只 put 新增的消息，避免全量写入
+        const newMessages = this.messages.slice(this.lastSavedCount).map((msg) => {
+          const { images, imageIds, ...rest } = msg
+          const slim = { ...rest }
+          if (imageIds && imageIds.length > 0) {
+            slim.imageIds = imageIds
+          }
+          return slim
+        })
+        if (newMessages.length > 0) {
+          saveMessagesToIDB(newMessages)
+            .then(() => { this.lastSavedCount = this.messages.length })
+            .catch((error) => console.error('IndexedDB 增量写入失败:', error))
+        }
+      } else if (totalCount > 0) {
+        // 消息数没变但内容可能变了（流式输出 append、reasoning 更新等）：
+        // put 最后一条消息，覆盖流式输出期间的内容变更
+        const lastMsg = this.messages[totalCount - 1]
+        if (lastMsg) {
+          const { images, imageIds, ...rest } = lastMsg
+          const slim = { ...rest }
+          if (imageIds && imageIds.length > 0) {
+            slim.imageIds = imageIds
+          }
+          saveMessagesToIDB([slim]).catch((error) =>
+            console.error('IndexedDB 更新最后一条消息失败:', error)
+          )
+        }
+      }
+    },
+
+    /**
+     * 用当前内存中的消息完全替换 IndexedDB 中的历史。
+     * 用于编辑重发等截断场景：saveMessages 用 put 不会删除被截断的旧记录，
+     * 必须用 replaceAllMessages 原子清空+重写，保证 IndexedDB 与内存一致。
+     */
+    _replaceHistoryInIDB() {
+      const toSave = this.messages.map((msg) => {
+        const { images, imageIds, ...rest } = msg
+        const slim = { ...rest }
+        if (imageIds && imageIds.length > 0) {
+          slim.imageIds = imageIds
+        }
+        return slim
+      })
+      replaceAllMessagesInIDB(toSave)
+        .then(() => { this.lastSavedCount = this.messages.length })
+        .catch((error) => {
+          console.error('IndexedDB 替换历史失败:', error)
+        })
+    },
+
     async restoreHistory() {
+      // 阶段 1：同步从 localStorage 恢复最近热数据，让界面快速显示
+      const allowedRoles = ['user', 'assistant']
+      let hotMessages = []
       try {
         const saved = localStorage.getItem('ai_chat_history')
         if (saved) {
           const parsed = JSON.parse(saved)
-          // 安全校验：只允许 user/assistant 角色，防止 localStorage 被篡改注入 system 消息
-          const allowedRoles = ['user', 'assistant']
-          this.messages = parsed.filter(
+          hotMessages = (parsed || []).filter(
             (msg) => msg && typeof msg.content === 'string' && allowedRoles.includes(msg.role)
           )
-          // 异步从 IndexedDB 恢复图片
+        }
+      } catch (error) {
+        console.error('从 localStorage 恢复热数据失败:', error)
+      }
+
+      // 先把热数据挂到内存（图片稍后异步加载），界面可立即渲染
+      this.messages = hotMessages.map((msg) => ({ ...msg, isNew: false }))
+      for (const msg of this.messages) {
+        if (msg.role === 'assistant') {
+          this.ensureMessageStructure(msg)
+          this.syncToolEvents(msg)
+        }
+      }
+
+      // 阶段 2：异步从 IndexedDB 加载完整历史，与热数据合并
+      // 如果 IndexedDB 条数更多，说明有更早的冷数据需要补齐到前面
+      try {
+        const allMessages = await getAllMessagesFromIDB()
+        if (allMessages.length > 0) {
+          const safeAll = allMessages.filter(
+            (msg) => msg && typeof msg.content === 'string' && allowedRoles.includes(msg.role)
+          )
+          // 按 id 去重：以 IndexedDB 全量为准，覆盖 localStorage 的热数据
+          const idSet = new Set()
+          const merged = []
+          for (const msg of safeAll) {
+            const key = String(msg.id)
+            if (!idSet.has(key)) {
+              idSet.add(key)
+              merged.push({ ...msg, isNew: false })
+            }
+          }
+          // 按 timestamp 升序排序，保证历史顺序正确
+          merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+          this.messages = merged
+
           for (const msg of this.messages) {
-            msg.isNew = false
             if (msg.role === 'assistant') {
               this.ensureMessageStructure(msg)
               this.syncToolEvents(msg)
             }
-            // 如果消息有关联图片，从 IndexedDB 加载
-            if (msg.imageIds && msg.imageIds.length > 0) {
-              const imageUrls = await getMessageImages(String(msg.id))
-              if (imageUrls && imageUrls.length > 0) {
-                msg.images = imageUrls
-              }
-            }
           }
         }
-        // 清理超过 7 天的旧图片
-        cleanupOldImages(7).catch((err) =>
-          console.error('清理旧图片失败:', err)
-        )
       } catch (error) {
-        console.error('恢复聊天历史失败:', error)
-        this.messages = []
+        console.error('从 IndexedDB 恢复完整历史失败，仅使用 localStorage 热数据:', error)
       }
+
+      // 同步 lastSavedCount，避免 _flushHistory 重复写入已存在的消息
+      this.lastSavedCount = this.messages.length
+
+      // 阶段 3：批量加载图片（单事务，避免 N 次独立事务）
+      const msgIdsWithImages = this.messages
+        .filter((msg) => msg.imageIds && msg.imageIds.length > 0)
+        .map((msg) => String(msg.id))
+      if (msgIdsWithImages.length > 0) {
+        getBatchMessageImages(msgIdsWithImages)
+          .then((imageMap) => {
+            for (const msg of this.messages) {
+              const urls = imageMap.get(String(msg.id))
+              if (urls && urls.length > 0) {
+                msg.images = urls
+              }
+            }
+          })
+          .catch((err) => console.warn('批量加载消息图片失败:', err))
+      }
+
+      // 清理超过 7 天的旧图片
+      cleanupOldImages(7).catch((err) =>
+        console.error('清理旧图片失败:', err)
+      )
     },
 
-    clearHistory() {
+    async clearHistory() {
+      // 取消可能挂起的防抖写入，避免清空后又把旧数据写回
+      if (saveHistoryTimer) {
+        clearTimeout(saveHistoryTimer)
+        saveHistoryTimer = null
+      }
       this.messages = []
+      this.lastSavedCount = 0
       localStorage.removeItem('ai_chat_history')
-      clearAllImages().catch((err) =>
-        console.error('清空 IndexedDB 图片失败:', err)
-      )
+      // 必须等待 IndexedDB 清空完成后再添加 welcome 消息，
+      // 否则 addWelcomeMessage 触发的防抖写入可能与 clear 事务竞态，welcome 被清掉
+      try {
+        await Promise.all([
+          clearMessagesFromIDB(),
+          clearAllImages(),
+        ])
+      } catch (err) {
+        console.error('清空 IndexedDB 失败:', err)
+      }
       this.addWelcomeMessage()
     },
 
@@ -1358,7 +1569,16 @@ export const useAIChatStore = defineStore('aiChat', {
       const message = this.messages.find((m) => m.id === messageId)
       if (message) {
         message.content = newContent
-        this.saveHistory()
+        // 消息数没变时 _flushHistory 只会覆盖最后一条；编辑的可能是中间消息，
+        // 因此直接单独 put 被修改的消息，避免 saveHistory 造成重复写入。
+        const { images, imageIds, ...rest } = message
+        const slim = { ...rest }
+        if (imageIds && imageIds.length > 0) {
+          slim.imageIds = imageIds
+        }
+        saveMessagesToIDB([slim]).catch((error) =>
+          console.error('IndexedDB 更新消息内容失败:', error)
+        )
       }
     },
 
@@ -1381,7 +1601,14 @@ export const useAIChatStore = defineStore('aiChat', {
       }
 
       this.messages = this.messages.slice(0, messageIndex + 1)
-      this.saveHistory()
+      // 编辑重发截断历史：取消防抖，直接同步写 localStorage + 立即替换 IndexedDB
+      // 避免 saveHistory 防抖 300ms 后 _flushHistory 与 _replaceHistoryInIDB 重复写入
+      if (saveHistoryTimer) {
+        clearTimeout(saveHistoryTimer)
+        saveHistoryTimer = null
+      }
+      this._flushLocalStorage()
+      this._replaceHistoryInIDB()
 
       const content = this.editingContent
       this.editingMessageId = null

@@ -1,6 +1,5 @@
 package com.ld.poetry.service.ai;
 
-import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.ai.dto.AiChatResponsePayload;
@@ -96,8 +95,6 @@ public class AiChatService {
 
     @Autowired
     private KnowledgeRetrievalService knowledgeRetrievalService;
-
-    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     /** Redis 缓存前缀 & TTL */
     private static final String CACHE_PREFIX = "poetize:ai:chat:response:";

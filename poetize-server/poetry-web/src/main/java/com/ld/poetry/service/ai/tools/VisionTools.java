@@ -116,7 +116,7 @@ public class VisionTools {
 
         } catch (Exception e) {
             log.error("视觉模型调用失败: imageUrl={}, error={}", imageUrl, e.getMessage(), e);
-            return "图片分析失败: " + e.getMessage();
+            return "图片分析失败，请稍后重试。";
         }
     }
 }

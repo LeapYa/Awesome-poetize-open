@@ -26,6 +26,12 @@ public final class ImageMediaUtils {
         if (imageUrl == null) {
             return MimeTypeUtils.IMAGE_JPEG;
         }
+
+        // data URI 优先从 metadata 解析真实 MIME 类型
+        if (imageUrl.startsWith("data:")) {
+            return resolveDataUriMimeType(imageUrl);
+        }
+
         // 去掉查询参数后再判断后缀
         String path = imageUrl;
         int queryIdx = path.indexOf('?');
@@ -45,7 +51,40 @@ public final class ImageMediaUtils {
         return MimeTypeUtils.IMAGE_JPEG;
     }
 
+    /**
+     * 从 data URI 的 metadata 中解析 MIME 类型。
+     * 格式：data:image/{type}[;base64],{data}
+     */
+    private static MimeType resolveDataUriMimeType(String dataUri) {
+        int commaIdx = dataUri.indexOf(',');
+        if (commaIdx < 0) {
+            return MimeTypeUtils.IMAGE_JPEG;
+        }
+        String meta = dataUri.substring(0, commaIdx);
+        int slashIdx = meta.indexOf('/');
+        if (slashIdx > 0 && slashIdx + 1 < meta.length()) {
+            int semiIdx = meta.indexOf(';', slashIdx);
+            String type = (semiIdx > slashIdx)
+                    ? meta.substring(slashIdx + 1, semiIdx)
+                    : meta.substring(slashIdx + 1);
+            if (!type.isBlank()) {
+                try {
+                    return MimeTypeUtils.parseMimeType("image/" + type.toLowerCase());
+                } catch (Exception ignored) {
+                    // 非法 MIME 回退到 JPEG
+                }
+            }
+        }
+        return MimeTypeUtils.IMAGE_JPEG;
+    }
+
     // ========== SSRF 防护 ==========
+
+    /**
+     * 允许作为相对路径图片引用的本系统静态资源前缀。
+     * 与 local.downloadUrl（默认 /static/）保持一致。
+     */
+    private static final String ALLOWED_RELATIVE_PREFIX = "/static/";
 
     private static final Pattern PRIVATE_IP_PATTERN = Pattern.compile(
             "(127\\..*)" +                    // 127.0.0.0/8
@@ -93,9 +132,16 @@ public final class ImageMediaUtils {
         }
 
         String scheme = uri.getScheme();
-        // 相对路径（无 scheme）允许 — 来自本系统上传
+        // 相对路径仅允许来自本系统静态资源目录的前缀，防止 SSRF
         if (scheme == null || scheme.isEmpty()) {
-            return true;
+            String path = uri.getPath();
+            if (path == null) {
+                return false;
+            }
+            String normalized = path.replace("\\", "/");
+            return normalized.startsWith(ALLOWED_RELATIVE_PREFIX)
+                    && !normalized.contains("/../")
+                    && !normalized.contains("/..");
         }
 
         // 仅允许 http/https

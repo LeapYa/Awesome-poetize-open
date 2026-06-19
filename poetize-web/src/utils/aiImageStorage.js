@@ -274,6 +274,73 @@ export async function getMessageImages(messageId) {
 }
 
 /**
+ * 批量获取多条消息关联的图片 dataUrl。
+ * 用单个事务读取所有关联记录和图片记录，避免 N 次独立事务的开销。
+ * @param {string[]} messageIds 消息 ID 数组
+ * @returns {Promise<Map<string, string[]>>} messageId → dataUrl 数组的映射
+ */
+export async function getBatchMessageImages(messageIds) {
+  if (!messageIds || messageIds.length === 0) {
+    return new Map();
+  }
+
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_MESSAGE_IMAGES, STORE_IMAGES], 'readonly');
+    const msgStore = tx.objectStore(STORE_MESSAGE_IMAGES);
+    const imageStore = tx.objectStore(STORE_IMAGES);
+    const result = new Map();
+    let pendingMessages = messageIds.length;
+
+    messageIds.forEach((msgId) => {
+      const msgRequest = msgStore.get(msgId);
+      msgRequest.onsuccess = () => {
+        const record = msgRequest.result;
+        if (!record || !record.imageIds || record.imageIds.length === 0) {
+          result.set(msgId, []);
+          pendingMessages--;
+          if (pendingMessages === 0) resolve(result);
+          return;
+        }
+
+        const dataUrls = new Array(record.imageIds.length).fill(null);
+        let completedImages = 0;
+
+        record.imageIds.forEach((imgId, index) => {
+          const imgRequest = imageStore.get(imgId);
+          imgRequest.onsuccess = () => {
+            if (imgRequest.result) {
+              dataUrls[index] = imgRequest.result.dataUrl;
+            }
+            completedImages++;
+            if (completedImages === record.imageIds.length) {
+              result.set(msgId, dataUrls.filter((d) => d !== null));
+              pendingMessages--;
+              if (pendingMessages === 0) resolve(result);
+            }
+          };
+          imgRequest.onerror = () => {
+            completedImages++;
+            if (completedImages === record.imageIds.length) {
+              result.set(msgId, dataUrls.filter((d) => d !== null));
+              pendingMessages--;
+              if (pendingMessages === 0) resolve(result);
+            }
+          };
+        });
+      };
+      msgRequest.onerror = () => {
+        result.set(msgId, []);
+        pendingMessages--;
+        if (pendingMessages === 0) resolve(result);
+      };
+    });
+
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+/**
  * 删除一张图片
  * @param {string} imageId
  */
