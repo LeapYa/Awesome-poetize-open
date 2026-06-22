@@ -349,7 +349,7 @@
         </div>
 
         <el-form-item id="field-ai-vision-provider" label="视觉模型服务商">
-          <el-select v-model="visionConfig.visionProvider" placeholder="请选择视觉模型服务商" clearable @change="emitVisionChange">
+          <el-select v-model="visionConfig.visionProvider" placeholder="请选择视觉模型服务商" clearable @change="onVisionProviderChange">
             <el-option label="OpenAI / ChatGPT API" value="openai"></el-option>
             <el-option label="Claude (Anthropic)" value="anthropic"></el-option>
             <el-option label="DeepSeek" value="deepseek"></el-option>
@@ -378,7 +378,7 @@
           </div>
         </el-form-item>
 
-        <el-form-item id="field-ai-vision-base-url" label="视觉模型API基础URL" v-if="visionConfig.visionProvider && !['openai', 'anthropic'].includes(visionConfig.visionProvider)">
+        <el-form-item id="field-ai-vision-base-url" label="视觉模型API基础URL" v-if="visionConfig.visionProvider">
           <el-input
             v-model="visionConfig.visionApiBase"
             placeholder="例如: https://api.example.com/v1"
@@ -477,6 +477,15 @@ export default {
       visionConfig: this.normalizeVisionConfig(this.visionConfigProp),
       isVisionApiKeyMasked: false,
       showingFullVisionKey: false,
+      visionDefaultBaseUrls: {
+        openai: 'https://api.openai.com/v1',
+        anthropic: 'https://api.anthropic.com/v1/messages',
+        deepseek: 'https://api.deepseek.com/v1',
+        siliconflow: 'https://api.siliconflow.cn/v1',
+        openrouter: 'https://openrouter.ai/api/v1',
+        worldrouter: 'https://inference-api.worldrouter.ai/v1',
+        custom: ''
+      },
       // 硬编码的系统内置原生工具 (基于 ArticleTools.java、TimeTools.java、CalculatorTools.java 提取)
       nativeTools: [
         {
@@ -723,6 +732,22 @@ export default {
       }).catch(() => {
         // 用户取消操作
       });
+    },
+    onVisionProviderChange(newProvider) {
+      const defaultUrls = this.visionDefaultBaseUrls;
+      const allDefaultUrls = Object.values(defaultUrls).filter(Boolean);
+      const currentUrl = this.visionConfig.visionApiBase;
+      const defaultUrl = defaultUrls[newProvider] || '';
+
+      if (newProvider === 'custom') {
+        // 自定义API：清空基础URL，由用户自行填写
+        this.visionConfig.visionApiBase = '';
+      } else if (!currentUrl || allDefaultUrls.includes(currentUrl)) {
+        // 当前为空或仍为某个默认URL时，自动填入新服务商的默认URL；用户可修改
+        this.visionConfig.visionApiBase = defaultUrl;
+      }
+
+      this.emitVisionChange();
     },
     emitVisionChange() {
       // 仅 emit 独立视觉模型配置字段，visionSupported 由 AiModelConfig 管理
