@@ -39,6 +39,11 @@
         <result column="enable_thinking" property="enableThinking"/>
         <result column="reasoning_effort" property="reasoningEffort"/>
         <result column="enable_tools" property="enableTools"/>
+        <result column="vision_supported" property="visionSupported"/>
+        <result column="vision_provider" property="visionProvider"/>
+        <result column="vision_api_key" property="visionApiKey"/>
+        <result column="vision_api_base" property="visionApiBase"/>
+        <result column="vision_model" property="visionModel"/>
         <result column="enable_memory" property="enableMemory"/>
         <result column="mem0_api_key" property="mem0ApiKey"/>
         <result column="memory_auto_save" property="memoryAutoSave"/>
@@ -68,6 +73,7 @@
         enable_quick_actions, enable_chat_history, enable_streaming, rate_limit,
         max_message_length, require_login, enable_content_filter,
         custom_instructions, enable_thinking, reasoning_effort, enable_tools,
+        vision_supported, vision_provider, vision_api_key, vision_api_base, vision_model,
         enable_memory, mem0_api_key, memory_auto_save, memory_auto_recall, memory_recall_limit,
         translation_type, default_source_lang, default_target_lang, include_articles,
         baidu_config, custom_config, llm_config, translation_llm_config, summary_config, extra_config,

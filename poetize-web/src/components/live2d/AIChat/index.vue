@@ -119,6 +119,7 @@
         @cancel-edit="handleCancelEdit"
         @page-attached="handlePageAttached"
         @page-removed="handlePageRemoved"
+        @image-upload-error="handleImageUploadError"
       />
 
       <!-- 缩放控制点（仅非全屏时显示） -->
@@ -308,6 +309,13 @@ export default {
       live2dStore.showMessage('🗑️ 已移除附加的页面', 2000, 10)
     }
 
+    /**
+     * 图片上传/压缩失败提示
+     */
+    const handleImageUploadError = (message) => {
+      live2dStore.showMessage(message || '图片上传失败', 3000, 10)
+    }
+
     // 初始化
     onMounted(async () => {
       await chat.init()
@@ -340,6 +348,7 @@ export default {
       handleResizeStart,
       handlePageAttached,
       handlePageRemoved,
+      handleImageUploadError,
       chat,
     }
   },

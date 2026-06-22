@@ -20,6 +20,26 @@
           <span class="badge-text">{{ message.attachedPage.title }}</span>
         </div>
 
+        <div v-if="hasImages" class="message-images">
+          <img
+            v-for="(url, index) in message.images"
+            :key="index"
+            :src="url"
+            alt="图片"
+            class="message-image-thumb"
+            @click="openImagePreview(index)"
+          />
+        </div>
+
+        <el-image-viewer
+          v-if="showImageViewer"
+          :url-list="previewImages"
+          :initial-index="previewImageIndex"
+          :hide-on-click-modal="true"
+          :teleported="true"
+          @close="showImageViewer = false"
+        />
+
         <div class="message-text" v-text="message.content" />
       </div>
     </div>
@@ -181,7 +201,7 @@
 </template>
 
 <script>
-import { computed, onMounted, nextTick } from 'vue'
+import { computed, onMounted, nextTick, ref } from 'vue'
 import { useAIChatStore } from '@/stores/aiChat'
 import { useLive2DStore } from '@/stores/live2d'
 import MarkdownRenderer from './MarkdownRenderer.vue'
@@ -209,6 +229,23 @@ export default {
     const isUser = computed(() => props.message.role === 'user')
     const isAssistant = computed(() => props.message.role === 'assistant')
     const isSystem = computed(() => props.message.role === 'system')
+    const hasImages = computed(
+      () =>
+        Array.isArray(props.message.images) && props.message.images.length > 0
+    )
+
+    const showImageViewer = ref(false)
+    const previewImages = ref([])
+    const previewImageIndex = ref(0)
+
+    const openImagePreview = (index) => {
+      if (!Array.isArray(props.message.images) || props.message.images.length === 0) {
+        return
+      }
+      previewImages.value = props.message.images.slice()
+      previewImageIndex.value = index
+      showImageViewer.value = true
+    }
 
     const assistantSegments = computed(() => {
       if (!isAssistant.value) {
@@ -331,6 +368,11 @@ export default {
       isUser,
       isAssistant,
       isSystem,
+      hasImages,
+      showImageViewer,
+      previewImages,
+      previewImageIndex,
+      openImagePreview,
       assistantSegments,
       messageClass,
       formattedTime,
@@ -496,6 +538,24 @@ export default {
 }
 .message-edit-btn:active {
   transform: scale(0.95);
+}
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.message-image-thumb {
+  max-width: 120px;
+  max-height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.message-image-thumb:hover {
+  transform: scale(1.03);
 }
 .message-edit-btn svg {
   width: 18px;

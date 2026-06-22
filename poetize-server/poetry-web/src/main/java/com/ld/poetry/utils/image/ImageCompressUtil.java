@@ -208,8 +208,8 @@ public class ImageCompressUtil {
         long finalSize = compressedBytes.length;
         double compressionRatio = (1.0 - (double) finalSize / originalSize) * 100;
 
-        log.info("图片处理完成 - 处理后大小: {}KB, 压缩率: {:.1f}%, 最终格式: {}",
-                finalSize / 1024, compressionRatio, contentType);
+        log.info("图片处理完成 - 处理后大小: {}KB, 压缩率: {}%, 最终格式: {}",
+                finalSize / 1024, String.format("%.1f", compressionRatio), contentType);
 
         return new CompressResult(compressedBytes, contentType, compressionRatio, originalSize, finalSize);
     }
@@ -286,6 +286,9 @@ public class ImageCompressUtil {
             throw new IOException("没有找到JPEG编码器");
         }
 
+        // JPEG 不支持带 Alpha 通道或某些非 sRGB 色彩空间，统一转为 RGB
+        BufferedImage rgbImage = convertToRgbImage(image);
+
         ImageWriter writer = writers.next();
         ImageWriteParam param = writer.getDefaultWriteParam();
         param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
@@ -293,10 +296,26 @@ public class ImageCompressUtil {
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             writer.setOutput(ImageIO.createImageOutputStream(baos));
-            writer.write(null, new IIOImage(image, null, null), param);
+            writer.write(null, new IIOImage(rgbImage, null, null), param);
             writer.dispose();
             return baos.toByteArray();
         }
+    }
+
+    /**
+     * 将图片转换为标准 RGB BufferedImage，避免 JPEG 编码器因色彩空间不兼容而报错
+     */
+    private static BufferedImage convertToRgbImage(BufferedImage image) {
+        if (image.getType() == BufferedImage.TYPE_INT_RGB) {
+            return image;
+        }
+        BufferedImage rgbImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2d = rgbImage.createGraphics();
+        g2d.setColor(Color.WHITE);
+        g2d.fillRect(0, 0, image.getWidth(), image.getHeight());
+        g2d.drawImage(image, 0, 0, null);
+        g2d.dispose();
+        return rgbImage;
     }
 
     /**

@@ -58,6 +58,8 @@
       </button>
     </div>
 
+
+
     <!-- 附加按钮区域（弹出菜单：页面 / 图片） -->
     <div v-if="!attachedPage" class="attach-page-container">
       <button
@@ -279,7 +281,6 @@ export default {
      * 关闭附加菜单（点击外部时）
      */
     const closeAttachMenu = (event) => {
-      if (!showAttachMenu.value) return
       const container = event.target.closest('.attach-page-container')
       if (!container) {
         showAttachMenu.value = false
@@ -596,27 +597,42 @@ export default {
   position: absolute;
   bottom: 100%;
   left: 20px;
-  margin-bottom: 6px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  margin-bottom: 8px;
+  background: rgba(248, 249, 250, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 12px;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.12));
   padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   z-index: 100;
-  min-width: 120px;
+  min-width: 110px;
+}
+.attach-menu::before {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 30px;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  transform: rotate(45deg);
+  border-bottom-right-radius: 3px;
+  z-index: -1;
 }
 .attach-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 10px 14px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #2c3e50;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
@@ -764,6 +780,7 @@ export default {
 .attach-text {
   color: currentColor;
 }
+
 .chat-input {
   flex: 1;
   min-height: 40px;
@@ -854,10 +871,7 @@ export default {
   height: 14px;
   fill: currentColor;
 }
-.dark-mode .attach-page-container {
-  background: rgba(0, 0, 0, 0.2);
-  border-top-color: rgba(255, 255, 255, 0.1);
-}
+
 .dark-mode .chat-input-container {
   background: rgba(0, 0, 0, 0.2);
   border-top-color: rgba(255, 255, 255, 0.1);
@@ -908,6 +922,10 @@ export default {
   border-color: var(--ai-chat-theme-color);
   color: #fff;
 }
+.dark-mode .attach-page-container {
+  background: rgba(0, 0, 0, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
 .dark-mode .attach-page-btn {
   background: rgba(0, 0, 0, 0.3);
   border-color: rgba(var(--ai-chat-theme-rgb), 0.45);
@@ -919,8 +937,8 @@ export default {
   box-shadow: 0 2px 10px rgba(var(--ai-chat-theme-rgb), 0.28);
 }
 .dark-mode .attach-menu {
-  background: #2c2c2c;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  background: rgba(54, 54, 54, 0.95);
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.3));
 }
 .dark-mode .attach-menu-item {
   color: #e0e0e0;

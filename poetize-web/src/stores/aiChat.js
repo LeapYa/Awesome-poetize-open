@@ -10,6 +10,7 @@ import {
   getBatchMessageImages,
   associateImagesToMessage,
   deleteImage,
+  deleteMessageImages,
   clearAllImages,
   cleanupOldImages,
 } from '@/utils/aiImageStorage'
@@ -763,7 +764,7 @@ export const useAIChatStore = defineStore('aiChat', {
           }
         )
         const result = await response.json()
-        if (!result.flag || !result.data || !result.data.dataUrl) {
+        if (!result.success || !result.data || !result.data.dataUrl) {
           console.error('服务端图片压缩失败:', result.message)
           return false
         }
@@ -826,7 +827,7 @@ export const useAIChatStore = defineStore('aiChat', {
         const result = await response.json()
         this.typing = false
 
-        if (result.flag && result.data?.content) {
+        if (result.success && result.data?.content) {
           const aiMessage = this.addMessage(result.data.content, 'assistant')
           if (result.data.reasoningContent) {
             aiMessage.segments.unshift({
@@ -1541,6 +1542,19 @@ export const useAIChatStore = defineStore('aiChat', {
       this.editingContent = content
 
       const message = this.messages.find((m) => m.id === messageId)
+
+      // 加载原消息的图片到编辑器
+      if (message && Array.isArray(message.images) && message.images.length > 0) {
+        this.editingOriginalAttachedImages = this.attachedImages.slice()
+        this.attachedImages = message.images.map((url, index) => ({
+          url,
+          name: '图片',
+          imageId: message.imageIds?.[index] || null,
+        }))
+      } else {
+        this.editingOriginalAttachedImages = null
+      }
+
       if (message && message.attachedPage) {
         this.editingOriginalAttachedPage = message.attachedPage
         this.attachedPageContext = {
@@ -1558,6 +1572,11 @@ export const useAIChatStore = defineStore('aiChat', {
     cancelEdit() {
       this.editingMessageId = null
       this.editingContent = ''
+
+      if (this.editingOriginalAttachedImages) {
+        this.attachedImages = this.editingOriginalAttachedImages
+        this.editingOriginalAttachedImages = null
+      }
 
       if (this.editingOriginalAttachedPage) {
         this.attachedPageContext = null
@@ -1600,6 +1619,16 @@ export const useAIChatStore = defineStore('aiChat', {
         }
       }
 
+      // 同步更新消息的图片附件（用户可能在编辑时删除/保留图片）
+      // 解除 Vue reactive 包装，避免 IndexedDB/localStorage 克隆失败
+      const editedImages = this.attachedImages.map((img) => img.url).slice()
+      const editedImageIds = this.attachedImages
+        .map((img) => img.imageId)
+        .filter(Boolean)
+        .slice()
+      this.messages[messageIndex].images = editedImages
+      this.messages[messageIndex].imageIds = editedImageIds
+
       this.messages = this.messages.slice(0, messageIndex + 1)
       // 编辑重发截断历史：取消防抖，直接同步写 localStorage + 立即替换 IndexedDB
       // 避免 saveHistory 防抖 300ms 后 _flushHistory 与 _replaceHistoryInIDB 重复写入
@@ -1609,11 +1638,23 @@ export const useAIChatStore = defineStore('aiChat', {
       }
       this._flushLocalStorage()
       this._replaceHistoryInIDB()
+      // 同步图片与消息的关联关系
+      const editedMessageId = String(this.messages[messageIndex].id)
+      if (editedImageIds.length > 0) {
+        associateImagesToMessage(editedMessageId, editedImageIds).catch((err) =>
+          console.error('编辑后关联图片到消息失败:', err)
+        )
+      } else {
+        deleteMessageImages(editedMessageId).catch((err) =>
+          console.error('编辑后删除消息图片关联失败:', err)
+        )
+      }
 
       const content = this.editingContent
       this.editingMessageId = null
       this.editingContent = ''
       this.editingOriginalAttachedPage = null
+      this.editingOriginalAttachedImages = null
 
       if (!this.checkRateLimit()) {
         const remainingTime = Math.ceil(
@@ -1646,11 +1687,13 @@ export const useAIChatStore = defineStore('aiChat', {
         }
       }
 
+      const images = this.attachedImages.map((img) => img.url)
+
       try {
         if (this.isStreamingEnabled) {
-          return await this.sendStreamingMessage(content)
+          return await this.sendStreamingMessage(content, images)
         }
-        return await this.sendNormalMessage(content)
+        return await this.sendNormalMessage(content, images)
       } catch (error) {
         console.error('重新发送消息失败:', error)
         return {

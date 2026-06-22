@@ -387,21 +387,11 @@
         </el-form-item>
 
         <el-form-item id="field-ai-vision-model" label="视觉模型名称" v-if="visionConfig.visionProvider">
-          <el-select
+          <el-input
             v-model="visionConfig.visionModel"
             placeholder="请输入视觉模型名称（如：qwen-3.7-plus、glm-5v-turbo、gpt-5.5 等）"
-            filterable
-            allow-create
-            style="width: 100%"
             @change="emitVisionChange">
-            <el-option label="Qwen-3.7-Plus (通义千问)" value="qwen-3.7-plus"></el-option>
-            <el-option label="Qwen3-VL-72B (硅基流动)" value="Qwen/Qwen3-VL-72B-Instruct"></el-option>
-            <el-option label="GLM-5V-Turbo (智谱)" value="glm-5v-turbo"></el-option>
-            <el-option label="MiniMax-M3 (MiniMax)" value="minimax-m3"></el-option>
-            <el-option label="GPT-5.5 (OpenAI)" value="gpt-5.5"></el-option>
-            <el-option label="GPT-5.5 mini (OpenAI)" value="gpt-5.5-mini"></el-option>
-            <el-option label="Claude Opus 4.8 (Anthropic)" value="claude-opus-4-8"></el-option>
-          </el-select>
+          </el-input>
           <div class="form-tip">支持任何模型名称，请根据您选择的服务商输入对应的视觉模型标识符</div>
         </el-form-item>
 
