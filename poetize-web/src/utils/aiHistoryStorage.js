@@ -78,10 +78,11 @@ function openDB() {
 function slimMessage(msg) {
   if (!msg || typeof msg !== 'object') return null;
   const { images, ...rest } = msg;
-  const slim = { ...rest };
+  // 深拷贝以去除 Vue/Pinia 响应式代理，避免 IndexedDB 结构化克隆时报 DataCloneError
+  const slim = JSON.parse(JSON.stringify({ ...rest }));
   // 显式保留 imageIds
-  if (Array.isArray(msg.imageIds) && msg.imageIds.length > 0) {
-    slim.imageIds = msg.imageIds.slice();
+  if (Array.isArray(slim.imageIds) && slim.imageIds.length > 0) {
+    // imageIds 已保留
   } else {
     delete slim.imageIds;
   }
