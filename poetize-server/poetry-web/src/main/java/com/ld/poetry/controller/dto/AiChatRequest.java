@@ -16,6 +16,7 @@ import java.util.Map;
  * @param history        聊天历史记录（可选）
  * @param pageContext    页面上下文（可选，用于流式聊天）
  * @param images         用户上传的图片URL列表（可选，需视觉模型支持）
+ * @param documents      用户上传的文档附件列表（可选，每项含 name/type/size/content）
  */
 public record AiChatRequest(
         @NotBlank(message = "消息内容不能为空") @Size(max = 10000, message = "消息长度不能超过 10000 字符") String message,
@@ -28,7 +29,9 @@ public record AiChatRequest(
 
         Map<String, Object> pageContext,
 
-        List<String> images) {
+        List<String> images,
+
+        List<Map<String, Object>> documents) {
     /**
      * Compact constructor：提供默认值，保证非 null 字段安全
      */
@@ -44,6 +47,9 @@ public record AiChatRequest(
         }
         if (images == null) {
             images = List.of();
+        }
+        if (documents == null) {
+            documents = List.of();
         }
     }
 }

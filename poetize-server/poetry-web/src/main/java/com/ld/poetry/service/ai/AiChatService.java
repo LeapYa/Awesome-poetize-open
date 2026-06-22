@@ -164,7 +164,7 @@ public class AiChatService {
      * 非流式聊天
      */
     public AiChatResponsePayload chat(String message, List<Map<String, String>> history, String userId) {
-        return chat(message, history, "default", userId, null, List.of());
+        return chat(message, history, "default", userId, null, List.of(), List.of());
     }
 
     /**
@@ -172,6 +172,17 @@ public class AiChatService {
      */
     public AiChatResponsePayload chat(String message, List<Map<String, String>> history, String conversationId,
             String userId, Map<String, Object> pageContext, List<String> images) {
+        return chat(message, history, conversationId, userId, pageContext, images, List.of());
+    }
+
+    /**
+     * 非流式聊天（含文档附件）
+     *
+     * @param documents 文档附件列表，每项含 name/type/size/content
+     */
+    public AiChatResponsePayload chat(String message, List<Map<String, String>> history, String conversationId,
+            String userId, Map<String, Object> pageContext, List<String> images,
+            List<Map<String, Object>> documents) {
         SysAiConfig config = getConfig();
         long startedAt = System.currentTimeMillis();
         String resolvedConversationId = normalizeConversationId(conversationId);
@@ -181,7 +192,7 @@ public class AiChatService {
         try {
             validateMessage(message, history, config, resolvedUserId);
 
-            String processedMessage = processUserMessage(message, pageContext);
+            String processedMessage = processUserMessage(message, pageContext, documents);
             KnowledgePromptContext ragContext = resolveArticleRagContext(message, pageContext);
             logRagContext("sync", resolvedUserId, resolvedConversationId, ragContext);
 
@@ -300,6 +311,18 @@ public class AiChatService {
     public SseEmitter streamChat(String message, List<Map<String, String>> history,
             String conversationId, String userId,
             Map<String, Object> pageContext, List<String> images) {
+        return streamChat(message, history, conversationId, userId, pageContext, images, List.of());
+    }
+
+    /**
+     * 流式聊天（含文档附件）
+     *
+     * @param documents 文档附件列表，每项含 name/type/size/content
+     */
+    public SseEmitter streamChat(String message, List<Map<String, String>> history,
+            String conversationId, String userId,
+            Map<String, Object> pageContext, List<String> images,
+            List<Map<String, Object>> documents) {
         SysAiConfig config = getConfig();
         long startedAt = System.currentTimeMillis();
         String resolvedConversationId = normalizeConversationId(conversationId);
@@ -320,8 +343,8 @@ public class AiChatService {
         ChatModel chatModel = chatClientFactory.createChatModel(config);
         boolean enableTools = Boolean.TRUE.equals(config.getEnableTools());
 
-        // 处理用户消息（含页面上下文净化）
-        String processedMessage = processUserMessage(message, pageContext);
+        // 处理用户消息（含页面上下文净化 + 文档附件合并）
+        String processedMessage = processUserMessage(message, pageContext, documents);
         KnowledgePromptContext ragContext = resolveArticleRagContext(message, pageContext);
         logRagContext("stream", resolvedUserId, resolvedConversationId, ragContext);
 
@@ -1328,34 +1351,76 @@ public class AiChatService {
     }
 
     /**
-     * 处理用户消息（合并页面上下文）
+     * 处理用户消息（合并页面上下文 + 文档附件）
      */
-    private String processUserMessage(String message, Map<String, Object> pageContext) {
-        if (pageContext == null || pageContext.isEmpty()) {
-            return message;
-        }
-
-        // 使用 ContentSanitizer 净化页面上下文
-        Map<String, Object> sanitized = contentSanitizer.sanitizePageContext(pageContext);
-
-        String title = (String) sanitized.getOrDefault("title", "");
-        String content = (String) sanitized.getOrDefault("content", "");
-        String type = (String) sanitized.getOrDefault("type", "");
-
-        if (title.isBlank() && content.isBlank()) {
-            return message;
-        }
-
+    private String processUserMessage(String message, Map<String, Object> pageContext,
+            List<Map<String, Object>> documents) {
+        String safeMessage = message == null ? "" : message;
         StringBuilder sb = new StringBuilder();
-        sb.append("页面信息:\n");
-        if (!title.isBlank())
-            sb.append("标题: ").append(title).append("\n");
-        if (!type.isBlank())
-            sb.append("类型: ").append(type).append("\n");
-        if (!content.isBlank())
-            sb.append("内容: ").append(content).append("\n");
-        sb.append("\n用户问题: ").append(message);
+        boolean hasPageContext = false;
 
-        return sb.toString();
+        // 合并页面上下文
+        if (pageContext != null && !pageContext.isEmpty()) {
+            Map<String, Object> sanitized = contentSanitizer.sanitizePageContext(pageContext);
+
+            String title = (String) sanitized.getOrDefault("title", "");
+            String content = (String) sanitized.getOrDefault("content", "");
+            String type = (String) sanitized.getOrDefault("type", "");
+
+            if (!title.isBlank() || !content.isBlank()) {
+                hasPageContext = true;
+                sb.append("页面信息:\n");
+                if (!title.isBlank())
+                    sb.append("标题: ").append(title).append("\n");
+                if (!type.isBlank())
+                    sb.append("类型: ").append(type).append("\n");
+                if (!content.isBlank())
+                    sb.append("内容: ").append(content).append("\n");
+            }
+        }
+
+        // 合并文档附件内容
+        if (documents != null && !documents.isEmpty()) {
+            StringBuilder docSb = new StringBuilder();
+            int docIndex = 1;
+            for (Map<String, Object> doc : documents) {
+                if (doc == null)
+                    continue;
+                Object docName = doc.get("name");
+                Object docContent = doc.get("content");
+                if (docContent == null) {
+                    continue;
+                }
+                String contentStr = String.valueOf(docContent);
+                if (contentStr.isBlank()) {
+                    continue;
+                }
+                // 净化文档内容（防止提示词注入）
+                String cleaned = contentSanitizer.sanitizeField(contentStr, "document");
+                if (cleaned.length() > 30000) {
+                    cleaned = cleaned.substring(0, 30000) + "...[文档内容已截断]";
+                }
+                docSb.append("--- 文档 ").append(docIndex);
+                if (docName != null && !String.valueOf(docName).isBlank()) {
+                    docSb.append(": ").append(docName);
+                }
+                docSb.append(" ---\n");
+                docSb.append(cleaned).append("\n\n");
+                docIndex++;
+            }
+            if (docIndex > 1) {
+                if (hasPageContext) {
+                    sb.append("\n");
+                }
+                sb.append("附带的文档内容:\n");
+                sb.append(docSb);
+            }
+        }
+
+        if (hasPageContext || sb.length() > 0) {
+            sb.append("\n用户问题: ").append(safeMessage);
+            return sb.toString();
+        }
+        return safeMessage;
     }
 }

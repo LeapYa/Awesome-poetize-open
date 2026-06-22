@@ -58,6 +58,48 @@
       </button>
     </div>
 
+    <!-- 已附加文档预览条 -->
+    <div v-if="attachedDocuments.length > 0" class="attached-documents-bar">
+      <div class="attached-documents-list">
+        <div
+          v-for="(doc, index) in attachedDocuments"
+          :key="index"
+          class="attached-document-item"
+          :class="{ 'is-parsing': doc.parsing }"
+        >
+          <svg class="document-icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326z m1.8 562H232V136h302v216c0 23.2 18.8 42 42 42h216v494z"
+              fill="currentColor"
+            />
+          </svg>
+          <div class="document-info">
+            <span class="document-name" :title="doc.name">{{ doc.name }}</span>
+            <span class="document-meta">
+              <span v-if="doc.parsing" class="document-status parsing">解析中...</span>
+              <span v-else-if="doc.error" class="document-status error">{{ doc.error }}</span>
+              <span v-else class="document-status ready">{{ formatFileSize(doc.size) }} · 已就绪</span>
+            </span>
+          </div>
+          <button
+            class="remove-document-btn"
+            @click="handleRemoveDocument(index)"
+            title="移除文档"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      <button
+        v-if="attachedDocuments.length > 0"
+        class="clear-documents-btn"
+        @click="handleClearDocuments"
+        title="清空所有文档"
+      >
+        清空
+      </button>
+    </div>
+
 
 
     <!-- 附加按钮区域（弹出菜单：页面 / 图片） -->
@@ -102,6 +144,18 @@
             </svg>
             <span>图片</span>
           </button>
+          <button
+            class="attach-menu-item"
+            @click="triggerDocumentUpload"
+          >
+            <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M854.6 288.6L639.4 73.4c-6-6-14.1-9.4-22.6-9.4H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V311.3c0-8.5-3.4-16.7-9.4-22.7zM790.2 326H602V137.8L790.2 326z m1.8 562H232V136h302v216c0 23.2 18.8 42 42 42h216v494z"
+                fill="currentColor"
+              />
+            </svg>
+            <span>文档</span>
+          </button>
         </div>
       </transition>
 
@@ -113,6 +167,16 @@
         multiple
         style="display: none"
         @change="handleImageSelected"
+      />
+
+      <!-- 隐藏的文档上传 input -->
+      <input
+        ref="documentInputRef"
+        type="file"
+        accept=".txt,.md,.markdown,.csv,.json,.pdf,.doc,.docx,.wps,.ppt,.pptx,.xls,.xlsx"
+        multiple
+        style="display: none"
+        @change="handleDocumentSelected"
       />
     </div>
 
@@ -233,9 +297,11 @@ export default {
     const aiChatStore = useAIChatStore()
     const inputRef = ref(null)
     const imageInputRef = ref(null)
+    const documentInputRef = ref(null)
     const localValue = ref(props.modelValue)
     const showAttachMenu = ref(false)
     const imageUploading = ref(false)
+    const documentUploading = ref(false)
     const themeColor = computed(() => aiChatStore.themeColor || DEFAULT_THEME_COLOR)
     const themeStyleVars = computed(() => {
       const rgb =
@@ -262,12 +328,16 @@ export default {
     // 已附加的图片
     const attachedImages = computed(() => aiChatStore.attachedImages)
 
+    // 已附加的文档
+    const attachedDocuments = computed(() => aiChatStore.attachedDocuments)
+
     // 视觉能力是否启用（控制图片上传入口可见性）
     const visionEnabled = computed(() => aiChatStore.visionEnabled)
 
-    // 是否可发送
+    // 是否可发送（文档解析中禁止发送，避免丢失正在解析的附件）
     const canSend = computed(() => {
-      return localValue.value.trim().length > 0 && !props.sending
+      const hasParsingDoc = (aiChatStore.attachedDocuments || []).some((doc) => doc.parsing)
+      return localValue.value.trim().length > 0 && !props.sending && !hasParsingDoc
     })
 
     /**
@@ -296,6 +366,85 @@ export default {
         imageInputRef.value.value = ''
         imageInputRef.value.click()
       }
+    }
+
+    /**
+     * 触发文档上传
+     */
+    const triggerDocumentUpload = () => {
+      showAttachMenu.value = false
+      if (documentInputRef.value) {
+        documentInputRef.value.value = ''
+        documentInputRef.value.click()
+      }
+    }
+
+    /**
+     * 格式化文件大小
+     */
+    const formatFileSize = (bytes) => {
+      if (!bytes || bytes <= 0) return '0 B'
+      const units = ['B', 'KB', 'MB', 'GB']
+      let size = bytes
+      let unitIndex = 0
+      while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024
+        unitIndex++
+      }
+      return `${size.toFixed(size < 10 ? 1 : 0)} ${units[unitIndex]}`
+    }
+
+    /**
+     * 处理文档选择
+     * 调用后端 /ai/chat/parseDocument 解析文档文本，存入 store
+     */
+    const handleDocumentSelected = async (event) => {
+      const files = event.target.files
+      if (!files || files.length === 0) return
+
+      // 检查文档数量限制
+      const remaining = 4 - aiChatStore.attachedDocuments.length
+      if (remaining <= 0) {
+        emit('document-upload-error', '最多只能附加4个文档')
+        return
+      }
+
+      const toUpload = Array.from(files).slice(0, remaining)
+      documentUploading.value = true
+
+      try {
+        for (const file of toUpload) {
+          // 校验文件大小（最大 20MB）
+          if (file.size > 20 * 1024 * 1024) {
+            emit('document-upload-error', `文档 ${file.name} 大小不能超过20MB`)
+            continue
+          }
+          const result = await aiChatStore.attachDocumentFile(file)
+          if (!result.success) {
+            emit('document-upload-error', `文档 ${file.name} 解析失败：${result.error || '未知错误'}`)
+          }
+        }
+        emit('documents-attached', aiChatStore.attachedDocuments)
+      } catch (error) {
+        console.error('文档处理失败:', error)
+        emit('document-upload-error', error.message || '文档处理失败')
+      } finally {
+        documentUploading.value = false
+      }
+    }
+
+    /**
+     * 移除指定文档
+     */
+    const handleRemoveDocument = (index) => {
+      aiChatStore.removeAttachedDocument(index)
+    }
+
+    /**
+     * 清空所有文档
+     */
+    const handleClearDocuments = () => {
+      aiChatStore.clearAttachedDocuments()
     }
 
     /**
@@ -464,15 +613,18 @@ export default {
     return {
       inputRef,
       imageInputRef,
+      documentInputRef,
       localValue,
       themeStyleVars,
       isMobile,
       canSend,
       attachedPage,
       attachedImages,
+      attachedDocuments,
       visionEnabled,
       showAttachMenu,
       imageUploading,
+      documentUploading,
       handleInput,
       handleKeyDown,
       handleSend,
@@ -482,9 +634,14 @@ export default {
       handleRemovePage,
       toggleAttachMenu,
       triggerImageUpload,
+      triggerDocumentUpload,
       handleImageSelected,
       handleRemoveImage,
       handleClearImages,
+      handleDocumentSelected,
+      handleRemoveDocument,
+      handleClearDocuments,
+      formatFileSize,
     }
   },
   emits: [
@@ -496,6 +653,8 @@ export default {
     'page-removed',
     'images-attached',
     'image-upload-error',
+    'documents-attached',
+    'document-upload-error',
   ],
 }
 </script>
@@ -732,6 +891,117 @@ export default {
   border-color: var(--ai-chat-theme-color);
   color: var(--ai-chat-theme-color);
 }
+.attached-documents-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  background: linear-gradient(90deg, rgba(var(--ai-chat-theme-rgb), 0.08) 0%, rgba(var(--ai-chat-theme-rgb), 0.14) 100%);
+  border-top: 1px solid rgba(var(--ai-chat-theme-rgb), 0.2);
+}
+.attached-documents-list {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  overflow-x: auto;
+  min-width: 0;
+}
+.attached-documents-list::-webkit-scrollbar {
+  height: 4px;
+}
+.attached-documents-list::-webkit-scrollbar-thumb {
+  background: rgba(var(--ai-chat-theme-rgb), 0.3);
+  border-radius: 2px;
+}
+.attached-document-item {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  padding-right: 24px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(var(--ai-chat-theme-rgb), 0.3);
+  border-radius: 6px;
+  min-width: 140px;
+  max-width: 240px;
+}
+.attached-document-item.is-parsing {
+  opacity: 0.7;
+}
+.document-icon {
+  width: 18px;
+  height: 18px;
+  fill: var(--ai-chat-theme-color);
+  flex-shrink: 0;
+}
+.document-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.document-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #2c3e50;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.document-meta {
+  font-size: 11px;
+  color: #6c757d;
+}
+.document-status.ready {
+  color: #28a745;
+}
+.document-status.parsing {
+  color: #ffc107;
+}
+.document-status.error {
+  color: #dc3545;
+}
+.remove-document-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.2s;
+}
+.remove-document-btn:hover {
+  background: rgba(255, 59, 48, 0.85);
+}
+.clear-documents-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(var(--ai-chat-theme-rgb), 0.26);
+  border-radius: 4px;
+  color: var(--ai-chat-theme-color-deep);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.clear-documents-btn:hover {
+  background: white;
+  border-color: var(--ai-chat-theme-color);
+  color: var(--ai-chat-theme-color);
+}
 .chat-input-container {
   display: flex;
   align-items: flex-end;
@@ -960,6 +1230,30 @@ export default {
   color: #eef4ff;
 }
 .dark-mode .clear-images-btn:hover {
+  background: rgba(var(--ai-chat-theme-rgb), 0.18);
+  border-color: var(--ai-chat-theme-color);
+  color: #fff;
+}
+.dark-mode .attached-documents-bar {
+  background: linear-gradient(90deg, rgba(var(--ai-chat-theme-rgb), 0.2) 0%, rgba(var(--ai-chat-theme-rgb), 0.3) 100%);
+  border-top-color: rgba(var(--ai-chat-theme-rgb), 0.3);
+}
+.dark-mode .attached-document-item {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(var(--ai-chat-theme-rgb), 0.4);
+}
+.dark-mode .document-name {
+  color: #eef4ff;
+}
+.dark-mode .document-meta {
+  color: #a8b3cf;
+}
+.dark-mode .clear-documents-btn {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(var(--ai-chat-theme-rgb), 0.35);
+  color: #eef4ff;
+}
+.dark-mode .clear-documents-btn:hover {
   background: rgba(var(--ai-chat-theme-rgb), 0.18);
   border-color: var(--ai-chat-theme-color);
   color: #fff;

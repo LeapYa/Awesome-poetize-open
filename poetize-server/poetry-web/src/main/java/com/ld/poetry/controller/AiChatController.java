@@ -6,6 +6,7 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.controller.dto.AiChatRequest;
 import com.ld.poetry.controller.dto.MemorySearchResultRequest;
 import com.ld.poetry.service.ai.AiChatService;
+import com.ld.poetry.service.ai.DocumentParser;
 import com.ld.poetry.service.ai.dto.AiChatResponsePayload;
 import com.ld.poetry.utils.image.ImageCompressUtil;
 import jakarta.validation.Valid;
@@ -45,6 +46,9 @@ public class AiChatController {
     @Autowired
     private com.ld.poetry.service.ai.MemorySearchCoordinator memorySearchCoordinator;
 
+    @Autowired
+    private DocumentParser documentParser;
+
     /**
      * 检查 AI 聊天状态
      */
@@ -67,7 +71,8 @@ public class AiChatController {
                     request.conversationId(),
                     request.userId(),
                     request.pageContext(),
-                    request.images());
+                    request.images(),
+                    request.documents());
 
             Map<String, Object> payload = new java.util.LinkedHashMap<>();
             payload.put("content", response != null ? response.content() : "");
@@ -103,7 +108,8 @@ public class AiChatController {
                     request.conversationId(),
                     request.userId(),
                     request.pageContext(),
-                    request.images());
+                    request.images(),
+                    request.documents());
 
         } catch (IllegalArgumentException e) {
             // 业务验证错误：通过 SSE error 事件将原因告知客户端
@@ -193,6 +199,45 @@ public class AiChatController {
         } catch (Exception e) {
             logger.error("图片压缩失败", e);
             return PoetryResult.fail("图片压缩失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析文档并返回纯文本内容（不持久化到服务器存储）
+     * <p>
+     * 前端上传文档文件，服务端使用 DocumentParser 提取文本：
+     * - 纯文本类（txt/md/csv/json）：直接 UTF-8 读取
+     * - PDF：Apache PDFBox
+     * - Office 类（doc/docx/wps/ppt/pptx/xls/xlsx）：Apache POI
+     * <p>
+     * 限制：单文件 20MB，提取后返回纯文本。
+     */
+    @PostMapping(value = "/parseDocument", produces = MediaType.APPLICATION_JSON_VALUE)
+    public PoetryResult<Map<String, Object>> parseDocument(@RequestParam("file") MultipartFile file) {
+        // 校验 AI 聊天是否启用
+        Map<String, Object> status = aiChatService.checkStatus();
+        if (!Boolean.TRUE.equals(status.get("enabled"))) {
+            return PoetryResult.fail("AI聊天未启用");
+        }
+        if (file == null || file.isEmpty()) {
+            return PoetryResult.fail("文档文件为空");
+        }
+        // 限制单文件 20MB
+        if (file.getSize() > 20L * 1024 * 1024) {
+            return PoetryResult.fail("文档大小不能超过20MB");
+        }
+
+        try {
+            DocumentParser.ParseResult result = documentParser.parse(file);
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("content", result.getContent());
+            payload.put("mimeType", result.getMimeType());
+            payload.put("originalSize", file.getSize());
+            payload.put("fileName", file.getOriginalFilename());
+            return PoetryResult.success(payload);
+        } catch (Exception e) {
+            logger.error("文档解析失败", e);
+            return PoetryResult.fail("文档解析失败: " + e.getMessage());
         }
     }
 

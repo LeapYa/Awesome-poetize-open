@@ -31,6 +31,28 @@
           />
         </div>
 
+        <div v-if="hasDocuments" class="message-documents">
+          <div
+            v-for="(doc, index) in message.documents"
+            :key="index"
+            class="message-document-chip"
+            :title="`${doc.name} · ${formatFileSize(doc.size)}`"
+          >
+            <svg class="message-document-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                fill="currentColor" opacity="0.3"
+              />
+              <path
+                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm0 2 6 6h-6z"
+                fill="currentColor"
+              />
+            </svg>
+            <span class="message-document-name">{{ doc.name }}</span>
+            <span class="message-document-size">{{ formatFileSize(doc.size) }}</span>
+          </div>
+        </div>
+
         <el-image-viewer
           v-if="showImageViewer"
           :url-list="previewImages"
@@ -233,6 +255,17 @@ export default {
       () =>
         Array.isArray(props.message.images) && props.message.images.length > 0
     )
+    const hasDocuments = computed(
+      () =>
+        Array.isArray(props.message.documents) && props.message.documents.length > 0
+    )
+
+    const formatFileSize = (bytes) => {
+      if (bytes == null || isNaN(bytes)) return ''
+      if (bytes < 1024) return bytes + ' B'
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+    }
 
     const showImageViewer = ref(false)
     const previewImages = ref([])
@@ -369,6 +402,8 @@ export default {
       isAssistant,
       isSystem,
       hasImages,
+      hasDocuments,
+      formatFileSize,
       showImageViewer,
       previewImages,
       previewImageIndex,
@@ -556,6 +591,41 @@ export default {
 }
 .message-image-thumb:hover {
   transform: scale(1.03);
+}
+.message-documents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.message-document-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
+  overflow: hidden;
+}
+.message-document-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+.message-document-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.message-document-size {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
 }
 .message-edit-btn svg {
   width: 18px;

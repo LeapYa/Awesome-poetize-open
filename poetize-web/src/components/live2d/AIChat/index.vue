@@ -120,6 +120,7 @@
         @page-attached="handlePageAttached"
         @page-removed="handlePageRemoved"
         @image-upload-error="handleImageUploadError"
+        @document-upload-error="handleDocumentUploadError"
       />
 
       <!-- 缩放控制点（仅非全屏时显示） -->
@@ -316,6 +317,13 @@ export default {
       live2dStore.showMessage(message || '图片上传失败', 3000, 10)
     }
 
+    /**
+     * 文档上传/解析失败提示
+     */
+    const handleDocumentUploadError = (message) => {
+      live2dStore.showMessage(message || '文档解析失败', 3000, 10)
+    }
+
     // 初始化
     onMounted(async () => {
       await chat.init()
@@ -349,6 +357,7 @@ export default {
       handlePageAttached,
       handlePageRemoved,
       handleImageUploadError,
+      handleDocumentUploadError,
       chat,
     }
   },

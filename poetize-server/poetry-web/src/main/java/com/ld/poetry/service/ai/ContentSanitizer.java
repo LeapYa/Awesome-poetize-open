@@ -242,12 +242,13 @@ public class ContentSanitizer {
 
     /**
      * 净化单个字段
+     * <p>
+     * public 暴露：供 AiChatService 在合并文档附件内容时复用同一套注入过滤逻辑
      */
-    private String sanitizeField(String value, String fieldName) {
+    public String sanitizeField(String value, String fieldName) {
         if (value == null || value.isBlank())
             return "";
 
-        String original = value;
         String result = value;
 
         // 移除注入模式

@@ -112,10 +112,13 @@ export const useAIChatStore = defineStore('aiChat', {
     editingMessageId: null,
     editingContent: '',
     editingOriginalAttachedPage: null,
+    editingOriginalAttachedImages: null,
+    editingOriginalAttachedDocuments: null,
     // 已写入 IndexedDB 的消息数（用于增量写入判断）
     lastSavedCount: 0,
     attachedPageContext: null,
     attachedImages: [],
+    attachedDocuments: [],
   }),
 
   getters: {
@@ -523,6 +526,15 @@ export const useAIChatStore = defineStore('aiChat', {
         messageMetadata.images = pendingImages.map((img) => img.url)
         messageMetadata.imageIds = pendingImages.map((img) => img.imageId).filter(Boolean)
       }
+      // 携带文档附件到用户消息（用于前端展示，仅保留元信息，不携带全文）
+      const pendingDocuments = (this.attachedDocuments || []).slice()
+      if (pendingDocuments.length > 0) {
+        messageMetadata.documents = pendingDocuments.map((doc) => ({
+          name: doc.name,
+          size: doc.size,
+          type: doc.type,
+        }))
+      }
       const userMessage = this.addMessage(content, 'user', messageMetadata)
 
       // 将图片关联到用户消息（持久化到 IndexedDB）
@@ -544,9 +556,17 @@ export const useAIChatStore = defineStore('aiChat', {
 
       try {
         if (this.isStreamingEnabled) {
-          return await this.sendStreamingMessage(content, messageMetadata.images || [])
+          return await this.sendStreamingMessage(
+            content,
+            messageMetadata.images || [],
+            pendingDocuments
+          )
         }
-        return await this.sendNormalMessage(content, messageMetadata.images || [])
+        return await this.sendNormalMessage(
+          content,
+          messageMetadata.images || [],
+          pendingDocuments
+        )
       } catch (error) {
         console.error('发送消息失败:', error)
         return {
@@ -801,7 +821,96 @@ export const useAIChatStore = defineStore('aiChat', {
       this.attachedImages = []
     },
 
-    async sendNormalMessage(content, images = []) {
+    /**
+     * 上传文档到后端解析，返回文本内容后存入 store
+     * @param {File} file 文档文件
+     * @returns {Promise<{success: boolean, error?: string}>} 解析结果与错误信息
+     */
+    async attachDocumentFile(file) {
+      if (!file) return { success: false, error: '文件为空' }
+      // 限制单个文档 20MB
+      if (file.size > 20 * 1024 * 1024) {
+        return { success: false, error: '文档大小不能超过20MB' }
+      }
+      // 限制最多 4 个文档
+      if (this.attachedDocuments.length >= 4) {
+        return { success: false, error: '最多只能附加4个文档' }
+      }
+
+      // 先插入占位项，标记 parsing 状态
+      const placeholderIndex = this.attachedDocuments.length
+      this.attachedDocuments.push({
+        name: file.name,
+        size: file.size,
+        type: file.type || '',
+        content: '',
+        parsing: true,
+        error: '',
+      })
+
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const response = await fetch(
+          `${constant.baseURL}/ai/chat/parseDocument`,
+          {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+          }
+        )
+        const result = await response.json()
+        if (!result.success || !result.data || !result.data.content) {
+          const errMsg = result.message || '文档解析失败'
+          this.attachedDocuments[placeholderIndex] = {
+            name: file.name,
+            size: file.size,
+            type: file.type || '',
+            content: '',
+            parsing: false,
+            error: errMsg,
+          }
+          return { success: false, error: errMsg }
+        }
+        this.attachedDocuments[placeholderIndex] = {
+          name: file.name,
+          size: file.size,
+          type: file.type || result.data.mimeType || '',
+          content: result.data.content,
+          parsing: false,
+          error: '',
+        }
+        return { success: true }
+      } catch (error) {
+        console.error('文档解析失败:', error)
+        this.attachedDocuments[placeholderIndex] = {
+          name: file.name,
+          size: file.size,
+          type: file.type || '',
+          content: '',
+          parsing: false,
+          error: error.message || '网络错误',
+        }
+        return { success: false, error: error.message || '网络错误' }
+      }
+    },
+
+    /**
+     * 移除指定索引的文档附件
+     */
+    removeAttachedDocument(index) {
+      if (index < 0 || index >= this.attachedDocuments.length) return
+      this.attachedDocuments.splice(index, 1)
+    },
+
+    /**
+     * 清空所有文档附件
+     */
+    clearAttachedDocuments() {
+      this.attachedDocuments = []
+    },
+
+    async sendNormalMessage(content, images = [], documents = []) {
       this.typing = true
       this.shouldStop = false
       this.abortController = new AbortController()
@@ -820,6 +929,12 @@ export const useAIChatStore = defineStore('aiChat', {
             userId: this.currentUser?.id || 'anonymous',
             pageContext: this.attachedPageContext,
             images: images,
+            documents: documents.map((doc) => ({
+              name: doc.name,
+              type: doc.type,
+              size: doc.size,
+              content: doc.content,
+            })),
           }),
           signal: this.abortController.signal,
         })
@@ -842,6 +957,9 @@ export const useAIChatStore = defineStore('aiChat', {
           if (this.attachedImages && this.attachedImages.length > 0) {
             this.attachedImages = []
           }
+          if (this.attachedDocuments && this.attachedDocuments.length > 0) {
+            this.attachedDocuments = []
+          }
           return {
             success: true,
             response: result.data.content,
@@ -862,7 +980,7 @@ export const useAIChatStore = defineStore('aiChat', {
       }
     },
 
-    async sendStreamingMessage(content, images = []) {
+    async sendStreamingMessage(content, images = [], documents = []) {
       this.typing = true
       this.streaming = true
       this.shouldStop = false
@@ -884,6 +1002,12 @@ export const useAIChatStore = defineStore('aiChat', {
               userId: this.currentUser?.id || 'anonymous',
               pageContext: this.attachedPageContext,
               images: images,
+              documents: documents.map((doc) => ({
+                name: doc.name,
+                type: doc.type,
+                size: doc.size,
+                content: doc.content,
+              })),
             }),
             signal: this.abortController.signal,
           }
@@ -1114,6 +1238,10 @@ export const useAIChatStore = defineStore('aiChat', {
           this.attachedImages = []
         }
 
+        if (this.attachedDocuments && this.attachedDocuments.length > 0) {
+          this.attachedDocuments = []
+        }
+
         return {
           success: true,
           response: fullText,
@@ -1326,10 +1454,13 @@ export const useAIChatStore = defineStore('aiChat', {
     _flushLocalStorage() {
       try {
         const hot = this.messages.slice(-HOT_MESSAGE_COUNT).map((msg) => {
-          const { images, imageIds, ...rest } = msg
+          const { images, imageIds, documents, ...rest } = msg
           const slim = { ...rest }
           if (imageIds && imageIds.length > 0) {
             slim.imageIds = imageIds
+          }
+          if (documents && documents.length > 0) {
+            slim.documents = documents
           }
           return slim
         })
@@ -1338,10 +1469,13 @@ export const useAIChatStore = defineStore('aiChat', {
         console.error('localStorage 写入失败，降级处理:', error)
         try {
           const hot = this.messages.slice(-Math.ceil(HOT_MESSAGE_COUNT / 2)).map((msg) => {
-            const { images, imageIds, ...rest } = msg
+            const { images, imageIds, documents, ...rest } = msg
             const slim = { ...rest }
             if (imageIds && imageIds.length > 0) {
               slim.imageIds = imageIds
+            }
+            if (documents && documents.length > 0) {
+              slim.documents = documents
             }
             return slim
           })
@@ -1368,10 +1502,13 @@ export const useAIChatStore = defineStore('aiChat', {
       if (totalCount < this.lastSavedCount) {
         // 消息数减少（截断场景）：全量替换，删除被丢弃的旧记录
         const toSave = this.messages.map((msg) => {
-          const { images, imageIds, ...rest } = msg
+          const { images, imageIds, documents, ...rest } = msg
           const slim = { ...rest }
           if (imageIds && imageIds.length > 0) {
             slim.imageIds = imageIds
+          }
+          if (documents && documents.length > 0) {
+            slim.documents = documents
           }
           return slim
         })
@@ -1381,10 +1518,13 @@ export const useAIChatStore = defineStore('aiChat', {
       } else if (totalCount > this.lastSavedCount) {
         // 消息数增加：只 put 新增的消息，避免全量写入
         const newMessages = this.messages.slice(this.lastSavedCount).map((msg) => {
-          const { images, imageIds, ...rest } = msg
+          const { images, imageIds, documents, ...rest } = msg
           const slim = { ...rest }
           if (imageIds && imageIds.length > 0) {
             slim.imageIds = imageIds
+          }
+          if (documents && documents.length > 0) {
+            slim.documents = documents
           }
           return slim
         })
@@ -1398,10 +1538,13 @@ export const useAIChatStore = defineStore('aiChat', {
         // put 最后一条消息，覆盖流式输出期间的内容变更
         const lastMsg = this.messages[totalCount - 1]
         if (lastMsg) {
-          const { images, imageIds, ...rest } = lastMsg
+          const { images, imageIds, documents, ...rest } = lastMsg
           const slim = { ...rest }
           if (imageIds && imageIds.length > 0) {
             slim.imageIds = imageIds
+          }
+          if (documents && documents.length > 0) {
+            slim.documents = documents
           }
           saveMessagesToIDB([slim]).catch((error) =>
             console.error('IndexedDB 更新最后一条消息失败:', error)
@@ -1417,10 +1560,13 @@ export const useAIChatStore = defineStore('aiChat', {
      */
     _replaceHistoryInIDB() {
       const toSave = this.messages.map((msg) => {
-        const { images, imageIds, ...rest } = msg
+        const { images, imageIds, documents, ...rest } = msg
         const slim = { ...rest }
         if (imageIds && imageIds.length > 0) {
           slim.imageIds = imageIds
+        }
+        if (documents && documents.length > 0) {
+          slim.documents = documents
         }
         return slim
       })
@@ -1555,6 +1701,22 @@ export const useAIChatStore = defineStore('aiChat', {
         this.editingOriginalAttachedImages = null
       }
 
+      // 加载原消息的文档到编辑器（仅元信息，不携带全文）
+      // 历史消息未持久化文档全文，编辑重发时需提示用户重新上传
+      if (message && Array.isArray(message.documents) && message.documents.length > 0) {
+        this.editingOriginalAttachedDocuments = this.attachedDocuments.slice()
+        this.attachedDocuments = message.documents.map((doc) => ({
+          name: doc.name,
+          size: doc.size,
+          type: doc.type,
+          content: doc.content || '',
+          parsing: false,
+          error: doc.content ? null : '需重新上传以恢复内容',
+        }))
+      } else {
+        this.editingOriginalAttachedDocuments = null
+      }
+
       if (message && message.attachedPage) {
         this.editingOriginalAttachedPage = message.attachedPage
         this.attachedPageContext = {
@@ -1576,6 +1738,13 @@ export const useAIChatStore = defineStore('aiChat', {
       if (this.editingOriginalAttachedImages) {
         this.attachedImages = this.editingOriginalAttachedImages
         this.editingOriginalAttachedImages = null
+      }
+
+      if (this.editingOriginalAttachedDocuments) {
+        this.attachedDocuments = this.editingOriginalAttachedDocuments
+        this.editingOriginalAttachedDocuments = null
+      } else {
+        this.attachedDocuments = []
       }
 
       if (this.editingOriginalAttachedPage) {
@@ -1629,6 +1798,16 @@ export const useAIChatStore = defineStore('aiChat', {
       this.messages[messageIndex].images = editedImages
       this.messages[messageIndex].imageIds = editedImageIds
 
+      // 同步更新消息的文档附件（用户可能在编辑时删除/保留文档）
+      const editedDocuments = (this.attachedDocuments || [])
+        .slice()
+        .map((doc) => ({
+          name: doc.name,
+          size: doc.size,
+          type: doc.type,
+        }))
+      this.messages[messageIndex].documents = editedDocuments
+
       this.messages = this.messages.slice(0, messageIndex + 1)
       // 编辑重发截断历史：取消防抖，直接同步写 localStorage + 立即替换 IndexedDB
       // 避免 saveHistory 防抖 300ms 后 _flushHistory 与 _replaceHistoryInIDB 重复写入
@@ -1655,6 +1834,7 @@ export const useAIChatStore = defineStore('aiChat', {
       this.editingContent = ''
       this.editingOriginalAttachedPage = null
       this.editingOriginalAttachedImages = null
+      this.editingOriginalAttachedDocuments = null
 
       if (!this.checkRateLimit()) {
         const remainingTime = Math.ceil(
@@ -1688,12 +1868,25 @@ export const useAIChatStore = defineStore('aiChat', {
       }
 
       const images = this.attachedImages.map((img) => img.url)
+      const documents = (this.attachedDocuments || []).slice()
+
+      // 阻止在文档解析中发送消息：避免发送空内容文档并丢失正在解析的附件
+      if (documents.some((doc) => doc.parsing)) {
+        return {
+          success: false,
+          error: 'document_parsing',
+          message: '文档正在解析中，请稍候再发送',
+        }
+      }
+
+      // 过滤掉无内容的文档（如编辑加载的历史文档未重新上传）
+      const documentsToSend = documents.filter((doc) => doc.content && doc.content.trim())
 
       try {
         if (this.isStreamingEnabled) {
-          return await this.sendStreamingMessage(content, images)
+          return await this.sendStreamingMessage(content, images, documentsToSend)
         }
-        return await this.sendNormalMessage(content, images)
+        return await this.sendNormalMessage(content, images, documentsToSend)
       } catch (error) {
         console.error('重新发送消息失败:', error)
         return {
