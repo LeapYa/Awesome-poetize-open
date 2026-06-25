@@ -115,7 +115,7 @@ public class ContentSanitizer {
         validateUserInput(input, null);
     }
 
-    public void validateUserInput(String input, List<Map<String, String>> history) {
+    public void validateUserInput(String input, List<Map<String, Object>> history) {
         if (input == null || input.isBlank())
             return;
 
@@ -149,7 +149,7 @@ public class ContentSanitizer {
         return detectInjectionRisk(input, null);
     }
 
-    public int detectInjectionRisk(String input, List<Map<String, String>> history) {
+    public int detectInjectionRisk(String input, List<Map<String, Object>> history) {
         if (input == null || input.isBlank())
             return 0;
 
@@ -333,7 +333,7 @@ public class ContentSanitizer {
         return false;
     }
 
-    private boolean matchesContextualPromptLeak(List<String> candidates, List<Map<String, String>> history) {
+    private boolean matchesContextualPromptLeak(List<String> candidates, List<Map<String, Object>> history) {
         if (history == null || history.isEmpty()) {
             return false;
         }
@@ -511,7 +511,7 @@ public class ContentSanitizer {
         return input.substring(0, Math.min(100, input.length()));
     }
 
-    private String buildHistoryContext(List<Map<String, String>> history) {
+    private String buildHistoryContext(List<Map<String, Object>> history) {
         if (history == null || history.isEmpty()) {
             return "";
         }
@@ -519,12 +519,14 @@ public class ContentSanitizer {
         int start = Math.max(0, history.size() - 6);
         StringBuilder sb = new StringBuilder();
         for (int i = start; i < history.size(); i++) {
-            Map<String, String> msg = history.get(i);
+            Map<String, Object> msg = history.get(i);
             if (msg == null) {
                 continue;
             }
-            String role = msg.getOrDefault("role", "");
-            String content = msg.getOrDefault("content", "");
+            Object roleObj = msg.getOrDefault("role", "");
+            Object contentObj = msg.getOrDefault("content", "");
+            String role = roleObj != null ? roleObj.toString() : "";
+            String content = contentObj != null ? contentObj.toString() : "";
             if (content.isBlank()) {
                 continue;
             }

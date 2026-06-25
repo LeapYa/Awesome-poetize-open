@@ -73,13 +73,13 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
     @Override
     public void recordLogin(String action, boolean success, String account, Integer userId, String username,
                             String summary, Map<String, Object> detail) {
-        record("LOGIN", action, success, account, userId, username, null, null, summary, detail);
+        record("LOGIN", action, success, account, userId, username, null, null, summary, detail, null, null, null);
     }
 
     @Override
     public void recordSecurity(String action, boolean success, String account, Integer userId, String username,
                                String summary, Map<String, Object> detail) {
-        record("SECURITY", action, success, account, userId, username, null, null, summary, detail);
+        record("SECURITY", action, success, account, userId, username, null, null, summary, detail, null, null, null);
     }
 
     @Override
@@ -90,7 +90,35 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
                 null,
                 user == null ? null : user.getId(),
                 user == null ? null : user.getUsername(),
-                targetType, targetId, summary, detail);
+                targetType, targetId, summary, detail, null, null, null);
+    }
+
+    @Override
+    public void recordAi(String action, boolean success, String targetType, String targetId,
+                         String summary, Map<String, Object> detail,
+                         Integer promptTokens, Integer completionTokens, Integer totalTokens) {
+        // 同步调用：HTTP 请求上下文可用，从 PoetryUtil 解析调用主体
+        User user = PoetryUtil.getCurrentUser();
+        record("AI", action, success,
+                null,
+                user == null ? null : user.getId(),
+                user == null ? null : user.getUsername(),
+                targetType, targetId, summary, detail,
+                promptTokens, completionTokens, totalTokens);
+    }
+
+    @Override
+    public void recordAi(String action, boolean success, String targetType, String targetId,
+                         String summary, Map<String, Object> detail,
+                         Integer promptTokens, Integer completionTokens, Integer totalTokens,
+                         Integer callerUserId, String callerUsername, String callerIp, String callerLocation) {
+        // 流式回调/异步任务：HTTP 上下文已丢失，直接使用调用方预先捕获的 caller 信息
+        record("AI", action, success,
+                null,
+                callerUserId, callerUsername,
+                targetType, targetId, summary, detail,
+                promptTokens, completionTokens, totalTokens,
+                callerIp, callerLocation);
     }
 
     @Override
@@ -107,10 +135,27 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
     }
 
     private void record(String logType, String action, boolean success, String account, Integer userId, String username,
-                        String targetType, String targetId, String summary, Map<String, Object> detail) {
+                        String targetType, String targetId, String summary, Map<String, Object> detail,
+                        Integer promptTokens, Integer completionTokens, Integer totalTokens) {
+        record(logType, action, success, account, userId, username,
+                targetType, targetId, summary, detail,
+                promptTokens, completionTokens, totalTokens,
+                null, null);
+    }
+
+    /**
+     * 写入审计日志核心方法。
+     *
+     * @param callerIp       调用方 IP（可空）：非空时直接使用，null 时从 HTTP 请求兜底
+     * @param callerLocation 调用方地理位置（可空）：非空时直接使用，null 时根据 ip 解析
+     */
+    private void record(String logType, String action, boolean success, String account, Integer userId, String username,
+                        String targetType, String targetId, String summary, Map<String, Object> detail,
+                        Integer promptTokens, Integer completionTokens, Integer totalTokens,
+                        String callerIp, String callerLocation) {
         try {
             HttpServletRequest request = PoetryUtil.getRequest();
-            String ip = request == null ? "unknown" : PoetryUtil.getIpAddr(request);
+            String ip = callerIp != null ? callerIp : (request == null ? "unknown" : PoetryUtil.getIpAddr(request));
 
             SysAuditLog auditLog = new SysAuditLog();
             auditLog.setLogType(limit(logType, 32));
@@ -124,13 +169,16 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
             auditLog.setUserId(userId);
             auditLog.setUsername(limit(username, 64));
             auditLog.setIp(limit(ip, 128));
-            auditLog.setLocation(limit(resolveLocation(ip), 128));
+            auditLog.setLocation(limit(callerLocation != null ? callerLocation : resolveLocation(ip), 128));
             auditLog.setUserAgent(limit(request == null ? null : request.getHeader("User-Agent"), 512));
             auditLog.setRequestUri(limit(request == null ? null : request.getRequestURI(), 512));
             auditLog.setTargetType(limit(targetType, 64));
             auditLog.setTargetId(limit(targetId, 128));
             auditLog.setSummary(limit(summary, 512));
             auditLog.setDetail(limit(toDetailJson(detail), 4096));
+            auditLog.setPromptTokens(promptTokens);
+            auditLog.setCompletionTokens(completionTokens);
+            auditLog.setTotalTokens(totalTokens);
             auditLog.setCreateTime(LocalDateTime.now());
             save(auditLog);
         } catch (Exception e) {

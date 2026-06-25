@@ -147,6 +147,9 @@
                 :vision-config-prop="aiConfigs.visionConfig"
                 @update-vision-config="updateAiVisionConfig" />
             </el-collapse-item>
+            <el-collapse-item title="Skill 管理" name="skills">
+              <AiSkillConfig />
+            </el-collapse-item>
             <el-collapse-item title="高级设置" name="advanced">
               <AiAdvancedConfig
                 v-model="aiConfigs.advancedConfig"
@@ -175,6 +178,11 @@
             <div class="config-card" @click="openMobileConfigDialog('tools')">
               <i class="el-icon-s-operation"></i>
               <span>AI扩展工具</span>
+              <i class="el-icon-arrow-right"></i>
+            </div>
+            <div class="config-card" @click="openMobileConfigDialog('skills')">
+              <i class="el-icon-document"></i>
+              <span>Skill 管理</span>
               <i class="el-icon-arrow-right"></i>
             </div>
             <div class="config-card" @click="openMobileConfigDialog('advanced')">
@@ -210,6 +218,7 @@
               :vision-config-prop="aiConfigs.visionConfig"
               @update-vision-config="updateAiVisionConfig"
               @close-dialog="mobileConfigDialogVisible = false" />
+            <AiSkillConfig v-if="currentMobileConfig === 'skills'" />
             <AiAdvancedConfig
               v-if="currentMobileConfig === 'advanced'"
               v-model="aiConfigs.advancedConfig"
@@ -611,6 +620,7 @@ const AiChatSettings = () => import('./aiChat/AiChatSettings');
 const AiAppearanceConfig = () => import('./aiChat/AiAppearanceConfig');
 const AiAdvancedConfig = () => import('./aiChat/AiAdvancedConfig');
 const AiToolsConfig = () => import('./aiChat/AiToolsConfig');
+const AiSkillConfig = () => import('./aiChat/AiSkillConfig');
 
 const DEFAULT_COMMENT_SKILL_DOCUMENT = `---
 name: poetize-comment-reply
@@ -661,7 +671,8 @@ export default {
     AiChatSettings,
     AiAppearanceConfig,
     AiAdvancedConfig,
-    AiToolsConfig
+    AiToolsConfig,
+    AiSkillConfig
   },
   data() {
     return {
@@ -1394,6 +1405,7 @@ export default {
         chat: '聊天设置',
         appearance: '外观设置',
         tools: 'AI扩展工具',
+        skills: 'Skill 管理',
         advanced: '高级设置'
       };
       this.currentMobileConfig = type;

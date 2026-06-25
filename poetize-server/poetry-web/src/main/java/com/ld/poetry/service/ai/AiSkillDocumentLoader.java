@@ -4,14 +4,28 @@ import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
  * 解析并校验配置型 SKILL.md 文档。
+ * <p>
+ * 支持的 frontmatter 字段：name、description、version、author、scene。
+ * 未知字段会被忽略而非报错，便于 Skill 文档扩展。
  */
 public final class AiSkillDocumentLoader {
 
     private static final Pattern SKILL_NAME_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9-]{0,63}$");
+
+    /**
+     * 已知 frontmatter 字段白名单，未在此集合中的字段将被忽略。
+     */
+    private static final Set<String> KNOWN_FIELDS = Set.of("name", "description", "version", "author", "scene");
+
+    /**
+     * scene 字段允许的取值。
+     */
+    private static final Set<String> ALLOWED_SCENES = Set.of("comment", "chat", "article", "universal");
 
     private AiSkillDocumentLoader() {
     }
@@ -43,7 +57,14 @@ public final class AiSkillDocumentLoader {
             throw new IllegalArgumentException("Skill正文不能为空");
         }
 
-        return new AiSkillDocument(name, description, body.strip());
+        String version = metadata.getOrDefault("version", "1.0.0");
+        String author = metadata.getOrDefault("author", "");
+        String scene = metadata.getOrDefault("scene", "comment");
+        if (!ALLOWED_SCENES.contains(scene)) {
+            throw new IllegalArgumentException("Skill frontmatter.scene 取值必须是 comment/chat/article/universal 之一");
+        }
+
+        return new AiSkillDocument(name, description, body.strip(), version, author, scene);
     }
 
     public static boolean isValid(String skillDocument) {
@@ -81,8 +102,9 @@ public final class AiSkillDocumentLoader {
             }
             String key = line.substring(0, separator).trim();
             String value = unquote(line.substring(separator + 1).trim());
-            if (!"name".equals(key) && !"description".equals(key)) {
-                throw new IllegalArgumentException("Skill frontmatter 仅支持 name 和 description 字段");
+            // 未知字段忽略而非报错，便于 Skill 文档扩展
+            if (!KNOWN_FIELDS.contains(key)) {
+                continue;
             }
             if (metadata.containsKey(key)) {
                 throw new IllegalArgumentException("Skill frontmatter 字段重复: " + key);

@@ -271,6 +271,9 @@ CREATE TABLE `poetize`.`sys_audit_log` (
   `target_id` varchar(128) DEFAULT NULL COMMENT '目标对象ID',
   `summary` varchar(512) DEFAULT NULL COMMENT '摘要',
   `detail` json DEFAULT NULL COMMENT '脱敏详情JSON',
+  `prompt_tokens` int DEFAULT NULL COMMENT 'AI输入Token(仅AI日志)',
+  `completion_tokens` int DEFAULT NULL COMMENT 'AI输出Token(仅AI日志)',
+  `total_tokens` int DEFAULT NULL COMMENT 'AI合计Token(仅AI日志)',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_audit_create_time` (`create_time`),
@@ -790,6 +793,27 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   KEY `idx_config_type` (`config_type`) COMMENT '配置类型索引',
   KEY `idx_enabled` (`enabled`) COMMENT '启用状态索引'
 ) ENGINE=Aria DEFAULT CHARSET=utf8mb4 COMMENT='AI配置统一管理表';
+
+-- AI Skill 管理表
+CREATE TABLE IF NOT EXISTS `sys_ai_skill` (
+  `id`               INT AUTO_INCREMENT PRIMARY KEY,
+  `skill_key`        VARCHAR(64)  NOT NULL COMMENT 'Skill 唯一标识 (frontmatter name)',
+  `skill_name`       VARCHAR(128) NOT NULL COMMENT '显示名称',
+  `description`      VARCHAR(512) NOT NULL COMMENT 'frontmatter description',
+  `version`          VARCHAR(32)  DEFAULT '1.0.0',
+  `author`           VARCHAR(64)  DEFAULT '',
+  `scene`            VARCHAR(32)  NOT NULL DEFAULT 'comment' COMMENT '适用场景: comment/chat/article/universal',
+  `skill_content`    MEDIUMTEXT   NOT NULL COMMENT '完整 SKILL.md 原文',
+  `skill_body`       MEDIUMTEXT   NOT NULL COMMENT '解析后的正文',
+  `placeholders`     VARCHAR(512) DEFAULT '' COMMENT '支持的占位符 JSON',
+  `enabled`          TINYINT(1)   DEFAULT 1,
+  `is_builtin`       TINYINT(1)   DEFAULT 0 COMMENT '内置 Skill 不可删',
+  `sort_order`       INT          DEFAULT 0,
+  `remark`           VARCHAR(256) DEFAULT '',
+  `create_time`      DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  `update_time`      DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_skill_key` (`skill_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI Skill 管理表';
 
 -- ============================================================
 -- 插入默认配置数据

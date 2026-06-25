@@ -103,7 +103,7 @@
 
 
     <!-- 附加按钮区域（弹出菜单：页面 / 图片） -->
-    <div v-if="!attachedPage" class="attach-page-container">
+    <div class="attach-page-container">
       <button
         class="attach-page-btn"
         :disabled="sending"

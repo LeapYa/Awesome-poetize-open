@@ -61,14 +61,16 @@ public class ArticleTools {
             for (int i = 0; i < articles.size(); i++) {
                 Article a = articles.get(i);
                 sb.append(i + 1).append(". [ID=").append(a.getId()).append("] 《").append(a.getArticleTitle()).append("》\n");
-                // 提取摘要
+                // 提取摘要：先转图片标记 → 去其余 HTML → 再截断，
+                // 避免先截断导致 <img> 标签被从中间切断、正则删不干净残留乱码。
                 String content = a.getArticleContent();
-                if (content != null && content.length() > 200) {
-                    content = content.substring(0, 200) + "...";
-                }
                 if (content != null) {
-                    // 去除 HTML 标签
+                    // 摘要阶段只保留"有图"信号，不带 URL（URL 留给 getArticleContent 取全文时再看）
+                    content = content.replaceAll("(?i)<img[^>]+src=[\"'][^\"']+[\"'][^>]*>", " [图片] ");
                     content = content.replaceAll("<[^>]+>", "").trim();
+                    if (content.length() > 200) {
+                        content = content.substring(0, 200) + "...";
+                    }
                     sb.append("   摘要: ").append(content).append("\n\n");
                 }
             }
@@ -93,7 +95,12 @@ public class ArticleTools {
 
             String content = article.getArticleContent();
             if (content != null) {
-                // 去除 HTML 标签
+                // 将图片标签转为文本标记，让 AI 知道文章中图片的位置和 URL；
+                // 当用户询问图片内容时，可调用 analyzeImage(url) 按需识别。
+                // data URI 单独处理为短标记，避免 base64 膨胀 token。
+                content = content.replaceAll("(?i)<img[^>]+src=[\"']data:[^\"']+[\"'][^>]*>", "\n[图片: 内联图片]\n");
+                content = content.replaceAll("(?i)<img[^>]+src=[\"']([^\"']+)[\"'][^>]*>", "\n[图片: $1]\n");
+                // 去除其余 HTML 标签
                 content = content.replaceAll("<[^>]+>", "").trim();
                 // 限制长度
                 if (content.length() > 3000) {

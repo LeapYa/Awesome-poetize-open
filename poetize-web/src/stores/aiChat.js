@@ -94,6 +94,25 @@ const normalizeAIChatConfig = (config = {}) => {
   return normalized
 }
 
+/**
+ * 规范化工具调用 arguments 字段为 JSON 字符串。
+ * segments 中 arguments 可能是字符串、对象、null/undefined。
+ * 后端必须收到合法 JSON 字符串，否则模型 API 400 (unexpected character)。
+ */
+function normalizeToolArguments(raw) {
+  if (raw == null) return '{}'
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (trimmed === '' || trimmed === 'null') return '{}'
+    return trimmed
+  }
+  try {
+    return JSON.stringify(raw)
+  } catch {
+    return '{}'
+  }
+}
+
 export const useAIChatStore = defineStore('aiChat', {
   state: () => ({
     messages: [],
@@ -116,6 +135,12 @@ export const useAIChatStore = defineStore('aiChat', {
     editingOriginalAttachedDocuments: null,
     // 已写入 IndexedDB 的消息数（用于增量写入判断）
     lastSavedCount: 0,
+    // 上次响应收到的历史哈希（服务端 Redis 缓存末尾哈希）。
+    // 存在且与 messageHistory 末尾一致时，下次请求只发增量（仅末尾 1-2 条新消息）；
+    // 撤回/编辑/清空场景置 null，强制走完整历史同步。
+    lastHistoryHash: null,
+    // 上次 lastHistoryHash 对应的历史条数，用于判断本次是否仅追加（确定增量切片起点）
+    lastSyncedHistoryLength: 0,
     attachedPageContext: null,
     attachedImages: [],
     attachedDocuments: [],
@@ -150,10 +175,110 @@ export const useAIChatStore = defineStore('aiChat', {
       return state.messages
         .filter((msg) => allowedRoles.includes(msg.role))
         .slice(-maxLength)
-        .map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }))
+        .map((msg) => {
+          const entry = {
+            role: msg.role,
+            content: msg.content,
+          }
+          // 仅对 assistant 携带 toolCalls，让后端重建为
+          // AssistantMessage(toolCalls) + ToolResponseMessage 序列，
+          // 模型在多轮对话中能"看到"之前工具调用与结果，避免重复调用 / 凭空猜测 / 缓存失效。
+          if (msg.role === 'assistant' && Array.isArray(msg.segments)) {
+            const toolCalls = msg.segments
+              .filter(
+                (seg) =>
+                  seg &&
+                  seg.type === 'tool' &&
+                  seg.tool &&
+                  (seg.status === 'completed' || seg.status === 'failed')
+              )
+              .map((seg) => ({
+                id: seg.id != null ? String(seg.id) : '',
+                tool: seg.tool,
+                arguments: normalizeToolArguments(seg.arguments),
+                result: seg.result ?? '',
+                error: seg.error ?? '',
+                status: seg.status || 'completed',
+              }))
+            if (toolCalls.length > 0) {
+              entry.toolCalls = toolCalls
+            }
+          }
+          return entry
+        })
+    },
+    /**
+     * 增量协议：根据 lastHistoryHash 决定返回完整 history 或增量切片。
+     * 调用方据此决定 baseHistoryHash 上送值。
+     * - lastHistoryHash 存在且消息仅追加（messages 数组长度 > lastSyncedHistoryLength
+     *   且前 lastSyncedHistoryLength 条未被改动）→ 返回增量切片
+     * - 否则 → 返回完整 history
+     */
+    requestHistoryPack: (state) => {
+      const full = state.messages
+        .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+        .slice(0) // 不在此处截断，保留完整长度用于增量判断；服务端会做截断
+        .map((msg) => {
+          const entry = { role: msg.role, content: msg.content }
+          if (msg.role === 'assistant' && Array.isArray(msg.segments)) {
+            const toolCalls = msg.segments
+              .filter(
+                (seg) =>
+                  seg &&
+                  seg.type === 'tool' &&
+                  seg.tool &&
+                  (seg.status === 'completed' || seg.status === 'failed')
+              )
+              .map((seg) => ({
+                id: seg.id != null ? String(seg.id) : '',
+                tool: seg.tool,
+                arguments: normalizeToolArguments(seg.arguments),
+                result: seg.result ?? '',
+                error: seg.error ?? '',
+                status: seg.status || 'completed',
+              }))
+            if (toolCalls.length > 0) entry.toolCalls = toolCalls
+          }
+          return entry
+        })
+
+      // 没有 hash 或历史长度倒退/不变 → 完整同步
+      if (!state.lastHistoryHash) {
+        // eslint-disable-next-line no-console
+        console.info('[hist-sync] FULL no-hash', {
+          fullLen: full.length,
+        })
+        return { history: full, baseHistoryHash: null }
+      }
+      const synced = state.lastSyncedHistoryLength
+      if (full.length < synced) {
+        // 撤回/编辑后变短：完整重发
+        // eslint-disable-next-line no-console
+        console.info('[hist-sync] FULL truncated', {
+          fullLen: full.length,
+          syncedLen: synced,
+        })
+        return { history: full, baseHistoryHash: null }
+      }
+      if (full.length === synced) {
+        // 没有新消息：发空 history + hash，服务端可正常取缓存（极少触发）
+        // eslint-disable-next-line no-console
+        console.info('[hist-sync] EMPTY no-new-msg', {
+          fullLen: full.length,
+          syncedLen: synced,
+        })
+        return { history: [], baseHistoryHash: state.lastHistoryHash }
+      }
+      // 仅追加：取末尾增量
+      const incremental = full.slice(synced)
+      // eslint-disable-next-line no-console
+      console.info('[hist-sync] INCREMENTAL', {
+        fullLen: full.length,
+        syncedLen: synced,
+        incrementalLen: incremental.length,
+        hash: state.lastHistoryHash,
+      })
+      return { history: incremental, baseHistoryHash: state.lastHistoryHash }
     },
     /** 是否允许上传图片：主模型支持视觉 或 已配置视觉模型工具 */
     visionEnabled: (state) => {
@@ -607,10 +732,7 @@ export const useAIChatStore = defineStore('aiChat', {
         }
 
         const mainContent =
-          document.querySelector('main')?.innerText ||
-          document.querySelector('.content')?.innerText ||
-          document.querySelector('article')?.innerText ||
-          document.body.innerText
+          this.extractMainContentText() || this.extractBodyTextExcludingChat()
 
         const maxChars = 5000
         const trimmedContent =
@@ -627,6 +749,128 @@ export const useAIChatStore = defineStore('aiChat', {
       } catch (error) {
         console.error('提取页面内容失败:', error)
         return null
+      }
+    },
+
+    /**
+     * 提取页面主内容文本，自动排除 AI 聊天面板、看板娘等与正文无关的 DOM，
+     * 避免聊天历史污染页面上下文。
+     */
+    extractBodyTextExcludingChat() {
+      try {
+        const EXCLUDE_SELECTOR =
+          '#waifu, #waifu-tool, #waifu-chat, .ai-chat-panel, .waifu-toggle, .waifu-tips, .live2d-container, [role="dialog"][aria-modal="true"]'
+        const SKIP_TAGS = new Set([
+          'SCRIPT',
+          'STYLE',
+          'TEMPLATE',
+          'SVG',
+          'NOSCRIPT',
+          'IFRAME',
+          'CANVAS',
+        ])
+        const BLOCK_TAGS = new Set([
+          'DIV',
+          'P',
+          'H1',
+          'H2',
+          'H3',
+          'H4',
+          'H5',
+          'H6',
+          'LI',
+          'TR',
+          'SECTION',
+          'ARTICLE',
+          'HEADER',
+          'FOOTER',
+          'NAV',
+          'ASIDE',
+          'BLOCKQUOTE',
+          'PRE',
+          'BR',
+          'HR',
+        ])
+
+        // 收集需要排除的子树根节点（聊天框/看板娘等）
+        const excludedRoots = Array.from(
+          document.body.querySelectorAll(EXCLUDE_SELECTOR)
+        )
+        const excluded = new Set()
+        excludedRoots.forEach((root) => {
+          excluded.add(root)
+          root.querySelectorAll('*').forEach((el) => excluded.add(el))
+        })
+
+        const chunks = []
+        const walker = document.createTreeWalker(
+          document.body,
+          NodeFilter.SHOW_TEXT,
+          {
+            acceptNode(node) {
+              const parent = node.parentNode
+              if (!parent) return NodeFilter.FILTER_REJECT
+              if (SKIP_TAGS.has(parent.tagName)) {
+                return NodeFilter.FILTER_REJECT
+              }
+              if (excluded.has(parent)) {
+                return NodeFilter.FILTER_REJECT
+              }
+              const text = node.nodeValue
+              if (!text || !text.trim()) {
+                return NodeFilter.FILTER_REJECT
+              }
+              return NodeFilter.FILTER_ACCEPT
+            },
+          }
+        )
+
+        let node
+        while ((node = walker.nextNode())) {
+          const text = node.nodeValue.replace(/\s+/g, ' ').trim()
+          if (!text) continue
+          // 在块级元素边界插入换行，保留基本结构
+          const parent = node.parentNode
+          if (parent && BLOCK_TAGS.has(parent.tagName)) {
+            if (chunks.length > 0) chunks.push('\n')
+          }
+          chunks.push(text)
+        }
+        return chunks.join(' ').replace(/\n{3,}/g, '\n\n').trim()
+      } catch (error) {
+        console.error('提取页面文本失败:', error)
+        return ''
+      }
+    },
+
+    /**
+     * 优先从语义化的主内容容器提取文本，绕开聊天框污染。
+     * 仅当容器存在且非聊天面板本身时才返回。
+     */
+    extractMainContentText() {
+      try {
+        const candidates = [
+          'main',
+          '#main',
+          '.main-content',
+          '.page-content',
+          '.post-content',
+          '.article-content',
+          '.entry-content',
+          '#content',
+          '.content-area',
+        ]
+        for (const sel of candidates) {
+          const el = document.querySelector(sel)
+          // 排除把聊天面板自身误判为主内容的情况
+          if (el && !el.closest('#waifu-chat, .ai-chat-panel, #waifu')) {
+            const text = el.innerText?.trim()
+            if (text) return text
+          }
+        }
+        return ''
+      } catch (error) {
+        return ''
       }
     },
 
@@ -910,36 +1154,57 @@ export const useAIChatStore = defineStore('aiChat', {
       this.attachedDocuments = []
     },
 
+    /**
+     * 发送同步聊天请求的内部实现。供 sendNormalMessage 在 cacheMiss 时重试复用。
+     * 不处理 cacheMiss 重试，仅返回原始响应。
+     */
+    async _postNormal(content, images, documents) {
+      const historyPack = this.requestHistoryPack
+      const response = await fetch(`${constant.baseURL}/ai/chat/sendMessage`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          message: content,
+          conversationId: 'default',
+          history: historyPack.history,
+          baseHistoryHash: historyPack.baseHistoryHash,
+          userId: this.currentUser?.id || 'anonymous',
+          pageContext: this.attachedPageContext,
+          currentPage: this.attachedPageContext ? null : this.extractCurrentPageContent(),
+          images: images,
+          documents: documents.map((doc) => ({
+            name: doc.name,
+            type: doc.type,
+            size: doc.size,
+            content: doc.content,
+          })),
+        }),
+        signal: this.abortController.signal,
+      })
+      return await response.json()
+    },
+
     async sendNormalMessage(content, images = [], documents = []) {
       this.typing = true
       this.shouldStop = false
       this.abortController = new AbortController()
 
       try {
-        const response = await fetch(`${constant.baseURL}/ai/chat/sendMessage`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            message: content,
-            conversationId: 'default',
-            history: this.messageHistory,
-            userId: this.currentUser?.id || 'anonymous',
-            pageContext: this.attachedPageContext,
-            images: images,
-            documents: documents.map((doc) => ({
-              name: doc.name,
-              type: doc.type,
-              size: doc.size,
-              content: doc.content,
-            })),
-          }),
-          signal: this.abortController.signal,
-        })
+        let result = await this._postNormal(content, images, documents)
 
-        const result = await response.json()
+        // cacheMiss 重试：服务端告知前端上送的 baseHistoryHash 已失效，
+        // 前端清空 lastHistoryHash 后用完整历史重试一次（防死循环，仅重试 1 次）
+        if (result.success && result.data?.cacheMiss) {
+          // eslint-disable-next-line no-console
+          console.warn('[hist-sync] cacheMiss 收到，清空 hash 并用完整历史重试一次')
+          this.lastHistoryHash = null
+          this.lastSyncedHistoryLength = 0
+          result = await this._postNormal(content, images, documents)
+        }
+
         this.typing = false
 
         if (result.success && result.data?.content) {
@@ -959,6 +1224,14 @@ export const useAIChatStore = defineStore('aiChat', {
           }
           if (this.attachedDocuments && this.attachedDocuments.length > 0) {
             this.attachedDocuments = []
+          }
+          // 同步增量协议状态：记录服务端返回的 hash 与本次同步后的历史长度，
+          // 下次请求时若仅追加消息即可走增量发送。
+          if (result.data.historyHash) {
+            this.lastHistoryHash = result.data.historyHash
+            this.lastSyncedHistoryLength = this.messages.filter(
+              (m) => m.role === 'user' || m.role === 'assistant'
+            ).length
           }
           return {
             success: true,
@@ -986,7 +1259,10 @@ export const useAIChatStore = defineStore('aiChat', {
       this.shouldStop = false
       this.abortController = new AbortController()
 
+      let cacheMissReceived = false
+
       try {
+        const historyPack = this.requestHistoryPack
         const response = await fetch(
           `${constant.baseURL}/ai/chat/sendMessageStream`,
           {
@@ -998,9 +1274,11 @@ export const useAIChatStore = defineStore('aiChat', {
             body: JSON.stringify({
               message: content,
               conversationId: 'default',
-              history: this.messageHistory,
+              history: historyPack.history,
+              baseHistoryHash: historyPack.baseHistoryHash,
               userId: this.currentUser?.id || 'anonymous',
               pageContext: this.attachedPageContext,
+              currentPage: this.attachedPageContext ? null : this.extractCurrentPageContent(),
               images: images,
               documents: documents.map((doc) => ({
                 name: doc.name,
@@ -1054,12 +1332,30 @@ export const useAIChatStore = defineStore('aiChat', {
               try {
                 const eventData = JSON.parse(dataStr)
 
+                // cacheMiss 事件：服务端告知前端上送的 baseHistoryHash 已失效。
+                // 标记后跳出循环，外层会清空 lastHistoryHash 并用完整历史重试一次
+                if (currentEventName === 'cacheMiss') {
+                  cacheMissReceived = true
+                  // eslint-disable-next-line no-console
+                  console.warn('[hist-sync] cacheMiss(stream) 收到，准备用完整历史重试一次')
+                  reader.cancel()
+                  break
+                }
+
                 if (
                   currentEventName === 'start' ||
                   currentEventName === 'complete'
                 ) {
                   if (currentEventName === 'complete' && aiMessage) {
                     this.finishMessageReasoning(aiMessage.id)
+                    // 同步增量协议状态：记录服务端返回的 hash 与本次同步后的历史长度，
+                    // 下次请求时若仅追加消息即可走增量发送。
+                    if (eventData && eventData.historyHash) {
+                      this.lastHistoryHash = eventData.historyHash
+                      this.lastSyncedHistoryLength = this.messages.filter(
+                        (m) => m.role === 'user' || m.role === 'assistant'
+                      ).length
+                    }
                   }
                   continue
                 }
@@ -1136,6 +1432,22 @@ export const useAIChatStore = defineStore('aiChat', {
                     error: toolData.error ?? '',
                     status: toolData.status || 'completed',
                   })
+                  // AI 已通过 get_current_page 工具获取当前页面：
+                  // 自动标记为已附加，避免用户再次手动附加导致页面内容在上下文中重复出现。
+                  // 后续轮次将走「已附加」通道（currentPage=null），AI 不再重复调用工具。
+                  if (
+                    toolData.tool === 'get_current_page' &&
+                    (toolData.status || 'completed') === 'completed' &&
+                    !this.attachedPageContext
+                  ) {
+                    const resultStr = String(toolData.result ?? '')
+                    if (
+                      resultStr.startsWith('当前页面信息') &&
+                      !resultStr.includes('没有可提取的文本内容')
+                    ) {
+                      this.attachedPageContext = this.extractCurrentPageContent()
+                    }
+                  }
                   continue
                 }
 
@@ -1221,6 +1533,22 @@ export const useAIChatStore = defineStore('aiChat', {
 
         this.streaming = false
         this.typing = false
+
+        // cacheMiss 重试：服务端告知 baseHistoryHash 已失效，清空 hash 并用完整历史重试一次
+        // 流式未产生任何内容（aiMessage 可能为 null 或为空），直接重入不会出现重复消息
+        if (cacheMissReceived) {
+          this.lastHistoryHash = null
+          this.lastSyncedHistoryLength = 0
+          // 移除可能被创建的空 assistant 消息（避免重试后出现空白消息）
+          if (aiMessage) {
+            const idx = this.messages.findIndex((m) => m.id === aiMessage.id)
+            if (idx >= 0 && (!this.messages[idx].content || this.messages[idx].content.trim() === '')) {
+              this.messages.splice(idx, 1)
+            }
+          }
+          // 重置状态后重试一次（不带 baseHistoryHash → 走完整历史）
+          return this.sendStreamingMessage(content, images, documents)
+        }
 
         if (aiMessage) {
           const message = this.messages.find((m) => m.id === aiMessage.id)
@@ -1669,6 +1997,9 @@ export const useAIChatStore = defineStore('aiChat', {
       }
       this.messages = []
       this.lastSavedCount = 0
+      // 清空缓存哈希：下轮将走完整历史同步
+      this.lastHistoryHash = null
+      this.lastSyncedHistoryLength = 0
       localStorage.removeItem('ai_chat_history')
       // 必须等待 IndexedDB 清空完成后再添加 welcome 消息，
       // 否则 addWelcomeMessage 触发的防抖写入可能与 clear 事务竞态，welcome 被清掉
@@ -1809,6 +2140,10 @@ export const useAIChatStore = defineStore('aiChat', {
       this.messages[messageIndex].documents = editedDocuments
 
       this.messages = this.messages.slice(0, messageIndex + 1)
+      // 截断历史后必须失效增量缓存：被删除的消息不再属于历史，
+      // 下次请求需走完整历史同步，避免服务端 Redis 缓存拼接出错误序列
+      this.lastHistoryHash = null
+      this.lastSyncedHistoryLength = 0
       // 编辑重发截断历史：取消防抖，直接同步写 localStorage + 立即替换 IndexedDB
       // 避免 saveHistory 防抖 300ms 后 _flushHistory 与 _replaceHistoryInIDB 重复写入
       if (saveHistoryTimer) {

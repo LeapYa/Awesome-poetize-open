@@ -5,7 +5,7 @@
       <button
         v-if="!showChat"
         class="ai-chat-button"
-        :class="{ dragging: isDragging, 'button-dark': isDarkMode }"
+        :class="{ dragging: isDragging, 'button-dark': isDarkMode, clicking: isClicking }"
         :title="config?.chat_name || 'AI助手'"
         @mousedown.stop="handleMouseDown"
         @touchstart.stop="handleTouchStart"
@@ -82,6 +82,7 @@ export default {
     const savedX = ref(userSavedX.value)
     const savedY = ref(userSavedY.value)
     const hasMoved = ref(false) // 是否发生了移动
+    const isClicking = ref(false) // 点击反馈动画状态
     const clickThreshold = 5 // 移动距离阈值（像素）
     const clickTimeThreshold = 300 // 点击时间阈值（毫秒）
 
@@ -231,12 +232,19 @@ export default {
           userSavedY.value = savedY.value
           localStorage.setItem('ai_button_x', savedX.value)
           localStorage.setItem('ai_button_y', savedY.value)
+          // 同步到 store，用于决定面板动画方向
+          live2dStore.updateAiButtonPosition(savedX.value, savedY.value)
         }
       } else {
         // 如果没有移动，并且按下时间很短，判定为点击
         if (duration < clickTimeThreshold) {
-          // 这是一个点击操作，打开聊天
-          live2dStore.toggleChat()
+          // 播放点击反馈动画，再打开聊天
+          // 让按钮"被按下"→ 面板从按钮位置展开，形成连贯的视觉衔接
+          isClicking.value = true
+          setTimeout(() => {
+            isClicking.value = false
+            live2dStore.toggleChat()
+          }, 120)
         }
       }
 
@@ -298,6 +306,11 @@ export default {
       // 初始加载时检查位置是否有效
       handleResize()
 
+      // 同步初始按钮位置到 store，用于决定面板动画方向
+      if (userSavedX.value !== null && userSavedY.value !== null) {
+        live2dStore.updateAiButtonPosition(userSavedX.value, userSavedY.value)
+      }
+
       // 检查暗色模式
       checkDarkMode()
 
@@ -350,6 +363,7 @@ export default {
       chatAvatarUrl,
       avatarLoadFailed,
       isDragging,
+      isClicking,
       isDarkMode,
       buttonStyle,
       handleMouseDown,
@@ -453,10 +467,26 @@ export default {
 .fade-leave-active {
   transition: all 0.3s ease;
 }
-.fade-enter-from,
-.fade-leave-to {
+.fade-enter-from {
   opacity: 0;
   transform: scale(0.8);
+}
+/* 按钮消失时继续缩小，与点击反馈动画衔接 */
+.fade-leave-to {
+  opacity: 0;
+  transform: scale(0.5);
+}
+/* 点击反馈动画：按钮被按下缩小，再交给面板展开动画 */
+.ai-chat-button.clicking {
+  animation: aiButtonClick 0.12s ease-out forwards;
+}
+@keyframes aiButtonClick {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(0.7);
+  }
 }
 @media screen and (max-width: 768px) {
   .ai-chat-button-wrapper {

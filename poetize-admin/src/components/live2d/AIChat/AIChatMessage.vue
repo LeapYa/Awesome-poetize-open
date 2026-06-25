@@ -20,6 +20,66 @@
           <span class="badge-text">{{ message.attachedPage.title }}</span>
         </div>
 
+        <div v-if="hasImages" class="message-images">
+          <img
+            v-for="(url, index) in message.images"
+            :key="index"
+            :src="url"
+            alt="图片"
+            class="message-image-thumb"
+            @click="openImagePreview(index)"
+          />
+        </div>
+
+        <div v-if="hasDocuments" class="message-documents">
+          <div
+            v-for="(doc, index) in message.documents"
+            :key="index"
+            class="message-document-chip"
+            :title="`${doc.name} · ${formatFileSize(doc.size)}`"
+          >
+            <svg class="message-document-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                fill="currentColor" opacity="0.3"
+              />
+              <path
+                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm0 2 6 6h-6z"
+                fill="currentColor"
+              />
+            </svg>
+            <span class="message-document-name">{{ doc.name }}</span>
+            <span class="message-document-size">{{ formatFileSize(doc.size) }}</span>
+          </div>
+        </div>
+
+        <!-- 自定义图片预览器 -->
+        <div
+          v-if="showImageViewer"
+          class="custom-image-viewer-mask"
+          @click="showImageViewer = false"
+        >
+          <div class="viewer-close-btn" @click="showImageViewer = false">×</div>
+          <div
+            v-if="previewImages.length > 1"
+            class="viewer-arrow left"
+            @click.stop="prevPreviewImage"
+          >
+            ‹
+          </div>
+          <div class="viewer-content" @click.stop>
+            <img :src="previewImages[previewImageIndex]" class="viewer-img" alt="预览图片" />
+          </div>
+          <div
+            v-if="previewImages.length > 1"
+            class="viewer-arrow right"
+            @click.stop="nextPreviewImage"
+          >
+            ›
+          </div>
+          <div class="viewer-index">{{ previewImageIndex + 1 }} / {{ previewImages.length }}</div>
+        </div>
+
         <div class="message-text" v-text="message.content" />
       </div>
     </div>
@@ -183,7 +243,7 @@
 </template>
 
 <script>
-import { computed, onMounted, nextTick } from 'vue'
+import { computed, onMounted, nextTick, ref } from 'vue'
 import { useAIChatStore } from '@/stores/aiChat'
 import { useLive2DStore } from '@/stores/live2d'
 import MarkdownRenderer from './MarkdownRenderer.vue'
@@ -211,6 +271,47 @@ export default {
     const isUser = computed(() => props.message.role === 'user')
     const isAssistant = computed(() => props.message.role === 'assistant')
     const isSystem = computed(() => props.message.role === 'system')
+    const hasImages = computed(
+      () =>
+        Array.isArray(props.message.images) && props.message.images.length > 0
+    )
+    const hasDocuments = computed(
+      () =>
+        Array.isArray(props.message.documents) && props.message.documents.length > 0
+    )
+
+    const formatFileSize = (bytes) => {
+      if (bytes == null || isNaN(bytes)) return ''
+      if (bytes < 1024) return bytes + ' B'
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+    }
+
+    const showImageViewer = ref(false)
+    const previewImages = ref([])
+    const previewImageIndex = ref(0)
+
+    const openImagePreview = (index) => {
+      if (!Array.isArray(props.message.images) || props.message.images.length === 0) {
+        return
+      }
+      previewImages.value = props.message.images.slice()
+      previewImageIndex.value = index
+      showImageViewer.value = true
+    }
+
+    const prevPreviewImage = () => {
+      if (previewImages.value.length <= 1) return
+      previewImageIndex.value =
+        (previewImageIndex.value - 1 + previewImages.value.length) %
+        previewImages.value.length
+    }
+
+    const nextPreviewImage = () => {
+      if (previewImages.value.length <= 1) return
+      previewImageIndex.value =
+        (previewImageIndex.value + 1) % previewImages.value.length
+    }
 
     const assistantSegments = computed(() => {
       if (!isAssistant.value) {
@@ -333,6 +434,15 @@ export default {
       isUser,
       isAssistant,
       isSystem,
+      hasImages,
+      hasDocuments,
+      formatFileSize,
+      showImageViewer,
+      previewImages,
+      previewImageIndex,
+      openImagePreview,
+      prevPreviewImage,
+      nextPreviewImage,
       assistantSegments,
       messageClass,
       formattedTime,
@@ -499,6 +609,59 @@ export default {
 .message-edit-btn:active {
   transform: scale(0.95);
 }
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.message-image-thumb {
+  max-width: 120px;
+  max-height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.message-image-thumb:hover {
+  transform: scale(1.03);
+}
+.message-documents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.message-document-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
+  overflow: hidden;
+}
+.message-document-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+.message-document-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.message-document-size {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+}
 .message-edit-btn svg {
   width: 18px;
   height: 18px;
@@ -661,5 +824,105 @@ export default {
 }
 .dark-mode .message-edit-btn:hover svg {
   fill: #a29bfe;
+}
+
+/* 自定义图片预览器样式 */
+.custom-image-viewer-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+.viewer-close-btn {
+  position: absolute;
+  top: 30px;
+  right: 30px;
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.viewer-close-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+.viewer-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 50px;
+  height: 50px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 100000;
+}
+.viewer-arrow:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-50%) scale(1.05);
+}
+.viewer-arrow.left {
+  left: 30px;
+}
+.viewer-arrow.right {
+  right: 30px;
+}
+.viewer-content {
+  max-width: 80%;
+  max-height: 80%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.viewer-img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  animation: zoomIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.viewer-index {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 16px;
+  border-radius: 20px;
+}
+@keyframes zoomIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>

@@ -11,14 +11,10 @@
         <small class="help-text">定义AI的角色和回复风格</small>
       </el-form-item>
 
-      <el-form-item id="field-ai-comment-skill" label="评论区SKILL.md">
-        <el-input
-          v-model="chatConfig.commentSkill"
-          type="textarea"
-          :rows="14"
-          placeholder="请输入完整 SKILL.md：包含 YAML frontmatter 和 Markdown 正文">
-        </el-input>
-        <small class="help-text" v-pre>需保留 --- YAML frontmatter ---，frontmatter 只写 name 与 description；正文可使用 {{botName}}、{{webName}}、{{webTitle}}、{{siteAddress}} 占位符。</small>
+      <el-form-item id="field-ai-comment-skill" label="评论区Skill">
+        <span style="color: #909399; font-size: 13px;">
+          请在「Skill 管理」面板中管理评论区 Skill
+        </span>
       </el-form-item>
 
       <el-form-item id="field-ai-welcome" label="欢迎消息">
@@ -85,7 +81,6 @@ export default {
       type: Object,
       default: () => ({
         systemPrompt: "AI assistant. Respond in Chinese naturally.",
-        commentSkill: "",
         welcomeMessage: "你好！有什么可以帮助你的吗？",
         historyCount: 10,
         rateLimit: 20,

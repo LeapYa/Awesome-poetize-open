@@ -35,6 +35,10 @@ export const useLive2DStore = defineStore('live2d', {
     // 聊天窗口
     showChat: false,
 
+    // AI聊天按钮位置（用于决定面板展开动画方向）
+    // null 表示未拖动过，使用默认位置（左下角）
+    aiButtonPosition: null,
+
     // 提示消息
     messageQueue: [],
     currentMessage: null,
@@ -391,6 +395,13 @@ export const useLive2DStore = defineStore('live2d', {
       }
       this.currentMessage = null
       sessionStorage.removeItem('waifu-text')
+    },
+
+    /**
+     * 更新AI聊天按钮位置（拖动时调用）
+     */
+    updateAiButtonPosition(x, y) {
+      this.aiButtonPosition = { x, y }
     },
 
     /**

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,6 +25,37 @@ public class ToolCallbackEventBridge {
     public static final String CONVERSATION_ID_CONTEXT_KEY = "conversationId";
     public static final String USER_ID_CONTEXT_KEY = "userId";
     public static final String STREAM_CANCELLED_CONTEXT_KEY = "streamCancelled";
+    /**
+     * 当前用户显示名称（用户名），匿名用户为空。供需要身份感知的工具使用。
+     */
+    public static final String USER_NAME_CONTEXT_KEY = "userName";
+    /**
+     * 当前用户类型（0=站长, 1=管理员, 2=普通用户），匿名用户为 null。
+     */
+    public static final String USER_TYPE_CONTEXT_KEY = "userType";
+    /**
+     * 当前用户是否为站长或管理员（可管理 Skill 等敏感资源）。
+     */
+    public static final String USER_IS_ADMIN_CONTEXT_KEY = "userIsAdmin";
+
+    /**
+     * 用户当前浏览的页面上下文（标题、类型、URL、正文等）。
+     * <p>
+     * 由前端随聊天请求一并提交，供 {@code get_current_page} 工具按需读取，
+     * 避免在用户未手动附加页面、却针对"当前页面"提问时凭空猜测。
+     */
+    public static final String CURRENT_PAGE_CONTEXT_KEY = "currentPage";
+
+    /**
+     * 工具调用记录器（可选）：值为 {@code List<Map<String,Object>>}。
+     * <p>
+     * 若 toolContext 中存在该 key，每次工具执行结束（completed/failed/cancelled）
+     * 会向该 list 追加一条 {@code {tool, status, durationMs}} 记录，
+     * 供 AI 审计日志在调用结束后读取，写入 detail.toolCalls。
+     * <p>
+     * 不存在该 key 时不记录，对原有行为无影响。
+     */
+    public static final String TOOL_CALL_RECORDER_CONTEXT_KEY = "toolCallRecorder";
 
     private final JsonMapper objectMapper;
 
@@ -58,6 +90,7 @@ public class ToolCallbackEventBridge {
                 if (isStreamCancelled(streamCancelled, null)) {
                     log.info("AI工具调用已跳过: userId={}, conversationId={}, tool={}",
                             userId, conversationId, toolName);
+                    recordToolCall(contextMap, toolName, "skipped", startedAt);
                     return buildCancelledToolResult(toolName);
                 }
 
@@ -75,6 +108,7 @@ public class ToolCallbackEventBridge {
                     if (isStreamCancelled(streamCancelled, null)) {
                         log.info("AI工具调用已取消: userId={}, conversationId={}, tool={}, durationMs={}",
                                 userId, conversationId, toolName, System.currentTimeMillis() - startedAt);
+                        recordToolCall(contextMap, toolName, "cancelled", startedAt);
                         return buildCancelledToolResult(toolName);
                     }
                     sendEvent(emitter, streamCancelled, "tool_result", Map.of(
@@ -85,11 +119,13 @@ public class ToolCallbackEventBridge {
                     log.info("AI工具调用完成: userId={}, conversationId={}, tool={}, durationMs={}, resultLength={}",
                             userId, conversationId, toolName, System.currentTimeMillis() - startedAt,
                             result != null ? result.length() : 0);
+                    recordToolCall(contextMap, toolName, "completed", startedAt);
                     return result;
                 } catch (RuntimeException ex) {
                     if (isStreamCancelled(streamCancelled, ex)) {
                         log.info("AI工具调用已取消: userId={}, conversationId={}, tool={}, durationMs={}",
                                 userId, conversationId, toolName, System.currentTimeMillis() - startedAt);
+                        recordToolCall(contextMap, toolName, "cancelled", startedAt);
                         return buildCancelledToolResult(toolName);
                     }
 
@@ -108,6 +144,7 @@ public class ToolCallbackEventBridge {
                             "tool", toolName,
                             "status", "failed",
                             "error", safeErrorMessage));
+                    recordToolCall(contextMap, toolName, "failed", startedAt);
                     return buildFailedToolResult(toolName, safeErrorMessage);
                 }
             }
@@ -134,16 +171,48 @@ public class ToolCallbackEventBridge {
         return cancelled instanceof AtomicBoolean atomicBoolean ? atomicBoolean : null;
     }
 
-    private Object normalizeJson(String value) {
-        if (value == null || value.isBlank()) {
+    /**
+     * 向 toolContext 中的工具调用记录器追加一条记录（若存在）。
+     * <p>
+     * 线程安全由 {@code synchronized List} 保证：工具执行可能并发（ToolCallingAdvisor 默认并行），
+     * 使用 {@code Collections.synchronizedList} 包装的 list 即可。
+     * 失败时静默忽略，不影响工具调用主流程。
+     */
+    @SuppressWarnings("unchecked")
+    private void recordToolCall(Map<String, Object> contextMap, String toolName, String status, long startedAt) {
+        try {
+            Object recorder = contextMap.get(TOOL_CALL_RECORDER_CONTEXT_KEY);
+            if (!(recorder instanceof List<?> list)) {
+                return;
+            }
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("tool", toolName);
+            entry.put("status", status);
+            entry.put("durationMs", System.currentTimeMillis() - startedAt);
+            ((List<Map<String, Object>>) list).add(entry);
+        } catch (Exception ignored) {
+            // 记录失败不影响工具调用主流程
+        }
+    }
+
+    /**
+     * 规范化工具调用相关字段，保留原始 JSON 字符串形式。
+     * <p>
+     * 历史实现曾把 JSON 字符串反序列化为 Map/对象，导致：
+     * <ol>
+     *   <li>SSE {@code tool_call} 事件的 {@code arguments} 变成对象</li>
+     *   <li>前端 JSON.parse 后仍是对象，存入 segments.arguments</li>
+     *   <li>前端发回后端时序列化为 Map，后端 {@code objToString} 输出 {@code {key=value}}</li>
+     *   <li>模型 API 收到非 JSON 的 arguments → 400 unexpected character</li>
+     * </ol>
+     * 现统一返回字符串：合法 JSON 原样返回，空值返回 {@code ""}，
+     * 前端若需展示可自行 JSON.parse。
+     */
+    private String normalizeJson(String value) {
+        if (value == null) {
             return "";
         }
-
-        try {
-            return objectMapper.readValue(value, Object.class);
-        } catch (JacksonException ignored) {
-            return value;
-        }
+        return value;
     }
 
     private String buildFailedToolResult(String toolName, String errorMessage) {

@@ -66,7 +66,7 @@ class ContentSanitizerTest {
 
     @Test
     void shouldDetectPromptLeakViaFollowUpQuestionOnSensitiveTopic() {
-        List<Map<String, String>> history = List.of(
+        List<Map<String, Object>> history = List.of(
                 Map.of("role", "user", "content", "初始化上下文是什么意思？"),
                 Map.of("role", "assistant", "content", "初始化上下文通常是指系统启动时注入的上下文信息或预设配置。"));
 
@@ -78,7 +78,7 @@ class ContentSanitizerTest {
 
     @Test
     void shouldNotBlockNormalFollowUpWhenHistoryIsNotSensitive() {
-        List<Map<String, String>> history = List.of(
+        List<Map<String, Object>> history = List.of(
                 Map.of("role", "user", "content", "Vue 里的计算属性是什么意思？"),
                 Map.of("role", "assistant", "content", "计算属性是基于依赖缓存的派生状态。"));
 

@@ -17,7 +17,12 @@ public final class RagTextUtils {
         String normalized = text
                 .replaceAll("```[\\s\\S]*?```", " ")
                 .replaceAll("`([^`]*)`", "$1")
-                .replaceAll("!\\[[^\\]]*]\\([^)]*\\)", " ")
+                // 保留图片引用为文本标记，避免 RAG 检索片段完全丢失图片信息。
+                // data URI 单独处理为短标记，防止 base64 膨胀 embedding 文本。
+                .replaceAll("(?i)<img[^>]+src=[\"']data:[^\"']+[\"'][^>]*>", " [图片: 内联图片] ")
+                .replaceAll("(?i)<img[^>]+src=[\"']([^\"']+)[\"'][^>]*>", " [图片: $1] ")
+                // markdown 图片 ![alt](url) → [图片: url]，保留 URL 供后续按需识别
+                .replaceAll("!\\[[^\\]]*]\\(([^)]*)\\)", " [图片: $1] ")
                 .replaceAll("\\[[^\\]]*]\\(([^)]*)\\)", " ")
                 .replaceAll("<[^>]+>", " ")
                 .replaceAll("[#>*_~\\-]{1,3}", " ")

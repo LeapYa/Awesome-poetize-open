@@ -72,13 +72,17 @@ public class AiChatController {
                     request.userId(),
                     request.pageContext(),
                     request.images(),
-                    request.documents());
+                    request.documents(),
+                    request.currentPage(),
+                    request.baseHistoryHash());
 
             Map<String, Object> payload = new java.util.LinkedHashMap<>();
             payload.put("content", response != null ? response.content() : "");
             payload.put("reasoningContent", response != null ? response.reasoningContent() : "");
             payload.put("actions", response != null ? response.actions() : List.of());
             payload.put("conversationId", request.conversationId());
+            payload.put("historyHash", response != null ? response.historyHash() : null);
+            payload.put("cacheMiss", response != null && response.cacheMiss());
             return PoetryResult.success(payload);
         } catch (IllegalArgumentException e) {
             // 业务验证错误（如消息过长、频率限制）：可以将具体原因告知用户
@@ -109,7 +113,9 @@ public class AiChatController {
                     request.userId(),
                     request.pageContext(),
                     request.images(),
-                    request.documents());
+                    request.documents(),
+                    request.currentPage(),
+                    request.baseHistoryHash());
 
         } catch (IllegalArgumentException e) {
             // 业务验证错误：通过 SSE error 事件将原因告知客户端
@@ -133,17 +139,19 @@ public class AiChatController {
             @RequestParam(defaultValue = "") String conversationId,
             @RequestParam(defaultValue = "[]") String history,
             @RequestParam(defaultValue = "{}") String context,
-            @RequestParam(defaultValue = "anonymous") String userId) {
+            @RequestParam(defaultValue = "anonymous") String userId,
+            @RequestParam(defaultValue = "") String baseHistoryHash) {
         try {
             // 解析 JSON 参数
-            List<Map<String, String>> chatHistory = parseHistory(history);
+            List<Map<String, Object>> chatHistory = parseHistory(history);
             Map<String, Object> pageContext = parseContext(context);
 
             if (conversationId == null || conversationId.isBlank()) {
                 conversationId = "conv_" + System.currentTimeMillis();
             }
 
-            return aiChatService.streamChat(message, chatHistory, conversationId, userId, pageContext, List.of());
+            return aiChatService.streamChat(message, chatHistory, conversationId, userId, pageContext,
+                    List.of(), List.of(), null, baseHistoryHash.isEmpty() ? null : baseHistoryHash);
 
         } catch (IllegalArgumentException e) {
             return buildErrorEmitter(e.getMessage());
@@ -259,7 +267,7 @@ public class AiChatController {
         return PoetryResult.success(null);
     }
 
-    private List<Map<String, String>> parseHistory(String historyJson) {
+    private List<Map<String, Object>> parseHistory(String historyJson) {
         try {
             if (historyJson == null || historyJson.isBlank() || "[]".equals(historyJson)) {
                 return Collections.emptyList();

@@ -1,7 +1,11 @@
 <template>
-  <transition name="slide-in">
+  <transition
+    name="expand"
+    @before-enter="beforeEnter"
+    @leave="onLeave"
+  >
     <div
-      v-if="visible"
+      v-if="showPanel"
       id="waifu-chat"
       ref="panelRef"
       class="ai-chat-panel"
@@ -146,7 +150,7 @@
 </template>
 
 <script>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useAIChat } from '../composables/useAIChat'
 import { useLive2DStore } from '@/stores/live2d'
 import { useChatDrag } from '../composables/useChatDrag'
@@ -206,6 +210,11 @@ export default {
 
     // 计算属性
     const visible = computed(() => live2dStore.showChat)
+    // 实际驱动 v-if 的本地状态：初始为 false，挂载后下一帧再同步为 visible，
+    // 这样首次打开也能触发 <transition> 的进入动画
+    // （组件由父级懒加载挂载，挂载时 visible 已为 true，若直接用 visible 做 v-if
+    //   元素会"已存在"，进入动画不会触发）
+    const showPanel = ref(false)
     const chatName = computed(() => chat.config.value?.chat_name || 'AI助手')
     const placeholder = computed(
       () => chat.config.value?.placeholder_text || '输入你想说的话...'
@@ -214,6 +223,8 @@ export default {
 
     // 监听聊天窗口状态变化
     watch(visible, (isVisible) => {
+      // 同步本地显示状态，驱动 <transition> 进入/离开动画
+      showPanel.value = isVisible
       if (isVisible) {
         // 打开时重新检查登录状态（用户可能刚登录）
         chat.reloadUserStatus && chat.reloadUserStatus()
@@ -287,6 +298,63 @@ export default {
     }
 
     /**
+     * 获取按钮中心坐标（视口坐标）
+     * 未拖动过时使用默认位置（左下角 bottom:30px; left:30px;）
+     */
+    const getButtonCenter = () => {
+      const btnPos = live2dStore.aiButtonPosition
+      if (btnPos) {
+        return { x: btnPos.x + 29, y: btnPos.y + 29 }
+      }
+      // 默认按钮位置：左下角
+      return { x: 30 + 29, y: window.innerHeight - 30 - 58 + 29 }
+    }
+
+    /**
+     * 计算并设置面板展开动画的偏移量
+     * 让面板从按钮位置（缩小为一个点）展开到目标位置
+     * @param {HTMLElement} el 面板元素
+     * @param {{left:number, top:number}} panelRect 面板左上角坐标
+     * @param {number} width 面板宽度
+     * @param {number} height 面板高度
+     */
+    const setExpandVars = (el, panelLeft, panelTop, width, height) => {
+      const btn = getButtonCenter()
+      const panelCenterX = panelLeft + width / 2
+      const panelCenterY = panelTop + height / 2
+      const tx = btn.x - panelCenterX
+      const ty = btn.y - panelCenterY
+      el.style.setProperty('--expand-tx', `${tx}px`)
+      el.style.setProperty('--expand-ty', `${ty}px`)
+    }
+
+    /**
+     * 进入动画前：元素尚未插入DOM，用已知信息计算面板位置
+     */
+    const beforeEnter = (el) => {
+      // 计算面板左上角坐标
+      let panelLeft, panelTop
+      if (panelStyle.value.left) {
+        // 用户拖拽过面板
+        panelLeft = parseFloat(panelStyle.value.left)
+        panelTop = parseFloat(panelStyle.value.top)
+      } else {
+        // 默认 CSS 定位：bottom: 200px; left: 300px;
+        panelLeft = 300
+        panelTop = window.innerHeight - 200 - currentHeight.value
+      }
+      setExpandVars(el, panelLeft, panelTop, currentWidth.value, currentHeight.value)
+    }
+
+    /**
+     * 离开动画：元素还在DOM中，直接读取真实位置
+     */
+    const onLeave = (el) => {
+      const rect = el.getBoundingClientRect()
+      setExpandVars(el, rect.left, rect.top, rect.width, rect.height)
+    }
+
+    /**
      * 切换全屏
      */
     const toggleFullscreen = () => {
@@ -327,6 +395,12 @@ export default {
     // 初始化
     onMounted(async () => {
       await chat.init()
+      // 挂载后下一帧再显示面板，确保首次打开也能触发进入过渡动画
+      // （此时 visible 已为 true，但 showPanel 初始为 false）
+      await nextTick()
+      if (visible.value) {
+        showPanel.value = true
+      }
     })
 
     return {
@@ -338,6 +412,9 @@ export default {
       currentWidth,
       currentHeight,
       visible,
+      showPanel,
+      beforeEnter,
+      onLeave,
       chatName,
       placeholder,
       messages: chat.messages,
@@ -528,17 +605,20 @@ export default {
   height: 16px;
   fill: currentColor;
 }
-.slide-in-enter-active,
-.slide-in-leave-active {
-  transition: all 0.3s ease;
+/* 面板从按钮位置展开/收缩：translate 锚定按钮方向，scale 模拟"弹出" */
+.expand-enter-active,
+.expand-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.slide-in-leave-active {
+.expand-leave-active {
   pointer-events: none !important;
 }
-.slide-in-enter-from,
-.slide-in-leave-to {
+.expand-enter-from,
+.expand-leave-to {
   opacity: 0;
-  transform: translateX(50px);
+  /* --expand-tx/--expand-ty 由 JS 钩子根据按钮坐标动态设置，
+     面板会从按钮位置（缩小为一个点）展开到目标位置 */
+  transform: translate(var(--expand-tx, 0px), var(--expand-ty, 0px)) scale(0.3);
 }
 .dark-mode .ai-chat-panel {
   background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);

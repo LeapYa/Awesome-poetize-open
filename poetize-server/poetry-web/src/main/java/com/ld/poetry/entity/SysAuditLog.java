@@ -65,6 +65,18 @@ public class SysAuditLog implements Serializable {
     @TableField("detail")
     private String detail;
 
+    /** AI 输入 Token（仅 log_type='AI' 写入） */
+    @TableField("prompt_tokens")
+    private Integer promptTokens;
+
+    /** AI 输出 Token（仅 log_type='AI' 写入） */
+    @TableField("completion_tokens")
+    private Integer completionTokens;
+
+    /** AI 合计 Token（仅 log_type='AI' 写入） */
+    @TableField("total_tokens")
+    private Integer totalTokens;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 }

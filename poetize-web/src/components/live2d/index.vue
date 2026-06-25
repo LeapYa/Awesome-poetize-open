@@ -6,13 +6,13 @@
     <!-- 简单按钮模式 -->
     <AIChatButtonAsync v-else-if="mode === 'button'" />
 
-    <!-- AI聊天面板（懒加载） -->
-    <AIChatPanelAsync v-if="showChat" />
+    <!-- AI聊天面板（懒加载，首次打开后常驻以支持展开/收起过渡动画） -->
+    <AIChatPanelAsync v-if="panelMounted" />
   </div>
 </template>
 
 <script>
-import { computed, defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useLive2DStore } from '@/stores/live2d'
 import { useMainStore } from '@/stores/main'
 
@@ -42,6 +42,13 @@ export default {
 
     // 是否显示聊天窗口
     const showChat = computed(() => store.showChat)
+    // 面板组件首次打开后常驻挂载：保留懒加载的同时，
+    // 让面板内部 <transition> 的进入/离开动画得以触发
+    // （若用 v-if="showChat" 直接卸载组件，离开动画会被组件销毁吞掉）
+    const panelMounted = ref(false)
+    watch(showChat, (v) => {
+      if (v) panelMounted.value = true
+    })
 
     // 实际显示模式
     const mode = computed(() => {
@@ -67,6 +74,7 @@ export default {
 
     return {
       showChat,
+      panelMounted,
       mode,
     }
   },

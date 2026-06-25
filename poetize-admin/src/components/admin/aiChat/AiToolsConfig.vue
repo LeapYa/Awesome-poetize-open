@@ -799,7 +799,6 @@ export default {
   align-items: center;
   font-size: 14px;
   font-weight: 600;
-  color: #1e293b;
   margin: 0 0 4px 0;
   gap: 6px;
 }
@@ -891,7 +890,7 @@ export default {
 .tool-name {
   font-size: 13px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-color, #0f172a);
 }
 
 .tool-desc {

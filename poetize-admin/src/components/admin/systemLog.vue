@@ -5,6 +5,7 @@
         <el-option label="登录日志" value="LOGIN"></el-option>
         <el-option label="安全日志" value="SECURITY"></el-option>
         <el-option label="操作日志" value="OPERATION"></el-option>
+        <el-option label="AI日志" value="AI"></el-option>
       </el-select>
       <el-select v-model="filters.success" clearable placeholder="执行结果" class="handle-select mrb10">
         <el-option label="成功" :value="true"></el-option>
@@ -69,6 +70,12 @@
         </template>
       </el-table-column>
       <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip></el-table-column>
+      <el-table-column label="AI Token(输入/输出/合计)" width="170" align="center">
+        <template slot-scope="scope">
+          <span v-if="scope.row.logType === 'AI'" class="ai-token-cell">{{ formatTokenTriple(scope.row) }}</span>
+          <span v-else class="muted-text">-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="82" align="center" fixed="right">
         <template slot-scope="scope">
           <el-button type="text" icon="el-icon-view" @click="openDetail(scope.row)">详情</el-button>
@@ -114,6 +121,12 @@
           <el-descriptions-item label="请求路径" :span="2">{{ currentLog.requestUri || '-' }}</el-descriptions-item>
           <el-descriptions-item label="目标对象" :span="2">{{ formatTarget(currentLog) }}</el-descriptions-item>
           <el-descriptions-item label="摘要" :span="2">{{ currentLog.summary || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="AI Token" :span="2" v-if="currentLog.logType === 'AI'">
+            输入 {{ tokenText(currentLog.promptTokens) }} ·
+            输出 {{ tokenText(currentLog.completionTokens) }} ·
+            合计 {{ tokenText(currentLog.totalTokens) }}
+            <span v-if="isTokenEstimated(currentLog)" class="muted-text">（输入为本地估算，模型未上报输出）</span>
+          </el-descriptions-item>
           <el-descriptions-item label="User-Agent" :span="2">{{ currentLog.userAgent || '-' }}</el-descriptions-item>
         </el-descriptions>
         <div class="detail-title">操作详情</div>
@@ -150,7 +163,8 @@ export default {
       typeLabels: {
         LOGIN: '登录日志',
         SECURITY: '安全日志',
-        OPERATION: '操作日志'
+        OPERATION: '操作日志',
+        AI: 'AI日志'
       },
       actionLabels: {
         PASSWORD_LOGIN: '账号密码登录',
@@ -232,7 +246,12 @@ export default {
         LOVE_STATUS_CHANGE: '表白墙状态变更',
         WEIYAN_SAVE: '保存微言',
         WEIYAN_NEWS_SAVE: '保存文章动态',
-        WEIYAN_DELETE: '删除微言'
+        WEIYAN_DELETE: '删除微言',
+        AI_CHAT: 'AI聊天(同步)',
+        AI_CHAT_STREAM: 'AI聊天(流式)',
+        AI_COMMENT_REPLY: 'AI评论回复',
+        AI_TRANSLATE: 'AI翻译',
+        AI_SUMMARY: 'AI摘要'
       }
     };
   },
@@ -307,6 +326,9 @@ export default {
       }
       if (type === 'SECURITY') {
         return 'warning';
+      }
+      if (type === 'AI') {
+        return 'success';
       }
       return 'info';
     },
@@ -386,6 +408,25 @@ export default {
       } catch (e) {
         return detail;
       }
+    },
+    formatTokenTriple(row) {
+      if (!row) {
+        return '-';
+      }
+      const p = row.promptTokens;
+      const c = row.completionTokens;
+      const t = row.totalTokens;
+      if (p == null && c == null && t == null) {
+        return '未上报';
+      }
+      return `${p != null ? p : '-'} / ${c != null ? c : '-'} / ${t != null ? t : '-'}`;
+    },
+    tokenText(value) {
+      return value != null ? value : '-';
+    },
+    isTokenEstimated(row) {
+      // 输入有值但输出为空 → 模型未上报 usage，输入走的是本地 jtokkit 估算兜底
+      return !!row && row.promptTokens != null && row.completionTokens == null;
     }
   }
 };
@@ -447,6 +488,12 @@ body.dark-mode .system-log-page >>> .log-date-range .el-range__close-icon {
 
 .muted-text {
   color: #909399;
+}
+
+.ai-token-cell {
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #67c23a;
 }
 
 .pagination {

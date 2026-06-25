@@ -2,6 +2,7 @@ package com.ld.poetry.service.ai;
 
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.ai.advisor.ArticleImageInjectionAdvisor;
 import com.ld.poetry.service.ai.dto.AiChatResponsePayload;
 import com.ld.poetry.service.ai.rag.dto.KnowledgePromptContext;
 import com.ld.poetry.service.ai.tools.ArticleTools;
@@ -17,9 +18,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
@@ -42,6 +46,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -88,6 +94,9 @@ public class AiChatService {
     private RedisUtil redisUtil;
 
     @Autowired
+    private HistoryCacheService historyCacheService;
+
+    @Autowired
     private ToolCallbackEventBridge toolCallbackEventBridge;
 
     @Autowired
@@ -96,10 +105,37 @@ public class AiChatService {
     @Autowired
     private KnowledgeRetrievalService knowledgeRetrievalService;
 
+    @Autowired
+    private com.ld.poetry.service.AiSkillService aiSkillService;
+
+    @Autowired
+    private com.ld.poetry.service.ai.tools.SkillTools skillTools;
+
+    @Autowired
+    private com.ld.poetry.service.ai.tools.SkillAdminTools skillAdminTools;
+
+    @Autowired
+    private com.ld.poetry.service.ai.tools.PageTools pageTools;
+
+    @Autowired
+    private com.ld.poetry.service.SysAuditLogService sysAuditLogService;
+
+    @Autowired
+    private tools.jackson.databind.ObjectMapper objectMapper;
+
     /** Redis 缓存前缀 & TTL */
     private static final String CACHE_PREFIX = "poetize:ai:chat:response:";
     private static final long CACHE_TTL_SECONDS = 86400L; // 1 day
     private static final String FINGERPRINT_HEADER = "X-Fingerprint";
+
+    /**
+     * NATIVE 模式下从 RAG 命中片段中提取的图片 URL 数量上限。
+     * 避免 RAG 命中多篇含图文章时一次性注入过多 Media 导致 token 爆炸。
+     */
+    private static final int MAX_RAG_IMAGES = 3;
+    /** 匹配 RagTextUtils.normalize 生成的 [图片: url] 标记 */
+    private static final Pattern RAG_IMAGE_MARKER_PATTERN =
+            Pattern.compile("\\[图片:\\s*([^\\]]+)\\]");
 
     /** 反提示词泄露指令 — 防止用户通过社会工程让 AI 输出系统提示词 */
     private static final String ANTI_LEAK_INSTRUCTIONS = """
@@ -163,43 +199,71 @@ public class AiChatService {
     /**
      * 非流式聊天
      */
-    public AiChatResponsePayload chat(String message, List<Map<String, String>> history, String userId) {
-        return chat(message, history, "default", userId, null, List.of(), List.of());
+    public AiChatResponsePayload chat(String message, List<Map<String, Object>> history, String userId) {
+        return chat(message, history, "default", userId, null, List.of(), List.of(), null, null);
     }
 
     /**
      * 非流式聊天
      */
-    public AiChatResponsePayload chat(String message, List<Map<String, String>> history, String conversationId,
+    public AiChatResponsePayload chat(String message, List<Map<String, Object>> history, String conversationId,
             String userId, Map<String, Object> pageContext, List<String> images) {
-        return chat(message, history, conversationId, userId, pageContext, images, List.of());
+        return chat(message, history, conversationId, userId, pageContext, images, List.of(), null, null);
     }
 
     /**
      * 非流式聊天（含文档附件）
      *
-     * @param documents 文档附件列表，每项含 name/type/size/content
+     * @param documents  文档附件列表，每项含 name/type/size/content
+     * @param currentPage 用户当前浏览的页面上下文（可选，供 get_current_page 工具按需读取）
+     * @param baseHistoryHash 前端上次响应收到的历史哈希；命中 Redis 缓存则 history 视为增量
      */
-    public AiChatResponsePayload chat(String message, List<Map<String, String>> history, String conversationId,
+    public AiChatResponsePayload chat(String message, List<Map<String, Object>> history, String conversationId,
             String userId, Map<String, Object> pageContext, List<String> images,
-            List<Map<String, Object>> documents) {
+            List<Map<String, Object>> documents, Map<String, Object> currentPage, String baseHistoryHash) {
         SysAiConfig config = getConfig();
         long startedAt = System.currentTimeMillis();
+        // 在 HTTP 请求线程同步捕获调用主体（user/ip），供 blockLast 后的审计日志使用
+        final AiCallContext callCtx = AiCallContext.capture();
         String resolvedConversationId = normalizeConversationId(conversationId);
         String resolvedUserId = normalizeUserId(userId);
-        logChatRequestStart("sync", resolvedUserId, resolvedConversationId, message, history, pageContext, config);
+
+        // 增量协议：根据 baseHistoryHash 决定是拼接缓存历史还是采用完整历史
+        HistoryCacheService.CacheDecision decision = historyCacheService.resolveHistory(
+                resolvedConversationId, resolvedUserId, baseHistoryHash, history);
+        List<Map<String, Object>> resolvedHistory = decision.history();
+        // 历史上下文规模快照：供审计日志记录（在请求线程同步计算，避免 reactor 回调里重复算）
+        final int historyTurns = resolvedHistory.size();
+        final int historyTokens = estimateHistoryTokens(resolvedHistory);
+
+        logChatRequestStart("sync", resolvedUserId, resolvedConversationId, message, resolvedHistory, pageContext, config);
 
         try {
-            validateMessage(message, history, config, resolvedUserId);
+            validateMessage(message, resolvedHistory, config, resolvedUserId);
+
+            // cacheMiss 短路：前端上送的 hash 在 Redis 已失效，
+            // 此时 resolvedHistory 只是增量不可用，直接返回 cacheMiss 标志让前端用完整历史重试一次
+            if (decision.cacheMiss()) {
+                log.info("cacheMiss 短路: userId={} conversationId={} baseHash={} → 通知前端重发完整历史",
+                        resolvedUserId, resolvedConversationId, baseHistoryHash);
+                return AiChatResponsePayload.cacheMissShortcut();
+            }
 
             String processedMessage = processUserMessage(message, pageContext, documents);
             KnowledgePromptContext ragContext = resolveArticleRagContext(message, pageContext);
             logRagContext("sync", resolvedUserId, resolvedConversationId, ragContext);
 
             // 尝试缓存命中（仅无历史的单轮对话）
-            String cached = tryCacheGet(processedMessage, history, config, ragContext);
+            // 守卫：仅在未走增量协议（baseHistoryHash 为空）且 resolvedHistory 也为空时尝试，
+            // 避免增量协议下 Redis miss 后前端发空增量被误判为单轮对话而命中上一轮响应缓存
+            String cached = (baseHistoryHash == null || baseHistoryHash.isBlank())
+                    ? tryCacheGet(processedMessage, resolvedHistory, config, ragContext)
+                    : null;
             if (cached != null) {
                 logChatRequestCompleted("sync", resolvedUserId, resolvedConversationId, startedAt, cached, true);
+                recordAiAudit("AI_CHAT", "sync", true, startedAt, resolvedUserId, resolvedConversationId,
+                        message, cached, null, null, "conversation", resolvedConversationId,
+                        Map.of("cacheHit", true), callCtx, null, config, historyTurns, historyTokens, null);
                 return AiChatResponsePayload.of(cached, List.of());
             }
 
@@ -210,18 +274,25 @@ public class AiChatService {
             VisionMode visionMode = resolveVisionMode(config);
 
             // 构建消息列表（含历史 + 页面上下文 + 记忆 + 图片附件）
-            List<Message> messages = buildMessages(config, history, message, processedMessage, pageContext,
+            List<Message> messages = buildMessages(config, resolvedHistory, message, processedMessage, pageContext,
                     resolvedUserId, ragContext, images, visionMode);
 
-            // 构建选项（含工具）
-            ChatOptions options = buildChatOptions(chatModel, enableTools, visionMode, null, resolvedConversationId,
-                    resolvedUserId, new AtomicBoolean(false));
+            // 构建选项（仅模型参数，工具由 ChatClient 注册）
+            ChatOptions options = buildChatOptions(chatModel);
+            // 构建工具规格 + ChatClient（ToolCallingAdvisor 驱动多轮 tool loop）
+            ToolSpec toolSpec = buildToolSpec(enableTools, visionMode, null, resolvedConversationId,
+                    resolvedUserId, new AtomicBoolean(false), true, currentPage);
+            ChatClient chatClient = buildChatClient(chatModel, options, toolSpec, visionMode);
+            // 工具调用记录器引用：供审计日志在调用结束后读取（同步 list，工具并行执行时线程安全）
+            final List<Map<String, Object>> toolCalls = extractToolCallRecorder(toolSpec);
 
             // 使用流式调用避免同步阻塞超时
-            Flux<ChatResponse> flux = chatModel.stream(new Prompt(messages, options));
+            Flux<ChatResponse> flux = chatClient.prompt(new Prompt(messages, options)).stream().chatResponse();
             StringBuilder buffer = new StringBuilder();
             StringBuilder reasoningBuffer = new StringBuilder();
+            AiUsageSupport.Accumulator usageAcc = new AiUsageSupport.Accumulator();
             flux.doOnNext(chatResponse -> {
+                usageAcc.accept(chatResponse);
                 if (chatResponse != null && chatResponse.getResult() != null) {
                     String reasoningContent = extractReasoningContent(chatResponse);
                     if (StringUtils.hasText(reasoningContent)) {
@@ -237,16 +308,34 @@ public class AiChatService {
             String reasoningContent = reasoningBuffer.toString();
 
             // 缓存单轮响应
-            tryCachePut(processedMessage, history, config, ragContext, content);
+            tryCachePut(processedMessage, resolvedHistory, config, ragContext, content);
             logChatRequestCompleted("sync", resolvedUserId, resolvedConversationId, startedAt, content, false);
+            recordAiAudit("AI_CHAT", "sync", true, startedAt, resolvedUserId, resolvedConversationId,
+                    message, content, usageAcc, AiTokenEstimator.countMessages(messages),
+                    "conversation", resolvedConversationId, null, callCtx, toolCalls,
+                    config, historyTurns, historyTokens, null);
             autoSaveMemory(config, message, content, resolvedConversationId, resolvedUserId);
 
-            return AiChatResponsePayload.of(content, reasoningContent, List.of());
+            // 写回历史缓存并返回新哈希（前端下次作为 baseHistoryHash 上送以走增量协议）
+            String historyHash = historyCacheService.putHistory(
+                    resolvedConversationId, resolvedUserId, resolvedHistory,
+                    Map.of("role", "user", "content", message),
+                    Map.of("role", "assistant", "content", content));
+
+            return AiChatResponsePayload.of(content, reasoningContent, List.of(), historyHash);
         } catch (IllegalArgumentException ex) {
             logChatRequestRejected("sync", resolvedUserId, resolvedConversationId, startedAt, message, ex);
+            recordAiAudit("AI_CHAT", "sync", false, startedAt, resolvedUserId, resolvedConversationId,
+                    message, null, null, null, "conversation", resolvedConversationId,
+                    Map.of("rejected", true, "reason", String.valueOf(ex.getMessage())), callCtx, null,
+                    config, historyTurns, historyTokens, ex);
             throw ex;
         } catch (Exception ex) {
             logChatRequestFailed("sync", resolvedUserId, resolvedConversationId, startedAt, message, ex);
+            recordAiAudit("AI_CHAT", "sync", false, startedAt, resolvedUserId, resolvedConversationId,
+                    message, null, null, null, "conversation", resolvedConversationId,
+                    Map.of("error", String.valueOf(ex.getMessage())), callCtx, null,
+                    config, historyTurns, historyTokens, ex);
             throw ex;
         }
     }
@@ -256,6 +345,17 @@ public class AiChatService {
      */
     public String generateCommentReply(String message, String conversationId, String userId,
             Map<String, Object> pageContext, AiSkillDocument loadedSkill) {
+        return generateCommentReply(message, conversationId, userId, pageContext, loadedSkill, AiCallContext.empty());
+    }
+
+    /**
+     * 生成评论区 AI 回复。
+     *
+     * @param callCtx 调用方上下文（评论者身份由 CommentAiReplyService 从事件解析后传入，
+     *                因本方法运行在 @Async 线程，无法通过 PoetryUtil 获取 HTTP 上下文）
+     */
+    public String generateCommentReply(String message, String conversationId, String userId,
+            Map<String, Object> pageContext, AiSkillDocument loadedSkill, AiCallContext callCtx) {
         SysAiConfig config = getConfig();
         long startedAt = System.currentTimeMillis();
         String resolvedConversationId = normalizeConversationId(conversationId);
@@ -272,13 +372,21 @@ public class AiChatService {
             boolean enableTools = Boolean.TRUE.equals(config.getEnableTools());
             List<Message> messages = buildCommentReplyMessages(config, message, pageContext, resolvedUserId,
                     ragContext, loadedSkill);
-            ChatOptions options = buildChatOptions(chatModel, enableTools, VisionMode.DISABLED, null, resolvedConversationId, resolvedUserId,
-                    new AtomicBoolean(false));
+            // 构建选项（仅模型参数，工具由 ChatClient 注册）
+            ChatOptions options = buildChatOptions(chatModel);
+            // 构建工具规格 + ChatClient（ToolCallingAdvisor 驱动多轮 tool loop）
+            // 评论场景面向公开评论，不开放 Skill 管理工具；页面上下文已在评论上下文中注入，无需 currentPage
+            ToolSpec toolSpec = buildToolSpec(enableTools, VisionMode.DISABLED, null, resolvedConversationId,
+                    resolvedUserId, new AtomicBoolean(false), false, null);
+            ChatClient chatClient = buildChatClient(chatModel, options, toolSpec, VisionMode.DISABLED);
+            final List<Map<String, Object>> toolCalls = extractToolCallRecorder(toolSpec);
 
             // 使用流式调用避免同步阻塞超时（与翻译和流式聊天一致）
-            Flux<ChatResponse> flux = chatModel.stream(new Prompt(messages, options));
+            Flux<ChatResponse> flux = chatClient.prompt(new Prompt(messages, options)).stream().chatResponse();
             StringBuilder buffer = new StringBuilder();
+            AiUsageSupport.Accumulator usageAcc = new AiUsageSupport.Accumulator();
             flux.doOnNext(chatResponse -> {
+                usageAcc.accept(chatResponse);
                 if (chatResponse != null && chatResponse.getResult() != null) {
                     String text = chatResponse.getResult().getOutput().getText();
                     if (text != null && !text.isEmpty()) {
@@ -288,12 +396,28 @@ public class AiChatService {
             }).blockLast();
             String content = sanitizePublicCommentResponse(buffer.toString());
             logChatRequestCompleted("comment", resolvedUserId, resolvedConversationId, startedAt, content, false);
+            Map<String, Object> commentDetail = new LinkedHashMap<>();
+            if (loadedSkill != null && StringUtils.hasText(loadedSkill.name())) {
+                commentDetail.put("skill", loadedSkill.name());
+            }
+            recordAiAudit("AI_COMMENT_REPLY", "comment", true, startedAt, resolvedUserId, resolvedConversationId,
+                    message, content, usageAcc, AiTokenEstimator.countMessages(messages),
+                    "comment", resolvedConversationId, commentDetail, callCtx, toolCalls,
+                    config, 0, 0, null);
             return content;
         } catch (IllegalArgumentException ex) {
             logChatRequestRejected("comment", resolvedUserId, resolvedConversationId, startedAt, message, ex);
+            recordAiAudit("AI_COMMENT_REPLY", "comment", false, startedAt, resolvedUserId, resolvedConversationId,
+                    message, null, null, null, "comment", resolvedConversationId,
+                    Map.of("rejected", true, "reason", String.valueOf(ex.getMessage())), callCtx, null,
+                    config, 0, 0, ex);
             throw ex;
         } catch (Exception ex) {
             logChatRequestFailed("comment", resolvedUserId, resolvedConversationId, startedAt, message, ex);
+            recordAiAudit("AI_COMMENT_REPLY", "comment", false, startedAt, resolvedUserId, resolvedConversationId,
+                    message, null, null, null, "comment", resolvedConversationId,
+                    Map.of("error", String.valueOf(ex.getMessage())), callCtx, null,
+                    config, 0, 0, ex);
             throw ex;
         }
     }
@@ -308,29 +432,42 @@ public class AiChatService {
      * @param pageContext    页面上下文（可选）
      * @return SseEmitter
      */
-    public SseEmitter streamChat(String message, List<Map<String, String>> history,
+    public SseEmitter streamChat(String message, List<Map<String, Object>> history,
             String conversationId, String userId,
             Map<String, Object> pageContext, List<String> images) {
-        return streamChat(message, history, conversationId, userId, pageContext, images, List.of());
+        return streamChat(message, history, conversationId, userId, pageContext, images, List.of(), null, null);
     }
 
     /**
      * 流式聊天（含文档附件）
      *
-     * @param documents 文档附件列表，每项含 name/type/size/content
+     * @param documents  文档附件列表，每项含 name/type/size/content
+     * @param currentPage 用户当前浏览的页面上下文（可选，供 get_current_page 工具按需读取）
+     * @param baseHistoryHash 前端上次响应收到的历史哈希；命中 Redis 缓存则 history 视为增量
      */
-    public SseEmitter streamChat(String message, List<Map<String, String>> history,
+    public SseEmitter streamChat(String message, List<Map<String, Object>> history,
             String conversationId, String userId,
             Map<String, Object> pageContext, List<String> images,
-            List<Map<String, Object>> documents) {
+            List<Map<String, Object>> documents, Map<String, Object> currentPage, String baseHistoryHash) {
         SysAiConfig config = getConfig();
         long startedAt = System.currentTimeMillis();
+        // 在 HTTP 请求线程同步捕获调用主体（user/ip），传给 reactor 回调中的审计日志
+        final AiCallContext callCtx = AiCallContext.capture();
         String resolvedConversationId = normalizeConversationId(conversationId);
         String resolvedUserId = normalizeUserId(userId);
-        logChatRequestStart("stream", resolvedUserId, resolvedConversationId, message, history, pageContext, config);
+
+        // 增量协议：根据 baseHistoryHash 决定是拼接缓存历史还是采用完整历史
+        HistoryCacheService.CacheDecision decision = historyCacheService.resolveHistory(
+                resolvedConversationId, resolvedUserId, baseHistoryHash, history);
+        List<Map<String, Object>> resolvedHistory = decision.history();
+        // 历史上下文规模快照：供 reactor 回调中的审计日志记录（在请求线程同步计算）
+        final int historyTurns = resolvedHistory.size();
+        final int historyTokens = estimateHistoryTokens(resolvedHistory);
+
+        logChatRequestStart("stream", resolvedUserId, resolvedConversationId, message, resolvedHistory, pageContext, config);
 
         try {
-            validateMessage(message, history, config, resolvedUserId);
+            validateMessage(message, resolvedHistory, config, resolvedUserId);
         } catch (IllegalArgumentException ex) {
             logChatRequestRejected("stream", resolvedUserId, resolvedConversationId, startedAt, message, ex);
             throw ex;
@@ -339,6 +476,24 @@ public class AiChatService {
         SseEmitter emitter = new SseEmitter(180_000L);
         AtomicBoolean streamCancelled = new AtomicBoolean(false);
         AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
+
+        // cacheMiss 短路：发送 cacheMiss SSE 事件并立即 complete，
+        // 前端检测到后清空 lastHistoryHash 并用完整历史重试一次
+        if (decision.cacheMiss()) {
+            log.info("cacheMiss 短路(stream): userId={} conversationId={} baseHash={} → 通知前端重发完整历史",
+                    resolvedUserId, resolvedConversationId, baseHistoryHash);
+            sendSseEvent(emitter, "cacheMiss", Map.of(
+                    "conversationId", resolvedConversationId,
+                    "message", "history cache expired, please retry with full history"), streamCancelled, subscriptionRef);
+            sendSseEvent(emitter, "complete", Map.of(
+                    "conversationId", resolvedConversationId,
+                    "fullResponse", "",
+                    "reasoningContent", "",
+                    "historyHash", "",
+                    "cacheMiss", true), streamCancelled, subscriptionRef);
+            completeEmitterQuietly(emitter);
+            return emitter;
+        }
 
         ChatModel chatModel = chatClientFactory.createChatModel(config);
         boolean enableTools = Boolean.TRUE.equals(config.getEnableTools());
@@ -352,12 +507,18 @@ public class AiChatService {
         VisionMode visionMode = resolveVisionMode(config);
 
         // 构建消息列表（含历史截断 + 记忆注入 + 图片附件）
-        List<Message> messages = buildMessages(config, history, message, processedMessage, pageContext,
+        List<Message> messages = buildMessages(config, resolvedHistory, message, processedMessage, pageContext,
                 resolvedUserId, ragContext, images, visionMode);
 
-        // 构建选项（含工具）
-        ChatOptions options = buildChatOptions(chatModel, enableTools, visionMode, emitter, resolvedConversationId,
-                resolvedUserId, streamCancelled);
+        // 构建选项（仅模型参数，工具由 ChatClient 注册）
+        ChatOptions options = buildChatOptions(chatModel);
+        // 构建工具规格（工具回调 + 工具上下文）
+        ToolSpec toolSpec = buildToolSpec(enableTools, visionMode, emitter, resolvedConversationId,
+                resolvedUserId, streamCancelled, true, currentPage);
+        // 构建带工具注册的 ChatClient，由 ToolCallingAdvisor 驱动多轮 tool loop
+        ChatClient chatClient = buildChatClient(chatModel, options, toolSpec, visionMode);
+        // 工具调用记录器引用：供 reactor 回调中的审计日志读取（同步 list，工具并行执行时线程安全）
+        final List<Map<String, Object>> toolCalls = extractToolCallRecorder(toolSpec);
 
         Prompt prompt = new Prompt(messages, options);
 
@@ -367,17 +528,20 @@ public class AiChatService {
             completeEmitterQuietly(emitter);
             return emitter;
         }
-        // 流式调用（Spring AI 框架管理 Tool Calling）
-        Flux<ChatResponse> flux = chatModel.stream(prompt);
+        // 流式调用（ChatClient 通过 ToolCallingAdvisor 驱动多轮 tool loop）
+        Flux<ChatResponse> flux = chatClient.prompt(prompt).stream().chatResponse();
 
         StringBuilder buffer = new StringBuilder();
         StringBuilder reasoningBuffer = new StringBuilder();
+        AiUsageSupport.Accumulator usageAcc = new AiUsageSupport.Accumulator();
+        Integer fallbackInputTokens = AiTokenEstimator.countMessages(messages);
 
         Disposable disposable = flux.subscribe(
                 chatResponse -> {
                     if (streamCancelled.get()) {
                         return;
                     }
+                    usageAcc.accept(chatResponse);
                     if (chatResponse != null && chatResponse.getResult() != null) {
                         String reasoningContent = extractReasoningContent(chatResponse);
                         if (StringUtils.hasText(reasoningContent)) {
@@ -402,6 +566,10 @@ public class AiChatService {
                         return;
                     }
                     logChatRequestFailed("stream", resolvedUserId, resolvedConversationId, startedAt, message, error);
+                    recordAiAudit("AI_CHAT_STREAM", "stream", false, startedAt, resolvedUserId, resolvedConversationId,
+                            message, null, usageAcc, fallbackInputTokens, "conversation", resolvedConversationId,
+                            Map.of("error", String.valueOf(error.getMessage())), callCtx, toolCalls,
+                            config, historyTurns, historyTokens, error);
                     sendSseEvent(emitter, "error", Map.of("message",
                             error.getMessage() != null ? error.getMessage() : "未知错误"), streamCancelled,
                             subscriptionRef);
@@ -415,10 +583,24 @@ public class AiChatService {
                     String fullResponse = buffer.toString();
                     logChatRequestCompleted("stream", resolvedUserId, resolvedConversationId, startedAt, fullResponse,
                             false);
+                    recordAiAudit("AI_CHAT_STREAM", "stream", true, startedAt, resolvedUserId, resolvedConversationId,
+                            message, fullResponse, usageAcc, fallbackInputTokens,
+                            "conversation", resolvedConversationId, null, callCtx, toolCalls,
+                            config, historyTurns, historyTokens, null);
+
+                    // 写回历史缓存并返回新哈希（前端下次作为 baseHistoryHash 上送以走增量协议）。
+                    // 工具调用结果会在前端消息持久化时通过 segments/toolEvents 保存，
+                    // 下次请求会原样回送，所以这里只记录 user/assistant 文本骨架即可。
+                    String historyHash = historyCacheService.putHistory(
+                            resolvedConversationId, resolvedUserId, resolvedHistory,
+                            Map.of("role", "user", "content", message),
+                            Map.of("role", "assistant", "content", fullResponse));
+
                     sendSseEvent(emitter, "complete", Map.of(
                             "conversationId", resolvedConversationId,
                             "fullResponse", fullResponse,
-                            "reasoningContent", reasoningBuffer.toString()), streamCancelled, subscriptionRef);
+                            "reasoningContent", reasoningBuffer.toString(),
+                            "historyHash", historyHash != null ? historyHash : ""), streamCancelled, subscriptionRef);
                     completeEmitterQuietly(emitter);
 
                     // 异步保存记忆
@@ -482,7 +664,7 @@ public class AiChatService {
     // ========== 日志 ==========
 
     private void logChatRequestStart(String mode, String userId, String conversationId,
-            String message, List<Map<String, String>> history,
+            String message, List<Map<String, Object>> history,
             Map<String, Object> pageContext, SysAiConfig config) {
         log.info(
                 "AI聊天请求开始: mode={}, userId={}, conversationId={}, provider={}, model={}, enableTools={}, enableMemory={}, historySize={}, hasPageContext={}, messageLength={}, messagePreview={}",
@@ -534,6 +716,170 @@ public class AiChatService {
                 abbreviateForLog(message, 160),
                 error.getMessage(),
                 error);
+    }
+
+    /**
+     * 写入 AI 调用审计日志（log_type='AI'）。
+     *
+     * <p>统一组装 detail（mode/durationMs/conversationId/principal/预览/usage），
+     * 并在 API 未上报 usage 时用本地 jtokkit 估算输入 token 兜底 prompt_tokens。
+     * 所有写库异常被吞掉并降级为 debug 日志，避免影响主流程。
+     *
+     * @param action             AI 动作（AI_CHAT / AI_CHAT_STREAM / AI_COMMENT_REPLY）
+     * @param mode               调用模式（sync / stream / comment）
+     * @param success            是否成功
+     * @param startedAt          开始时间戳
+     * @param userId             调用主体 ID（可空）
+     * @param conversationId     会话 ID（可空）
+     * @param message            用户原始消息（用于预览）
+     * @param response           AI 响应正文（成功时填，用于预览）
+     * @param usageAcc           流式累加器（可空，失败/缓存命中时为 null）
+     * @param fallbackInputTokens API 未上报 usage 时的输入 token 兜底估算（可空）
+     * @param targetType         目标类型（conversation / comment）
+     * @param targetId           目标 ID
+     * @param extraDetail        额外 detail 字段（cacheHit / skill / error 等，可空）
+     */
+    private void recordAiAudit(String action, String mode, boolean success, long startedAt,
+            String userId, String conversationId, String message, String response,
+            AiUsageSupport.Accumulator usageAcc, Integer fallbackInputTokens,
+            String targetType, String targetId, Map<String, Object> extraDetail,
+            AiCallContext callCtx, List<Map<String, Object>> toolCalls,
+            SysAiConfig config, Integer historyTurns, Integer historyTokens, Throwable failureCause) {
+        try {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("mode", mode);
+            detail.put("durationMs", System.currentTimeMillis() - startedAt);
+            if (StringUtils.hasText(conversationId)) {
+                detail.put("conversationId", conversationId);
+            }
+            if (StringUtils.hasText(userId)) {
+                detail.put("principal", userId);
+            }
+            // 模型与 provider：排查"AI 胡说"时第一眼要看的字段
+            if (config != null) {
+                if (StringUtils.hasText(config.getProvider())) {
+                    detail.put("provider", config.getProvider());
+                }
+                if (StringUtils.hasText(config.getModel())) {
+                    detail.put("model", config.getModel());
+                }
+            }
+            // 历史上下文规模：排查"为何本次 token 涨那么多"
+            if (historyTurns != null) {
+                detail.put("historyTurns", historyTurns);
+            }
+            if (historyTokens != null) {
+                detail.put("historyTokens", historyTokens);
+            }
+            detail.put("messagePreview", AiUsageSupport.preview(message, 160));
+            if (success && response != null) {
+                detail.put("responsePreview", AiUsageSupport.preview(response, 160));
+            }
+            if (extraDetail != null) {
+                detail.putAll(extraDetail);
+            }
+            // 错误类型分类：按失败原因归类，便于按 errorType 筛选统计
+            if (!success) {
+                detail.put("errorType", classifyAiError(failureCause, extraDetail));
+            }
+            AiUsageSupport.Snapshot snapshot = usageAcc != null ? usageAcc.snapshot() : AiUsageSupport.Snapshot.empty();
+            snapshot = snapshot.withInputFallback(fallbackInputTokens);
+            detail.put("usage", snapshot.describe());
+            if (toolCalls != null && !toolCalls.isEmpty()) {
+                detail.put("toolCalls", toolCalls);
+                detail.put("toolCallCount", toolCalls.size());
+            } else {
+                detail.put("toolCallCount", 0);
+            }
+            String summary = AiUsageSupport.preview(message, 200);
+            if (callCtx != null) {
+                sysAuditLogService.recordAi(action, success, targetType, targetId, summary, detail,
+                        snapshot.getPromptTokens(), snapshot.getCompletionTokens(), snapshot.getTotalTokens(),
+                        callCtx.getUserId(), callCtx.getUsername(), callCtx.getIp(), callCtx.getLocation());
+            } else {
+                sysAuditLogService.recordAi(action, success, targetType, targetId, summary, detail,
+                        snapshot.getPromptTokens(), snapshot.getCompletionTokens(), snapshot.getTotalTokens());
+            }
+        } catch (Exception e) {
+            log.debug("写入AI审计日志失败: action={}, error={}", action, e.getMessage());
+        }
+    }
+
+    /**
+     * 估算历史上下文（前端 history Map 列表）的输入 token 数。
+     * 遍历各消息的 content 字段，用 jtokkit 累加，非标准结构返回 0。
+     */
+    private int estimateHistoryTokens(List<Map<String, Object>> history) {
+        if (history == null || history.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (Map<String, Object> msg : history) {
+            Object content = msg.get("content");
+            if (content instanceof String s && !s.isEmpty()) {
+                total += AiTokenEstimator.countTokens(s);
+            } else if (content instanceof List<?> parts) {
+                // 多模态/分段消息：累加每个 String 段
+                for (Object part : parts) {
+                    if (part instanceof Map<?, ?> m && m.get("text") instanceof String t) {
+                        total += AiTokenEstimator.countTokens(t);
+                    } else if (part instanceof String s) {
+                        total += AiTokenEstimator.countTokens(s);
+                    }
+                }
+            }
+        }
+        return total;
+    }
+
+    /**
+     * AI 失败原因归类（用于审计日志 detail.errorType 字段，便于按失败原因筛选统计）。
+     * 分类依据异常类型名和 message 关键字。
+     */
+    private String classifyAiError(Throwable cause, Map<String, Object> extraDetail) {
+        if (cause == null) {
+            // 没有异常对象（如 IllegalArgumentException 业务拒绝走 rejected 分支但未带 cause）
+            return "rejected";
+        }
+        String name = cause.getClass().getName();
+        String msg = cause.getMessage() != null ? cause.getMessage().toLowerCase() : "";
+        if (name.contains("timeout") || msg.contains("timeout") || msg.contains("timed out")) {
+            return "timeout";
+        }
+        if (name.contains("ratelimit") || name.contains("rate_limit") || msg.contains("rate limit")
+                || msg.contains("rate_limit") || msg.contains("quota")) {
+            return "rate_limit";
+        }
+        if (name.contains("auth") || name.contains("unauthorized") || name.contains("forbidden")
+                || msg.contains("unauthorized") || msg.contains("invalid api key")
+                || msg.contains("authentication")) {
+            return "auth";
+        }
+        if (msg.contains("content filter") || msg.contains("content_filter") || msg.contains("policy")
+                || msg.contains("safety")) {
+            return "content_filter";
+        }
+        if (name.contains("connect") || name.contains("socket") || name.contains("ioexception")
+                || msg.contains("connection") || msg.contains("network") || msg.contains("unreachable")
+                || msg.contains("reset")) {
+            return "network";
+        }
+        if (extraDetail != null && extraDetail.containsKey("rejected")) {
+            return "rejected";
+        }
+        return "unknown";
+    }
+
+    /**
+     * 从 ToolSpec 的 toolContext 中提取工具调用记录器。
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractToolCallRecorder(ToolSpec toolSpec) {
+        if (toolSpec == null || toolSpec.toolContext() == null) {
+            return null;
+        }
+        Object recorder = toolSpec.toolContext().get(ToolCallbackEventBridge.TOOL_CALL_RECORDER_CONTEXT_KEY);
+        return recorder instanceof List<?> list ? (List<Map<String, Object>>) list : null;
     }
 
     private void logRagContext(String mode, String userId, String conversationId, KnowledgePromptContext ragContext) {
@@ -613,7 +959,7 @@ public class AiChatService {
      *                   - {@link VisionMode#TOOL}：主模型不支持视觉但已配置视觉模型，将图片URL拼接到用户消息文本中，由 analyze_image 工具识别
      *                   - {@link VisionMode#DISABLED}：未启用视觉能力，忽略图片
      */
-    private List<Message> buildMessages(SysAiConfig config, List<Map<String, String>> history,
+    private List<Message> buildMessages(SysAiConfig config, List<Map<String, Object>> history,
             String rawUserMessage, String userMessage, Map<String, Object> pageContext,
             String userId, KnowledgePromptContext ragContext, List<String> images, VisionMode visionMode) {
         List<Message> messages = new ArrayList<>();
@@ -648,7 +994,20 @@ public class AiChatService {
         }
 
         // 6. 当前用户消息（按视觉模式构造）
-        messages.add(buildUserMessageWithImages(userMessage, images, visionMode));
+        // NATIVE 模式下，把 RAG 命中片段里的图片 URL 作为 Media 直接注入主消息，
+        // 主模型一轮看完，无需调 analyzeImage 工具，零额外 token。
+        // TOOL 模式保持文本标记行为（RAG 文本里的 [图片: url] 标记 + 按需调 analyzeImage），
+        // 避免把 RAG 图片误标为"用户上传图片"造成混淆。
+        List<String> effectiveImages = images;
+        if (visionMode == VisionMode.NATIVE) {
+            List<String> ragImages = extractRagImageUrls(ragContext);
+            if (!ragImages.isEmpty()) {
+                effectiveImages = new ArrayList<>(
+                        images != null ? images : List.of());
+                effectiveImages.addAll(ragImages);
+            }
+        }
+        messages.add(buildUserMessageWithImages(userMessage, effectiveImages, visionMode));
 
         return messages;
     }
@@ -704,6 +1063,39 @@ public class AiChatService {
             textBuilder.append("\n图片").append(i + 1).append(": ").append(images.get(i));
         }
         return new UserMessage(textBuilder.toString());
+    }
+
+    /**
+     * 从 RAG 检索上下文中提取图片 URL，用于 NATIVE 模式下作为 Media 直接注入。
+     * <p>
+     * RAG 命中片段由 {@link com.ld.poetry.service.ai.rag.RagTextUtils#normalize} 生成
+     * [图片: url] 标记。本方法提取其中的真实 URL（跳过"内联图片"等无 URL 标记），
+     * 做 SSRF 防护后返回去重列表，最多 {@value #MAX_RAG_IMAGES} 张。
+     */
+    private List<String> extractRagImageUrls(KnowledgePromptContext ragContext) {
+        if (ragContext == null || !StringUtils.hasText(ragContext.promptContext())) {
+            return List.of();
+        }
+        List<String> urls = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        Matcher matcher = RAG_IMAGE_MARKER_PATTERN.matcher(ragContext.promptContext());
+        while (matcher.find() && urls.size() < MAX_RAG_IMAGES) {
+            String url = matcher.group(1).trim();
+            // 跳过无 URL 的内联图片标记（data URI 被 normalize 转成 [图片: 内联图片]）
+            if ("内联图片".equals(url)) {
+                continue;
+            }
+            if (!StringUtils.hasText(url) || !seen.add(url)) {
+                continue;
+            }
+            // SSRF 防护：与用户上传图片走同一套校验
+            if (!ImageMediaUtils.isAllowedImageUrl(url)) {
+                log.debug("RAG 图片URL被SSRF防护拦截，跳过 NATIVE 注入: url={}", url);
+                continue;
+            }
+            urls.add(url);
+        }
+        return urls;
     }
 
     /**
@@ -905,7 +1297,7 @@ public class AiChatService {
     /**
      * 截断并注入聊天历史
      */
-    private void injectChatHistory(SysAiConfig config, List<Map<String, String>> history,
+    private void injectChatHistory(SysAiConfig config, List<Map<String, Object>> history,
             List<Message> messages) {
         if (history == null || history.isEmpty())
             return;
@@ -915,75 +1307,347 @@ public class AiChatService {
                 : 20;
 
         // 截断：保留最近的 N 条
-        List<Map<String, String>> truncated = history;
+        List<Map<String, Object>> truncated = history;
         if (history.size() > maxConversationLength) {
+            int original = history.size();
             truncated = history.subList(history.size() - maxConversationLength, history.size());
+            log.info("历史截断: historySize={} → {} (maxConversationLength={})",
+                    original, truncated.size(), maxConversationLength);
+        } else {
+            log.info("历史未截断: historySize={} (maxConversationLength={})",
+                    history.size(), maxConversationLength);
         }
 
-        for (Map<String, String> msg : truncated) {
-            String role = msg.getOrDefault("role", "user").toLowerCase();
-            String content = msg.getOrDefault("content", "");
-            if (content.isBlank())
-                continue;
+        for (Map<String, Object> msg : truncated) {
+            String role = objToString(msg.getOrDefault("role", "user")).toLowerCase();
+            String content = objToString(msg.getOrDefault("content", ""));
 
             // 安全措施：只接受 user/assistant 角色，拒绝客户端提交的 system 消息
             // 防止攻击者通过篡改 localStorage 注入伪造的系统指令
             switch (role) {
-                case "user" -> messages.add(new UserMessage(content));
-                case "assistant" -> messages.add(new AssistantMessage(content));
+                case "user" -> {
+                    if (!content.isBlank()) {
+                        messages.add(new UserMessage(content));
+                    }
+                }
+                case "assistant" -> {
+                    // 重建工具调用链：AssistantMessage(toolCalls) → ToolResponseMessage → AssistantMessage(最终回复)
+                    // 这样模型在多轮对话中能"看到"之前的工具调用与结果，避免重复调用 / 凭空猜测 / 缓存失效。
+                    List<AssistantMessage.ToolCall> toolCalls = extractToolCalls(msg.get("toolCalls"));
+                    if (toolCalls != null && !toolCalls.isEmpty()) {
+                        // 1) 模型请求调用工具（content 留空，与 Spring AI tool loop 输出一致）
+                        messages.add(AssistantMessage.builder()
+                                .content("")
+                                .toolCalls(toolCalls)
+                                .build());
+                        // 2) 工具响应（与 toolCalls 按 id 一一配对）
+                        List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
+                        for (AssistantMessage.ToolCall tc : toolCalls) {
+                            // 失败的工具也按成功形式注入响应，错误信息内嵌在结果文本里
+                            String resultText = extractToolResult(msg.get("toolCalls"), tc.id(), tc.name());
+                            responses.add(new ToolResponseMessage.ToolResponse(
+                                    tc.id(), tc.name(), resultText));
+                        }
+                        messages.add(ToolResponseMessage.builder().responses(responses).build());
+                    }
+                    // 3) 模型最终回复（即使有工具调用，最终回复也可能为空，跳过空内容）
+                    if (!content.isBlank()) {
+                        messages.add(new AssistantMessage(content));
+                    } else if (toolCalls == null || toolCalls.isEmpty()) {
+                        // 既无工具调用又无内容：跳过，避免污染上下文
+                    }
+                }
                 default -> {
-                    log.warn("拒绝客户端提交的非法消息角色: {}", role);
-                    // 将非法角色的消息降级为 user 角色，防止注入
-                    messages.add(new UserMessage(content));
+                    if (!content.isBlank()) {
+                        log.warn("拒绝客户端提交的非法消息角色: {}", role);
+                        // 将非法角色的消息降级为 user 角色，防止注入
+                        messages.add(new UserMessage(content));
+                    }
                 }
             }
         }
     }
 
-    private void configureToolsAndContext(org.springframework.ai.model.tool.DefaultToolCallingChatOptions.Builder<?> builder,
-            boolean enableTools, VisionMode visionMode, SseEmitter emitter, String conversationId, String userId, AtomicBoolean streamCancelled) {
-        // 仅注册视觉工具的场景：用户禁用了工具但配置了独立视觉模型（TOOL 模式）
-        boolean visionToolsOnly = !enableTools && visionMode == VisionMode.TOOL;
-        if (enableTools || visionToolsOnly) {
-            List<ToolCallback> toolCallbacks = new ArrayList<>();
-            if (visionToolsOnly) {
-                // TOOL 模式且用户未启用工具：只注册视觉工具，避免违背用户禁用工具的意图
-                toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(visionTools)));
-            } else {
-                toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(articleTools, timeTools, calculatorTools, commentTools, visionTools, memorySearchTool)));
-                toolCallbacks.addAll(httpAiToolProvider.getEnabledToolCallbacks());
+    /**
+     * 从客户端 history 项的 toolCalls 字段提取 Spring AI {@link AssistantMessage.ToolCall} 列表。
+     * <p>
+     * 仅保留 status=completed 的工具调用，未完成或失败的也保留（结果会标注错误），
+     * 以便模型知道"曾经尝试调用过该工具"。
+     */
+    @SuppressWarnings("unchecked")
+    private List<AssistantMessage.ToolCall> extractToolCalls(Object rawToolCalls) {
+        if (!(rawToolCalls instanceof List<?> list) || list.isEmpty()) {
+            return null;
+        }
+        List<AssistantMessage.ToolCall> result = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            if (!(item instanceof Map<?, ?> map)) {
+                continue;
             }
+            String name = objToString(map.get("tool"));
+            if (name.isBlank()) {
+                name = objToString(map.get("name"));
+            }
+            if (name.isBlank()) {
+                continue;
+            }
+            // id 必须稳定且唯一：优先用客户端 id，否则用序号生成
+            String id = objToString(map.get("id"));
+            if (id.isBlank()) {
+                id = "hist_tc_" + i + "_" + Integer.toHexString(System.identityHashCode(list));
+            }
+            String arguments = normalizeArguments(map.get("arguments"));
+            result.add(new AssistantMessage.ToolCall(id, "function", name, arguments));
+        }
+        return result;
+    }
 
-            List<ToolCallback> tools = toolCallbacks.stream()
-                    .map(toolCallbackEventBridge::wrap)
-                    .toList();
-            builder.toolCallbacks(tools);
-            Map<String, Object> toolContext = new HashMap<>();
-            toolContext.put(ToolCallbackEventBridge.CONVERSATION_ID_CONTEXT_KEY,
-                    conversationId != null ? conversationId : "");
-            toolContext.put(ToolCallbackEventBridge.USER_ID_CONTEXT_KEY,
-                    userId != null ? userId : "anonymous");
-            if (emitter != null) {
-                toolContext.put(ToolCallbackEventBridge.SSE_EMITTER_CONTEXT_KEY, emitter);
+    /**
+     * 从客户端 history 项中查找与指定 toolCallId 配对的工具结果文本。
+     * 失败的工具调用返回错误描述；其余返回 result 字段（可能为空字符串）。
+     * <p>
+     * 匹配顺序：
+     * <ol>
+     *   <li>id 精确匹配（客户端正常带 id 的主路径）</li>
+     *   <li>id 缺失时按 toolName 匹配（兜底旧版本历史 / 缺 id 的数据；
+     *       同一消息内同名工具极少重复，可接受）</li>
+     * </ol>
+     */
+    @SuppressWarnings("unchecked")
+    private String extractToolResult(Object rawToolCalls, String toolCallId, String toolName) {
+        if (!(rawToolCalls instanceof List<?> list)) {
+            return "";
+        }
+        // 第二轮：id 缺失项按工具名兜底匹配
+        String fallbackResult = null;
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) {
+                continue;
             }
-            toolContext.put(ToolCallbackEventBridge.STREAM_CANCELLED_CONTEXT_KEY, streamCancelled);
-            builder.toolContext(toolContext);
+            String id = objToString(map.get("id"));
+            if (!id.isBlank()) {
+                if (!id.equals(toolCallId)) {
+                    continue;
+                }
+                return readToolResult(map);
+            }
+            // id 缺失：按工具名兜底（同名工具仅取第一个匹配项）
+            if (fallbackResult == null && StringUtils.hasText(toolName)
+                    && toolName.equals(objToString(map.get("tool")))) {
+                fallbackResult = readToolResult(map);
+            }
+        }
+        return fallbackResult != null ? fallbackResult : "";
+    }
+
+    private String readToolResult(Map<?, ?> map) {
+        String status = objToString(map.get("status"));
+        String error = objToString(map.get("error"));
+        String result = objToString(map.get("result"));
+        if ("failed".equalsIgnoreCase(status) && !error.isBlank()) {
+            return "工具调用失败: " + error;
+        }
+        return result;
+    }
+
+    private String objToString(Object obj) {
+        return obj != null ? obj.toString() : "";
+    }
+
+    /**
+     * 规范化工具调用 arguments 字段为合法 JSON 字符串。
+     * <p>
+     * 前端 history 中 arguments 可能为：
+     * <ul>
+     *   <li>字符串（理想情况，已是合法 JSON）</li>
+     *   <li>Map/对象（被 JSON 反序列化为 Map，toString 后变 {@code {key=value}} 非 JSON）</li>
+     *   <li>null / 空字符串</li>
+     * </ul>
+     * 非合法 JSON 的 arguments 会导致模型 API 400（unexpected character），
+     * 这里统一兜底转 {@code "{}"}。
+     */
+    private String normalizeArguments(Object raw) {
+        if (raw == null) {
+            return "{}";
+        }
+        // 已经是字符串：尝试校验
+        if (raw instanceof String s) {
+            String trimmed = s.trim();
+            if (trimmed.isEmpty() || "null".equals(trimmed)) {
+                return "{}";
+            }
+            // 合法 JSON 字符串直接返回
+            if (isValidJson(trimmed)) {
+                return trimmed;
+            }
+            // 字符串但非 JSON（如 "Map{key=value}"）：兜底空对象
+            return "{}";
+        }
+        // Map 等对象：序列化为 JSON
+        try {
+            return objectMapper.writeValueAsString(raw);
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    private boolean isValidJson(String s) {
+        try {
+            objectMapper.readTree(s);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
     /**
-     * 构建 ChatOptions，包含工具注册
+     * 工具规格：包含工具回调列表和工具上下文。
+     * 由 {@link #buildToolSpec(boolean, VisionMode, SseEmitter, String, String, AtomicBoolean, boolean, Map)} 构造，
+     * 供 {@link #buildChatClient(ChatModel, ToolSpec)} 注册到 {@link ChatClient}，
+     * 由 {@code ToolCallingAdvisor} 驱动多轮 tool loop。
      */
-    private ChatOptions buildChatOptions(ChatModel chatModel, boolean enableTools, VisionMode visionMode, SseEmitter emitter,
-            String conversationId, String userId, AtomicBoolean streamCancelled) {
+    private record ToolSpec(List<ToolCallback> toolCallbacks, Map<String, Object> toolContext) {
+        static final ToolSpec EMPTY = new ToolSpec(List.of(), Map.of());
+    }
+
+    /**
+     * 构建工具规格：收集工具回调并包装 SSE 事件桥，构造工具上下文。
+     * <p>
+     * 工具注册从 {@code ChatOptions} 迁移到 {@link ChatClient}，
+     * 这样 {@code ToolCallingAdvisor} 会自动注册并驱动多轮 tool loop
+     * （Spring AI 2.0 起 {@code ChatModel} 层已移除内置 tool loop）。
+     */
+    private ToolSpec buildToolSpec(boolean enableTools, VisionMode visionMode, SseEmitter emitter,
+            String conversationId, String userId, AtomicBoolean streamCancelled,
+            boolean allowSkillManagement, Map<String, Object> currentPage) {
+        // 仅注册视觉工具的场景：用户禁用了工具但配置了独立视觉模型（TOOL 模式）
+        boolean visionToolsOnly = !enableTools && visionMode == VisionMode.TOOL;
+        if (!enableTools && !visionToolsOnly) {
+            return ToolSpec.EMPTY;
+        }
+
+        // 加载当前用户身份（用于身份感知与 Skill 管理权限判定）
+        UserIdentity identity = loadCurrentUserIdentity();
+
+        List<ToolCallback> toolCallbacks = new ArrayList<>();
+        if (visionToolsOnly) {
+            // TOOL 模式且用户未启用工具：只注册视觉工具，避免违背用户禁用工具的意图
+            toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(visionTools)));
+        } else {
+            toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(
+                    articleTools, timeTools, calculatorTools, commentTools, visionTools, memorySearchTool,
+                    skillTools, pageTools)));
+            // Skill 管理工具仅对站长/管理员开放，且仅在非评论场景（聊天/同步聊天）注册。
+            // 评论场景（generateCommentReply）面向公开评论，即使是管理员触发也不应创建 Skill。
+            if (allowSkillManagement && identity.admin()) {
+                toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(skillAdminTools)));
+            }
+            toolCallbacks.addAll(httpAiToolProvider.getEnabledToolCallbacks());
+        }
+
+        List<ToolCallback> wrapped = toolCallbacks.stream()
+                .map(toolCallbackEventBridge::wrap)
+                .toList();
+
+        Map<String, Object> toolContext = new HashMap<>();
+        toolContext.put(ToolCallbackEventBridge.CONVERSATION_ID_CONTEXT_KEY,
+                conversationId != null ? conversationId : "");
+        toolContext.put(ToolCallbackEventBridge.USER_ID_CONTEXT_KEY,
+                userId != null ? userId : "anonymous");
+        if (emitter != null) {
+            toolContext.put(ToolCallbackEventBridge.SSE_EMITTER_CONTEXT_KEY, emitter);
+        }
+        toolContext.put(ToolCallbackEventBridge.STREAM_CANCELLED_CONTEXT_KEY, streamCancelled);
+        // 工具调用记录器：供审计日志在调用结束后读取，记录每个工具的执行状态/耗时
+        // 使用 synchronizedList 保证 ToolCallingAdvisor 并行执行工具时的线程安全
+        toolContext.put(ToolCallbackEventBridge.TOOL_CALL_RECORDER_CONTEXT_KEY,
+                Collections.synchronizedList(new ArrayList<Map<String, Object>>()));
+        // 注入用户身份，供 SkillAdminTools 等需要身份感知的工具读取
+        toolContext.put(ToolCallbackEventBridge.USER_NAME_CONTEXT_KEY, identity.name());
+        toolContext.put(ToolCallbackEventBridge.USER_TYPE_CONTEXT_KEY, identity.userType());
+        toolContext.put(ToolCallbackEventBridge.USER_IS_ADMIN_CONTEXT_KEY, identity.admin());
+        // 当前页面上下文：供 get_current_page 工具按需读取，避免对"当前页面"提问时凭空猜测
+        toolContext.put(ToolCallbackEventBridge.CURRENT_PAGE_CONTEXT_KEY, currentPage);
+
+        return new ToolSpec(wrapped, toolContext);
+    }
+
+    /**
+     * 当前用户身份快照。在请求线程内加载一次，传入工具上下文供异步工具线程读取，
+     * 避免 {@link PoetryUtil#getCurrentUser()} 在 reactor 调度线程上拿不到上下文。
+     */
+    private record UserIdentity(String name, Integer userType, boolean admin) {
+        static final UserIdentity ANONYMOUS = new UserIdentity("", null, false);
+    }
+
+    /**
+     * 加载当前请求用户的身份信息。站长(userType=0)与管理员(userType=1)视为可管理 Skill。
+     */
+    private UserIdentity loadCurrentUserIdentity() {
+        try {
+            com.ld.poetry.entity.User user = PoetryUtil.getCurrentUser();
+            if (user == null) {
+                return UserIdentity.ANONYMOUS;
+            }
+            Integer userType = user.getUserType();
+            boolean isAdmin = userType != null
+                    && (userType == com.ld.poetry.enums.PoetryEnum.USER_TYPE_ADMIN.getCode()
+                    || userType == com.ld.poetry.enums.PoetryEnum.USER_TYPE_DEV.getCode());
+            String name = StringUtils.hasText(user.getUsername()) ? user.getUsername() : "";
+            return new UserIdentity(name, userType, isAdmin);
+        } catch (Exception e) {
+            log.debug("加载当前用户身份失败，按匿名处理: {}", e.getMessage());
+            return UserIdentity.ANONYMOUS;
+        }
+    }
+
+    /**
+     * 构建带工具注册的 {@link ChatClient}。
+     * <p>
+     * 通过 {@code ChatClient.tools()} 注册工具回调后，
+     * {@code ToolCallingAdvisor} 会自动加入 advisor 链，
+     * 在 stream/call 时驱动多轮 tool loop：
+     * 模型返回 tool call → advisor 执行 {@link ToolCallback#call} →
+     * 把结果作为 {@code ToolResponseMessage} 送回模型 → 模型继续推理。
+     * <p>
+     * 注意：必须传入 {@link ToolCallingChatOptions} 实现的 options
+     * （{@link org.springframework.ai.openai.OpenAiChatOptions} 或
+     * {@link org.springframework.ai.anthropic.AnthropicChatOptions}），
+     * 否则 {@code ToolCallingAdvisor} 会跳过 tool loop。
+     */
+    private ChatClient buildChatClient(ChatModel chatModel, ChatOptions options, ToolSpec toolSpec,
+            VisionMode visionMode) {
+        ChatClient.Builder builder = ChatClient.builder(chatModel)
+                .defaultOptions(options.mutate());
+        if (toolSpec != null && !toolSpec.toolCallbacks().isEmpty()) {
+            builder.defaultTools(toolSpec.toolCallbacks().toArray(new ToolCallback[0]))
+                    .defaultToolContext(toolSpec.toolContext());
+        }
+        // NATIVE 视觉模式：注册文章图片注入 Advisor。
+        // 该 Advisor 位于 ToolCallingAdvisor 内层，每轮模型调用都会被触发，
+        // 扫描工具返回的 [图片: url] 标记，将文章配图作为 Media 直接注入下一轮 UserMessage，
+        // 让主模型直接看图，免去 analyzeImage 工具的双倍 token 消耗。
+        // 仅 NATIVE 模式注册：TOOL 模式应走 analyzeImage 工具，DISABLED 模式无视觉能力。
+        if (visionMode == VisionMode.NATIVE) {
+            builder.defaultAdvisors(new ArticleImageInjectionAdvisor());
+        }
+        return builder.build();
+    }
+
+    /**
+     * 构建 ChatOptions（仅模型参数，不含工具注册）。
+     * 工具注册由 {@link #buildChatClient(ChatModel, ChatOptions, ToolSpec)} 通过 {@link ChatClient} 完成。
+     * <p>
+     * 始终返回新实例（{@code mutate().build()}），避免把 {@code chatModel} 单例持有的共享 options
+     * 暴露给 {@code new Prompt(messages, options)} 后被 Spring AI 内部 mutation 污染，
+     * 进而影响并发请求。
+     */
+    private ChatOptions buildChatOptions(ChatModel chatModel) {
         if (chatModel instanceof org.springframework.ai.openai.OpenAiChatModel openAiModel) {
-            var builder = openAiModel.getOptions().mutate();
-            configureToolsAndContext(builder, enableTools, visionMode, emitter, conversationId, userId, streamCancelled);
-            return builder.build();
+            return openAiModel.getOptions().mutate().build();
         } else if (chatModel instanceof org.springframework.ai.anthropic.AnthropicChatModel anthropicModel) {
-            var builder = anthropicModel.getOptions().mutate();
-            configureToolsAndContext(builder, enableTools, visionMode, emitter, conversationId, userId, streamCancelled);
-            return builder.build();
+            return anthropicModel.getOptions().mutate().build();
         }
         log.warn("未知的 ChatModel 类型, 回退使用默认 ChatOptions. modelClass={}", chatModel != null ? chatModel.getClass().getName() : "null");
         if (chatModel != null) {
@@ -1031,7 +1695,7 @@ public class AiChatService {
     /**
      * 尝试从 Redis 缓存获取响应（仅单轮对话）
      */
-    private String tryCacheGet(String message, List<Map<String, String>> history, SysAiConfig config,
+    private String tryCacheGet(String message, List<Map<String, Object>> history, SysAiConfig config,
             KnowledgePromptContext ragContext) {
         if (history != null && !history.isEmpty())
             return null;
@@ -1051,7 +1715,7 @@ public class AiChatService {
     /**
      * 缓存单轮对话响应到 Redis
      */
-    private void tryCachePut(String message, List<Map<String, String>> history,
+    private void tryCachePut(String message, List<Map<String, Object>> history,
             SysAiConfig config, KnowledgePromptContext ragContext, String response) {
         if (history != null && !history.isEmpty())
             return;
@@ -1078,6 +1742,85 @@ public class AiChatService {
 
     private String defaultText(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    // ========== AI 调用上下文 ==========
+
+    /**
+     * AI 调用上下文快照（不可变值对象）。
+     *
+     * <p>用于在 HTTP 请求线程内同步捕获调用主体（userId/username/ip/location），
+     * 随后传递给流式响应回调（reactor 线程）或异步任务（@Async 线程），
+     * 解决这些线程拿不到 {@code RequestContextHolder} / {@code PoetryUtil.getCurrentUser()} 的问题。
+     *
+     * <p>所有字段可空：后台任务（如定时翻译/摘要）无用户身份时构造空上下文。
+     */
+    public static final class AiCallContext {
+        private final Integer userId;
+        private final String username;
+        private final String ip;
+        private final String location;
+
+        private AiCallContext(Integer userId, String username, String ip, String location) {
+            this.userId = userId;
+            this.username = username;
+            this.ip = ip;
+            this.location = location;
+        }
+
+        /**
+         * 在 HTTP 请求线程内同步捕获调用主体信息。
+         * 必须在请求入口（同步代码段）调用，不得在 reactor/异步回调中调用。
+         */
+        public static AiCallContext capture() {
+            try {
+                com.ld.poetry.entity.User user = PoetryUtil.getCurrentUser();
+                Integer userId = user == null ? null : user.getId();
+                String username = user == null ? null : user.getUsername();
+                String ip = null;
+                String location = null;
+                jakarta.servlet.http.HttpServletRequest request = PoetryUtil.getRequest();
+                if (request != null) {
+                    ip = PoetryUtil.getIpAddr(request);
+                    location = resolveLocationForContext(ip);
+                }
+                return new AiCallContext(userId, username, ip, location);
+            } catch (Exception e) {
+                return new AiCallContext(null, null, null, null);
+            }
+        }
+
+        /** 由已知身份构造（如评论事件触发：从 event+userMapper 解析评论者）。 */
+        public static AiCallContext of(Integer userId, String username) {
+            return new AiCallContext(userId, username, null, null);
+        }
+
+        /** 空上下文（无用户身份的后台任务）。 */
+        public static AiCallContext empty() {
+            return new AiCallContext(null, null, null, null);
+        }
+
+        public Integer getUserId() {
+            return userId;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public String getIp() {
+            return ip;
+        }
+
+        public String getLocation() {
+            return location;
+        }
+
+        private static String resolveLocationForContext(String ip) {
+            // 简单留空，由 SysAuditLogService.record 时统一解析地理位置；
+            // 如需在此解析可调用 IpUtil，但流式回调不应阻塞做 IP 库查询
+            return null;
+        }
     }
 
     // ========== SSE 辅助 ==========
@@ -1131,7 +1874,7 @@ public class AiChatService {
     /**
      * 消息验证（长度 + 内容过滤）
      */
-    private void validateMessage(String message, List<Map<String, String>> history, SysAiConfig config, String userId) {
+    private void validateMessage(String message, List<Map<String, Object>> history, SysAiConfig config, String userId) {
         if (Boolean.TRUE.equals(config.getRequireLogin()) && PoetryUtil.getUserId() == null) {
             throw new IllegalArgumentException("请先登录后再使用AI聊天");
         }
@@ -1235,14 +1978,20 @@ public class AiChatService {
             sb.append("你是一个友善的AI助手，请用中文回答问题。");
         }
 
+        // 当前用户身份感知：让 AI 知道在和谁对话，并据此提供差异化服务
+        // （例如站长/管理员可触发 Skill 管理）。身份在请求线程加载，
+        // 与 buildToolSpec 中注入工具上下文的身份快照一致。
+        UserIdentity identity = loadCurrentUserIdentity();
+        sb.append(buildUserIdentityGuidance(identity));
+
         // 反提示词注入 & 反泄露指令
         sb.append("\n\n").append(ANTI_LEAK_INSTRUCTIONS);
 
         // 工具说明增强
         if (includeToolInstructions) {
             sb.append("\n\nTOOLS AVAILABLE:\n");
-            sb.append(buildToolSummary(visionMode));
-            String articleGuidance = buildArticleToolGuidance(ragContext);
+            sb.append(buildToolSummary(visionMode, identity.admin()));
+            String articleGuidance = buildArticleToolGuidance(ragContext, visionMode);
             sb.append("""
 
                     FACT ANCHOR MECHANISM (事实锚点机制):
@@ -1254,6 +2003,7 @@ public class AiChatService {
 
                     USAGE:
                     - Page attached + "这篇文章" -> use page content ONLY
+                    - User references current page ("这个页面""这篇文章""本页""这里") but NO page content present in message -> call get_current_page first, then answer from its result; do NOT guess page content
                     """);
             sb.append(articleGuidance);
             sb.append("""
@@ -1264,6 +2014,10 @@ public class AiChatService {
                     - Questions requiring real-time web data/news/search and a matching enabled tool -> use that tool
                     - When user asks what tools are available, answer from the actual tool list above instead of assuming only built-in tools
                     - If a tool returns status=failed or success=false, do NOT stop. Briefly tell the user the tool is currently unavailable, then continue with a safe fallback answer when possible. If no reliable fallback exists, explicitly say the information could not be retrieved and suggest retrying.""");
+            // Agent Skill 自主加载指引 + 索引注入
+            // 注意：Skill 创建/管理的元知识由内置 meta-skill "skill-creator" 提供，
+            // AI 通过索引发现后 load_skill 自主加载，无需在此硬编码引导。
+            sb.append(buildSkillIndexGuidance());
             // 视觉能力相关的使用指引（仅在视觉模式可用时附加）
             sb.append(buildVisionUsageGuidance(visionMode));
             sb.append("""
@@ -1271,6 +2025,78 @@ public class AiChatService {
                     SAFETY: Refuse illegal/harmful requests.""");
         }
 
+        return sb.toString();
+    }
+
+    /**
+     * 构建当前用户身份指引。让 AI 知道对话对象的称呼与角色，
+     * 以便主动称呼用户，并在管理员请求 Skill 管理时识别权限。
+     */
+    private String buildUserIdentityGuidance(UserIdentity identity) {
+        if (identity == null || identity == UserIdentity.ANONYMOUS) {
+            return "\n\nCURRENT USER: 匿名访客（未登录）";
+        }
+        String roleLabel;
+        if (identity.admin()) {
+            Integer ut = identity.userType();
+            roleLabel = (ut != null && ut == com.ld.poetry.enums.PoetryEnum.USER_TYPE_ADMIN.getCode())
+                    ? "站长" : "管理员";
+        } else {
+            roleLabel = "普通用户";
+        }
+        String name = StringUtils.hasText(identity.name()) ? identity.name() : "用户";
+        return "\n\nCURRENT USER: " + name + "（角色：" + roleLabel + "）"
+                + "\n- 用自然、礼貌的语气与用户对话，可适当称呼用户名。"
+                + (identity.admin()
+                    ? "\n- 该用户是" + roleLabel + "，拥有 Skill 管理权限，可通过对话创建/修改/激活 Skill。"
+                    : "\n- 若用户请求创建或修改 Skill，告知该操作仅限站长/管理员，引导其联系管理员。");
+    }
+
+    /**
+     * 构建 Agent Skill 索引指引。
+     * <p>
+     * 注入当前所有启用 Skill 的 name + description 索引（不含 body），
+     * 让 AI 一眼可见全貌，无需猜测库里有什么。AI 判断用户意图匹配某个
+     * Skill 时，调用 {@code load_skill(skill_key)} 按需拉取完整指令。
+     * <p>
+     * 相比「规则驱动」（让 AI 判断 non-trivial 才查）和「例子驱动」
+     * （列举具体场景），索引驱动的泛化能力最强：AI 直接做 description
+     * 匹配，不依赖抽象规则或穷举例子。代价是每轮多消耗几百 token 的索引。
+     * <p>
+     * 查询失败或无启用 Skill 时返回空串，不影响正常聊天。
+     */
+    private String buildSkillIndexGuidance() {
+        List<com.ld.poetry.entity.AiSkill> skills;
+        try {
+            skills = aiSkillService.listSkills(null, Boolean.TRUE);
+        } catch (Exception e) {
+            log.warn("构建 Skill 索引失败，跳过: {}", e.getMessage());
+            return "";
+        }
+        if (skills == null || skills.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder("""
+
+                AGENT SKILLS (自主加载):
+                - Below is the index of enabled Skills (name + description only). The full instruction body is NOT included here.
+                - If the user's intent matches any Skill's description, call load_skill(skill_key) to retrieve its full instructions, then follow them for this turn.
+                - If no Skill matches, proceed with your default behavior. Do not force-load Skills for unrelated requests.
+                - Loaded Skill instructions take precedence over default behavior for the matched scenario.
+                - You may also call list_skills(scene) or search_skills(query) to re-check the index if needed.
+
+                AVAILABLE SKILLS:""");
+        for (com.ld.poetry.entity.AiSkill skill : skills) {
+            String key = skill.getSkillKey() == null ? "" : skill.getSkillKey();
+            String name = skill.getSkillName() == null ? "" : skill.getSkillName();
+            String scene = skill.getScene() == null ? "" : skill.getScene();
+            String desc = skill.getDescription() == null ? "" : skill.getDescription();
+            sb.append("\n  - skill_key: ").append(key)
+                    .append(" | name: ").append(name)
+                    .append(" | scene: ").append(scene)
+                    .append("\n    description: ").append(desc);
+        }
         return sb.toString();
     }
 
@@ -1288,7 +2114,17 @@ public class AiChatService {
                 """;
     }
 
-    private String buildArticleToolGuidance(KnowledgePromptContext ragContext) {
+    private String buildArticleToolGuidance(KnowledgePromptContext ragContext, VisionMode visionMode) {
+        // 图片标记处理指引：无论视觉模式如何都附加，让 AI 理解 [图片: URL] 标记的含义。
+        // 标记来源于 getArticleContent 工具结果和 RAG 检索片段（由 RagTextUtils.normalize 生成）。
+        String imageMarkerGuidance = switch (visionMode) {
+            case TOOL, NATIVE -> """
+                    - Article text and RAG snippets may contain markers like [图片: URL] indicating an image at that position. When the user asks about image content (e.g. "图里画了什么"、"截图中的报错"、"配图说明什么"), call analyzeImage(URL) to recognize the image and answer based on its description. Do NOT call analyzeImage for images the user did not ask about.
+                    """;
+            case DISABLED -> """
+                    - Article text and RAG snippets may contain markers like [图片: URL] indicating an image at that position. Vision is currently disabled, so you cannot analyze image content. If the user asks about an image, tell them the article has an image there but you cannot view its content.
+                    """;
+        };
         boolean hasRagContext = ragContext != null && StringUtils.hasText(ragContext.promptContext());
         if (hasRagContext) {
             return """
@@ -1296,17 +2132,17 @@ public class AiChatService {
                     - Do NOT call searchArticles just because the topic is about site articles; use it only when you need to locate candidate articles by keyword for navigation
                     - If the current RAG snippets are insufficient and you already know the specific article ID, call getArticleContent to fetch the full text
                     - Use getHotArticles only for popularity-based rankings/recommendations, and use listCategories only for category enumeration or navigation
-                    """;
+                    """ + imageMarkerGuidance;
         }
         return """
                 - Questions about this site's existing articles or categories -> prefer article tools
                 - Use searchArticles when you need to locate relevant articles by keyword
                 - Use getArticleContent when you need the full text of a specific article
                 - Use getHotArticles only for popularity-based rankings/recommendations, and use listCategories only for category enumeration or navigation
-                """;
+                """ + imageMarkerGuidance;
     }
 
-    private String buildToolSummary(VisionMode visionMode) {
+    private String buildToolSummary(VisionMode visionMode, boolean isAdmin) {
         List<String> lines = new ArrayList<>();
         lines.add("Built-in Articles:");
         lines.add("- searchArticles: 按关键词定位候选文章，主要用于导航，不是文章事实问答的默认路径");
@@ -1324,6 +2160,8 @@ public class AiChatService {
         lines.add("- countdownTo: 普通倒计时");
         lines.add("Built-in Calculator:");
         lines.add("- calculate: 计算数学表达式，支持 + - * / % ^、括号、pi/e 和 sqrt/abs/round/floor/ceil/pow/max/min");
+        lines.add("Built-in Page:");
+        lines.add("- get_current_page: 获取用户当前浏览的页面内容（标题/类型/URL/正文）。当用户提到「当前页面」「这篇文章」「本页」「这个」「这里」等指代当前浏览内容，但消息中未附带页面内容时调用，避免凭空猜测；若返回「无可用页面上下文」则提示用户手动附加页面。");
         lines.add("Built-in Memory:");
         // 根据视觉模式动态生成 search_memory 工具说明
         if (visionMode == VisionMode.DISABLED) {
@@ -1345,6 +2183,16 @@ public class AiChatService {
                     lines.add("- " + tool.name() + ": " + description.replace("\n", " | "));
                 }
             }
+        }
+        lines.add("Agent Skills (自主发现与加载):");
+        lines.add("- list_skills: 列出可用的 Skill 索引（仅元数据，不含正文）");
+        lines.add("- search_skills: 按关键词模糊搜索 Skill");
+        lines.add("- load_skill: 按需加载指定 Skill 的完整指令正文");
+        if (isAdmin) {
+            lines.add("Skill Management (仅当前站长/管理员可用):");
+            lines.add("- create_skill: 创建或更新(upsert)一个 Skill，需提供 skill_key/scene/description/body");
+            lines.add("- toggle_skill: 切换指定 Skill 的启用/禁用状态");
+            lines.add("- delete_skill: 删除指定 Skill（内置不可删）");
         }
 
         return String.join("\n", lines);

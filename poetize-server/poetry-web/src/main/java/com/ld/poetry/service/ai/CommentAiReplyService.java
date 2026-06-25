@@ -20,6 +20,8 @@ import com.ld.poetry.event.CommentPublishedEvent;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.CommentService;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.AiSkillService;
+import com.ld.poetry.entity.AiSkill;
 import com.ld.poetry.service.ai.rag.RagTextUtils;
 import com.ld.poetry.vo.CommentVO;
 import lombok.RequiredArgsConstructor;
@@ -36,9 +38,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.knuddels.jtokkit.Encodings;
-import com.knuddels.jtokkit.api.Encoding;
-import com.knuddels.jtokkit.api.EncodingType;
+import com.knuddels.jtokkit.api.IntArrayList;
 
 @Slf4j
 @Service
@@ -47,9 +47,6 @@ public class CommentAiReplyService {
 
     // 默认 maxInputTokens
     private static final int DEFAULT_MAX_INPUT_TOKENS = 128 * 1024; // 128K
-    // Token 估算器（jtokkit CL100K_BASE，兼容 GPT/DeepSeek 等主流模型编码）
-    private static final Encoding TOKEN_ENCODING = Encodings.newDefaultEncodingRegistry()
-            .getEncoding(EncodingType.CL100K_BASE);
     // 回退 token 预算（当系统提示词过大时保底）
     private static final int FALLBACK_TOKEN_BUDGET = 1024;
 
@@ -61,6 +58,7 @@ public class CommentAiReplyService {
     private final SortMapper sortMapper;
     private final LabelMapper labelMapper;
     private final UserMapper userMapper;
+    private final AiSkillService aiSkillService;
 
     private final JsonMapper objectMapper = JsonMapper.builder().build();
 
@@ -88,10 +86,7 @@ public class CommentAiReplyService {
             WebInfo webInfo = cacheService.getCachedWebInfo();
             int maxInputTokens = resolveMaxInputTokens(config);
             String userQuestion = stripMention(event.commentContent(), botName);
-            String commentSkillDocument = AiCommentSkillDefaults.renderPlaceholders(
-                    AiCommentSkillDefaults.resolveCommentSkillDocument(config, objectMapper),
-                    botName,
-                    webInfo);
+            String commentSkillDocument = resolveCommentSkillDocument(config, botName, webInfo);
             AiSkillDocument loadedSkill = AiSkillDocumentLoader.load(commentSkillDocument);
             // 动态测量系统提示词开销，余量留 10% 覆盖输出和工具调用
             int overheadTokens = measureSystemOverhead(userQuestion, loadedSkill, config);
@@ -107,12 +102,18 @@ public class CommentAiReplyService {
                     ? comment.getCreateTime().toString() : "未知时间";
             Map<String, Object> pageContext = buildPageContext(event, webInfo, contextBudget, commenterName, commentTime);
 
+            // 构造调用上下文：评论事件触发 AI 回复，@Async 线程无法获取 HTTP 上下文，
+            // 从事件解析评论者身份（IP/地区无法回溯，留空合理：评论触发是异步的，原请求已结束）
+            AiChatService.AiCallContext commentCallCtx = AiChatService.AiCallContext.of(
+                    event.userId(), commenterName);
+
             String answer = aiChatService.generateCommentReply(
                     userQuestion,
                     "comment:" + event.commentId(),
                     "comment-user:" + event.userId(),
                     pageContext,
-                    loadedSkill);
+                    loadedSkill,
+                    commentCallCtx);
 
             if (!StringUtils.hasText(answer)) {
                 log.warn("AI评论回复为空，跳过保存: commentId={}", event.commentId());
@@ -364,7 +365,7 @@ public class CommentAiReplyService {
             return;
         }
         builder.append(clipped).append("\n");
-        remaining[0] -= TOKEN_ENCODING.countTokens(clipped);
+        remaining[0] -= AiTokenEstimator.countTokens(clipped);
 
         // 递归处理子节点
         java.util.List<Comment> children = childrenMap.get(node.getId());
@@ -421,10 +422,10 @@ public class CommentAiReplyService {
      * 固定开销估算：反泄露指令 ~800 + 工具摘要 ~1200 + Skill 元数据 ~200 + 上下文头部 ~300 ≈ 2500 tokens。
      */
     private int measureSystemOverhead(String userQuestion, AiSkillDocument skill, SysAiConfig config) {
-        int skillTokens = (skill != null && skill.hasBody()) ? TOKEN_ENCODING.countTokens(skill.body()) : 0;
-        int questionTokens = StringUtils.hasText(userQuestion) ? TOKEN_ENCODING.countTokens(userQuestion) : 0;
+        int skillTokens = (skill != null && skill.hasBody()) ? AiTokenEstimator.countTokens(skill.body()) : 0;
+        int questionTokens = StringUtils.hasText(userQuestion) ? AiTokenEstimator.countTokens(userQuestion) : 0;
         int customTokens = (config != null && StringUtils.hasText(config.getCustomInstructions()))
-                ? TOKEN_ENCODING.countTokens(config.getCustomInstructions()) : 0;
+                ? AiTokenEstimator.countTokens(config.getCustomInstructions()) : 0;
         int fixedOverhead = 2500; // 反泄露指令 + 工具摘要 + Skill 元数据 + 上下文头部
         return skillTokens + questionTokens + customTokens + fixedOverhead;
     }
@@ -437,6 +438,30 @@ public class CommentAiReplyService {
             return config.getMaxInputTokens();
         }
         return DEFAULT_MAX_INPUT_TOKENS;
+    }
+
+    /**
+     * 解析评论场景的 Skill 文档。
+     * <p>
+     * 优先从 {@code sys_ai_skill} 表查询评论场景优先级最高的启用 Skill
+     * （按 sortOrder 升序、id 降序）；若无启用 Skill，则回退到
+     * {@link AiCommentSkillDefaults} 的默认文档（兼容旧 {@code extraConfig.commentSkill}）。
+     * 最后统一渲染占位符。
+     */
+    private String resolveCommentSkillDocument(SysAiConfig config, String botName, WebInfo webInfo) {
+        String rawDocument;
+        try {
+            AiSkill enabledSkill = aiSkillService.getFirstEnabledSkillForScene(AiSkill.SCENE_COMMENT);
+            if (enabledSkill != null && StringUtils.hasText(enabledSkill.getSkillContent())) {
+                rawDocument = enabledSkill.getSkillContent();
+            } else {
+                rawDocument = AiCommentSkillDefaults.resolveCommentSkillDocument(config, objectMapper);
+            }
+        } catch (Exception e) {
+            log.warn("查询评论场景启用 Skill 失败，回退到默认 Skill: {}", e.getMessage());
+            rawDocument = AiCommentSkillDefaults.resolveCommentSkillDocument(config, objectMapper);
+        }
+        return AiCommentSkillDefaults.renderPlaceholders(rawDocument, botName, webInfo);
     }
 
     private String resolvePageTitle(CommentPublishedEvent event) {
@@ -518,19 +543,19 @@ public class CommentAiReplyService {
         if (!StringUtils.hasText(text)) {
             return text;
         }
-        int tokenCount = TOKEN_ENCODING.countTokens(text);
+        int tokenCount = AiTokenEstimator.countTokens(text);
         if (tokenCount <= maxTokens) {
             return text;
         }
-        com.knuddels.jtokkit.api.IntArrayList tokens = TOKEN_ENCODING.encode(text);
+        IntArrayList tokens = AiTokenEstimator.getEncoding().encode(text);
         if (tokens.size() <= maxTokens) {
             return text;
         }
         // 构建截断后的 token 序列（IntArrayList 不支持直接 subList 回传 decode）
-        com.knuddels.jtokkit.api.IntArrayList truncated = new com.knuddels.jtokkit.api.IntArrayList(maxTokens);
+        IntArrayList truncated = new IntArrayList(maxTokens);
         for (int i = 0; i < maxTokens; i++) {
             truncated.add(tokens.get(i));
         }
-        return TOKEN_ENCODING.decode(truncated) + "...[已截断]";
+        return AiTokenEstimator.getEncoding().decode(truncated) + "...[已截断]";
     }
 }

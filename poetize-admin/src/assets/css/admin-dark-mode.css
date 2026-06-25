@@ -517,13 +517,12 @@ body.dark-mode #field-api .api-enabled-panel pre {
   border: 1px solid #4a4a4a !important;
 }
 
-/* 外观/API 配置页隐藏悬浮看板娘，避免遮挡配置表单 */
+/* 外观/API 配置页隐藏 Live2D 看板娘，避免遮挡配置表单 */
+/* 简洁按钮(.ai-chat-button-wrapper)可拖拽，不在此隐藏 */
 body.dark-mode:has(.ai-config-collapse) #waifu,
 body.dark-mode:has(.ai-config-collapse) #waifu-toggle,
-body.dark-mode:has(.ai-config-collapse) .ai-chat-button-wrapper,
 body.dark-mode:has(#field-api .api-enabled-panel) #waifu,
-body.dark-mode:has(#field-api .api-enabled-panel) #waifu-toggle,
-body.dark-mode:has(#field-api .api-enabled-panel) .ai-chat-button-wrapper {
+body.dark-mode:has(#field-api .api-enabled-panel) #waifu-toggle {
   display: none !important;
 }
 

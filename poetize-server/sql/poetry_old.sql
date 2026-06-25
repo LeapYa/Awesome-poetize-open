@@ -253,6 +253,36 @@ CREATE TABLE `poetize`.`history_info` (
   KEY `idx_history_ua_type_name` (`ua_type`, `ua_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='历史信息';
 
+DROP TABLE IF EXISTS `poetize`.`sys_audit_log`;
+
+CREATE TABLE `poetize`.`sys_audit_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `log_type` varchar(32) NOT NULL COMMENT '日志类型 LOGIN/SECURITY/OPERATION/AI',
+  `action` varchar(64) NOT NULL COMMENT '操作动作',
+  `success` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否成功[0:否,1:是]',
+  `masked_account` varchar(128) DEFAULT NULL COMMENT '脱敏账号',
+  `user_id` int DEFAULT NULL COMMENT '用户ID',
+  `username` varchar(64) DEFAULT NULL COMMENT '用户名',
+  `ip` varchar(128) DEFAULT NULL COMMENT 'IP地址',
+  `location` varchar(128) DEFAULT NULL COMMENT '地理位置',
+  `user_agent` varchar(512) DEFAULT NULL COMMENT 'User-Agent',
+  `request_uri` varchar(512) DEFAULT NULL COMMENT '请求路径',
+  `target_type` varchar(64) DEFAULT NULL COMMENT '目标对象类型',
+  `target_id` varchar(128) DEFAULT NULL COMMENT '目标对象ID',
+  `summary` varchar(512) DEFAULT NULL COMMENT '摘要',
+  `detail` json DEFAULT NULL COMMENT '脱敏详情JSON',
+  `prompt_tokens` int DEFAULT NULL COMMENT 'AI输入Token(仅AI日志)',
+  `completion_tokens` int DEFAULT NULL COMMENT 'AI输出Token(仅AI日志)',
+  `total_tokens` int DEFAULT NULL COMMENT 'AI合计Token(仅AI日志)',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_create_time` (`create_time`),
+  KEY `idx_audit_type_time` (`log_type`, `create_time`),
+  KEY `idx_audit_success_time` (`success`, `create_time`),
+  KEY `idx_audit_user_time` (`user_id`, `create_time`),
+  KEY `idx_audit_ip_time` (`ip`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台审计日志表';
+
 DROP TABLE IF EXISTS `poetize`.`sys_config`;
 
 CREATE TABLE `poetize`.`sys_config` (
@@ -763,6 +793,27 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   KEY `idx_config_type` (`config_type`) COMMENT '配置类型索引',
   KEY `idx_enabled` (`enabled`) COMMENT '启用状态索引'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI配置统一管理表';
+
+-- AI Skill 管理表
+CREATE TABLE IF NOT EXISTS `sys_ai_skill` (
+  `id`               INT AUTO_INCREMENT PRIMARY KEY,
+  `skill_key`        VARCHAR(64)  NOT NULL COMMENT 'Skill 唯一标识 (frontmatter name)',
+  `skill_name`       VARCHAR(128) NOT NULL COMMENT '显示名称',
+  `description`      VARCHAR(512) NOT NULL COMMENT 'frontmatter description',
+  `version`          VARCHAR(32)  DEFAULT '1.0.0',
+  `author`           VARCHAR(64)  DEFAULT '',
+  `scene`            VARCHAR(32)  NOT NULL DEFAULT 'comment' COMMENT '适用场景: comment/chat/article/universal',
+  `skill_content`    MEDIUMTEXT   NOT NULL COMMENT '完整 SKILL.md 原文',
+  `skill_body`       MEDIUMTEXT   NOT NULL COMMENT '解析后的正文',
+  `placeholders`     VARCHAR(512) DEFAULT '' COMMENT '支持的占位符 JSON',
+  `enabled`          TINYINT(1)   DEFAULT 1,
+  `is_builtin`       TINYINT(1)   DEFAULT 0 COMMENT '内置 Skill 不可删',
+  `sort_order`       INT          DEFAULT 0,
+  `remark`           VARCHAR(256) DEFAULT '',
+  `create_time`      DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  `update_time`      DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_skill_key` (`skill_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI Skill 管理表';
 
 -- ============================================================
 -- 插入默认配置数据

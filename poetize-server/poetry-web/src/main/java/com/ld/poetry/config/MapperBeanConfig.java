@@ -1,6 +1,7 @@
 package com.ld.poetry.config;
 
 import com.ld.poetry.dao.AiKnowledgeDocumentMapper;
+import com.ld.poetry.dao.AiSkillMapper;
 import com.ld.poetry.dao.ArticleDraftCollaboratorMapper;
 import com.ld.poetry.dao.ArticleDraftMapper;
 import com.ld.poetry.dao.ArticleMapper;
@@ -49,6 +50,7 @@ public class MapperBeanConfig {
             ArticleDraftMapper.class,
             ArticleDraftCollaboratorMapper.class,
             AiKnowledgeDocumentMapper.class,
+            AiSkillMapper.class,
             WebInfoMapper.class,
             ArticleMapper.class,
             ArticleTranslationMapper.class,
@@ -98,6 +100,8 @@ public class MapperBeanConfig {
     public ArticleDraftCollaboratorMapper articleDraftCollaboratorMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ArticleDraftCollaboratorMapper.class); }
     @Bean
     public AiKnowledgeDocumentMapper aiKnowledgeDocumentMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, AiKnowledgeDocumentMapper.class); }
+    @Bean
+    public AiSkillMapper aiSkillMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, AiSkillMapper.class); }
     @Bean
     public WebInfoMapper webInfoMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, WebInfoMapper.class); }
     @Bean

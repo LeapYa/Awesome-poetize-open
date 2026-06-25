@@ -57,6 +57,9 @@ public class LlmTranslationService {
     @Autowired
     private SysAiConfigService sysAiConfigService;
 
+    @Autowired
+    private com.ld.poetry.service.SysAuditLogService sysAuditLogService;
+
     // ==================== 翻译功能 ====================
 
     /**
@@ -601,6 +604,37 @@ public class LlmTranslationService {
 
     // ==================== 翻译辅助方法 ====================
 
+    /**
+     * 写入 AI 翻译/摘要审计日志（log_type='AI'）。
+     * 翻译/摘要通常无 HTTP 请求上下文（后台/异步触发），userId 由 recordAi 自行解析（多为 null）。
+     * API 未上报 usage 时用 jtokkit 估算输入 token 兜底 prompt_tokens。
+     */
+    private void recordAiAudit(String action, String mode, boolean success, long startedAt,
+            String summary, String promptText, String response,
+            AiUsageSupport.Accumulator usageAcc, Integer fallbackInputTokens,
+            Map<String, Object> extraDetail) {
+        try {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("mode", mode);
+            detail.put("durationMs", System.currentTimeMillis() - startedAt);
+            detail.put("messagePreview", AiUsageSupport.preview(promptText, 160));
+            if (success && response != null) {
+                detail.put("responsePreview", AiUsageSupport.preview(response, 160));
+            }
+            if (extraDetail != null) {
+                detail.putAll(extraDetail);
+            }
+            AiUsageSupport.Snapshot snapshot = usageAcc != null ? usageAcc.snapshot() : AiUsageSupport.Snapshot.empty();
+            snapshot = snapshot.withInputFallback(fallbackInputTokens);
+            detail.put("usage", snapshot.describe());
+            sysAuditLogService.recordAi(action, success, null, null,
+                    AiUsageSupport.preview(summary, 200), detail,
+                    snapshot.getPromptTokens(), snapshot.getCompletionTokens(), snapshot.getTotalTokens());
+        } catch (Exception e) {
+            log.debug("写入AI审计日志失败: action={}, error={}", action, e.getMessage());
+        }
+    }
+
     private StreamingTranslationState streamArticleTranslationAttempt(ChatModel chatModel, String title, String content,
             String sourceLang, String targetLang, SysAiConfig config, int attempt, AtomicInteger receivedChars,
             TranslationService.TranslationProgressListener progressListener) {
@@ -614,34 +648,53 @@ public class LlmTranslationService {
         Flux<ChatResponse> flux = chatModel.stream(translationPrompt)
                 .timeout(Duration.ofSeconds(45));
 
-        flux.doOnNext(chatResponse -> {
-            if (chatResponse == null || chatResponse.getResult() == null || chatResponse.getResult().getOutput() == null) {
-                return;
-            }
+        long startedAt = System.currentTimeMillis();
+        AiUsageSupport.Accumulator usageAcc = new AiUsageSupport.Accumulator();
+        try {
+            flux.doOnNext(chatResponse -> {
+                usageAcc.accept(chatResponse);
+                if (chatResponse == null || chatResponse.getResult() == null || chatResponse.getResult().getOutput() == null) {
+                    return;
+                }
 
-            String text = chatResponse.getResult().getOutput().getText();
-            if (text == null || text.isEmpty()) {
-                return;
-            }
+                String text = chatResponse.getResult().getOutput().getText();
+                if (text == null || text.isEmpty()) {
+                    return;
+                }
 
-            rawBuffer.append(text);
-            int receivedLength = receivedChars.addAndGet(text.length());
-            int responseLength = rawBuffer.length();
-            StreamingTranslationView currentView = parseStreamingTranslationView(rawBuffer.toString());
-            if (currentView.title().isEmpty() && currentView.content().isEmpty()) {
-                emitTranslationRawProgress(text, responseLength, receivedLength, attempt, progressListener);
-            }
+                rawBuffer.append(text);
+                int receivedLength = receivedChars.addAndGet(text.length());
+                int responseLength = rawBuffer.length();
+                StreamingTranslationView currentView = parseStreamingTranslationView(rawBuffer.toString());
+                if (currentView.title().isEmpty() && currentView.content().isEmpty()) {
+                    emitTranslationRawProgress(text, responseLength, receivedLength, attempt, progressListener);
+                }
 
-            emitTranslationDelta("title_delta", previousView[0].title(), currentView.title(),
-                    responseLength, receivedLength, attempt, progressListener);
-            emitTranslationDelta("content_delta", previousView[0].content(), currentView.content(),
-                    responseLength, receivedLength, attempt, progressListener);
+                emitTranslationDelta("title_delta", previousView[0].title(), currentView.title(),
+                        responseLength, receivedLength, attempt, progressListener);
+                emitTranslationDelta("content_delta", previousView[0].content(), currentView.content(),
+                        responseLength, receivedLength, attempt, progressListener);
 
-            previousView[0] = currentView;
-        }).blockLast();
+                previousView[0] = currentView;
+            }).blockLast();
+        } catch (RuntimeException ex) {
+            recordAiAudit("AI_TRANSLATE", "translate", false, startedAt,
+                    "AI翻译[" + sourceLang + "→" + targetLang + "]: " + title, prompt, null,
+                    usageAcc, AiTokenEstimator.countTokens(prompt),
+                    Map.of("attempt", attempt, "sourceLang", String.valueOf(sourceLang),
+                            "targetLang", String.valueOf(targetLang),
+                            "error", String.valueOf(ex.getMessage())));
+            throw ex;
+        }
 
         String rawResponse = rawBuffer.toString();
         StreamingTranslationView finalView = parseStreamingTranslationView(rawResponse);
+        recordAiAudit("AI_TRANSLATE", "translate", true, startedAt,
+                "AI翻译[" + sourceLang + "→" + targetLang + "]: " + title, prompt,
+                finalView.title() + "\n" + finalView.content(),
+                usageAcc, AiTokenEstimator.countTokens(prompt),
+                Map.of("attempt", attempt, "sourceLang", String.valueOf(sourceLang),
+                        "targetLang", String.valueOf(targetLang)));
         if (!finalView.titleClosed() || !finalView.contentClosed()) {
             Map<String, String> parsed = parseArticleTranslationResponse(rawResponse, title, content, targetLang);
             if (parsed != null) {
@@ -749,25 +802,40 @@ public class LlmTranslationService {
         Flux<ChatResponse> flux = chatModel.stream(summaryPrompt)
                 .timeout(Duration.ofSeconds(Math.max(10, Math.min(timeoutSeconds, 45))));
 
-        flux.doOnNext(chatResponse -> {
-            if (chatResponse == null || chatResponse.getResult() == null || chatResponse.getResult().getOutput() == null) {
-                return;
-            }
+        long startedAt = System.currentTimeMillis();
+        AiUsageSupport.Accumulator usageAcc = new AiUsageSupport.Accumulator();
+        try {
+            flux.doOnNext(chatResponse -> {
+                usageAcc.accept(chatResponse);
+                if (chatResponse == null || chatResponse.getResult() == null || chatResponse.getResult().getOutput() == null) {
+                    return;
+                }
 
-            String text = chatResponse.getResult().getOutput().getText();
-            if (text == null || text.isEmpty()) {
-                return;
-            }
+                String text = chatResponse.getResult().getOutput().getText();
+                if (text == null || text.isEmpty()) {
+                    return;
+                }
 
-            rawBuffer.append(text);
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("delta", text);
-            payload.put("currentLength", rawBuffer.length());
-            payload.put("preview", rawBuffer.length() <= 4000
-                    ? rawBuffer.toString()
-                    : rawBuffer.substring(rawBuffer.length() - 4000));
-            emitSummaryProgress(progressListener, "summary_delta", payload);
-        }).blockLast();
+                rawBuffer.append(text);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("delta", text);
+                payload.put("currentLength", rawBuffer.length());
+                payload.put("preview", rawBuffer.length() <= 4000
+                        ? rawBuffer.toString()
+                        : rawBuffer.substring(rawBuffer.length() - 4000));
+                emitSummaryProgress(progressListener, "summary_delta", payload);
+            }).blockLast();
+        } catch (RuntimeException ex) {
+            recordAiAudit("AI_SUMMARY", "summary", false, startedAt,
+                    "AI摘要生成", prompt, null,
+                    usageAcc, AiTokenEstimator.countTokens(prompt),
+                    Map.of("error", String.valueOf(ex.getMessage())));
+            throw ex;
+        }
+
+        recordAiAudit("AI_SUMMARY", "summary", true, startedAt,
+                "AI摘要生成", prompt, rawBuffer.toString(),
+                usageAcc, AiTokenEstimator.countTokens(prompt), null);
 
         emitSummaryProgress(progressListener, "complete", Map.of(
                 "message", "AI摘要流式生成完成",
