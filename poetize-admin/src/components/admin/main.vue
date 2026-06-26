@@ -20,6 +20,13 @@
           </div>
           <div class="history-actions">
             <el-button type="text"
+                       class="history-action-button block-ip-entry"
+                       @click="goToBlacklist"
+                       title="封禁恶意IP，跳转到系统日志的封禁列表">
+              <i class="el-icon-lock"></i>
+              封禁IP
+            </el-button>
+            <el-button type="text"
                        class="history-action-button"
                        @click="openCleanVisitDialog"
                        :loading="cleaningVisitData"
@@ -541,6 +548,19 @@ export default {
   },
 
   methods: {
+    goToBlacklist() {
+      this.$confirm(
+        '将跳转到「系统日志」页面的封禁IP列表，是否继续？',
+        '封禁IP',
+        {
+          confirmButtonText: '前往封禁',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      ).then(() => {
+        this.$router.push({ path: '/systemLog', query: { blacklist: '1' } });
+      }).catch(() => {});
+    },
     setContentLoading(loading) {
       if (this.loading === loading) {
         return;
@@ -913,6 +933,21 @@ export default {
   .history-action-button {
     color: #409EFF;
     padding: 0;
+  }
+
+  .history-action-button.block-ip-entry,
+  .history-action-button.block-ip-entry i,
+  ::v-deep .history-action-button.block-ip-entry span {
+    color: #f56c6c;
+  }
+
+  .history-action-button.block-ip-entry:hover,
+  .history-action-button.block-ip-entry:focus,
+  .history-action-button.block-ip-entry:hover i,
+  .history-action-button.block-ip-entry:focus i,
+  ::v-deep .history-action-button.block-ip-entry:hover span,
+  ::v-deep .history-action-button.block-ip-entry:focus span {
+    color: #f78989;
   }
 
   .clean-visit-form {

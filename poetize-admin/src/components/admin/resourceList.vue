@@ -39,10 +39,47 @@
           </div>
         </el-tooltip>
       </div>
+      <div v-if="scanTask.active"
+           class="scan-progress-bar"
+           :class="'scan-progress-bar--' + scanTask.status">
+        <div class="scan-progress-bar__head">
+          <i v-if="scanTask.status === 'PENDING' || scanTask.status === 'RUNNING'"
+             class="el-icon-loading scan-progress-bar__icon"></i>
+          <i v-else-if="scanTask.status === 'SUCCESS'" class="el-icon-success scan-progress-bar__icon"></i>
+          <i v-else-if="scanTask.status === 'FAILED'" class="el-icon-error scan-progress-bar__icon"></i>
+          <i v-else-if="scanTask.status === 'CANCELLED'" class="el-icon-warning scan-progress-bar__icon"></i>
+          <span class="scan-progress-bar__title">
+            {{ scanTaskTitle }}
+          </span>
+          <span class="scan-progress-bar__meta" v-if="scanTask.status === 'RUNNING' || scanTask.status === 'SUCCESS'">
+            {{ scanTask.processed }} / {{ scanTask.total }}（{{ scanTask.progressPercent }}%）
+            <span v-if="scanTask.status === 'SUCCESS'">· 命中 {{ scanTask.hitCount }} 条无效资源</span>
+          </span>
+          <span class="scan-progress-bar__meta" v-else-if="scanTask.status === 'FAILED'">
+            检测失败：{{ scanTask.errorMessage || '未知错误' }}
+          </span>
+          <span class="scan-progress-bar__meta" v-else-if="scanTask.status === 'CANCELLED'">
+            已取消
+          </span>
+          <el-button v-if="scanTask.status === 'PENDING' || scanTask.status === 'RUNNING'"
+                     type="text"
+                     size="mini"
+                     class="scan-progress-bar__cancel"
+                     @click="cancelScan">取消</el-button>
+        </div>
+        <el-progress v-if="scanTask.status === 'PENDING' || scanTask.status === 'RUNNING'"
+                     :percentage="scanTask.progressPercent"
+                     :status="scanTask.status === 'PENDING' ? 'warning' : undefined"
+                     :show-text="false"
+                     :stroke-width="6">
+        </el-progress>
+      </div>
       <el-table :data="displayedResources"
                 border
                 class="table"
                 header-cell-class-name="table-header"
+                v-loading="resourcesLoading"
+                element-loading-text="正在检测资源，请稍候..."
                 :default-sort="{ prop: pagination.order, order: pagination.desc ? 'descending' : 'ascending' }"
                 @sort-change="handleSortChange">
         <el-table-column prop="id" label="ID" width="52" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
@@ -615,7 +652,20 @@ export default {
         { label: '符号', content: '!@#$%^&*()_+-=[]{}|;:,.<>?' },
         { label: '英文句子', content: 'The quick brown fox jumps over the lazy dog.' }
       ],
-      fontSizes: [14, 18, 24, 32, 48]
+      fontSizes: [14, 18, 24, 32, 48],
+      resourcesLoading: false,
+      scanTask: {
+        active: false,
+        taskId: '',
+        status: '',
+        resourceType: '',
+        total: 0,
+        processed: 0,
+        hitCount: 0,
+        errorMessage: '',
+        progressPercent: 0
+      },
+      scanPollTimer: null
     };
   },
 
@@ -640,6 +690,27 @@ export default {
     },
     selectedResourceTypeDescription() {
       return this.getResourceTypeDescription(this.pagination.resourceType);
+    },
+    isInvalidResourceType() {
+      return this.pagination.resourceType === 'invalidResource';
+    },
+    scanTaskTitle() {
+      if (this.scanTask.status === 'PENDING') {
+        return '正在排队等待检测...';
+      }
+      if (this.scanTask.status === 'RUNNING') {
+        return '正在检测无效资源（逐个探测可访问性，可能耗时）';
+      }
+      if (this.scanTask.status === 'SUCCESS') {
+        return '检测完成';
+      }
+      if (this.scanTask.status === 'FAILED') {
+        return '检测失败';
+      }
+      if (this.scanTask.status === 'CANCELLED') {
+        return '检测已取消';
+      }
+      return '资源检测';
     },
     resourceUploadAccept() {
       return RESOURCE_UPLOAD_ACCEPT;
@@ -683,12 +754,18 @@ export default {
   beforeDestroy() {
     this.cleanupFont();
     this.cleanupReplaceVideoFrame();
+    this.stopScanPolling();
   },
 
   methods: {
     applyRouteQuery() {
       const query = this.$route.query || {};
-      this.pagination.resourceType = query.resourceType || '';
+      const newType = query.resourceType || '';
+      // 切换资源类型时重置检测任务状态
+      if (newType !== this.pagination.resourceType) {
+        this.resetScanTask();
+      }
+      this.pagination.resourceType = newType;
       this.pagination.searchKey = ((query.search || '') + '').trim();
       this.pagination.current = 1;
     },
@@ -1389,6 +1466,129 @@ export default {
       this.getResources();
     },
     getResources() {
+      // 无效资源走异步检测任务流程，带进度提示
+      if (this.isInvalidResourceType && !this.routeSearchKeyword) {
+        this.startInvalidScan();
+        return;
+      }
+
+      const requestPagination = {
+        current: this.routeSearchKeyword ? 1 : this.pagination.current,
+        size: this.routeSearchKeyword ? 500 : this.pagination.size,
+        resourceType: this.pagination.resourceType,
+        searchKey: '',
+        order: this.pagination.order,
+        desc: this.pagination.desc
+      };
+
+      this.resourcesLoading = true;
+      this.$http.post(this.$constant.baseURL + '/resource/listResource', requestPagination, true)
+        .then((res) => {
+          if (!this.$common.isEmpty(res.data)) {
+            const records = res.data.records || [];
+            this.resources = records;
+            this.pagination.total = this.routeSearchKeyword
+              ? this.filterResourcesByKeyword(records, this.routeSearchKeyword).length
+              : res.data.total;
+          }
+        })
+        .catch((error) => {
+          this.$message({
+            message: error.message,
+            type: 'error'
+          });
+        })
+        .finally(() => {
+          this.resourcesLoading = false;
+        });
+    },
+    startInvalidScan() {
+      // 清理上一次轮询
+      this.stopScanPolling();
+
+      const payload = {
+        current: this.pagination.current,
+        size: this.pagination.size,
+        resourceType: this.pagination.resourceType,
+        searchKey: '',
+        order: this.pagination.order,
+        desc: this.pagination.desc
+      };
+
+      this.resourcesLoading = true;
+      this.scanTask.active = true;
+      this.scanTask.status = 'PENDING';
+      this.scanTask.taskId = '';
+      this.scanTask.total = 0;
+      this.scanTask.processed = 0;
+      this.scanTask.hitCount = 0;
+      this.scanTask.errorMessage = '';
+      this.scanTask.progressPercent = 0;
+
+      this.$http.post(this.$constant.baseURL + '/resource/startInvalidScan', payload, true)
+        .then((res) => {
+          if (res && res.data && res.data.taskId) {
+            this.scanTask.taskId = res.data.taskId;
+            this.scanTask.status = res.data.status || 'PENDING';
+            this.startScanPolling();
+          } else {
+            this.finishScanWithError('启动检测任务失败：返回数据异常');
+          }
+        })
+        .catch((error) => {
+          this.finishScanWithError(error.message || '启动检测任务失败');
+        });
+    },
+    startScanPolling() {
+      this.stopScanPolling();
+      this.scanPollTimer = setInterval(() => {
+        this.pollScanStatus();
+      }, 1000);
+    },
+    pollScanStatus() {
+      if (!this.scanTask.taskId) {
+        this.stopScanPolling();
+        return;
+      }
+      this.$http.get(this.$constant.baseURL + '/resource/scanStatus', {
+        taskId: this.scanTask.taskId
+      }, true)
+        .then((res) => {
+          if (!res || !res.data) {
+            return;
+          }
+          const data = res.data;
+          this.scanTask.status = data.status || '';
+          this.scanTask.total = data.total || 0;
+          this.scanTask.processed = data.processed || 0;
+          this.scanTask.hitCount = data.hitCount || 0;
+          this.scanTask.errorMessage = data.errorMessage || '';
+          this.scanTask.progressPercent = data.progressPercent || 0;
+
+          if (data.status === 'SUCCESS' || data.status === 'FAILED' || data.status === 'CANCELLED') {
+            this.stopScanPolling();
+            this.resourcesLoading = false;
+            if (data.status === 'SUCCESS') {
+              // 检测完成，加载结果列表（命中缓存，秒开）
+              this.loadInvalidResourceList();
+            } else if (data.status === 'FAILED') {
+              this.$message({
+                message: '检测失败：' + (data.errorMessage || '未知错误'),
+                type: 'error'
+              });
+            } else if (data.status === 'CANCELLED') {
+              this.$message({
+                message: '检测已取消',
+                type: 'info'
+              });
+            }
+          }
+        })
+        .catch(() => {
+          // 轮询失败不中断，下次重试
+        });
+    },
+    loadInvalidResourceList() {
       const requestPagination = {
         current: this.routeSearchKeyword ? 1 : this.pagination.current,
         size: this.routeSearchKeyword ? 500 : this.pagination.size,
@@ -1414,6 +1614,44 @@ export default {
             type: 'error'
           });
         });
+    },
+    cancelScan() {
+      if (!this.scanTask.taskId) {
+        return;
+      }
+      this.$http.get(this.$constant.baseURL + '/resource/cancelScan', {
+        taskId: this.scanTask.taskId
+      }, true)
+        .then(() => {
+          // 状态由轮询刷新，不立即关闭，等轮询确认 CANCELLED
+        })
+        .catch(() => {
+          // 忽略取消请求失败
+        });
+    },
+    finishScanWithError(message) {
+      this.scanTask.status = 'FAILED';
+      this.scanTask.errorMessage = message;
+      this.resourcesLoading = false;
+      this.stopScanPolling();
+    },
+    stopScanPolling() {
+      if (this.scanPollTimer) {
+        clearInterval(this.scanPollTimer);
+        this.scanPollTimer = null;
+      }
+    },
+    resetScanTask() {
+      this.stopScanPolling();
+      this.scanTask.active = false;
+      this.scanTask.status = '';
+      this.scanTask.taskId = '';
+      this.scanTask.total = 0;
+      this.scanTask.processed = 0;
+      this.scanTask.hitCount = 0;
+      this.scanTask.errorMessage = '';
+      this.scanTask.progressPercent = 0;
+      this.resourcesLoading = false;
     },
     changeStatus(item) {
       this.$http.get(this.$constant.baseURL + '/resource/changeResourceStatus', {
@@ -1761,6 +1999,83 @@ export default {
 
 <style scoped>
 
+  .scan-progress-bar {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: #f4f8ff;
+    border: 1px solid #d6e4ff;
+  }
+
+  .scan-progress-bar--RUNNING,
+  .scan-progress-bar--PENDING {
+    background: #ecf5ff;
+    border-color: #b3d8ff;
+  }
+
+  .scan-progress-bar--SUCCESS {
+    background: #f0f9eb;
+    border-color: #c2e7b0;
+  }
+
+  .scan-progress-bar--FAILED {
+    background: #fef0f0;
+    border-color: #fbc4c4;
+  }
+
+  .scan-progress-bar--CANCELLED {
+    background: #fdf6ec;
+    border-color: #f5dab1;
+  }
+
+  .scan-progress-bar__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #606266;
+  }
+
+  .scan-progress-bar__icon {
+    font-size: 16px;
+  }
+
+  .scan-progress-bar--RUNNING .scan-progress-bar__icon,
+  .scan-progress-bar--PENDING .scan-progress-bar__icon {
+    color: #409eff;
+  }
+
+  .scan-progress-bar--SUCCESS .scan-progress-bar__icon {
+    color: #67c23a;
+  }
+
+  .scan-progress-bar--FAILED .scan-progress-bar__icon {
+    color: #f56c6c;
+  }
+
+  .scan-progress-bar--CANCELLED .scan-progress-bar__icon {
+    color: #e6a23c;
+  }
+
+  .scan-progress-bar__title {
+    font-weight: 600;
+    color: #303133;
+  }
+
+  .scan-progress-bar__meta {
+    color: #909399;
+    font-size: 12px;
+  }
+
+  .scan-progress-bar__cancel {
+    margin-left: auto;
+  }
+
+  .scan-progress-bar .el-progress {
+    margin-top: 2px;
+  }
+
   .handle-box {
     display: flex;
     align-items: center;
@@ -1802,6 +2117,10 @@ export default {
   .resource-type-option-label {
     color: #303133;
     font-size: 14px;
+  }
+
+  body.dark-mode .resource-type-option-label {
+    color: #e0e0e0;
   }
 
   .resource-type-option-desc {

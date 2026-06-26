@@ -24,6 +24,7 @@ import com.ld.poetry.utils.security.FileDownloadUtil;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.FileVO;
+import com.ld.poetry.vo.ResourceScanTaskVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -917,7 +918,9 @@ public class ResourceController {
         if (isOrphanResourceFilterType(baseRequestVO.getResourceType())) {
             page = resourceMapper.selectOrphanResources(page, List.of(CommonConst.PATH_TYPE_ASSETS), orderColumn, asc);
         } else if (isInvalidResourceFilterType(baseRequestVO.getResourceType())) {
-            page = resourceAvailabilityService.listInvalidResources(page, order, asc);
+            // 优先使用异步任务的缓存结果，无缓存时回退同步检测
+            Page<Resource> cached = resourceAvailabilityService.listInvalidResourcesFromCache(page, order, asc);
+            page = cached != null ? cached : resourceAvailabilityService.listInvalidResources(page, order, asc);
         } else {
             LambdaQueryChainWrapper<Resource> query = resourceService.lambdaQuery()
                     .eq(StringUtils.hasText(baseRequestVO.getResourceType()), Resource::getType, baseRequestVO.getResourceType());
@@ -927,6 +930,45 @@ public class ResourceController {
         baseRequestVO.setRecords(page.getRecords());
         baseRequestVO.setTotal(page.getTotal());
         return PoetryResult.success(baseRequestVO);
+    }
+
+    /**
+     * 启动无效资源异步检测任务
+     * @return 任务VO（含taskId，前端用taskId轮询进度）
+     */
+    @PostMapping("/startInvalidScan")
+    @LoginCheck(0)
+    @AuditLog(action = "RESOURCE_INVALID_SCAN_START", targetType = "RESOURCE", summary = "启动无效资源检测")
+    public PoetryResult<ResourceScanTaskVO> startInvalidScan(@RequestBody BaseRequestVO baseRequestVO) {
+        String order = resolveResourceOrder(baseRequestVO.getOrder());
+        boolean asc = !baseRequestVO.isDesc();
+        ResourceScanTaskVO task = resourceAvailabilityService.startInvalidResourceScanTask(order, asc);
+        return PoetryResult.success(task);
+    }
+
+    /**
+     * 查询检测任务状态
+     */
+    @GetMapping("/scanStatus")
+    @LoginCheck(0)
+    @AuditLog(action = "RESOURCE_SCAN_STATUS_QUERY", targetType = "RESOURCE", targetIdParam = "taskId", summary = "查询资源检测任务状态")
+    public PoetryResult<ResourceScanTaskVO> getScanStatus(@RequestParam("taskId") String taskId) {
+        ResourceScanTaskVO task = resourceAvailabilityService.getTask(taskId);
+        if (task == null) {
+            return PoetryResult.fail("任务不存在或已过期");
+        }
+        return PoetryResult.success(task);
+    }
+
+    /**
+     * 取消检测任务
+     */
+    @GetMapping("/cancelScan")
+    @LoginCheck(0)
+    @AuditLog(action = "RESOURCE_SCAN_CANCEL", targetType = "RESOURCE", targetIdParam = "taskId", summary = "取消资源检测任务")
+    public PoetryResult<Boolean> cancelScan(@RequestParam("taskId") String taskId) {
+        boolean ok = resourceAvailabilityService.cancelScanTask(taskId);
+        return PoetryResult.success(ok);
     }
 
     /**

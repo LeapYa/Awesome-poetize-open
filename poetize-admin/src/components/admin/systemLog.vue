@@ -24,6 +24,7 @@
       </el-date-picker>
       <el-button type="primary" icon="el-icon-search" @click="searchLogs">搜索</el-button>
       <el-button type="danger" @click="clearSearch">清除参数</el-button>
+      <el-button type="warning" icon="el-icon-lock" @click="openBlacklistDialog">封禁列表</el-button>
     </div>
 
     <el-table
@@ -76,9 +77,23 @@
           <span v-else class="muted-text">-</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="82" align="center" fixed="right">
+      <el-table-column label="操作" :width="isMobile ? 120 : 200" align="center" fixed="right">
         <template slot-scope="scope">
-          <el-button type="text" icon="el-icon-view" @click="openDetail(scope.row)">详情</el-button>
+          <el-button type="text" icon="el-icon-view" class="detail-btn" @click="openDetail(scope.row)">
+            <span class="btn-text">详情</span>
+          </el-button>
+          <el-button
+            type="text"
+            icon="el-icon-document-copy"
+            class="copy-btn"
+            @click="copyLog(scope.row)"><span class="btn-text">复制</span></el-button>
+          <el-button
+            v-if="canBlockIp(scope.row)"
+            type="text"
+            icon="el-icon-lock"
+            class="block-ip-btn"
+            :loading="blockLoadingMap[scope.row.ip]"
+            @click="handleBlockIp(scope.row)"><span class="btn-text">拉黑</span></el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -136,6 +151,116 @@
         <el-button type="primary" @click="detailVisible = false">关 闭</el-button>
       </span>
     </el-dialog>
+
+    <!-- 拉黑 IP 弹窗：选择封禁时长 -->
+    <el-dialog
+      :title="`拉黑 IP - ${blockDialog.ip || ''}`"
+      :visible.sync="blockDialog.visible"
+      width="520px"
+      custom-class="centered-dialog"
+      :append-to-body="true"
+      destroy-on-close
+      @closed="resetBlockDialog">
+      <div class="block-form">
+        <div class="block-row">
+          <span class="block-label">目标 IP</span>
+          <el-input
+            v-model="blockDialog.ip"
+            :disabled="!blockDialog.editable"
+            :placeholder="blockDialog.editable ? '请输入 IP 地址' : ''"
+            class="block-input"></el-input>
+        </div>
+        <div class="block-row">
+          <span class="block-label">拉黑时长</span>
+          <el-radio-group v-model="blockDialog.durationKey" class="block-input">
+            <el-radio-button label="1h">1 小时</el-radio-button>
+            <el-radio-button label="24h">24 小时</el-radio-button>
+            <el-radio-button label="7d">7 天</el-radio-button>
+            <el-radio-button label="30d">30 天</el-radio-button>
+            <el-radio-button label="permanent">永久</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="block-row">
+          <span class="block-label">原因</span>
+          <el-input
+            v-model="blockDialog.reason"
+            type="textarea"
+            :rows="2"
+            :maxlength="200"
+            show-word-limit
+            placeholder="拉黑原因（可选，默认从日志生成）"
+            class="block-input"></el-input>
+        </div>
+        <div class="block-tip">
+          <i class="el-icon-warning-outline"></i>
+          封禁后，该 IP 访问站点会被 Nginx 直接拦截并返回 403，连 HTML 源码也拿不到（爬虫/不执行 JS 的客户端均无效）。
+        </div>
+      </div>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="blockDialog.visible = false">取 消</el-button>
+        <el-button
+          type="danger"
+          :loading="blockDialog.loading"
+          @click="confirmBlockIp">确定拉黑</el-button>
+      </span>
+    </el-dialog>
+
+    <!-- 封禁列表弹窗 -->
+    <el-dialog
+      title="IP 封禁列表"
+      :visible.sync="blacklistDialog.visible"
+      width="780px"
+      custom-class="centered-dialog"
+      :append-to-body="true"
+      destroy-on-close>
+      <div v-loading="blacklistDialog.loading" class="blacklist-page">
+        <div class="blacklist-toolbar">
+          <el-input
+            v-model="blacklistDialog.search"
+            placeholder="按 IP / 原因搜索"
+            clearable
+            prefix-icon="el-icon-search"
+            class="blacklist-search"></el-input>
+          <el-button type="danger" icon="el-icon-plus" @click="openAddBlockIp">添加封禁</el-button>
+          <el-button type="primary" icon="el-icon-refresh" @click="loadBlacklist">刷新</el-button>
+          <span class="blacklist-count">共 {{ blacklistFiltered.length }} 条</span>
+        </div>
+        <el-table
+          :data="blacklistFiltered"
+          border
+          max-height="420"
+          empty-text="暂无封禁记录"
+          class="blacklist-table">
+          <el-table-column prop="ip" label="IP" min-width="140"></el-table-column>
+          <el-table-column label="类型" width="92" align="center">
+            <template slot-scope="scope">
+              <el-tag :type="scope.row.permanent ? 'danger' : 'warning'" size="mini" disable-transitions>
+                {{ scope.row.permanent ? '永久' : '定时' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="剩余时长" width="140" align="center">
+            <template slot-scope="scope">
+              {{ formatTtl(scope.row) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="reason" label="原因" min-width="200" show-overflow-tooltip></el-table-column>
+          <el-table-column label="操作" width="100" align="center" fixed="right">
+            <template slot-scope="scope">
+              <el-button
+                type="text"
+                icon="el-icon-unlock"
+                class="unblock-btn"
+                :loading="blacklistDialog.unblockLoading === scope.row.ip"
+                @click="confirmUnblock(scope.row)">解除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <span slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="blacklistDialog.visible = false">关 闭</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
@@ -145,6 +270,7 @@ export default {
   data() {
     return {
       loading: false,
+      isMobile: false,
       logs: [],
       filters: {
         logType: '',
@@ -160,6 +286,31 @@ export default {
       },
       detailVisible: false,
       currentLog: null,
+      blockLoadingMap: {},
+      lastCopiedKey: '',
+      blockDialog: {
+        visible: false,
+        ip: '',
+        reason: '',
+        durationKey: '24h',
+        loading: false,
+        sourceRow: null,
+        editable: false
+      },
+      blacklistDialog: {
+        visible: false,
+        loading: false,
+        unblockLoading: '',
+        search: '',
+        list: []
+      },
+      durationKeyMap: {
+        '1h': 3600,
+        '24h': 86400,
+        '7d': 604800,
+        '30d': 2592000,
+        'permanent': -1
+      },
       typeLabels: {
         LOGIN: '登录日志',
         SECURITY: '安全日志',
@@ -179,6 +330,10 @@ export default {
         USER_ADMIRE_CHANGE: '用户赞赏变更',
         USER_TYPE_CHANGE: '用户类型变更',
         USER_DELETE: '删除用户',
+        USER_REGISTER: '用户注册',
+        USER_INFO_UPDATE: '更新用户信息',
+        USER_SECRET_UPDATE: '修改密钥信息',
+        USER_PASSWORD_RESET: '密码重置',
         ARTICLE_CREATE: '保存文章',
         ARTICLE_CREATE_ASYNC: '异步保存文章',
         ARTICLE_UPDATE: '更新文章',
@@ -189,8 +344,10 @@ export default {
         ARTICLE_TRANSLATION_DELETE: '删除文章翻译',
         ARTICLE_TRANSLATION_DELETE_ALL: '删除全部翻译',
         ARTICLE_TRANSLATION_REGENERATE: '重生成翻译',
+        ARTICLE_TRANSLATION_SAVE: '保存手动翻译',
         ARTICLE_SITEMAP_UPDATE: '更新文章站点地图',
         COMMENT_DELETE: '删除评论',
+        TREE_HOLE_SAVE: '保存留言',
         TREE_HOLE_DELETE: '删除留言',
         RESOURCE_SAVE: '保存资源',
         RESOURCE_UPLOAD: '上传资源',
@@ -258,7 +415,36 @@ export default {
   created() {
     this.getLogs();
   },
+  mounted() {
+    this.handleResize();
+    window.addEventListener('resize', this.handleResize);
+    // 从其他页面跳转时通过 ?blacklist=1 自动打开封禁列表弹窗
+    if (this.$route.query.blacklist === '1') {
+      this.$nextTick(() => {
+        this.openBlacklistDialog();
+      });
+    }
+  },
+  beforeDestroy() {
+    window.removeEventListener('resize', this.handleResize);
+  },
+  computed: {
+    blacklistFiltered() {
+      const kw = (this.blacklistDialog.search || '').trim().toLowerCase();
+      if (!kw) {
+        return this.blacklistDialog.list;
+      }
+      return this.blacklistDialog.list.filter(item => {
+        const ip = (item.ip || '').toLowerCase();
+        const reason = (item.reason || '').toLowerCase();
+        return ip.indexOf(kw) >= 0 || reason.indexOf(kw) >= 0;
+      });
+    }
+  },
   methods: {
+    handleResize() {
+      this.isMobile = window.innerWidth <= 768;
+    },
     buildQuery() {
       return {
         current: this.pagination.current,
@@ -427,6 +613,269 @@ export default {
     isTokenEstimated(row) {
       // 输入有值但输出为空 → 模型未上报 usage，输入走的是本地 jtokkit 估算兜底
       return !!row && row.promptTokens != null && row.completionTokens == null;
+    },
+    canBlockIp(row) {
+      if (!row || !row.ip) {
+        return false;
+      }
+      // 未知 IP 或本地占位不展示拉黑按钮
+      const ip = String(row.ip).trim();
+      return !!ip && ip !== '-' && !/^unknown$/i.test(ip);
+    },
+    buildLogText(row) {
+      if (!row) {
+        return '';
+      }
+      const lines = [];
+      lines.push('=========== 系统日志 ===========');
+      lines.push(`时间: ${row.createTime || '-'}`);
+      lines.push(`类型: ${this.getTypeLabel(row.logType)}`);
+      lines.push(`结果: ${row.success ? '成功' : '失败'}`);
+      lines.push(`操作: ${this.getActionLabel(row.action)}`);
+      lines.push(`操作者: ${this.formatActor(row) || '-'}`);
+      if (row.userId) {
+        lines.push(`用户 ID: ${row.userId}`);
+      }
+      const account = this.getLoginAccount(row);
+      if (account) {
+        lines.push(`登录账号: ${account}`);
+      }
+      const ipLine = row.ip || '-';
+      const locLine = row.location || '';
+      lines.push(`IP/地区: ${ipLine}${locLine ? ' / ' + locLine : ''}`);
+      if (row.requestUri) {
+        lines.push(`请求路径: ${row.requestUri}`);
+      }
+      const target = this.formatTarget(row);
+      if (target && target !== '-') {
+        lines.push(`目标对象: ${target}`);
+      }
+      if (row.summary) {
+        lines.push(`摘要: ${row.summary}`);
+      }
+      if (row.logType === 'AI') {
+        const p = row.promptTokens;
+        const c = row.completionTokens;
+        const t = row.totalTokens;
+        if (p != null || c != null || t != null) {
+          lines.push(`AI Token: 输入 ${p != null ? p : '-'} / 输出 ${c != null ? c : '-'} / 合计 ${t != null ? t : '-'}`);
+          if (this.isTokenEstimated(row)) {
+            lines.push('（输入为本地估算，模型未上报输出）');
+          }
+        }
+      }
+      if (row.userAgent) {
+        lines.push(`User-Agent: ${row.userAgent}`);
+      }
+      const detailText = this.formatDetail(row.detail);
+      if (detailText && detailText !== '{}') {
+        lines.push('--------- 操作详情 ---------');
+        lines.push(detailText);
+      }
+      lines.push('================================');
+      return lines.join('\n');
+    },
+    async copyLog(row) {
+      const text = this.buildLogText(row);
+      if (!text) {
+        this.$message.warning('没有可复制的内容');
+        return;
+      }
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.top = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        this.lastCopiedKey = row.id != null ? String(row.id) : row.ip || '';
+        this.$message({
+          message: '已复制日志（格式化文本）',
+          type: 'success',
+          duration: 1500
+        });
+      } catch (e) {
+        this.$message.error('复制失败，请手动选择文本');
+      }
+    },
+    handleBlockIp(row) {
+      const ip = row && row.ip ? String(row.ip).trim() : '';
+      if (!ip) {
+        this.$message.warning('该日志没有 IP 信息');
+        return;
+      }
+      const defaultReason = `来自系统日志: ${this.getActionLabel(row.action) || row.logType || ''} - ${(row.summary || '').slice(0, 60)}`;
+      this.blockDialog.ip = ip;
+      this.blockDialog.reason = defaultReason;
+      this.blockDialog.durationKey = '24h';
+      this.blockDialog.sourceRow = row;
+      this.blockDialog.loading = false;
+      this.blockDialog.visible = true;
+    },
+    openAddBlockIp() {
+      this.blockDialog.ip = '';
+      this.blockDialog.reason = '';
+      this.blockDialog.durationKey = '24h';
+      this.blockDialog.sourceRow = null;
+      this.blockDialog.editable = true;
+      this.blockDialog.loading = false;
+      this.blockDialog.visible = true;
+    },
+    resetBlockDialog() {
+      this.blockDialog.ip = '';
+      this.blockDialog.reason = '';
+      this.blockDialog.durationKey = '24h';
+      this.blockDialog.sourceRow = null;
+      this.blockDialog.loading = false;
+      this.blockDialog.editable = false;
+    },
+    durationKeyToSeconds(key) {
+      return Object.prototype.hasOwnProperty.call(this.durationKeyMap, key)
+        ? this.durationKeyMap[key]
+        : 86400;
+    },
+    durationLabel(key) {
+      const labels = {
+        '1h': '1 小时',
+        '24h': '24 小时',
+        '7d': '7 天',
+        '30d': '30 天',
+        'permanent': '永久'
+      };
+      return labels[key] || '24 小时';
+    },
+    confirmBlockIp() {
+      const ip = (this.blockDialog.ip || '').trim();
+      if (!ip) {
+        this.$message.warning('IP 不能为空');
+        return;
+      }
+      const reason = (this.blockDialog.reason || '').trim();
+      const durationSeconds = this.durationKeyToSeconds(this.blockDialog.durationKey);
+      const permanent = durationSeconds < 0;
+
+      this.$set(this.blockLoadingMap, ip, true);
+      this.blockDialog.loading = true;
+      this.$http.post(
+        this.$constant.baseURL + '/admin/security/blockIp',
+        { ip, reason, durationSeconds },
+        true
+      ).then((res) => {
+        const data = (res && res.data) || {};
+        const tip = data.alreadyBlocked
+          ? `IP ${ip} 之前已在黑名单，已刷新为 ${this.durationLabel(this.blockDialog.durationKey)}`
+          : `已拉黑 IP ${ip}，时长：${this.durationLabel(this.blockDialog.durationKey)}`;
+        this.$message({ message: tip, type: 'success' });
+        this.blockDialog.visible = false;
+        this.getLogs();
+        // 封禁列表弹窗打开时同步刷新
+        if (this.blacklistDialog.visible) {
+          this.loadBlacklist();
+        }
+      }).catch((error) => {
+        this.$message({
+          message: '拉黑 IP 失败: ' + (error && error.message ? error.message : '未知错误'),
+          type: 'error'
+        });
+      }).finally(() => {
+        this.$set(this.blockLoadingMap, ip, false);
+        this.blockDialog.loading = false;
+      });
+    },
+    openBlacklistDialog() {
+      this.blacklistDialog.visible = true;
+      this.loadBlacklist();
+    },
+    loadBlacklist() {
+      this.blacklistDialog.loading = true;
+      this.$http.get(this.$constant.baseURL + '/admin/security/blacklist', {}, true)
+        .then((res) => {
+          const list = (res && res.data) || [];
+          this.blacklistDialog.list = list;
+        })
+        .catch((error) => {
+          this.$message({
+            message: '加载封禁列表失败: ' + (error && error.message ? error.message : '未知错误'),
+            type: 'error'
+          });
+        })
+        .finally(() => {
+          this.blacklistDialog.loading = false;
+        });
+    },
+    confirmUnblock(row) {
+      const ip = (row && row.ip) || '';
+      if (!ip) {
+        this.$message.warning('IP 不存在');
+        return;
+      }
+      this.$confirm(
+        `确定要解除对 IP "${ip}" 的封禁吗？解除后该 IP 立即恢复访问。`,
+        '解除封禁',
+        {
+          confirmButtonText: '确定解除',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      ).then(() => {
+        this.blacklistDialog.unblockLoading = ip;
+        this.$http.post(
+          this.$constant.baseURL + '/admin/security/unblockIp',
+          { ip },
+          true
+        ).then((res) => {
+          const data = (res && res.data) || {};
+          if (data.success) {
+            this.$message({
+              message: `已解除 IP ${ip} 的封禁`,
+              type: 'success'
+            });
+            this.loadBlacklist();
+          } else {
+            this.$message({
+              message: '解除失败，请重试',
+              type: 'error'
+            });
+          }
+        }).catch((error) => {
+          this.$message({
+            message: '解除封禁失败: ' + (error && error.message ? error.message : '未知错误'),
+            type: 'error'
+          });
+        }).finally(() => {
+          this.blacklistDialog.unblockLoading = '';
+        });
+      }).catch(() => {
+        // 取消
+      });
+    },
+    formatTtl(row) {
+      if (!row) {
+        return '-';
+      }
+      const ttl = Number(row.ttl);
+      if (ttl === -1) {
+        return '永久';
+      }
+      if (ttl === -2 || ttl <= 0) {
+        return '已过期';
+      }
+      const days = Math.floor(ttl / 86400);
+      const hours = Math.floor((ttl % 86400) / 3600);
+      const minutes = Math.floor((ttl % 3600) / 60);
+      if (days > 0) {
+        return `${days}天 ${hours}时`;
+      }
+      if (hours > 0) {
+        return `${hours}时 ${minutes}分`;
+      }
+      return `${minutes}分`;
     }
   }
 };
@@ -496,6 +945,36 @@ body.dark-mode .system-log-page >>> .log-date-range .el-range__close-icon {
   color: #67c23a;
 }
 
+.block-ip-btn,
+::v-deep .block-ip-btn span,
+::v-deep .block-ip-btn i {
+  color: #f56c6c !important;
+}
+
+.block-ip-btn:hover,
+.block-ip-btn:focus,
+::v-deep .block-ip-btn:hover span,
+::v-deep .block-ip-btn:hover i,
+::v-deep .block-ip-btn:focus span,
+::v-deep .block-ip-btn:focus i {
+  color: #f78989 !important;
+}
+
+.copy-btn,
+::v-deep .copy-btn span,
+::v-deep .copy-btn i {
+  color: #67c23a !important;
+}
+
+.copy-btn:hover,
+.copy-btn:focus,
+::v-deep .copy-btn:hover span,
+::v-deep .copy-btn:hover i,
+::v-deep .copy-btn:focus span,
+::v-deep .copy-btn:focus i {
+  color: #85ce61 !important;
+}
+
 .pagination {
   margin: 20px 0;
   text-align: right;
@@ -536,5 +1015,86 @@ body.dark-mode .system-log-page >>> .log-date-range .el-range__close-icon {
   ::v-deep .el-dialog {
     width: 95% !important;
   }
+
+  .btn-text {
+    display: none;
+  }
+}
+
+/* ===== 拉黑 IP 弹窗 ===== */
+.block-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.block-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.block-label {
+  flex: 0 0 70px;
+  text-align: right;
+  color: #606266;
+  font-size: 14px;
+  line-height: 32px;
+}
+
+.block-input {
+  flex: 1;
+}
+
+.block-tip {
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: #fdf6ec;
+  border-left: 3px solid #e6a23c;
+  color: #b88230;
+  font-size: 12px;
+  line-height: 1.6;
+  border-radius: 4px;
+}
+
+.block-tip i {
+  margin-right: 4px;
+}
+
+/* ===== 封禁列表弹窗 ===== */
+.blacklist-page {
+  min-height: 200px;
+}
+
+.blacklist-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.blacklist-search {
+  width: 280px;
+}
+
+.blacklist-count {
+  color: #909399;
+  font-size: 13px;
+  margin-left: auto;
+}
+
+.unblock-btn {
+  color: #67c23a;
+}
+
+.unblock-btn:hover,
+.unblock-btn:focus {
+  color: #85ce61;
+}
+
+body.dark-mode .block-tip {
+  background: #3a2f1a !important;
+  border-left-color: #e6a23c !important;
+  color: #e6a23c !important;
 }
 </style>

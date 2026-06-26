@@ -105,6 +105,7 @@
 <script>
 import { adminConfigSearchIndex } from '@/utils/adminConfigSearchIndex';
 import { useMainStore } from '@/stores/main';
+import { ensureSessionValid } from '@/utils/sessionValidation';
 
 const DEFAULT_SUGGESTIONS = [
   '网站标题',
@@ -432,17 +433,24 @@ export default {
 
   mounted() {
     this.updateViewport();
-    this.fetchDynamicConfigs();
-    this.fetchDynamicPlugins();
-    this.fetchDynamicArticles();
-    this.fetchDynamicResources();
-    this.fetchDynamicResourcePaths();
-    this.fetchDynamicLoves();
     document.addEventListener('click', this.handleOutsideClick);
     window.addEventListener('resize', this.updateViewport);
     if (this.$bus && this.$bus.$on) {
       this.$bus.$on('sysConfigUpdated', this.handleSysConfigUpdated);
     }
+    // 先校验 session（Cookie）是否有效，避免在 Cookie 失效时
+    // 发起受保护接口请求触发大量 TOKEN_EMPTY 安全日志
+    ensureSessionValid().then((valid) => {
+      if (!valid) {
+        return;
+      }
+      this.fetchDynamicConfigs();
+      this.fetchDynamicPlugins();
+      this.fetchDynamicArticles();
+      this.fetchDynamicResources();
+      this.fetchDynamicResourcePaths();
+      this.fetchDynamicLoves();
+    });
   },
 
   beforeDestroy() {
@@ -754,6 +762,7 @@ export default {
         return;
       }
 
+      const admin = this.mainStore.currentAdmin;
       this.dynamicArticleLoading = true;
       const payload = {
         current: 1,
@@ -763,17 +772,13 @@ export default {
         sortId: null,
         labelId: null
       };
-      const primaryUrl = this.mainStore.currentAdmin && this.mainStore.currentAdmin.isBoss
+      // 根据 isBoss 确定性选择端点，避免 fallback 在 Cookie 失效时
+      // 翻倍产生 TOKEN_EMPTY 安全日志
+      const url = admin && admin.isBoss
         ? '/admin/article/boss/list'
         : '/admin/article/user/list';
-      const fallbackUrl = primaryUrl === '/admin/article/boss/list'
-        ? '/admin/article/user/list'
-        : '/admin/article/boss/list';
 
-      const request = (url) => this.$http.post(this.$constant.baseURL + url, payload, true);
-
-      request(primaryUrl)
-        .catch(() => request(fallbackUrl))
+      this.$http.post(this.$constant.baseURL + url, payload, true)
         .then((res) => {
           const records = res && res.data ? (res.data.records || []) : [];
           this.dynamicArticleEntries = this.buildDynamicArticleEntries(records);

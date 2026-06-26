@@ -165,12 +165,15 @@ COPY --from=builder /usr/local/openresty/nginx/modules/ /usr/local/openresty/ngi
 # 已停用：Lua 运行库不再进入最终镜像，原复制命令留档。
 # COPY --from=builder /usr/local/openresty/lualib/ /usr/local/openresty/lualib/
 
-# 创建配置目录
-RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d /usr/local/openresty/nginx/conf/security
+# 创建配置目录和 Lua 脚本目录
+RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d /usr/local/openresty/nginx/conf/security /usr/local/openresty/nginx/lua
 
 # 复制自定义配置
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY spoofed-ip-headers.conf /usr/local/openresty/nginx/conf/security/spoofed-ip-headers.conf
+
+# 复制 Lua 脚本（IP 黑名单检查，依赖 OpenResty 自带的 lua-resty-redis）
+COPY lua/ /usr/local/openresty/nginx/lua/
 
 # 复制配置模板文件
 COPY default.http.conf /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template

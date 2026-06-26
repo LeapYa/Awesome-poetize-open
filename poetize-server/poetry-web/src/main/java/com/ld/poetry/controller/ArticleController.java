@@ -803,6 +803,7 @@ public class ArticleController {
      * 手动保存文章翻译
      */
     @PostMapping("/saveManualTranslation")
+    @AuditLog(action = "ARTICLE_TRANSLATION_SAVE", targetType = "ARTICLE", targetIdParam = "id", summary = "保存手动翻译")
     public PoetryResult<String> saveManualTranslation(@RequestParam("id") Integer id,
                                                      @RequestParam("targetLanguage") String targetLanguage,
                                                      @RequestParam("translatedTitle") String translatedTitle,

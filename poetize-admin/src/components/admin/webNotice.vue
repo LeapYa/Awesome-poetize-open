@@ -57,7 +57,6 @@ export default {
 .page-header h3 {
   margin: 0 0 4px 0;
   font-size: 18px;
-  color: #303133;
 }
 .page-desc {
   margin: 0;

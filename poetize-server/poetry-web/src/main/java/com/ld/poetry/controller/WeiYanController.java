@@ -2,6 +2,7 @@ package com.ld.poetry.controller;
 
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.SaveCheck;
@@ -46,6 +47,7 @@ public class WeiYanController {
     @PostMapping("/saveWeiYan")
     @LoginCheck
     @SaveCheck
+    @AuditLog(action = "WEIYAN_SAVE", targetType = "WEIYAN", summary = "保存微言")
     public PoetryResult saveWeiYan(@RequestBody WeiYan weiYanVO) {
         if (!StringUtils.hasText(weiYanVO.getContent())) {
             return PoetryResult.fail("微言不能为空！");
@@ -73,6 +75,7 @@ public class WeiYanController {
      */
     @PostMapping("/saveNews")
     @LoginCheck
+    @AuditLog(action = "WEIYAN_NEWS_SAVE", targetType = "WEIYAN", targetIdParam = "source", summary = "保存文章动态")
     public PoetryResult saveNews(@RequestBody WeiYan weiYanVO) {
         if (!StringUtils.hasText(weiYanVO.getContent()) || weiYanVO.getSource() == null) {
             return PoetryResult.fail("信息不全！");
@@ -134,6 +137,7 @@ public class WeiYanController {
      */
     @GetMapping("/deleteWeiYan")
     @LoginCheck
+    @AuditLog(action = "WEIYAN_DELETE", targetType = "WEIYAN", targetIdParam = "id", summary = "删除微言")
     public PoetryResult deleteWeiYan(@RequestParam("id") Integer id) {
         Integer userId = PoetryUtil.getUserId();
         weiYanService.lambdaUpdate().eq(WeiYan::getId, id)

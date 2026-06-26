@@ -7483,7 +7483,14 @@ apply_memory_optimizations() {
       DRUID_INITIAL_SIZE="3"
       DRUID_MIN_IDLE="3"
       DRUID_MAX_ACTIVE="55"        # 60 - 5 = 55 (留5个余量)
-      
+
+      # Nginx 到后端的 keepalive 复用连接上限，必须 ≤ DRUID_MAX_ACTIVE
+      NGINX_KEEPALIVE="48"
+      # Redis Lettuce 连接池（异步多路复用，无需过大）
+      REDIS_LETTUCE_MAX_ACTIVE="20"
+      REDIS_LETTUCE_MAX_IDLE="10"
+      REDIS_LETTUCE_MIN_IDLE="3"
+
       JAVA_XMX="768m"
       JAVA_XMS="512m"
       JAVA_METASPACE="256m"
@@ -7520,6 +7527,11 @@ apply_memory_optimizations() {
       DRUID_INITIAL_SIZE="5"
       DRUID_MIN_IDLE="5"
       DRUID_MAX_ACTIVE="75"        # 80 - 5 = 75 (留5个余量)
+
+      NGINX_KEEPALIVE="64"
+      REDIS_LETTUCE_MAX_ACTIVE="25"
+      REDIS_LETTUCE_MAX_IDLE="12"
+      REDIS_LETTUCE_MIN_IDLE="5"
       
       JAVA_XMX="1024m"
       JAVA_XMS="768m"
@@ -7558,6 +7570,11 @@ apply_memory_optimizations() {
       DRUID_INITIAL_SIZE="10"
       DRUID_MIN_IDLE="10"
       DRUID_MAX_ACTIVE="140"       # 150 - 10 = 140 (留10个余量)
+
+      NGINX_KEEPALIVE="96"
+      REDIS_LETTUCE_MAX_ACTIVE="32"
+      REDIS_LETTUCE_MAX_IDLE="16"
+      REDIS_LETTUCE_MIN_IDLE="5"
       
       JAVA_XMX="1536m"
       JAVA_XMS="1024m"
@@ -7596,7 +7613,12 @@ apply_memory_optimizations() {
       DRUID_INITIAL_SIZE="15"
       DRUID_MIN_IDLE="15"
       DRUID_MAX_ACTIVE="190"       # 200 - 10 = 190 (留10个余量)
-      
+
+      NGINX_KEEPALIVE="128"
+      REDIS_LETTUCE_MAX_ACTIVE="40"
+      REDIS_LETTUCE_MAX_IDLE="20"
+      REDIS_LETTUCE_MIN_IDLE="5"
+
       JAVA_XMX="2048m"
       JAVA_XMS="1536m"
       JAVA_METASPACE="512m"
@@ -7634,7 +7656,12 @@ apply_memory_optimizations() {
       DRUID_INITIAL_SIZE="20"
       DRUID_MIN_IDLE="20"
       DRUID_MAX_ACTIVE="380"       # 400 - 20 = 380 (留20个余量)
-      
+
+      NGINX_KEEPALIVE="192"
+      REDIS_LETTUCE_MAX_ACTIVE="50"
+      REDIS_LETTUCE_MAX_IDLE="25"
+      REDIS_LETTUCE_MIN_IDLE="5"
+
       JAVA_XMX="3072m"
       JAVA_XMS="2048m"
       JAVA_METASPACE="768m"
@@ -7937,7 +7964,60 @@ EOF
       warning "未找到java-backend服务，跳过Druid配置"
     fi
   fi
-  
+
+  # 5. 添加/更新 Redis Lettuce 连接池环境变量
+  info "更新Redis Lettuce连接池配置参数..."
+  if [ -f "lib/config.sh" ]; then
+    update_env_var "REDIS_LETTUCE_MAX_ACTIVE" "$REDIS_LETTUCE_MAX_ACTIVE"
+    update_env_var "REDIS_LETTUCE_MAX_IDLE" "$REDIS_LETTUCE_MAX_IDLE"
+    update_env_var "REDIS_LETTUCE_MIN_IDLE" "$REDIS_LETTUCE_MIN_IDLE"
+    success "Redis Lettuce连接池配置更新完成 (最大活跃:$REDIS_LETTUCE_MAX_ACTIVE, 最大空闲:$REDIS_LETTUCE_MAX_IDLE, 最小空闲:$REDIS_LETTUCE_MIN_IDLE)"
+  else
+    warning "未找到 lib/config.sh，跳过 Redis Lettuce 池配置"
+  fi
+
+  # 6. 同步 Nginx upstream keepalive 到 nginx 配置文件
+  # 约束：NGINX_KEEPALIVE 必须 ≤ DRUID_MAX_ACTIVE，否则 Druid 池成为瓶颈
+  # 各档配置已保证该约束，这里仅做写入
+  info "更新Nginx upstream keepalive 复用连接数..."
+  update_env_var "NGINX_KEEPALIVE" "$NGINX_KEEPALIVE"
+
+  # 只替换 .conf 文件（运行时实际生效的文件）。
+  # .conf.template 是源模板，由脚本 11120-11129 行在每次部署前 cp 覆盖到 .conf，
+  # 保持默认值；此处只需改 .conf 即可，无需同步 .template。
+  local nginx_conf_files=(
+    "docker/nginx/default.conf"
+    "docker/nginx/default.http.conf"
+    "docker/nginx/default.https.conf"
+  )
+  local updated_count=0
+  for conf_file in "${nginx_conf_files[@]}"; do
+    if [ -f "$conf_file" ]; then
+      # 只替换 upstream poetize-java 块内的 keepalive 数字
+      # 正则只匹配 "    keepalive N;"（keepalive 后跟空格+数字+分号），
+      # 不会误伤 keepalive_requests / keepalive_timeout（后面是下划线）
+      if grep -q "upstream poetize-java" "$conf_file" && grep -q "^[[:space:]]*keepalive [0-9][0-9]*;" "$conf_file"; then
+        # 用 awk 精确限定在 upstream poetize-java { ... } 块内替换，避免误伤其他 upstream
+        local temp_file="${conf_file}.tmp"
+        awk -v new_val="$NGINX_KEEPALIVE" '
+          BEGIN { in_block = 0 }
+          /^[[:space:]]*upstream[[:space:]]+poetize-java[[:space:]]*\{/ { in_block = 1 }
+          in_block && /^[[:space:]]*\}/ { in_block = 0 }
+          in_block && /^[[:space:]]*keepalive[[:space:]]+[0-9]+;/ {
+            sub(/[0-9]+/, new_val)
+          }
+          { print }
+        ' "$conf_file" > "$temp_file" && mv "$temp_file" "$conf_file"
+        updated_count=$((updated_count + 1))
+      fi
+    fi
+  done
+  if [ "$updated_count" -gt 0 ]; then
+    success "Nginx keepalive 已更新为 $NGINX_KEEPALIVE（共更新 $updated_count 个配置文件，需 keepalive ≤ Druid max=$DRUID_MAX_ACTIVE）"
+  else
+    warning "未找到 Nginx 配置文件中的 keepalive 指令，跳过"
+  fi
+
   success "$MEMORY_MODE 内存模式优化配置完成"
   info "系统将使用动态优化的内存设置 (总内存: ${TOTAL_MEM_GB}GB)"
   info "MySQL最大连接数: $MYSQL_MAX_CONNECTIONS, Druid连接池: $DRUID_MAX_ACTIVE"

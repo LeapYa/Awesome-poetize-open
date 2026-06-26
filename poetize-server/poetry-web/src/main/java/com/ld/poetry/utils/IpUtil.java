@@ -521,7 +521,10 @@ public class IpUtil {
         }
     }
 
-    private static boolean isValidIpLiteral(String ip) {
+    /**
+     * 验证是否为合法的 IP 字面量（IPv4 或 IPv6），不接受主机名。
+     */
+    public static boolean isValidIpLiteral(String ip) {
         if (ip == null || ip.trim().isEmpty()) {
             return false;
         }

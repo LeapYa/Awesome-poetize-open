@@ -45,6 +45,7 @@ public class TreeHoleController {
      */
     @PostMapping("/saveTreeHole")
     @SaveCheck
+    @AuditLog(action = "TREE_HOLE_SAVE", targetType = "TREE_HOLE", summary = "保存留言")
     public PoetryResult<TreeHole> saveTreeHole(@RequestBody TreeHole treeHole) {
         if (!StringUtils.hasText(treeHole.getMessage())) {
             return PoetryResult.fail("留言不能为空！");

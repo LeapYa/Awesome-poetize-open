@@ -49,6 +49,7 @@ public class FamilyController {
      */
     @PostMapping("/saveFamily")
     @LoginCheck
+    @AuditLog(action = "LOVE_SAVE", targetType = "LOVE", summary = "保存表白墙")
     public PoetryResult saveFamily(@Validated @RequestBody FamilyVO familyVO) {
         Integer userId = PoetryUtil.getUserId();
         familyVO.setUserId(userId);

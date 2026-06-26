@@ -114,9 +114,9 @@ spring:
     # Druid 连接池配置
     druid:
       # 连接池大小配置
-      initial-size: ${SPRING_DATASOURCE_DRUID_INITIAL_SIZE:5}
-      min-idle: ${SPRING_DATASOURCE_DRUID_MIN_IDLE:5}
-      max-active: ${SPRING_DATASOURCE_DRUID_MAX_ACTIVE:50}
+      initial-size: ${SPRING_DATASOURCE_DRUID_INITIAL_SIZE:10}
+      min-idle: ${SPRING_DATASOURCE_DRUID_MIN_IDLE:10}
+      max-active: ${SPRING_DATASOURCE_DRUID_MAX_ACTIVE:64}
       
       # 防止连接泄露、
       remove-abandoned: true
@@ -137,8 +137,8 @@ spring:
       timeout: ${SPRING_REDIS_TIMEOUT:5000}ms
       lettuce:
         pool:
-          max-active: ${SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE:20}
-          max-idle: ${SPRING_REDIS_LETTUCE_POOL_MAX_IDLE:10}
+          max-active: ${SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE:32}
+          max-idle: ${SPRING_REDIS_LETTUCE_POOL_MAX_IDLE:16}
           min-idle: ${SPRING_REDIS_LETTUCE_POOL_MIN_IDLE:5}
           max-wait: -1ms
         shutdown-timeout: 100ms

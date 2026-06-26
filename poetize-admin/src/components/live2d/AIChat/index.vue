@@ -613,7 +613,7 @@ export default {
 .expand-leave-active {
   pointer-events: none !important;
 }
-.expand-enter-from,
+.expand-enter,
 .expand-leave-to {
   opacity: 0;
   /* --expand-tx/--expand-ty 由 JS 钩子根据按钮坐标动态设置，

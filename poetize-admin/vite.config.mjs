@@ -14,14 +14,21 @@ const __dirname = path.dirname(__filename);
 // 开发环境自动从 git 获取版本号（生产环境由 deploy.sh 注入 VITE_APP_VERSION）
 function getGitVersion() {
     try {
-        return execSync('git describe --tags --abbrev=0', { cwd: path.resolve(__dirname, '..'), encoding: 'utf-8' }).trim();
+        const version = execSync('git describe --tags --abbrev=0', { cwd: path.resolve(__dirname, '..'), encoding: 'utf-8' }).trim();
+        if (version) return version;
     } catch {
-        try {
-            return execSync('git tag --sort=-version:refname', { cwd: path.resolve(__dirname, '..'), encoding: 'utf-8' }).trim().split('\n')[0];
-        } catch {
-            return 'dev';
-        }
+        // ignore
     }
+    try {
+        const tags = execSync('git tag --sort=-version:refname', { cwd: path.resolve(__dirname, '..'), encoding: 'utf-8' }).trim();
+        if (tags) {
+            const firstTag = tags.split('\n')[0].trim();
+            if (firstTag) return firstTag;
+        }
+    } catch {
+        // ignore
+    }
+    return 'dev';
 }
 
 const MERMAID_CHUNK_PACKAGES = [

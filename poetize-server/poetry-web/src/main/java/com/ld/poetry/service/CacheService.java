@@ -1050,6 +1050,142 @@ public class CacheService {
     }
 
     /**
+     * 管理员手动拉黑IP
+     * <p>写入 SecurityFilter 使用的黑名单键，由 SecurityFilter 在请求入口最早期拦截，
+     * 返回 403 + "403 Forbidden - IP Blacklisted"。无论客户端是否执行 JS、是否为爬虫，
+     * 只要 HTTP 请求到达服务器即被拒绝，连 HTML 源码都不会输出。
+     *
+     * <p>支持三种时长模式：
+     * <ul>
+     *     <li>{@code durationSeconds > 0}：按指定秒数拉黑（如 3600=1h, 86400=1d, 604800=7d）</li>
+     *     <li>{@code durationSeconds == 0}：使用默认 24 小时（{@link CacheConstants#IP_BLACKLIST_EXPIRE_TIME}）</li>
+     *     <li>{@code durationSeconds < 0}（如 -1）：永久拉黑，不带 TTL，需手动解除才会失效</li>
+     * </ul>
+     *
+     * @param ip              目标IP
+     * @param reason          拉黑原因（写入 Redis value，便于审计）
+     * @param durationSeconds 拉黑时长（秒）：&gt;0 按指定秒数，==0 走默认 24h，&lt;0（如 -1）永久拉黑
+     * @return 是否成功
+     */
+    public boolean blacklistIP(String ip, String reason, long durationSeconds) {
+        if (ip == null || ip.isEmpty()) {
+            return false;
+        }
+        try {
+            String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
+            String value = reason == null || reason.isEmpty()
+                    ? "manual_block"
+                    : "manual:" + reason;
+
+            boolean permanent = durationSeconds < 0;
+            long ttl;
+            if (permanent) {
+                redisUtil.set(blacklistKey, value); // 无 TTL，永久
+                ttl = -1;
+            } else if (durationSeconds == 0) {
+                ttl = CacheConstants.IP_BLACKLIST_EXPIRE_TIME;
+                redisUtil.set(blacklistKey, value, ttl);
+            } else {
+                ttl = durationSeconds;
+                redisUtil.set(blacklistKey, value, ttl);
+            }
+            log.warn("管理员手动拉黑IP: {}, 原因: {}, 时长: {}",
+                    ip, value, permanent ? "永久" : ttl + "秒");
+            return true;
+        } catch (Exception e) {
+            log.error("管理员手动拉黑IP失败: {}", ip, e);
+            return false;
+        }
+    }
+
+    /**
+     * 查询IP是否在黑名单中
+     */
+    public boolean isIPBlacklisted(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return false;
+        }
+        try {
+            String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
+            return redisUtil.hasKey(blacklistKey);
+        } catch (Exception e) {
+            log.error("查询IP黑名单状态失败: {}", ip, e);
+            return false;
+        }
+    }
+
+    /**
+     * 查询IP剩余封禁时间（秒）
+     * @return -1 永久封禁；-2 不存在；其余正数剩余秒数
+     */
+    public long getIpBlacklistTtl(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return -2;
+        }
+        try {
+            String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
+            return redisUtil.getExpire(blacklistKey);
+        } catch (Exception e) {
+            log.error("查询IP剩余封禁时间失败: {}", ip, e);
+            return -2;
+        }
+    }
+
+    /**
+     * 列出所有 SecurityFilter 黑名单 IP
+     * <p>扫描 {@code poetize:security:blacklist:*} 键，返回每条记录的 ip、原因（value）、
+     * 剩余秒数（ttl，-1 表示永久）。仅用于管理员后台展示与解除。
+     *
+     * @return 黑名单列表（按剩余时间倒序：永久优先，再按剩余秒数降序）
+     */
+    public List<Map<String, Object>> listBlacklistedIps() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        try {
+            Set<String> keys = new HashSet<>();
+            ScanOptions options = ScanOptions.scanOptions()
+                    .match(CacheConstants.IP_BLACKLIST_PREFIX + "*")
+                    .count(200)
+                    .build();
+            try (Cursor<String> cursor = redisTemplate.scan(options)) {
+                while (cursor.hasNext()) {
+                    keys.add(cursor.next());
+                }
+            }
+
+            String prefix = CacheConstants.IP_BLACKLIST_PREFIX;
+            for (String key : keys) {
+                String ip = key.startsWith(prefix) ? key.substring(prefix.length()) : key;
+                Object value = redisUtil.get(key);
+                long ttl = redisUtil.getExpire(key);
+
+                Map<String, Object> item = new HashMap<>();
+                item.put("ip", ip);
+                item.put("reason", value == null ? "" : String.valueOf(value));
+                item.put("ttl", ttl); // -1 永久，-2 已过期/不存在
+                item.put("permanent", ttl == -1);
+                result.add(item);
+            }
+
+            // 排序：永久优先 → 剩余时间长的优先 → ip 字典序
+            result.sort((a, b) -> {
+                long ta = ((Number) a.get("ttl")).longValue();
+                long tb = ((Number) b.get("ttl")).longValue();
+                if (ta == tb) {
+                    return String.valueOf(a.get("ip")).compareTo(String.valueOf(b.get("ip")));
+                }
+                // 永久(-1) 视为最大；-2（不存在）视为最小
+                long va = ta < 0 ? (ta == -1 ? Long.MAX_VALUE : Long.MIN_VALUE) : ta;
+                long vb = tb < 0 ? (tb == -1 ? Long.MAX_VALUE : Long.MIN_VALUE) : tb;
+                return Long.compare(vb, va);
+            });
+            return result;
+        } catch (Exception e) {
+            log.error("列出IP黑名单失败", e);
+            return result;
+        }
+    }
+
+    /**
      * 获取被拦截的恶意请求总数
      */
     public long getTotalBlockedRequests() {

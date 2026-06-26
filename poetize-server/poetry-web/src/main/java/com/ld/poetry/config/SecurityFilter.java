@@ -40,7 +40,8 @@ public class SecurityFilter extends OncePerRequestFilter {
     private static final Set<String> INTERNAL_SERVICES = Set.of(
             "poetize-python",
             "poetize-java",
-            "poetize-nginx");
+            "poetize-nginx",
+            "resource-availability");
 
     // 明确的恶意扫描路径黑名单
     private static final Set<String> MALICIOUS_PATHS = Set.of(
@@ -281,18 +282,13 @@ public class SecurityFilter extends OncePerRequestFilter {
      * 记录攻击并检查是否需要拉黑
      */
     private void recordAttackAndCheckBlacklist(String ip, String requestURI, String attackType) {
-        // 对于无法获取IP的情况，采用更严格的策略
+        // 对于无法获取真实IP的情况，只记录攻击日志，不拉黑共享的 unknown_ip 键。
+        // 原因：unknown_ip 是所有"无法解析真实IP"请求的共享标识（代理配置错误、内网直连、
+        // 头部伪造等都可能命中），直接拉黑会误伤合法用户，且攻击者可借此让全站对正常代理用户失效。
+        // 当前请求仍会被本次过滤拦截，仅不写入持久黑名单。
         if ("unknown_ip".equals(ip)) {
-            log.error("拦截{}攻击: {} from 未知IP (无法获取真实IP地址，可能存在代理配置问题或恶意伪造)",
+            log.error("拦截{}攻击: {} from 未知IP (无法获取真实IP地址，可能存在代理配置问题或恶意伪造，仅记录不拉黑)",
                     attackType, requestURI);
-
-            // 对unknown_ip立即拉黑，防止绕过检测
-            String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
-            redisUtil.set(blacklistKey, LocalDateTime.now().toString(), CacheConstants.IP_BLACKLIST_EXPIRE_TIME);
-
-            log.error("未知IP因恶意攻击被立即拉黑{}小时，拉黑时间: {}",
-                    BLACKLIST_DURATION_HOURS,
-                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
             return;
         }
 
@@ -310,7 +306,7 @@ public class SecurityFilter extends OncePerRequestFilter {
         // 检查是否达到拉黑阈值
         if (currentCount >= ATTACK_THRESHOLD) {
             String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
-            redisUtil.set(blacklistKey, LocalDateTime.now().toString(), CacheConstants.IP_BLACKLIST_EXPIRE_TIME);
+            redisUtil.set(blacklistKey, "auto:" + LocalDateTime.now().toString(), CacheConstants.IP_BLACKLIST_EXPIRE_TIME);
 
             log.error("IP {} 因连续{}次恶意攻击被拉黑{}小时，拉黑时间: {}",
                     ip, currentCount, BLACKLIST_DURATION_HOURS,
@@ -327,17 +323,6 @@ public class SecurityFilter extends OncePerRequestFilter {
      */
     private void cleanupExpiredRecords() {
         // Redis会自动清理过期的键，无需手动处理
-    }
-
-    /**
-     * 手动解除IP拉黑（管理员功能）
-     * 注意：这是静态方法，需要通过Spring上下文获取RedisUtil
-     */
-    public static boolean unblacklistIP(String ip) {
-        // 由于这是静态方法，需要通过其他方式获取RedisUtil实例
-        // 建议将此方法改为非静态方法或通过Service层调用
-        log.info("管理员手动解除IP拉黑: {} (需要通过Service层实现)", ip);
-        return true;
     }
 
     /**

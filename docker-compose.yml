@@ -14,6 +14,10 @@ services:
         max-file: "3"
     environment:
       - TZ=Asia/Shanghai
+      # Redis 密码传给 Nginx Lua 脚本，用于 IP 黑名单检查
+      # 通过环境变量传递，避免在 nginx.conf 中明文写密码
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-poetize_redis_2025}
+      - REDIS_DB=${REDIS_DB:-0}
     volumes:
       - poetize_web_dist:/usr/share/nginx/html/poetize
       - poetize_admin_dist:/usr/share/nginx/html/admin
@@ -195,16 +199,16 @@ services:
       - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-poetize_redis_2025}
       - SPRING_REDIS_DATABASE=${REDIS_DB:-0}
       - SPRING_REDIS_TIMEOUT=3000
-      - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=20
-      - SPRING_REDIS_LETTUCE_POOL_MAX_IDLE=10
-      - SPRING_REDIS_LETTUCE_POOL_MIN_IDLE=5
+      - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=${REDIS_LETTUCE_MAX_ACTIVE:-32}
+      - SPRING_REDIS_LETTUCE_POOL_MAX_IDLE=${REDIS_LETTUCE_MAX_IDLE:-16}
+      - SPRING_REDIS_LETTUCE_POOL_MIN_IDLE=${REDIS_LETTUCE_MIN_IDLE:-5}
       # Token安全配置
       - TOKEN_SECRET_KEY=${TOKEN_SECRET_KEY:-your_super_secure_random_key_here_at_least_32_chars}
       # OAuth代理配置
       - OAUTH_PROXY_DOMAIN=${OAUTH_PROXY_DOMAIN:-}
       # Druid连接池配置
-      - SPRING_DATASOURCE_DRUID_INITIAL_SIZE=${DRUID_INITIAL_SIZE:-5}
-      - SPRING_DATASOURCE_DRUID_MIN_IDLE=${DRUID_MIN_IDLE:-5}
+      - SPRING_DATASOURCE_DRUID_INITIAL_SIZE=${DRUID_INITIAL_SIZE:-10}
+      - SPRING_DATASOURCE_DRUID_MIN_IDLE=${DRUID_MIN_IDLE:-10}
       - SPRING_DATASOURCE_DRUID_MAX_ACTIVE=${DRUID_MAX_ACTIVE:-64}
     networks:
       poetize-network:

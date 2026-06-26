@@ -103,6 +103,18 @@
                     AND LEFT(LOWER(r.path), 5) NOT IN ('data:', 'blob:')
                     AND LOCATE(CONCAT('/', r.path), refs.ref_value) &gt; 0
                 )
+                OR (
+                    LEFT(LOWER(r.path), 7) = 'http://'
+                    AND CHAR_LENGTH(r.path) &gt; 7
+                    AND LOCATE('/', SUBSTRING(r.path, 8)) &gt; 0
+                    AND LOCATE(SUBSTRING(SUBSTRING(r.path, 8), LOCATE('/', SUBSTRING(r.path, 8))), refs.ref_value) &gt; 0
+                )
+                OR (
+                    LEFT(LOWER(r.path), 8) = 'https://'
+                    AND CHAR_LENGTH(r.path) &gt; 8
+                    AND LOCATE('/', SUBSTRING(r.path, 9)) &gt; 0
+                    AND LOCATE(SUBSTRING(SUBSTRING(r.path, 9), LOCATE('/', SUBSTRING(r.path, 9))), refs.ref_value) &gt; 0
+                )
             )
         )
         ORDER BY

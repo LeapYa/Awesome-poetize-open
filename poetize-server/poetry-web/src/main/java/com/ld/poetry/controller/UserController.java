@@ -1,5 +1,6 @@
 package com.ld.poetry.controller;
 
+import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.aop.RateLimit;
 import com.ld.poetry.aop.RateLimit.KeyType;
@@ -74,6 +75,7 @@ public class UserController {
             @RateLimit(name = "regist:fp", count = 5, time = 300, keyType = KeyType.FINGERPRINT, message = "注册操作过于频繁，请5分钟后再试"),
             @RateLimit(name = "regist:ip", count = 50, time = 60, keyType = KeyType.IP, message = "当前网络注册请求过多，请稍后再试")
     })
+    @AuditLog(type = "SECURITY", action = "USER_REGISTER", targetType = "USER", targetIdParam = "username", summary = "用户注册")
     public PoetryResult<UserVO> regist(@Validated @RequestBody UserVO user,
             HttpServletRequest request,
             HttpServletResponse response) {
@@ -286,6 +288,7 @@ public class UserController {
      */
     @PostMapping("/updateUserInfo")
     @LoginCheck
+    @AuditLog(action = "USER_INFO_UPDATE", targetType = "USER", targetIdParam = "id", summary = "更新用户信息")
     public PoetryResult<UserVO> updateUserInfo(@RequestBody UserVO user) {
         return userService.updateUserInfo(user);
     }
@@ -357,6 +360,7 @@ public class UserController {
      */
     @PostMapping("/updateSecretInfo")
     @LoginCheck
+    @AuditLog(type = "SECURITY", action = "USER_SECRET_UPDATE", targetType = "USER", summary = "修改密钥信息")
     public PoetryResult<UserVO> updateSecretInfo(@RequestParam("place") String place,
             @RequestParam("flag") Integer flag, @RequestParam(value = "code", required = false) String code,
             @RequestParam("password") String password) {
@@ -400,6 +404,7 @@ public class UserController {
             @RateLimit(name = "resetPassword:fp", count = 5, time = 300, keyType = KeyType.FINGERPRINT, message = "密码重置尝试过于频繁，请5分钟后再试"),
             @RateLimit(name = "resetPassword:ip", count = 20, time = 300, keyType = KeyType.IP, message = "当前网络密码重置请求过多，请稍后再试")
     })
+    @AuditLog(type = "SECURITY", action = "USER_PASSWORD_RESET", targetType = "USER", targetIdParam = "username", summary = "忘记密码重置")
     public PoetryResult updateForForgetPassword(@RequestParam("username") String username,
             @RequestParam("place") String place, @RequestParam("flag") Integer flag,
             @RequestParam("code") String code, @RequestParam("password") String password) {

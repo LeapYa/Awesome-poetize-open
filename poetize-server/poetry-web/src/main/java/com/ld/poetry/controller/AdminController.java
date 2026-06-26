@@ -20,6 +20,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestTemplate;
 import com.ld.poetry.enums.PoetryEnum;
+import com.ld.poetry.utils.IpUtil;
 import org.springframework.core.env.Environment;
 import lombok.extern.slf4j.Slf4j;
 import com.ld.poetry.service.CacheService;
@@ -200,6 +201,147 @@ public class AdminController {
         } catch (Exception e) {
             log.error("刷新管理员缓存失败", e);
             return PoetryResult.fail("缓存刷新失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 手动拉黑IP（管理员权限）
+     * <p>写入 SecurityFilter 黑名单键，由 SecurityFilter 在请求入口最早期拦截，
+     * 返回 403 + "403 Forbidden - IP Blacklisted"。即使客户端不执行 JS（爬虫/抓取器），
+     * HTTP 请求到达服务器第一刻即被拒绝，连 HTML 源码都不会输出。
+     *
+     * <p>请求体字段：
+     * <ul>
+     *     <li>ip - 必填，目标IP</li>
+     *     <li>reason - 选填，拉黑原因（写入 Redis value 便于审计）</li>
+     *     <li>durationSeconds - 选填，拉黑时长（秒）：
+     *         <ul>
+     *           <li>&gt;0：按指定秒数拉黑（如 3600=1h, 86400=1d, 604800=7d, 2592000=30d）</li>
+     *           <li>=0 或不传：使用默认 24 小时</li>
+     *           <li>&lt;0（如 -1）：永久拉黑，需手动解除才失效</li>
+     *         </ul>
+     *     </li>
+     * </ul>
+     */
+    @PostMapping("/security/blockIp")
+    @LoginCheck(0)
+    public PoetryResult<Map<String, Object>> blockIp(@RequestBody Map<String, Object> request) {
+        try {
+            Object ipObj = request.get("ip");
+            if (ipObj == null) {
+                return PoetryResult.fail("IP地址不能为空");
+            }
+            String ip = String.valueOf(ipObj).trim();
+            if (ip.isEmpty()) {
+                return PoetryResult.fail("IP地址不能为空");
+            }
+            if (!IpUtil.isValidIpLiteral(ip)) {
+                return PoetryResult.fail("IP地址格式不正确");
+            }
+
+            String reason = request.get("reason") == null
+                    ? null
+                    : String.valueOf(request.get("reason")).trim();
+
+            long durationSeconds = 0L;
+            Object durationObj = request.get("durationSeconds");
+            if (durationObj instanceof Number) {
+                durationSeconds = ((Number) durationObj).longValue();
+            } else if (durationObj != null) {
+                try {
+                    durationSeconds = Long.parseLong(String.valueOf(durationObj));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+
+            boolean permanent = durationSeconds < 0;
+            boolean alreadyBlocked = cacheService.isIPBlacklisted(ip);
+            boolean ok = cacheService.blacklistIP(ip, reason, durationSeconds);
+            if (!ok) {
+                return PoetryResult.fail("拉黑IP失败，请检查日志");
+            }
+
+            long effectiveDuration;
+            String durationLabel;
+            if (permanent) {
+                effectiveDuration = -1L;
+                durationLabel = "永久";
+            } else if (durationSeconds == 0) {
+                effectiveDuration = com.ld.poetry.constants.CacheConstants.IP_BLACKLIST_EXPIRE_TIME;
+                durationLabel = effectiveDuration + "秒（默认24小时）";
+            } else {
+                effectiveDuration = durationSeconds;
+                durationLabel = durationSeconds + "秒";
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("ip", ip);
+            result.put("alreadyBlocked", alreadyBlocked);
+            result.put("permanent", permanent);
+            result.put("durationSeconds", effectiveDuration);
+            result.put("durationLabel", durationLabel);
+
+            log.warn("管理员拉黑IP成功: ip={}, reason={}, permanent={}, durationSeconds={}, alreadyBlocked={}",
+                    ip, reason, permanent, effectiveDuration, alreadyBlocked);
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("拉黑IP失败", e);
+            return PoetryResult.fail("拉黑IP失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查询 SecurityFilter 黑名单列表（管理员权限）
+     * <p>返回 {@code poetize:security:blacklist:*} 所有条目，含 ip、原因、剩余秒数（ttl=-1 表示永久）。
+     * <p>此接口与 {@code /captcha/getBlockedIps} 是两套独立机制：
+     * <ul>
+     *     <li>本接口：SecurityFilter 黑名单（24h 默认/永久），拦截所有请求 → 403</li>
+     *     <li>captcha 接口：验证码侧封禁（30 分钟），仅拦截验证码流程</li>
+     * </ul>
+     */
+    @GetMapping("/security/blacklist")
+    @LoginCheck(0)
+    public PoetryResult<List<Map<String, Object>>> listBlacklist() {
+        try {
+            List<Map<String, Object>> list = cacheService.listBlacklistedIps();
+            return PoetryResult.success(list);
+        } catch (Exception e) {
+            log.error("查询IP黑名单列表失败", e);
+            return PoetryResult.fail("查询黑名单失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动解除 IP 拉黑（管理员权限）
+     * <p>同时清除 SecurityFilter 黑名单键和攻击计数键，使该 IP 立即恢复访问。
+     */
+    @PostMapping("/security/unblockIp")
+    @LoginCheck(0)
+    public PoetryResult<Map<String, Object>> unblockIp(@RequestBody Map<String, String> request) {
+        try {
+            String ip = request == null ? null : request.get("ip");
+            if (ip == null || ip.trim().isEmpty()) {
+                return PoetryResult.fail("IP地址不能为空");
+            }
+            ip = ip.trim();
+
+            boolean existed = cacheService.isIPBlacklisted(ip);
+            boolean ok = cacheService.unblacklistIP(ip);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("ip", ip);
+            result.put("existed", existed);
+            result.put("success", ok);
+
+            if (ok) {
+                log.info("管理员解除IP拉黑: {}, existed={}", ip, existed);
+                return PoetryResult.success(result);
+            } else {
+                return PoetryResult.fail("解除失败，请检查日志");
+            }
+        } catch (Exception e) {
+            log.error("解除IP拉黑失败", e);
+            return PoetryResult.fail("解除封禁失败: " + e.getMessage());
         }
     }
 

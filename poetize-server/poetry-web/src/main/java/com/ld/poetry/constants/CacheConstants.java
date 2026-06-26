@@ -713,7 +713,7 @@ public class CacheConstants {
     }
     
     // ================================ 二维码缓存键构建方法 ================================
-    
+
     /**
      * 构建文章二维码缓存键
      * @param articleId 文章ID
@@ -721,5 +721,49 @@ public class CacheConstants {
      */
     public static String buildArticleQRCodeKey(Integer articleId) {
         return ARTICLE_QRCODE_PREFIX + articleId;
+    }
+
+    // ================================ 资源检测任务缓存 ================================
+
+    /**
+     * 资源检测任务状态缓存键前缀
+     * 格式: poetize:resource:scan:task:{taskId}
+     */
+    public static final String RESOURCE_SCAN_TASK_PREFIX = CACHE_PREFIX + "resource:scan:task:";
+
+    /**
+     * 资源检测结果缓存键前缀（按资源类型区分：invalid/orphan）
+     * 格式: poetize:resource:scan:result:{type}
+     */
+    public static final String RESOURCE_SCAN_RESULT_PREFIX = CACHE_PREFIX + "resource:scan:result:";
+
+    /**
+     * 资源检测任务过期时间（秒）- 30分钟
+     * 说明：任务状态保留30分钟供前端轮询，超时自动清理
+     */
+    public static final long RESOURCE_SCAN_TASK_EXPIRE_TIME = 1800;
+
+    /**
+     * 资源检测结果缓存过期时间（秒）- 10分钟
+     * 说明：检测结果缓存10分钟，避免短时间内重复检测
+     */
+    public static final long RESOURCE_SCAN_RESULT_EXPIRE_TIME = 600;
+
+    /**
+     * 构建资源检测任务状态缓存键
+     * @param taskId 任务ID
+     * @return 缓存键
+     */
+    public static String buildResourceScanTaskKey(String taskId) {
+        return RESOURCE_SCAN_TASK_PREFIX + taskId;
+    }
+
+    /**
+     * 构建资源检测结果缓存键
+     * @param type 资源类型（invalid/orphan）
+     * @return 缓存键
+     */
+    public static String buildResourceScanResultKey(String type) {
+        return RESOURCE_SCAN_RESULT_PREFIX + type;
     }
 }

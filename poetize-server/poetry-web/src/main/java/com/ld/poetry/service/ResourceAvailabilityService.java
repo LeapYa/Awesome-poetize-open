@@ -2,7 +2,10 @@ package com.ld.poetry.service;
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.entity.Resource;
+import com.ld.poetry.utils.RedisUtil;
+import com.ld.poetry.vo.ResourceScanTaskVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,11 +28,13 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
@@ -39,8 +44,20 @@ public class ResourceAvailabilityService {
     private static final Duration HTTP_CONNECT_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(3);
 
+    /**
+     * 资源类型标识：无效资源
+     */
+    public static final String SCAN_TYPE_INVALID = "invalid";
+    /**
+     * 资源类型标识：孤儿资源
+     */
+    public static final String SCAN_TYPE_ORPHAN = "orphan";
+
     @Autowired
     private ResourceService resourceService;
+
+    @Autowired
+    private RedisUtil redisUtil;
 
     @Value("${local.uploadUrl:/app/static/}")
     private String localUploadUrl;
@@ -106,6 +123,19 @@ public class ResourceAvailabilityService {
     }
 
     private List<Resource> findInvalidResources(List<Resource> resources) {
+        return findInvalidResources(resources, null, null);
+    }
+
+    /**
+     * 检测无效资源，支持进度回调与取消信号
+     *
+     * @param resources 待检测资源
+     * @param progressCallback 每完成一个资源后回调（可为null）
+     * @param cancelled 取消信号（可为null，true时尽快终止）
+     */
+    private List<Resource> findInvalidResources(List<Resource> resources,
+                                                Runnable progressCallback,
+                                                AtomicBoolean cancelled) {
         if (CollectionUtils.isEmpty(resources)) {
             return Collections.emptyList();
         }
@@ -114,12 +144,21 @@ public class ResourceAvailabilityService {
         ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
         try {
             List<Callable<Boolean>> tasks = resources.stream()
-                    .map(resource -> (Callable<Boolean>) () -> !isResourceLoadable(resource == null ? null : resource.getPath()))
+                    .map(resource -> (Callable<Boolean>) () -> {
+                        if (cancelled != null && cancelled.get()) {
+                            return false;
+                        }
+                        return !isResourceLoadable(resource == null ? null : resource.getPath());
+                    })
                     .toList();
             List<Future<Boolean>> futures = executorService.invokeAll(tasks);
 
             List<Resource> invalidResources = new ArrayList<>();
             for (int i = 0; i < futures.size(); i++) {
+                if (cancelled != null && cancelled.get()) {
+                    log.info("无效资源检测已取消，已处理 {} / {}", i, futures.size());
+                    break;
+                }
                 try {
                     if (Boolean.TRUE.equals(futures.get(i).get())) {
                         invalidResources.add(resources.get(i));
@@ -127,6 +166,9 @@ public class ResourceAvailabilityService {
                 } catch (ExecutionException e) {
                     log.warn("检测资源可用性失败，按无效资源处理: {}", resourcePathOf(resources.get(i)), e);
                     invalidResources.add(resources.get(i));
+                }
+                if (progressCallback != null) {
+                    progressCallback.run();
                 }
             }
             return invalidResources;
@@ -137,6 +179,185 @@ public class ResourceAvailabilityService {
         } finally {
             executorService.shutdownNow();
         }
+    }
+
+    // ================================ 异步检测任务 ================================
+
+    /**
+     * 启动无效资源异步检测任务
+     *
+     * @param order 排序字段
+     * @param asc 是否升序
+     * @return 任务VO（含taskId）
+     */
+    public ResourceScanTaskVO startInvalidResourceScanTask(String order, boolean asc) {
+        String taskId = UUID.randomUUID().toString().replace("-", "");
+        ResourceScanTaskVO task = new ResourceScanTaskVO(taskId, SCAN_TYPE_INVALID);
+        saveTask(task);
+
+        // 使用守护线程异步执行，避免阻塞请求线程
+        Thread worker = new Thread(() -> runInvalidResourceScan(task, order, asc), "resource-scan-" + taskId);
+        worker.setDaemon(true);
+        worker.start();
+
+        return task;
+    }
+
+    private void runInvalidResourceScan(ResourceScanTaskVO task, String order, boolean asc) {
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        try {
+            // 检查取消标记
+            ResourceScanTaskVO current = getTask(task.getTaskId());
+            if (current != null && current.getStatus() == ResourceScanTaskVO.Status.CANCELLED) {
+                return;
+            }
+
+            task.setStatus(ResourceScanTaskVO.Status.RUNNING);
+            task.setStartedAt(System.currentTimeMillis());
+            saveTask(task);
+
+            LambdaQueryChainWrapper<Resource> query = resourceService.lambdaQuery();
+            applyResourceOrder(query, order, asc);
+            List<Resource> resources = query.list();
+            task.setTotal(resources.size());
+            saveTask(task);
+
+            if (resources.isEmpty()) {
+                task.setHitResourceIds(Collections.emptyList());
+                task.setStatus(ResourceScanTaskVO.Status.SUCCESS);
+                task.setFinishedAt(System.currentTimeMillis());
+                saveTask(task);
+                return;
+            }
+
+            List<Resource> invalidResources = findInvalidResources(resources, () -> {
+                task.setProcessed(task.getProcessed() + 1);
+                // 每处理5个或全部完成时刷新一次Redis，降低写入频率
+                if (task.getProcessed() % 5 == 0 || task.getProcessed() == task.getTotal()) {
+                    saveTask(task);
+                }
+                // 检查取消信号（来自cancelScanTask）
+                ResourceScanTaskVO latest = getTask(task.getTaskId());
+                if (latest != null && latest.getStatus() == ResourceScanTaskVO.Status.CANCELLED) {
+                    cancelled.set(true);
+                }
+            }, cancelled);
+
+            if (cancelled.get()) {
+                task.setStatus(ResourceScanTaskVO.Status.CANCELLED);
+            } else {
+                task.setStatus(ResourceScanTaskVO.Status.SUCCESS);
+                task.setHitCount(invalidResources.size());
+                task.setHitResourceIds(invalidResources.stream()
+                        .map(Resource::getId)
+                        .collect(java.util.stream.Collectors.toList()));
+            }
+            task.setFinishedAt(System.currentTimeMillis());
+            saveTask(task);
+
+            // 缓存检测结果（仅成功时），供listResource快速分页
+            if (task.getStatus() == ResourceScanTaskVO.Status.SUCCESS) {
+                redisUtil.set(CacheConstants.buildResourceScanResultKey(SCAN_TYPE_INVALID),
+                        task.getHitResourceIds(),
+                        CacheConstants.RESOURCE_SCAN_RESULT_EXPIRE_TIME);
+            }
+        } catch (Exception e) {
+            log.error("无效资源检测任务失败: taskId={}", task.getTaskId(), e);
+            task.setStatus(ResourceScanTaskVO.Status.FAILED);
+            task.setErrorMessage(e.getMessage());
+            task.setFinishedAt(System.currentTimeMillis());
+            saveTask(task);
+        }
+    }
+
+    /**
+     * 获取任务状态
+     */
+    public ResourceScanTaskVO getTask(String taskId) {
+        if (!StringUtils.hasText(taskId)) {
+            return null;
+        }
+        Object obj = redisUtil.get(CacheConstants.buildResourceScanTaskKey(taskId));
+        if (obj instanceof ResourceScanTaskVO) {
+            return (ResourceScanTaskVO) obj;
+        }
+        return null;
+    }
+
+    /**
+     * 取消任务
+     */
+    public boolean cancelScanTask(String taskId) {
+        ResourceScanTaskVO task = getTask(taskId);
+        if (task == null) {
+            return false;
+        }
+        if (task.getStatus() == ResourceScanTaskVO.Status.SUCCESS
+                || task.getStatus() == ResourceScanTaskVO.Status.FAILED
+                || task.getStatus() == ResourceScanTaskVO.Status.CANCELLED) {
+            return false;
+        }
+        task.setStatus(ResourceScanTaskVO.Status.CANCELLED);
+        task.setFinishedAt(System.currentTimeMillis());
+        saveTask(task);
+        return true;
+    }
+
+    /**
+     * 根据缓存的结果ID列表构建分页
+     */
+    public Page<Resource> listInvalidResourcesFromCache(Page<Resource> page, String order, boolean asc) {
+        Object cached = redisUtil.get(CacheConstants.buildResourceScanResultKey(SCAN_TYPE_INVALID));
+        if (!(cached instanceof List)) {
+            return null;
+        }
+        // 安全转换：Jackson 反序列化后元素可能是 Integer/Long，统一转为 Integer
+        List<Integer> hitIds = ((List<?>) cached).stream()
+                .filter(java.util.Objects::nonNull)
+                .map(item -> ((Number) item).intValue())
+                .collect(java.util.stream.Collectors.toList());
+        if (hitIds.isEmpty()) {
+            Page<Resource> empty = new Page<>(page.getCurrent(), page.getSize());
+            empty.setTotal(0);
+            empty.setRecords(Collections.emptyList());
+            return empty;
+        }
+
+        long safeCurrent = Math.max(page.getCurrent(), 1L);
+        long safeSize = page.getSize() > 0L ? page.getSize() : 10L;
+        long from = (safeCurrent - 1L) * safeSize;
+        if (from >= hitIds.size()) {
+            Page<Resource> empty = new Page<>(safeCurrent, safeSize);
+            empty.setTotal(hitIds.size());
+            empty.setRecords(Collections.emptyList());
+            return empty;
+        }
+        long to = Math.min(hitIds.size(), from + safeSize);
+        List<Integer> pageIds = new ArrayList<>(hitIds.subList((int) from, (int) to));
+
+        LambdaQueryChainWrapper<Resource> query = resourceService.lambdaQuery()
+                .in(Resource::getId, pageIds);
+        applyResourceOrder(query, order, asc);
+        List<Resource> records = query.list();
+
+        // 按 hitIds 顺序排列
+        java.util.Map<Integer, Resource> idMap = records.stream()
+                .collect(java.util.stream.Collectors.toMap(Resource::getId, r -> r, (a, b) -> a));
+        List<Resource> ordered = pageIds.stream()
+                .map(idMap::get)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
+
+        Page<Resource> result = new Page<>(safeCurrent, safeSize);
+        result.setTotal(hitIds.size());
+        result.setRecords(ordered);
+        return result;
+    }
+
+    private void saveTask(ResourceScanTaskVO task) {
+        redisUtil.set(CacheConstants.buildResourceScanTaskKey(task.getTaskId()),
+                task, CacheConstants.RESOURCE_SCAN_TASK_EXPIRE_TIME);
     }
 
     private void applyResourceOrder(LambdaQueryChainWrapper<Resource> query, String order, boolean asc) {
@@ -184,17 +405,23 @@ public class ResourceAvailabilityService {
             return false;
         }
 
+        boolean imageResource = isImageResourcePath(resourcePath);
         try {
-            int headStatus = sendHead(uri);
+            HttpResponse<Void> headResponse = sendHead(uri);
+            int headStatus = headResponse.statusCode();
             if (isLoadableHttpStatus(headStatus)) {
-                return true;
+                return !isSpaFallbackResponse(headResponse, imageResource);
             }
             if (!shouldFallbackToGet(headStatus)) {
                 return false;
             }
 
-            int getStatus = sendRangeGet(uri);
-            return isLoadableHttpStatus(getStatus);
+            HttpResponse<InputStream> getResponse = sendRangeGet(uri);
+            int getStatus = getResponse.statusCode();
+            if (!isLoadableHttpStatus(getStatus)) {
+                return false;
+            }
+            return !isSpaFallbackResponse(getResponse, imageResource);
         } catch (IOException | IllegalArgumentException e) {
             log.debug("远程资源检测失败: {}", resourcePath, e);
             return false;
@@ -202,6 +429,19 @@ public class ResourceAvailabilityService {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
+    /**
+     * 判断响应是否为SPA fallback（如nginx try_files回退到index.html）。
+     * 对于图片类资源，如果响应Content-Type为text/html，则说明资源不存在但服务器返回了前端页面，
+     * 应判定为不可加载，避免假阴性。
+     */
+    private boolean isSpaFallbackResponse(HttpResponse<?> response, boolean imageResource) {
+        if (!imageResource) {
+            return false;
+        }
+        String contentType = response.headers().firstValue("Content-Type").orElse("");
+        return contentType.toLowerCase().startsWith("text/html");
     }
 
     private boolean isLocalResourceLoadable(String resourcePath) {
@@ -383,24 +623,29 @@ public class ResourceAvailabilityService {
                 && resourcePath.toLowerCase().matches(".*\\.(png|jpe?g|gif|svg|webp|bmp|avif|ico)(?:[?#].*)?$");
     }
 
-    private int sendHead(URI uri) throws IOException, InterruptedException {
+    private HttpResponse<Void> sendHead(URI uri) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(HTTP_REQUEST_TIMEOUT)
+                .header("X-Admin-Request", "true")
+                .header("X-Internal-Service", "resource-availability")
                 .method("HEAD", HttpRequest.BodyPublishers.noBody())
                 .build();
-        return httpClient.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
+        return httpClient.send(request, HttpResponse.BodyHandlers.discarding());
     }
 
-    private int sendRangeGet(URI uri) throws IOException, InterruptedException {
+    private HttpResponse<InputStream> sendRangeGet(URI uri) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(HTTP_REQUEST_TIMEOUT)
                 .header("Range", "bytes=0-0")
+                .header("X-Admin-Request", "true")
+                .header("X-Internal-Service", "resource-availability")
                 .GET()
                 .build();
         HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
         try (InputStream body = response.body()) {
-            return response.statusCode();
+            // 消费body以满足HTTP连接复用要求，调用方仅使用headers()和statusCode()
         }
+        return response;
     }
 
     private URI toHttpUri(String resourcePath) {

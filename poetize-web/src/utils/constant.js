@@ -11,7 +11,7 @@ export default {
 
   // 后台管理URL
   adminURL: import.meta.env.DEV
-    ? "http://localhost:5174/admin"
+    ? "http://localhost:5174/admin/"
     : location.protocol + "//" + location.host + "/admin",
 
   host: location.host,
