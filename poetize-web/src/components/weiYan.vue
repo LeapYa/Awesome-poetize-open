@@ -1,12 +1,12 @@
 <template>
-  <div>
+  <div class="weiyan-page">
     <!-- 两句诗 -->
     <div class="my-animation-slide-top">
       <twoPoem :isHitokoto="false"></twoPoem>
     </div>
 
-    <div style="background: var(--background); animation: hideToShow 2.5s">
-      <div>
+    <div class="weiyan-content-wrap" style="background: var(--background); animation: hideToShow 2.5s">
+      <div class="weiyan-content">
         <treeHole
           :treeHoleList="treeHoleList"
           :avatar="
@@ -224,3 +224,21 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+.weiyan-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.weiyan-content-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.weiyan-content {
+  flex: 1;
+}
+</style>

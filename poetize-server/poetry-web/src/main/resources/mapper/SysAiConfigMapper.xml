@@ -58,6 +58,7 @@
         <result column="llm_config" property="llmConfig"/>
         <result column="translation_llm_config" property="translationLlmConfig"/>
         <result column="summary_config" property="summaryConfig"/>
+        <result column="image_config" property="imageConfig"/>
         <result column="extra_config" property="extraConfig"/>
         <result column="remark" property="remark"/>
         <result column="create_time" property="createTime"/>
@@ -76,7 +77,7 @@
         vision_supported, vision_provider, vision_api_key, vision_api_base, vision_model,
         enable_memory, mem0_api_key, memory_auto_save, memory_auto_recall, memory_recall_limit,
         translation_type, default_source_lang, default_target_lang, include_articles,
-        baidu_config, custom_config, llm_config, translation_llm_config, summary_config, extra_config,
+        baidu_config, custom_config, llm_config, translation_llm_config, summary_config, image_config, extra_config,
         remark, create_time, update_time
     </sql>
 

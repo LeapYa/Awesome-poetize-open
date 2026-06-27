@@ -1,5 +1,17 @@
 /* 通用css */
 
+/* 确保页面高度正确，支持页脚贴底布局 */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+}
+
+body {
+  display: block;
+}
+
 /* 性能优化: Element UI组件GPU硬件加速 */
 /* 注意：Message组件不加transform，避免影响居中定位 */
 .el-dialog,

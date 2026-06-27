@@ -260,21 +260,22 @@
           <div class="my-setting">
             <div>
               <!-- 太阳按钮 - 暗色模式时显示 -->
-              <i
+              <el-icon
                 v-if="isDark"
-                class="fa fa-sun-o iconRotate"
-                aria-hidden="true"
+                class="iconRotate"
                 title="切换亮色主题"
                 @click="changeColor()"
-              ></i>
+              >
+                <Sunny />
+              </el-icon>
               <!-- 月亮按钮 - 亮色模式时显示 -->
-              <i
+              <el-icon
                 v-else
-                class="fa fa-moon-o"
-                aria-hidden="true"
                 title="切换暗色主题"
                 @click="changeColor()"
-              ></i>
+              >
+                <Moon />
+              </el-icon>
             </div>
             <div>
               <!-- 鼠标点击效果切换按钮 -->
@@ -426,8 +427,13 @@
 <script>
 import { $on, $off, $once, $emit } from '../utils/gogocodeTransfer'
 import { useMainStore } from '@/stores/main'
+import { Sunny, Moon } from '@element-plus/icons-vue'
 
 export default {
+  components: {
+    Sunny,
+    Moon
+  },
   data() {
     return {
       toolButton: false,

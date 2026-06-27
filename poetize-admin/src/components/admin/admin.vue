@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div :class="{ 'admin-dark-mode': isAdminDark }">
     <myHeader :isAdminDark="isAdminDark" @toggle-theme="toggleAdminTheme"></myHeader>
     <sidebar
@@ -362,17 +362,24 @@
       
       // 切换后台主题（与前台共享）
       toggleAdminTheme() {
-        this.isAdminDark = !this.isAdminDark;
-        
-        // 保存到与前台共享的theme键
-        localStorage.setItem('theme', this.isAdminDark ? 'dark' : 'light');
-        
-        // 统一应用主题到 body（与前台保持一致）
-        this.applyThemeToBody();
-        
-        
-        // 触发全局事件，通知所有组件主题已切换
-        this.$root.$emit('theme-changed', this.isAdminDark);
+        const toggle = () => {
+          this.isAdminDark = !this.isAdminDark;
+          // 保存到与前台共享的theme键
+          localStorage.setItem('theme', this.isAdminDark ? 'dark' : 'light');
+          // 统一应用主题到 body（与前台保持一致）
+          this.applyThemeToBody();
+          // 触发全局事件，通知所有组件主题已切换
+          this.$root.$emit('theme-changed', this.isAdminDark);
+        };
+
+        // 使用现代 View Transitions API 实现完美的无缝平滑切换，避免 CSS transition 在合成层上的渲染卡顿Bug
+        if (document.startViewTransition) {
+          document.startViewTransition(() => {
+            toggle();
+          });
+        } else {
+          toggle();
+        }
       },
       
       // 应用主题到 body（统一前台和后台的实现）
@@ -775,12 +782,11 @@
     height: 100%;
     padding: 30px;
     overflow-y: scroll;
-    background-color: #f5f7fa; /* 亮色模式默认背景色 */
-    transition: background-color 0.3s ease;
+    background-color: #f5f7fa; /* 恢复给滚动层设置不透明背景，以开启字体亚像素抗锯齿 (Subpixel AA) */
   }
   
   /* ========== 后台深色模式样式 ========== */
-  .admin-dark-mode .content {
+  .dark-mode .content {
     background-color: #1e1e1e;
   }
 
@@ -852,23 +858,23 @@
     font-weight: 600;
   }
 
-  .admin-dark-mode .auth-gate-card,
-  .admin-dark-mode .content-overlay-chip {
+  .dark-mode .auth-gate-card,
+  .dark-mode .content-overlay-chip {
     color: #e2e8f0;
     background: rgba(30, 41, 59, 0.92);
     border-color: rgba(148, 163, 184, 0.18);
     box-shadow: 0 18px 40px rgba(2, 6, 23, 0.35);
   }
 
-  .admin-dark-mode .auth-gate-title {
+  .dark-mode .auth-gate-title {
     color: #f8fafc;
   }
 
-  .admin-dark-mode .auth-gate-desc {
+  .dark-mode .auth-gate-desc {
     color: #cbd5e1;
   }
 
-  .admin-dark-mode .content-overlay {
+  .dark-mode .content-overlay {
     background: rgba(15, 23, 42, 0.52);
   }
 
@@ -891,7 +897,7 @@
     cursor: pointer;
   }
 
-  .admin-dark-mode .guide-island {
+  .dark-mode .guide-island {
     background: rgba(40, 40, 40, 0.85);
     border-color: rgba(255, 255, 255, 0.1);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -918,7 +924,7 @@
     color: #333;
   }
   
-  .admin-dark-mode .island-status {
+  .dark-mode .island-status {
     color: #eee;
   }
 
@@ -942,7 +948,7 @@
     white-space: nowrap;
   }
 
-  .admin-dark-mode .island-title {
+  .dark-mode .island-title {
     color: #f3f4f6;
   }
 
@@ -978,7 +984,7 @@
     background: #66b1ff;
   }
 
-  .admin-dark-mode .island-btn.ghost {
+  .dark-mode .island-btn.ghost {
     border-color: rgba(147, 197, 253, 0.45);
     color: #93c5fd;
   }
@@ -992,7 +998,7 @@
     align-items: center;
   }
   
-  .admin-dark-mode .island-close {
+  .dark-mode .island-close {
     border-left-color: #555;
     color: #777;
   }
@@ -1010,6 +1016,11 @@
 </style>
 
 <style>
+/* 使用 color-scheme 通知浏览器自动切换原生滚动条、表单控件的颜色模式 */
+.dark-mode {
+  color-scheme: dark;
+}
+
 /* Global styles for Driver.js Popover using UI/UX Pro Max Principles */
 .elegant-driver-popover {
   background: rgba(255, 255, 255, 0.95) !important;

@@ -26,6 +26,7 @@ import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -116,7 +117,48 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     private com.ld.poetry.service.payment.PaymentService paymentService;
 
     @Autowired
+    @Lazy
     private com.ld.poetry.plugin.PluginHookManager pluginHookManager;
+
+    @Autowired
+    private com.ld.poetry.service.ai.AiImageService aiImageService;
+
+    /**
+     * 按需生成 AI 封面。
+     *
+     * <p>触发条件：{@code articleVO.autoGenerateCover == true}（前端开关开启）。
+     * 开关开启时封面区已隐藏，用户无法手动管理封面，因此无论是否已有封面都重新生成（覆盖）。
+     * 开关关闭时永不生成，由用户手动上传或随机图兜底。
+     *
+     * <p>失败降级：生图失败仅记日志，不阻塞文章保存流程（文章已落库，缺封面由随机图兜底）。
+     * 成功后将 URL UPDATE 回 article 表，并回填 articleVO.articleCover 供后续事件（SEO/预渲染）使用。
+     *
+     * @param articleVO 文章 VO（autoGenerateCover 字段会被读取，articleCover 会被回填）
+     * @param articleId 已保存的文章 ID
+     * @param action    操作描述（"保存" / "更新"），仅用于日志
+     */
+    private void maybeGenerateArticleCover(ArticleVO articleVO, Integer articleId, String action) {
+        if (!Boolean.TRUE.equals(articleVO.getAutoGenerateCover())) {
+            return;
+        }
+        try {
+            log.info("开始为文章{}生成AI封面，文章ID: {}", action, articleId);
+            String coverUrl = aiImageService.generateCoverFromArticle(
+                    articleVO.getArticleTitle(), articleVO.getArticleContent());
+            if (!StringUtils.hasText(coverUrl)) {
+                log.warn("AI封面生成返回空URL，文章ID: {}", articleId);
+                return;
+            }
+            lambdaUpdate()
+                    .eq(Article::getId, articleId)
+                    .set(Article::getArticleCover, coverUrl)
+                    .update();
+            articleVO.setArticleCover(coverUrl);
+            log.info("AI封面生成并回写成功，文章ID: {}, URL: {}", articleId, coverUrl);
+        } catch (Exception e) {
+            log.error("AI封面生成失败，文章继续{}不阻塞，文章ID: {}", action, articleId, e);
+        }
+    }
 
     @Override
     public PoetryResult saveArticle(ArticleVO articleVO) {
@@ -210,6 +252,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             } catch (Exception e) {
                 log.error("清除缓存失败: {}", e.getMessage(), e);
             }
+
+            // ========== 步骤4.5：按需生成 AI 封面（在事件发布前完成，确保 SEO/预渲染可用）==========
+            maybeGenerateArticleCover(articleVO, savedArticleId, "保存");
 
             // ========== 步骤5：发布文章保存事件 ==========
             try {
@@ -375,6 +420,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         }
                     });
                 }
+
+                // ========== 步骤4.5：按需生成 AI 封面（在事件发布前完成，确保 SEO/预渲染可用）==========
+                if (Boolean.TRUE.equals(articleVO.getAutoGenerateCover())) {
+                    updateSaveStatus(taskId, "processing", "正在生成 AI 封面...", savedArticleId);
+                }
+                maybeGenerateArticleCover(articleVO, savedArticleId, "保存");
 
                 // ========== 步骤5：发布文章保存事件 ==========
                 try {
@@ -1743,6 +1794,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 log.error("清除缓存失败: {}", e.getMessage(), e);
             }
 
+            // ========== 步骤4.5：按需生成 AI 封面（在事件发布前完成，确保 SEO/预渲染可用）==========
+            maybeGenerateArticleCover(articleVO, updatedArticleId, "更新");
+
             // ========== 步骤5：发布文章更新事件 ==========
             try {
                 eventPublisher.publishEvent(new ArticleSavedEvent(updatedArticleId, articleVO.getSortId(), articleVO.getLabelId(),
@@ -2867,6 +2921,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 } catch (Exception e) {
                     log.error("清除缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }
+
+                // ========== 步骤4.5：按需生成 AI 封面（在事件发布前完成，确保 SEO/预渲染可用）==========
+                if (Boolean.TRUE.equals(articleVO.getAutoGenerateCover())) {
+                    updateSaveStatus(taskId, "processing", "正在生成 AI 封面...", articleVO.getId());
+                }
+                maybeGenerateArticleCover(articleVO, articleVO.getId(), "更新");
 
                 // ========== 步骤5：发布文章更新事件 ==========
                 try {

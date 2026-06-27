@@ -27,7 +27,8 @@ export const createDefaultForm = (pluginType = 'mouse_click_effect') => ({
   pluginName: '',
   pluginDescription: '',
   pluginConfig: '{}',
-  manifest: '',
+  // manifest 必须为 null，空字符串会被 MariaDB JSON 列的 JSON_VALID 约束拒绝
+  manifest: null,
   pluginCode: '',
   enabled: true,
   isSystem: false,

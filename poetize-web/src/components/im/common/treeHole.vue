@@ -81,7 +81,13 @@
         </div>
       </li>
     </ol>
-    <div class="tree-hole-go" v-if="showLaunchButton">
+    <div class="tree-hole-empty" v-if="$common.isEmpty(treeHoleList)">
+      <i class="fa fa-comment-o"></i>
+      <p>还没有微言哦</p>
+      <p v-if="!$common.isEmpty(mainStore.currentUser)">点击下方纸飞机发表第一条吧~</p>
+      <p v-else>登录后即可发表微言~</p>
+    </div>
+    <div class="tree-hole-go" v-if="showLaunchButton && !$common.isEmpty(mainStore.currentUser)">
       <i class="fa fa-paper-plane" @click="launch()"></i>
     </div>
   </div>
@@ -277,6 +283,21 @@ export default {
 }
 .tree-hole-go i:hover {
   animation: scale 1s linear infinite;
+}
+.tree-hole-empty {
+  text-align: center;
+  padding: 100px 20px 40px;
+  color: var(--fontColor);
+  opacity: 0.7;
+}
+.tree-hole-empty i {
+  font-size: 48px;
+  margin-bottom: 20px;
+  display: block;
+}
+.tree-hole-empty p {
+  margin: 8px 0;
+  font-size: 16px;
 }
 @media screen and (max-width: 1000px) {
   .tree-hole-box {

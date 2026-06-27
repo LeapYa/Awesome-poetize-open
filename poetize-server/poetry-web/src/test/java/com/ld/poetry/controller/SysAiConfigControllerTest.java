@@ -3,6 +3,7 @@ package com.ld.poetry.controller;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.controller.dto.RagPreviewRequest;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.ai.AiImageService;
 import com.ld.poetry.service.ai.rag.RagSyncService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,11 +28,14 @@ class SysAiConfigControllerTest {
     @Mock
     private RagSyncService ragSyncService;
 
+    @Mock
+    private AiImageService aiImageService;
+
     private SysAiConfigController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new SysAiConfigController(sysAiConfigService, ragSyncService);
+        controller = new SysAiConfigController(sysAiConfigService, ragSyncService, aiImageService);
     }
 
     @Test

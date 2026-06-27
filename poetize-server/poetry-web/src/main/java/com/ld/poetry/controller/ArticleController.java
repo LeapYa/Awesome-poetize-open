@@ -27,6 +27,7 @@ import com.ld.poetry.dao.LabelMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import com.ld.poetry.service.TranslationService;
+import com.ld.poetry.service.ai.AiImageService;
 import java.util.Map;
 import java.util.HashMap;
 import org.springframework.util.StringUtils;
@@ -116,6 +117,9 @@ public class ArticleController {
 
     @Autowired
     private LabelMapper labelMapper;
+
+    @Autowired
+    private AiImageService aiImageService;
 
     /**
      * 分类名称 → 锁 的映射，防止并发导入时同名分类被重复创建。
@@ -850,13 +854,43 @@ public class ArticleController {
     public PoetryResult<String> generateSummary(@RequestBody Map<String, Object> request) {
         try {
             String content = (String) request.get("content");
-            Integer maxLength = request.get("maxLength") != null ? 
+            Integer maxLength = request.get("maxLength") != null ?
                 Integer.parseInt(request.get("maxLength").toString()) : 150;
-            
+
             return articleService.generateSummary(content, maxLength);
         } catch (Exception e) {
             log.error("摘要生成API调用失败", e);
             return PoetryResult.fail("摘要生成失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * AI 生图：根据文章标题与正文生成封面图。
+     * 调用前需在后台「智能摘要功能配置」下方的「AI生图功能配置」中启用。
+     *
+     * <p>请求体：{ "title": "...", "content": "..." }
+     * 返回：存储后的图片可访问 URL
+     */
+    @PostMapping("/generateCover")
+    @LoginCheck(1)
+    public PoetryResult<String> generateCover(@RequestBody Map<String, Object> request) {
+        try {
+            String title = request.get("title") != null ? request.get("title").toString() : "";
+            String content = request.get("content") != null ? request.get("content").toString() : "";
+
+            if (!StringUtils.hasText(content)) {
+                return PoetryResult.fail("文章内容不能为空");
+            }
+
+            String url = aiImageService.generateCoverFromArticle(title, content);
+            return PoetryResult.success(url);
+        } catch (IllegalStateException e) {
+            // 配置缺失/未启用等业务错误
+            log.warn("AI生图被拒绝: {}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("AI生图失败", e);
+            return PoetryResult.fail("AI生图失败: " + e.getMessage());
         }
     }
 

@@ -265,12 +265,22 @@
         <el-input maxlength="60" v-model="article.tips"></el-input>
       </el-form-item>
 
-      <el-form-item label="封面" prop="articleCover">
+      <el-form-item v-if="imageGenEnabled" label="AI 自动生成封面" prop="autoGenerateCover">
+        <el-tag :type="article.autoGenerateCover ? 'success' : 'danger'" disable-transitions>
+          {{ article.autoGenerateCover ? '是' : '否' }}
+        </el-tag>
+        <el-switch v-model="article.autoGenerateCover"></el-switch>
+        <div class="tip-text">
+          <i class="el-icon-info"></i>
+          {{ article.autoGenerateCover ? '已开启：保存时由 AI 生成封面，封面区域已隐藏' : '已关闭：手动上传封面或留空（随机图兜底）' }}
+        </div>
+      </el-form-item>
+      <el-form-item v-if="!(imageGenEnabled && article.autoGenerateCover)" label="封面" prop="articleCover">
         <div class="cover-input-container">
-          <el-input 
-            v-model="article.articleCover" 
+          <el-input
+            v-model="article.articleCover"
             placeholder="请输入图片链接或使用下方上传功能，如果不想设置封面可以留空"></el-input>
-          <el-image 
+          <el-image
             class="table-td-thumb"
             lazy
             :preview-src-list="[article.articleCover]"
@@ -591,6 +601,10 @@
         <el-form-item label="默认封面">
           <el-input v-model="defaultConfigForm.articleCover" placeholder="填写默认图片URL配置" clearable></el-input>
         </el-form-item>
+        <el-form-item v-if="imageGenEnabled" label="AI 自动生成封面">
+          <el-switch v-model="defaultConfigForm.autoGenerateCover"></el-switch>
+          <span class="cover-auto-hint">{{ defaultConfigForm.autoGenerateCover ? '默认开启：新建文章保存时由 AI 生成封面' : '默认关闭：新建文章手动上传封面' }}</span>
+        </el-form-item>
       </el-form>
       <div slot="footer" class="dialog-footer">
         <el-button @click="defaultConfigDialogVisible = false">取 消</el-button>
@@ -683,6 +697,7 @@ const uploadPicture = () => import("../common/uploadPicture");
       password: config.password ?? "",
       tips: config.tips ?? "",
       articleCover: config.articleCover ?? "",
+      autoGenerateCover: config.autoGenerateCover ?? true,
       videoUrl: "",
       sortId: null,
       labelId: null,
@@ -717,6 +732,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         searchPushConfiguredEngines: [],
         summaryConfigLoading: true,
         summaryMode: '',
+        imageGenEnabled: false,
         article: createDefaultArticle(),
         // 付费插件状态
         paymentPluginActive: false,
@@ -1129,6 +1145,7 @@ const uploadPicture = () => import("../common/uploadPicture");
           password: config.password ?? "",
           tips: config.tips ?? "",
           articleCover: config.articleCover ?? "",
+          autoGenerateCover: config.autoGenerateCover ?? true,
         };
         this.defaultConfigDialogVisible = true;
       },
@@ -1325,6 +1342,10 @@ const uploadPicture = () => import("../common/uploadPicture");
           ...createDefaultArticle(),
           ...detail.sourceArticle
         } : createDefaultArticle();
+        // 草稿源文章：若已有封面，默认关闭 AI 自动生成（避免覆盖）；若为空，沿用默认配置
+        this.article.autoGenerateCover = !this.$common.isEmpty(this.article.articleCover)
+          ? false
+          : (getDefaultConfig().autoGenerateCover ?? true);
         this.skipAiTranslation = getDefaultConfig().skipAiTranslation ?? false;
         this.resetTranslationForm();
         this.clearPendingTranslation();
@@ -2096,12 +2117,27 @@ const uploadPicture = () => import("../common/uploadPicture");
           const config = res && res.code === 200 && res.data ? res.data : {};
           const summaryConfig = this.parseSummaryConfig(config.summaryConfig);
           this.summaryMode = summaryConfig.summaryMode || 'disabled';
+          // 同时解析生图配置
+          this.parseImageGenConfig(config.imageConfig);
         } catch (error) {
           console.error('获取文章摘要配置失败:', error);
           this.summaryMode = '';
         } finally {
           this.summaryConfigLoading = false;
           this.applySummaryModeToArticle();
+        }
+      },
+
+      parseImageGenConfig(imageConfigRaw) {
+        if (!imageConfigRaw) {
+          this.imageGenEnabled = false;
+          return;
+        }
+        try {
+          const imageConfig = typeof imageConfigRaw === 'string' ? JSON.parse(imageConfigRaw) : imageConfigRaw;
+          this.imageGenEnabled = imageConfig.imageMode && imageConfig.imageMode !== 'disabled';
+        } catch (e) {
+          this.imageGenEnabled = false;
         }
       },
 
@@ -2187,7 +2223,9 @@ const uploadPicture = () => import("../common/uploadPicture");
           articleSlug: normalizeArticleSlug(article.articleSlug),
           summary: String(article.summary || '').trim(),
           autoSummary,
-          skipAiTranslation: this.skipAiTranslation
+          skipAiTranslation: this.skipAiTranslation,
+          // 仅当 AI 生图已配置且开关开启时才请求后端自动生成封面
+          autoGenerateCover: this.imageGenEnabled && article.autoGenerateCover === true
         };
 
         if (this.hasPendingTranslationContent) {
@@ -2469,6 +2507,10 @@ const uploadPicture = () => import("../common/uploadPicture");
                 summary: res.data.summary || '',
                 autoSummary: this.summaryAutoDisabledByConfig ? false : res.data.autoSummary !== false
               };
+              // 编辑已有文章：若已有封面，默认关闭 AI 自动生成（避免覆盖）；若为空，沿用默认配置
+              this.article.autoGenerateCover = !this.$common.isEmpty(this.article.articleCover)
+                ? false
+                : (getDefaultConfig().autoGenerateCover ?? true);
               this.applySummaryModeToArticle();
               // 检查文章是否有手动编辑的翻译，如果有则自动进入编辑翻译模式
               if (checkTranslationStatus) {
@@ -3365,6 +3407,12 @@ const uploadPicture = () => import("../common/uploadPicture");
   display: flex;
   align-items: center;
   margin: 12px 0 18px;
+}
+
+.cover-auto-hint {
+  margin-left: 12px;
+  color: #909399;
+  font-size: 12px;
 }
 
 .draft-inline-tag {

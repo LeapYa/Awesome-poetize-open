@@ -213,6 +213,25 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
     }
 
     @Override
+    public String resolveImageConfigSecretsForTest(String incomingImageConfig, String configName) {
+        if (!StringUtils.hasText(incomingImageConfig)) {
+            return incomingImageConfig;
+        }
+        try {
+            // getArticleAiConfigInternal 返回已解密（未脱敏）的配置，可直接用于测试
+            SysAiConfig saved = getArticleAiConfigInternal(
+                    StringUtils.hasText(configName) ? configName : "default");
+            if (saved == null || !StringUtils.hasText(saved.getImageConfig())) {
+                return incomingImageConfig;
+            }
+            return mergeImageConfigSecretsFromDecrypted(incomingImageConfig, saved.getImageConfig());
+        } catch (Exception e) {
+            log.warn("生图测试回填密钥失败: {}", e.getMessage());
+            return incomingImageConfig;
+        }
+    }
+
+    @Override
     public SysAiConfig getAiApiConfig(String configName) {
         return getConfig("ai_api", configName);
     }
@@ -315,6 +334,8 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                     config.getTranslationLlmConfig(), existingConfig.getTranslationLlmConfig(), "api_key"));
             config.setSummaryConfig(preserveSummaryDedicatedLlmSecret(
                     config.getSummaryConfig(), existingConfig.getSummaryConfig()));
+            config.setImageConfig(preserveImageConfigSecrets(
+                    config.getImageConfig(), existingConfig.getImageConfig()));
         } catch (Exception e) {
             log.warn("保留已有密钥失败，将按本次提交配置保存: {}", e.getMessage());
         }
@@ -369,8 +390,98 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
         return objectMapper.writeValueAsString(incomingObject);
     }
 
+    /**
+     * 保留生图配置中的 api_key 与 dedicated_llm.api_key（前端提交缺失或 *** 占位时复用已存储密钥）
+     */
+    private String preserveImageConfigSecrets(String incomingJson, String existingJson) throws Exception {
+        if (!StringUtils.hasText(incomingJson) || !StringUtils.hasText(existingJson)) {
+            return incomingJson;
+        }
+
+        JsonNode incomingNode = objectMapper.readTree(incomingJson);
+        JsonNode existingNode = objectMapper.readTree(existingJson);
+        if (!(incomingNode instanceof ObjectNode incomingObject)) {
+            return incomingJson;
+        }
+
+        boolean modified = false;
+
+        // 保留顶层 api_key（生图服务商密钥）
+        if (needsSecretBackfill(incomingObject, "api_key")
+                && existingNode.has("api_key")
+                && StringUtils.hasText(existingNode.get("api_key").asText())) {
+            incomingObject.put("api_key", resolveStoredSecretForSave(existingNode.get("api_key").asText()));
+            modified = true;
+        }
+
+        // 保留 dedicated_llm.api_key（独立LLM提炼prompt的密钥）
+        JsonNode incomingDedicated = incomingObject.get("dedicated_llm");
+        JsonNode existingDedicated = existingNode.get("dedicated_llm");
+        if (incomingDedicated instanceof ObjectNode incomingDedicatedObject
+                && existingDedicated != null
+                && existingDedicated.has("api_key")
+                && StringUtils.hasText(existingDedicated.get("api_key").asText())
+                && needsSecretBackfill(incomingDedicatedObject, "api_key")) {
+            incomingDedicatedObject.put("api_key", resolveStoredSecretForSave(existingDedicated.get("api_key").asText()));
+            modified = true;
+        }
+
+        return modified ? objectMapper.writeValueAsString(incomingObject) : incomingJson;
+    }
+
     private boolean isMissing(ObjectNode node, String key) {
         return !node.has(key);
+    }
+
+    /**
+     * 判断密钥字段是否需要回填：字段缺失，或值为 {@code ***} 脱敏占位时返回 true。
+     */
+    private boolean needsSecretBackfill(ObjectNode node, String key) {
+        if (!node.has(key)) {
+            return true;
+        }
+        return "***".equals(node.get(key).asText());
+    }
+
+    /**
+     * 将已解密的生图配置密钥合并到前端提交的配置中（用于测试场景）。
+     *
+     * <p>与 {@link #preserveImageConfigSecrets} 的区别：existingJson 中的 api_key 已是解密明文，
+     * 无需再调用 {@link #resolveStoredSecretForSave}。仅合并 api_key 与 dedicated_llm.api_key，
+     * 保留 incoming 中其它字段的当前值。
+     */
+    private String mergeImageConfigSecretsFromDecrypted(String incomingJson, String decryptedExistingJson) throws Exception {
+        if (!StringUtils.hasText(incomingJson) || !StringUtils.hasText(decryptedExistingJson)) {
+            return incomingJson;
+        }
+
+        JsonNode incomingNode = objectMapper.readTree(incomingJson);
+        JsonNode existingNode = objectMapper.readTree(decryptedExistingJson);
+        if (!(incomingNode instanceof ObjectNode incomingObject)) {
+            return incomingJson;
+        }
+
+        boolean modified = false;
+
+        if (needsSecretBackfill(incomingObject, "api_key")
+                && existingNode.has("api_key")
+                && StringUtils.hasText(existingNode.get("api_key").asText())) {
+            incomingObject.put("api_key", existingNode.get("api_key").asText());
+            modified = true;
+        }
+
+        JsonNode incomingDedicated = incomingObject.get("dedicated_llm");
+        JsonNode existingDedicated = existingNode.get("dedicated_llm");
+        if (incomingDedicated instanceof ObjectNode incomingDedicatedObject
+                && existingDedicated != null
+                && existingDedicated.has("api_key")
+                && StringUtils.hasText(existingDedicated.get("api_key").asText())
+                && needsSecretBackfill(incomingDedicatedObject, "api_key")) {
+            incomingDedicatedObject.put("api_key", existingDedicated.get("api_key").asText());
+            modified = true;
+        }
+
+        return modified ? objectMapper.writeValueAsString(incomingObject) : incomingJson;
     }
 
     private String resolveStoredSecretForSave(String storedValue) {
@@ -686,7 +797,36 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 }
             }
 
-            // 5. 加密 extraConfig.rag.embeddingApiKey
+            // 5. 加密生图配置中的 api_key 与 dedicated_llm.api_key
+            if (StringUtils.hasText(config.getImageConfig())) {
+                JsonNode imageNode = objectMapper.readTree(config.getImageConfig());
+                boolean imageModified = false;
+
+                if (imageNode.has("api_key")) {
+                    String apiKey = imageNode.get("api_key").asText();
+                    if (StringUtils.hasText(apiKey) && !apiKey.startsWith("ENC(")) {
+                        ((ObjectNode) imageNode).put("api_key", aesCryptoUtil.encrypt(apiKey));
+                        imageModified = true;
+                    }
+                }
+
+                if (imageNode.has("dedicated_llm")) {
+                    JsonNode dedicatedLlmNode = imageNode.get("dedicated_llm");
+                    if (dedicatedLlmNode.has("api_key")) {
+                        String apiKey = dedicatedLlmNode.get("api_key").asText();
+                        if (StringUtils.hasText(apiKey) && !apiKey.startsWith("ENC(")) {
+                            ((ObjectNode) dedicatedLlmNode).put("api_key", aesCryptoUtil.encrypt(apiKey));
+                            imageModified = true;
+                        }
+                    }
+                }
+
+                if (imageModified) {
+                    config.setImageConfig(objectMapper.writeValueAsString(imageNode));
+                }
+            }
+
+            // 6. 加密 extraConfig.rag.embeddingApiKey
             if (StringUtils.hasText(config.getExtraConfig())) {
                 JsonNode extraNode = objectMapper.readTree(config.getExtraConfig());
                 JsonNode ragNode = extraNode.get("rag");
@@ -804,7 +944,42 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 }
             }
 
-            // 5. 解密并脱敏 extraConfig.rag.embeddingApiKey
+            // 5. 解密并脱敏生图配置中的 api_key 与 dedicated_llm.api_key
+            if (StringUtils.hasText(config.getImageConfig())) {
+                JsonNode imageNode = objectMapper.readTree(config.getImageConfig());
+                boolean imageModified = false;
+
+                if (imageNode.has("api_key")) {
+                    String encrypted = imageNode.get("api_key").asText();
+                    if (StringUtils.hasText(encrypted)) {
+                        String decrypted = aesCryptoUtil.decrypt(encrypted);
+                        if (decrypted != null) {
+                            ((ObjectNode) imageNode).put("api_key", "***");
+                            imageModified = true;
+                        }
+                    }
+                }
+
+                if (imageNode.has("dedicated_llm")) {
+                    JsonNode dedicatedLlmNode = imageNode.get("dedicated_llm");
+                    if (dedicatedLlmNode.has("api_key")) {
+                        String encrypted = dedicatedLlmNode.get("api_key").asText();
+                        if (StringUtils.hasText(encrypted)) {
+                            String decrypted = aesCryptoUtil.decrypt(encrypted);
+                            if (decrypted != null) {
+                                ((ObjectNode) dedicatedLlmNode).put("api_key", "***");
+                                imageModified = true;
+                            }
+                        }
+                    }
+                }
+
+                if (imageModified) {
+                    config.setImageConfig(objectMapper.writeValueAsString(imageNode));
+                }
+            }
+
+            // 6. 解密并脱敏 extraConfig.rag.embeddingApiKey
             if (StringUtils.hasText(config.getExtraConfig())) {
                 JsonNode extraNode = objectMapper.readTree(config.getExtraConfig());
                 JsonNode ragNode = extraNode.get("rag");
@@ -926,7 +1101,42 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 }
             }
 
-            // 5. 解密 extraConfig.rag.embeddingApiKey
+            // 5. 解密生图配置中的 api_key 与 dedicated_llm.api_key（不脱敏，供内部生图服务使用）
+            if (StringUtils.hasText(config.getImageConfig())) {
+                JsonNode imageNode = objectMapper.readTree(config.getImageConfig());
+                boolean imageModified = false;
+
+                if (imageNode.has("api_key")) {
+                    String encrypted = imageNode.get("api_key").asText();
+                    if (StringUtils.hasText(encrypted)) {
+                        String decrypted = aesCryptoUtil.decrypt(encrypted);
+                        if (decrypted != null) {
+                            ((ObjectNode) imageNode).put("api_key", decrypted);
+                            imageModified = true;
+                        }
+                    }
+                }
+
+                if (imageNode.has("dedicated_llm")) {
+                    JsonNode dedicatedLlmNode = imageNode.get("dedicated_llm");
+                    if (dedicatedLlmNode.has("api_key")) {
+                        String encrypted = dedicatedLlmNode.get("api_key").asText();
+                        if (StringUtils.hasText(encrypted)) {
+                            String decrypted = aesCryptoUtil.decrypt(encrypted);
+                            if (decrypted != null) {
+                                ((ObjectNode) dedicatedLlmNode).put("api_key", decrypted);
+                                imageModified = true;
+                            }
+                        }
+                    }
+                }
+
+                if (imageModified) {
+                    config.setImageConfig(objectMapper.writeValueAsString(imageNode));
+                }
+            }
+
+            // 6. 解密 extraConfig.rag.embeddingApiKey
             if (StringUtils.hasText(config.getExtraConfig())) {
                 JsonNode extraNode = objectMapper.readTree(config.getExtraConfig());
                 JsonNode ragNode = extraNode.get("rag");
@@ -1076,6 +1286,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 @SuppressWarnings("unchecked")
                 Map<String, Object> summaryConfig = objectMapper.readValue(config.getSummaryConfig(), Map.class);
                 result.put("summaryConfig", summaryConfig);
+            }
+
+            if (StringUtils.hasText(config.getImageConfig())) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> imageConfig = objectMapper.readValue(config.getImageConfig(), Map.class);
+                result.put("imageConfig", imageConfig);
             }
 
             if (StringUtils.hasText(config.getExtraConfig())) {

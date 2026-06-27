@@ -1128,7 +1128,285 @@
             </el-form-item>
           </div>
         </div>
-        
+
+        <!-- AI 生图功能配置 -->
+        <div class="config-section">
+          <div>
+            <el-tag effect="dark" class="my-tag">
+              <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
+                <path
+                  d="M767.1296 808.6528c16.8448 0 32.9728 2.816 48.0256 8.0384 20.6848 7.1168 43.52 1.0752 57.1904-15.9744a459.91936 459.91936 0 0 0 70.5024-122.88c7.8336-20.48 1.0752-43.264-15.9744-57.088-49.6128-40.192-65.0752-125.3888-31.3856-185.856a146.8928 146.8928 0 0 1 30.3104-37.9904c16.2304-14.5408 22.1696-37.376 13.9264-57.6a461.27104 461.27104 0 0 0-67.5328-114.9952c-13.6192-16.9984-36.4544-22.9376-57.0368-15.8208a146.3296 146.3296 0 0 1-48.0256 8.0384c-70.144 0-132.352-50.8928-145.2032-118.7328-4.096-21.6064-20.736-38.5536-42.4448-41.8304-22.0672-3.2768-44.6464-5.0176-67.6864-5.0176-21.4528 0-42.5472 1.536-63.232 4.4032-22.3232 3.1232-40.2432 20.48-43.52 42.752-6.912 46.6944-36.0448 118.016-145.7152 118.4256-17.3056 0.0512-33.8944-2.9696-49.3056-8.448-21.0432-7.4752-44.3904-1.4848-58.368 15.9232A462.14656 462.14656 0 0 0 80.4864 348.16c-7.6288 20.0192-2.7648 43.008 13.4656 56.9344 55.5008 47.8208 71.7824 122.88 37.0688 185.1392a146.72896 146.72896 0 0 1-31.6416 39.168c-16.8448 14.7456-23.0912 38.1952-14.5408 58.9312 16.896 41.0112 39.5776 79.0016 66.9696 113.0496 13.9264 17.3056 37.2736 23.1936 58.2144 15.7184 15.4112-5.4784 32-8.4992 49.3056-8.4992 71.2704 0 124.7744 49.408 142.1312 121.2928 4.9664 20.48 21.4016 36.0448 42.24 39.168 22.2208 3.328 44.9536 5.0688 68.096 5.0688 23.3984 0 46.4384-1.792 68.864-5.1712 21.3504-3.2256 38.144-19.456 42.7008-40.5504 14.8992-68.8128 73.1648-119.7568 143.7696-119.7568z"
+                  fill="#8C7BFD"></path>
+                <path
+                  d="M511.8464 696.3712c-101.3248 0-183.7568-82.432-183.7568-183.7568s82.432-183.7568 183.7568-183.7568 183.7568 82.432 183.7568 183.7568-82.432 183.7568-183.7568 183.7568z m0-265.1648c-44.8512 0-81.3568 36.5056-81.3568 81.3568S466.9952 593.92 511.8464 593.92s81.3568-36.5056 81.3568-81.3568-36.5056-81.3568-81.3568-81.3568z"
+                  fill="#FFE37B"></path>
+              </svg>
+              AI 生图功能配置
+            </el-tag>
+          </div>
+          <div class="section-content">
+            <el-form-item label="生图模式">
+              <el-select v-model="apiConfig.imageMode" placeholder="请选择生图模式" style="width: 220px" class="mrb10">
+                <el-option key="disabled" label="关闭生图" :value="'disabled'">
+                  <span class="option-content">
+                    <i class="el-icon-remove-outline"></i>
+                    关闭生图
+                  </span>
+                </el-option>
+                <el-option key="plain" label="直接拼接（不用AI提炼）" :value="'plain'">
+                  <span class="option-content">
+                    <i class="el-icon-document"></i>
+                    直接拼接（不用AI提炼）
+                  </span>
+                </el-option>
+                <el-option key="global" label="使用全局AI模型提炼" :value="'global'">
+                  <span class="option-content">
+                    <i class="el-icon-s-grid"></i>
+                    使用全局AI模型提炼
+                  </span>
+                </el-option>
+                <el-option key="dedicated" label="使用独立AI模型提炼" :value="'dedicated'">
+                  <span class="option-content">
+                    <i class="el-icon-setting"></i>
+                    使用独立AI模型提炼
+                  </span>
+                </el-option>
+              </el-select>
+              <div class="form-tip">
+                <i class="el-icon-info"></i>
+                <template v-if="apiConfig.imageMode === 'disabled'">
+                  关闭 AI 生图功能，文章编辑器中不显示生成封面按钮
+                </template>
+                <template v-else-if="apiConfig.imageMode === 'plain'">
+                  直接用文章标题+内容拼接 prompt 送入生图模型，不经过 AI 提炼，速度快、零 token 消耗
+                </template>
+                <template v-else-if="apiConfig.imageMode === 'global'">
+                  使用上方配置的全局 AI 模型提炼生图 prompt，效果好，需要 API 密钥
+                </template>
+                <template v-else-if="apiConfig.imageMode === 'dedicated'">
+                  为生图功能配置独立的 AI 模型来提炼 prompt，可以使用不同的模型和密钥
+                </template>
+              </div>
+            </el-form-item>
+
+            <template v-if="apiConfig.imageMode !== 'disabled'">
+              <!-- 生图服务商配置 -->
+              <el-form-item label="生图服务商">
+                <el-select v-model="apiConfig.imageProvider" @change="onImageProviderChange" placeholder="请选择生图服务商" class="full-width">
+                  <el-option label="OpenAI (gpt-image-2)" value="openai">
+                    <span class="option-content">OpenAI (gpt-image-2)</span>
+                  </el-option>
+                  <el-option label="硅基流动 SiliconFlow" value="siliconflow">
+                    <span class="option-content">硅基流动 SiliconFlow</span>
+                  </el-option>
+                  <el-option label="豆包/火山 (Seedream 5.0)" value="doubao">
+                    <span class="option-content">豆包/火山 (Seedream 5.0)</span>
+                  </el-option>
+                  <el-option label="通义万相 (Wan 2.7)" value="dashscope">
+                    <span class="option-content">通义万相 (Wan 2.7)</span>
+                  </el-option>
+                  <el-option label="Google Gemini (Nano Banana Pro)" value="gemini">
+                    <span class="option-content">Google Gemini (Nano Banana Pro)</span>
+                  </el-option>
+                  <el-option label="自定义兼容端点" value="custom">
+                    <span class="option-content">自定义兼容端点</span>
+                  </el-option>
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="模型名称">
+                <el-input v-model="apiConfig.imageModel" placeholder="请输入生图模型名称" class="input-field"></el-input>
+              </el-form-item>
+
+              <el-form-item label="API接口地址">
+                <el-input v-model="apiConfig.imageUrl" placeholder="请输入生图API接口地址" class="input-field"></el-input>
+              </el-form-item>
+
+              <el-form-item label="API密钥">
+                <el-input v-model="apiConfig.imageApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field" @input="cancelSecretClear('image')">
+                  <template slot="prefix">
+                    <i class="el-icon-lock"></i>
+                  </template>
+                </el-input>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  <template v-if="apiConfig.clearExistingImageKey">
+                    保存后将清除已保存密钥
+                  </template>
+                  <template v-else-if="apiConfig.hasExistingImageKey">
+                    已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
+                  </template>
+                  <template v-else>
+                    API密钥将自动加密存储，确保您的数据安全
+                  </template>
+                </div>
+                <div v-if="apiConfig.hasExistingImageKey || apiConfig.clearExistingImageKey" class="secret-actions">
+                  <el-button v-if="apiConfig.hasExistingImageKey" type="text" size="mini" @click="markSecretForClear('image')">
+                    清除已保存密钥
+                  </el-button>
+                  <el-button v-if="apiConfig.clearExistingImageKey" type="text" size="mini" @click="cancelSecretClear('image', true)">
+                    撤销清除
+                  </el-button>
+                </div>
+              </el-form-item>
+
+              <el-form-item label="图片尺寸">
+                <el-select v-model="apiConfig.imageSize" placeholder="请选择宽高比" class="full-width" @change="onImageSizeChange">
+                  <el-option label="1:1（正方形）" value="1:1"></el-option>
+                  <el-option label="16:9（横向宽屏）" value="16:9"></el-option>
+                  <el-option label="9:16（纵向竖屏）" value="9:16"></el-option>
+                  <el-option label="4:3（横向标准）" value="4:3"></el-option>
+                  <el-option label="3:4（纵向标准）" value="3:4"></el-option>
+                </el-select>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  宽高比，所有服务商通用。Gemini 直接使用此比例；其他服务商需在下方"分辨率"中填写匹配此比例的像素
+                </div>
+              </el-form-item>
+
+              <el-form-item v-if="apiConfig.imageProvider !== 'gemini'" label="分辨率" :error="imageResolutionError">
+                <el-input
+                  v-model="apiConfig.imageResolution"
+                  placeholder="如 1920x1080"
+                  @blur="validateImageResolution"
+                  class="resolution-input"
+                >
+                  <template slot="prepend">宽x高</template>
+                </el-input>
+                <div class="resolution-presets">
+                  <span class="presets-label">常用：</span>
+                  <el-tag
+                    v-for="opt in imageResolutionPresets"
+                    :key="opt"
+                    :type="apiConfig.imageResolution === opt ? 'primary' : 'info'"
+                    size="mini"
+                    class="preset-tag"
+                    @click="apiConfig.imageResolution = opt"
+                  >{{ opt }}</el-tag>
+                </div>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  仅对 OpenAI / SiliconFlow / 豆包 / 通义万相 / 自定义 生效。须与上方宽高比一致，可自由输入任意像素值（如 4K）
+                </div>
+              </el-form-item>
+
+              <el-form-item v-if="apiConfig.imageProvider === 'openai' || apiConfig.imageProvider === 'custom'" label="图片质量">
+                <el-select v-model="apiConfig.imageQuality" placeholder="请选择图片质量" class="full-width">
+                  <el-option label="自动" value="auto"></el-option>
+                  <el-option label="低" value="low"></el-option>
+                  <el-option label="中" value="medium"></el-option>
+                  <el-option label="高" value="high"></el-option>
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="超时时间">
+                <div class="timeout-group">
+                  <el-input v-model.number="apiConfig.imageTimeout" placeholder="请输入超时时间" class="timeout-input">
+                    <template slot="append">秒</template>
+                  </el-input>
+                </div>
+              </el-form-item>
+
+              <el-form-item label="风格提示词">
+                <el-input type="textarea" v-model="apiConfig.imageStylePrompt" :rows="2" placeholder="直接拼到生图prompt最前面，不经过AI" class="textarea-field"></el-input>
+                <div class="form-tip"><i class="el-icon-info"></i>直接拼到生图 prompt 最前面，不经过 AI 提炼。用户可统一控制风格（如 "digital art, vibrant colors"）</div>
+              </el-form-item>
+
+              <!-- AI提炼模式才显示提炼提示词 -->
+              <template v-if="apiConfig.imageMode === 'global' || apiConfig.imageMode === 'dedicated'">
+                <el-form-item label="提炼提示词">
+                  <el-input type="textarea" v-model="apiConfig.imageRefinePrompt" :rows="4" placeholder="给AI模型的系统提示词，指导如何从文章提炼生图prompt" class="textarea-field"></el-input>
+                  <div class="form-tip"><i class="el-icon-info"></i>给 AI 模型的系统提示词，指导它如何从文章内容提炼生图 prompt。留空则使用默认值</div>
+                </el-form-item>
+              </template>
+
+              <!-- 使用全局AI模型 -->
+              <template v-if="apiConfig.imageMode === 'global'">
+                <el-alert title="将使用上方配置的全局AI模型提炼生图prompt" type="success" :closable="false" show-icon style="margin: 10px; margin-bottom: 20px;"></el-alert>
+              </template>
+
+              <!-- 使用独立AI模型 -->
+              <template v-if="apiConfig.imageMode === 'dedicated'">
+                <el-alert title="为生图功能配置独立的AI模型来提炼prompt" type="info" :closable="false" show-icon style="margin: 10px; margin-bottom: 20px;"></el-alert>
+
+                <el-form-item label="大模型类型">
+                  <el-select v-model="apiConfig.imageLlmType" @change="onImageLlmTypeChange" placeholder="请选择大模型类型" class="full-width">
+                    <el-option label="OpenAI / ChatGPT API" value="openai"></el-option>
+                    <el-option label="Anthropic (Claude)" value="anthropic"></el-option>
+                    <el-option label="硅基流动" value="siliconflow"></el-option>
+                    <el-option label="DeepSeek" value="deepseek"></el-option>
+                    <el-option label="OpenRouter" value="openrouter"></el-option>
+                    <el-option label="WorldRouter" value="worldrouter"></el-option>
+                    <el-option label="Azure OpenAI" value="azure"></el-option>
+                    <el-option label="自定义/其他" value="custom"></el-option>
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item label="模型名称">
+                  <el-input v-model="apiConfig.imageLlmModel" placeholder="请输入模型名称" class="input-field"></el-input>
+                </el-form-item>
+
+                <el-form-item label="接口类型" v-if="apiConfig.imageLlmType === 'custom'">
+                  <el-select v-model="apiConfig.imageLlmInterfaceType" placeholder="请选择接口类型" class="full-width">
+                    <el-option label="自动检测" value="auto"></el-option>
+                    <el-option label="OpenAI兼容接口(/v1/chat/completions)" value="openai"></el-option>
+                    <el-option label="Anthropic兼容接口" value="anthropic"></el-option>
+                    <el-option label="自定义OpenAI兼容接口" value="custom"></el-option>
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item label="API接口地址">
+                  <el-input v-model="apiConfig.imageLlmUrl" placeholder="请输入大模型API接口地址" class="input-field"></el-input>
+                </el-form-item>
+
+                <el-form-item label="API密钥">
+                  <el-input v-model="apiConfig.imageLlmApiKey" type="password" show-password placeholder="请输入API密钥" class="input-field" @input="cancelSecretClear('imageLlm')">
+                    <template slot="prefix">
+                      <i class="el-icon-lock"></i>
+                    </template>
+                  </el-input>
+                  <div class="form-tip">
+                    <i class="el-icon-info"></i>
+                    <template v-if="apiConfig.clearExistingImageLlmKey">
+                      保存后将清除已保存密钥
+                    </template>
+                    <template v-else-if="apiConfig.hasExistingImageLlmKey">
+                      已有密钥已加密保存，留空则保持不变，输入新密钥将覆盖原密钥
+                    </template>
+                    <template v-else>
+                      API密钥将自动加密存储，确保您的数据安全
+                    </template>
+                  </div>
+                  <div v-if="apiConfig.hasExistingImageLlmKey || apiConfig.clearExistingImageLlmKey" class="secret-actions">
+                    <el-button v-if="apiConfig.hasExistingImageLlmKey" type="text" size="mini" @click="markSecretForClear('imageLlm')">
+                      清除已保存密钥
+                    </el-button>
+                    <el-button v-if="apiConfig.clearExistingImageLlmKey" type="text" size="mini" @click="cancelSecretClear('imageLlm', true)">
+                      撤销清除
+                    </el-button>
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="超时时间">
+                  <div class="timeout-group">
+                    <el-input v-model.number="apiConfig.imageLlmTimeout" placeholder="请输入超时时间" class="timeout-input">
+                      <template slot="append">秒</template>
+                    </el-input>
+                  </div>
+                </el-form-item>
+              </template>
+
+              <!-- 测试生图按钮 -->
+              <el-form-item label=" " style="margin-top: 20px;">
+                <el-button type="success" @click="testImage" class="action-btn success-btn" :loading="testImageLoading">
+                  <i class="el-icon-magic-stick"></i>
+                  测试生图
+                </el-button>
+              </el-form-item>
+            </template>
+          </div>
+        </div>
+
         <!-- 操作按钮 -->
         <div class="action-bar">
           <el-button type="primary" @click="saveApiConfig" class="action-btn primary-btn">
@@ -1289,6 +1567,106 @@
       </div>
       <div slot="footer" class="dialog-footer">
         <el-button @click="promptDialogVisible = false">关闭</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 生图测试对话框 -->
+    <el-dialog :visible.sync="testImageDialogVisible" width="70%" custom-class="test-dialog" :close-on-click-modal="false">
+      <div slot="title" class="dialog-title-custom">
+        <span class="title-text">测试 AI 生图</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <el-tag size="small" type="info" effect="plain">
+            {{ apiConfig.imageProvider }} / {{ apiConfig.imageModel || '未配置模型' }}
+          </el-tag>
+          <el-tag size="small" type="warning" effect="plain">
+            {{ {disabled:'已关闭', plain:'纯文本拼接', global:'全局LLM提炼', dedicated:'独立LLM提炼'}[apiConfig.imageMode] || apiConfig.imageMode }}
+          </el-tag>
+        </div>
+      </div>
+
+      <div class="dialog-content">
+        <div class="test-form">
+          <div class="toon-hint">
+            <i class="el-icon-info"></i>
+            填入文章标题和内容，系统将按当前生图配置走完整流程（含 prompt 提炼）生成封面图，用于评估模型效果
+          </div>
+
+          <div class="input-section">
+            <label>文章标题</label>
+            <el-input v-model="testImageForm.title" placeholder="如：人工智能的未来发展"></el-input>
+          </div>
+
+          <div class="input-section">
+            <label>文章内容</label>
+            <el-input
+              type="textarea"
+              v-model="testImageForm.content"
+              :rows="6"
+              placeholder="支持Markdown/HTML格式"
+              class="source-input">
+            </el-input>
+          </div>
+
+          <div class="translate-section">
+            <el-button type="success" @click="doTestImage" :loading="testImageLoading" class="translate-btn" style="min-width: 120px;">
+              <i class="el-icon-magic-stick"></i>
+              {{ testImageLoading ? '生成中...' : '生成封面图' }}
+            </el-button>
+          </div>
+
+          <!-- 生图结果 -->
+          <template v-if="testImageForm.imageUrl">
+            <div class="result-section">
+              <label>生成结果</label>
+              <div class="image-preview-wrap">
+                <el-image
+                  :src="testImageForm.imageUrl"
+                  :preview-src-list="[testImageForm.imageUrl]"
+                  fit="contain"
+                  class="image-preview">
+                </el-image>
+                <div class="image-actions">
+                  <el-button size="mini" type="primary" plain @click="downloadTestImage">
+                    <i class="el-icon-download"></i> 下载图片
+                  </el-button>
+                  <el-button size="mini" type="primary" plain @click="doTestImage" :loading="testImageLoading">
+                    <i class="el-icon-refresh"></i> 重新生成
+                  </el-button>
+                </div>
+              </div>
+            </div>
+
+            <div class="result-section" v-if="testImageForm.prompt">
+              <label>生图 Prompt（最终送入生图模型的提示词）</label>
+              <el-input type="textarea" v-model="testImageForm.prompt" :rows="3" readonly class="result-output" style="font-family: monospace; font-size: 12px;"></el-input>
+            </div>
+
+            <div class="result-meta">
+              <el-tag size="small" type="success" v-if="testImageForm.durationMs != null">
+                <i class="el-icon-time"></i> 耗时: {{ testImageForm.durationMs }}ms
+              </el-tag>
+              <el-tag size="small" type="info" v-if="testImageForm.form">
+                <i class="el-icon-files"></i> 来源: {{ testImageForm.form === 'url' ? 'URL下载' : '直接字节' }}
+              </el-tag>
+              <el-tag size="small" type="primary" v-if="testImageForm.provider">
+                {{ testImageForm.provider }}
+              </el-tag>
+            </div>
+          </template>
+
+          <div class="error-section" v-if="testImageForm.error">
+            <label>错误信息</label>
+            <el-alert
+              :title="testImageForm.error"
+              type="error"
+              show-icon
+              :closable="false">
+            </el-alert>
+          </div>
+        </div>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="testImageDialogVisible = false">关闭</el-button>
       </div>
     </el-dialog>
 
@@ -1611,7 +1989,31 @@ export default {
         summaryLlmThinkingProfile: 'auto',
         summaryLlmThinkingExtraBodyText: '',
         hasExistingSummaryLlmKey: false,
-        clearExistingSummaryLlmKey: false
+        clearExistingSummaryLlmKey: false,
+        // AI生图配置
+        imageMode: 'disabled',  // disabled | plain | global | dedicated
+        imageProvider: 'siliconflow',
+        imageModel: 'Qwen/Qwen-Image',
+        imageUrl: 'https://api.siliconflow.cn/v1/images/generations',
+        imageApiKey: '',
+        imageSize: '16:9',
+        imageResolution: '1536x864',
+        imageQuality: 'auto',
+        imageStylePrompt: '高质量、艺术感强、构图简洁、色彩协调',
+        imageRefinePrompt: '你是一名 AI 生图 prompt 工程师。根据文章内容生成英文生图 prompt。\n\n要求：\n- 提炼文章的核心视觉意象，不要直译标题\n- 以主体开头，包含场景、光影和风格\n- 不超过 60 词，逗号分隔\n- 直接输出 prompt，不要解释或前缀',
+        imageTimeout: 60,
+        imageResolutionError: '',
+        hasExistingImageKey: false,
+        clearExistingImageKey: false,
+        // 生图独立AI配置（仅 imageMode=dedicated 时使用，用于提炼prompt）
+        imageLlmType: 'openai',
+        imageLlmModel: 'gpt-4o-mini',
+        imageLlmUrl: 'https://api.openai.com/v1',
+        imageLlmApiKey: '',
+        imageLlmTimeout: 30,
+        imageLlmInterfaceType: 'auto',
+        hasExistingImageLlmKey: false,
+        clearExistingImageLlmKey: false
       },
       apiProviderGroups: [
         {
@@ -1677,12 +2079,34 @@ export default {
       summaryJsonPromptTemplate: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：\n{json_example}',
       summaryCsvPromptTemplate: '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 返回CSV格式，表头固定为lang,summary\n5. 字段值必须使用双引号包裹，字段内双引号用两个双引号转义\n6. 只返回CSV数据，不添加解释或markdown代码块标记\n7. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回CSV格式的摘要：\n{csv_example}',
       testSummaryLoading: false,
+      testImageLoading: false,
+      testImageDialogVisible: false,
       testSummaryDialogVisible: false,
       testTextrankDialogVisible: false,
       testTextrankLoading: false,
       testGlobalAiLoading: false,
       testGlobalAiError: null, // 全局AI测试连接错误信息
       hasArticles: false, // 是否存在文章数据
+      testImageForm: {
+        title: '人工智能的未来发展',
+        content: `# 人工智能的未来发展
+
+人工智能（AI）是计算机科学的一个重要分支，致力于创造能够模拟人类智能行为的系统。近年来，随着深度学习、大语言模型等技术的突破，AI迎来了前所未有的发展机遇。
+
+## 技术突破
+
+深度学习通过多层神经网络从海量数据中自动学习特征表示，在图像识别、自然语言处理、语音识别等领域取得了革命性进展。Transformer架构的出现更是推动了大规模预训练模型的繁荣。
+
+## 应用场景
+
+AI技术已广泛应用于自动驾驶、医疗诊断、智能助手、内容创作等多个领域，正在深刻改变人类的生活和工作方式。`,
+        imageUrl: '',
+        prompt: '',
+        durationMs: null,
+        form: '',
+        provider: '',
+        error: null
+      },
       testSummaryForm: {
         content: `# Vue.js入门指南
 
@@ -1757,7 +2181,17 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     promptDialogTitle() {
       return `${this.promptDialogFeature === 'summary' ? '摘要' : '翻译'} ${this.promptDialogFormatLabel}格式提示词`;
     },
-
+    imageResolutionPresets() {
+      const ratio = this.apiConfig.imageSize || '16:9';
+      const presets = {
+        '1:1': ['1024x1024', '1328x1328', '2048x2048'],
+        '16:9': ['1280x720', '1536x864', '1920x1080', '2560x1440', '3840x2160'],
+        '9:16': ['720x1280', '864x1536', '1080x1920', '1440x2560', '2160x3840'],
+        '4:3': ['1024x768', '1280x960', '1600x1200'],
+        '3:4': ['768x1024', '960x1280', '1200x1600']
+      };
+      return presets[ratio] || presets['16:9'];
+    }
   },
   methods: {
     sanitizeMaxTokensField(field, value) {
@@ -2074,6 +2508,16 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           input: 'summaryLlmApiKey',
           existing: 'hasExistingSummaryLlmKey',
           clear: 'clearExistingSummaryLlmKey'
+        },
+        image: {
+          input: 'imageApiKey',
+          existing: 'hasExistingImageKey',
+          clear: 'clearExistingImageKey'
+        },
+        imageLlm: {
+          input: 'imageLlmApiKey',
+          existing: 'hasExistingImageLlmKey',
+          clear: 'clearExistingImageLlmKey'
         }
       };
       return metaMap[secretType];
@@ -2103,6 +2547,8 @@ Vue.js features reactive data binding and a component-based architecture, enabli
       this.apiConfig.clearExistingLlmKey = false;
       this.apiConfig.clearExistingTranslationLlmKey = false;
       this.apiConfig.clearExistingSummaryLlmKey = false;
+      this.apiConfig.clearExistingImageKey = false;
+      this.apiConfig.clearExistingImageLlmKey = false;
     },
 
     buildApiProviderConfig() {
@@ -2626,7 +3072,43 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.summaryMaxLength = 150;
             this.apiConfig.summaryPrompt = '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 请直接返回JSON格式的摘要，不要添加任何markdown代码块标记、前缀或说明\n5. JSON格式示例：{json_example}\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请直接返回JSON格式的摘要：\n{json_example}';
           }
-          
+
+          // 处理生图配置
+          if (res.data.imageConfig) {
+            const imageConfig = typeof res.data.imageConfig === 'string'
+              ? JSON.parse(res.data.imageConfig)
+              : res.data.imageConfig;
+            this.apiConfig.imageMode = imageConfig.imageMode || 'disabled';
+            this.apiConfig.imageProvider = imageConfig.provider || 'siliconflow';
+            this.apiConfig.imageModel = imageConfig.model || '';
+            this.apiConfig.imageUrl = imageConfig.api_url || '';
+            this.apiConfig.imageSize = imageConfig.size || '1:1';
+            this.apiConfig.imageResolution = imageConfig.resolution || '1536x864';
+            this.apiConfig.imageQuality = imageConfig.quality || 'auto';
+            this.apiConfig.imageStylePrompt = imageConfig.style_prompt || '';
+            this.apiConfig.imageRefinePrompt = imageConfig.refine_prompt || '';
+            this.apiConfig.imageTimeout = imageConfig.timeout || 60;
+            this.apiConfig.hasExistingImageKey = !!(imageConfig.api_key && imageConfig.api_key !== '' && imageConfig.api_key !== 'null');
+            this.apiConfig.imageApiKey = '';
+            // 独立AI配置
+            if (imageConfig.dedicated_llm) {
+              const dil = imageConfig.dedicated_llm;
+              this.apiConfig.imageLlmModel = dil.model || '';
+              this.apiConfig.imageLlmUrl = dil.api_url || '';
+              this.apiConfig.imageLlmTimeout = dil.timeout || 30;
+              this.apiConfig.imageLlmInterfaceType = dil.interface_type || 'auto';
+              this.apiConfig.hasExistingImageLlmKey = !!(dil.api_key && dil.api_key !== '' && dil.api_key !== 'null');
+              this.apiConfig.imageLlmApiKey = '';
+              if (dil.original_type) {
+                this.apiConfig.imageLlmType = dil.original_type;
+              } else if (dil.interface_type && dil.interface_type !== 'auto') {
+                this.apiConfig.imageLlmType = dil.interface_type;
+              } else {
+                this.apiConfig.imageLlmType = 'openai';
+              }
+            }
+          }
+
           // 自动填充空的API地址
           if (!this.apiConfig.llmUrl || this.apiConfig.llmUrl.trim() === '') {
             this.onLlmTypeChange(this.apiConfig.llmType);
@@ -2650,6 +3132,11 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     async saveApiConfig() {
       try {
         this.loading = true;
+        // 保存前校验分辨率（仅非 gemini 需要校验）
+        if (this.apiConfig.imageProvider !== 'gemini' && !this.validateImageResolution()) {
+          this.$message.error(this.imageResolutionError || '分辨率格式或比例不正确');
+          return;
+        }
         const llmThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.llmThinkingExtraBodyText, '全局模型自定义请求参数');
         const translationThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.translationLlmThinkingExtraBodyText, '翻译独立模型自定义请求参数');
         const summaryThinkingExtraBody = this.parseJsonObjectField(this.apiConfig.summaryLlmThinkingExtraBodyText, '摘要独立模型自定义请求参数');
@@ -2789,7 +3276,10 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         }
         // 序列化为JSON字符串
         config.summaryConfig = JSON.stringify(summaryConfigObj);
-        
+
+        // 添加生图配置（始终保存）
+        config.imageConfig = JSON.stringify(this.buildImageConfigObject());
+
         const res = await this.$http.post(this.$constant.baseURL + '/webInfo/ai/config/articleAi/save', config, true);
         
         if (res && res.code === 200) {
@@ -3532,7 +4022,234 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         this.apiConfig.summaryLlmThinkingProfile = 'worldrouter';
       }
     },
-    
+
+    // 生图服务商切换时自动填充默认URL和模型
+    onImageProviderChange(provider) {
+      const defaults = {
+        'openai': { url: 'https://api.openai.com/v1/images/generations', model: 'gpt-image-2' },
+        'siliconflow': { url: 'https://api.siliconflow.cn/v1/images/generations', model: 'Qwen/Qwen-Image' },
+        'doubao': { url: 'https://ark.cn-beijing.volces.com/api/v3/images/generations', model: 'doubao-seedream-5.0-lite' },
+        'dashscope': { url: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', model: 'wan2.7-image' },
+        'gemini': { url: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-3-pro-image-preview' },
+        'custom': { url: '', model: '' }
+      };
+      const def = defaults[provider];
+      if (def) {
+        this.apiConfig.imageUrl = def.url;
+        this.apiConfig.imageModel = def.model;
+      }
+    },
+
+    // 切换宽高比时，若当前分辨率不匹配新比例，自动选中第一个预设
+    onImageSizeChange() {
+      const presets = this.imageResolutionPresets;
+      if (!presets.includes(this.apiConfig.imageResolution)) {
+        this.apiConfig.imageResolution = presets[0];
+      }
+      this.imageResolutionError = '';
+    },
+
+    // 校验分辨率输入：格式 WxH，比例须与 imageSize 一致
+    validateImageResolution() {
+      const val = (this.apiConfig.imageResolution || '').trim();
+      const ratio = this.apiConfig.imageSize;
+      if (!val) {
+        this.imageResolutionError = '请填写分辨率，如 1920x1080';
+        return false;
+      }
+      const m = /^(\d+)\s*[x×*]\s*(\d+)$/i.exec(val);
+      if (!m) {
+        this.imageResolutionError = '格式错误，应为 宽x高，如 1920x1080';
+        return false;
+      }
+      const w = parseInt(m[1], 10);
+      const h = parseInt(m[2], 10);
+      if (w <= 0 || h <= 0) {
+        this.imageResolutionError = '宽高必须为正整数';
+        return false;
+      }
+      const ratioMap = { '1:1': [1, 1], '16:9': [16, 9], '9:16': [9, 16], '4:3': [4, 3], '3:4': [3, 4] };
+      const r = ratioMap[ratio];
+      if (r) {
+        const [rw, rh] = r;
+        // 允许小数误差（如 1536x864 是 16:9，但 1536/864=1.777...）
+        const delta = Math.abs(w / h - rw / rh);
+        if (delta > 0.01) {
+          this.imageResolutionError = `比例与 ${ratio} 不一致，请调整宽高`;
+          return false;
+        }
+      }
+      this.imageResolutionError = '';
+      return true;
+    },
+
+    // 生图独立AI模型类型切换时自动填充默认URL
+    onImageLlmTypeChange(newType) {
+      const defaultUrls = {
+        'openai': 'https://api.openai.com/v1',
+        'anthropic': 'https://api.anthropic.com/v1/messages',
+        'siliconflow': 'https://api.siliconflow.cn/v1',
+        'openrouter': 'https://openrouter.ai/api/v1',
+        'worldrouter': 'https://inference-api.worldrouter.ai/v1',
+        'deepseek': 'https://api.deepseek.com/v1',
+        'azure': '',
+        'custom': ''
+      };
+      const defaultModels = {
+        'openai': 'gpt-4o-mini',
+        'anthropic': 'claude-3-5-sonnet-20241022',
+        'siliconflow': 'Qwen/Qwen3-8B',
+        'openrouter': 'openai/gpt-4o-mini',
+        'worldrouter': 'gpt-5.4',
+        'deepseek': 'deepseek-v4-flash',
+        'azure': 'gpt-4',
+        'custom': ''
+      };
+      if (defaultUrls[newType] !== undefined) {
+        this.apiConfig.imageLlmUrl = defaultUrls[newType];
+      }
+      if (defaultModels[newType] !== undefined) {
+        this.apiConfig.imageLlmModel = defaultModels[newType];
+      }
+    },
+
+    // 打开生图测试对话框
+    testImage() {
+      if (this.apiConfig.imageMode === 'disabled') {
+        this.$message.info('生图功能已关闭，无需测试');
+        return;
+      }
+      if (!this.apiConfig.imageModel) {
+        this.$message.warning('请先配置生图模型名称');
+        return;
+      }
+      if (!this.apiConfig.imageUrl) {
+        this.$message.warning('请先配置生图API接口地址');
+        return;
+      }
+      // 独立AI模式验证
+      if (this.apiConfig.imageMode === 'dedicated') {
+        if (!this.apiConfig.imageLlmModel) {
+          this.$message.warning('请先配置生图独立AI模型名称');
+          return;
+        }
+        if (!this.apiConfig.imageLlmUrl) {
+          this.$message.warning('请先配置生图独立AI接口地址');
+          return;
+        }
+      }
+      // 重置上次结果
+      this.testImageForm.imageUrl = '';
+      this.testImageForm.prompt = '';
+      this.testImageForm.durationMs = null;
+      this.testImageForm.form = '';
+      this.testImageForm.provider = '';
+      this.testImageForm.error = null;
+      this.testImageDialogVisible = true;
+    },
+
+    // 执行生图测试（带文章内容）
+    async doTestImage() {
+      if (!this.testImageForm.title && !this.testImageForm.content) {
+        this.$message.warning('请至少填写标题或内容');
+        return;
+      }
+
+      this.testImageLoading = true;
+      this.testImageForm.imageUrl = '';
+      this.testImageForm.prompt = '';
+      this.testImageForm.durationMs = null;
+      this.testImageForm.form = '';
+      this.testImageForm.provider = '';
+      this.testImageForm.error = null;
+
+      try {
+        const imageConfigObj = this.buildImageConfigObject();
+        const tempConfig = {
+          configType: 'article_ai',
+          configName: 'default',
+          imageConfig: JSON.stringify(imageConfigObj)
+        };
+        // title/content 通过 query 参数传递，config 通过 body
+        const params = new URLSearchParams();
+        if (this.testImageForm.title) params.append('title', this.testImageForm.title);
+        if (this.testImageForm.content) params.append('content', this.testImageForm.content);
+        const url = this.$constant.baseURL + '/webInfo/ai/config/articleAi/testImage?' + params.toString();
+        const res = await this.$http.post(url, tempConfig, true);
+
+        if (res && res.code === 200 && res.data) {
+          const result = res.data;
+          if (result.success) {
+            this.testImageForm.imageUrl = result.url || '';
+            this.testImageForm.prompt = result.prompt || '';
+            this.testImageForm.durationMs = result.durationMs != null ? result.durationMs : null;
+            this.testImageForm.form = result.form || '';
+            this.testImageForm.provider = result.provider || '';
+            this.$message.success('生图成功');
+          } else {
+            this.testImageForm.error = result.message || result.error || '未知错误';
+          }
+        } else {
+          this.testImageForm.error = (res && res.message) ? res.message : '网络错误';
+        }
+      } catch (error) {
+        console.error('生图测试失败:', error);
+        const errMsg = error.response?.data?.message || error.message || '网络连接失败';
+        this.testImageForm.error = errMsg;
+      } finally {
+        this.testImageLoading = false;
+      }
+    },
+
+    // 下载测试生成的图片（兼容 data URI 和 http URL）
+    downloadTestImage() {
+      if (!this.testImageForm.imageUrl) return;
+      const link = document.createElement('a');
+      link.href = this.testImageForm.imageUrl;
+      link.download = 'ai_cover_test_' + Date.now() + '.png';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+
+    // 构建imageConfig对象（供保存和测试共用）
+    buildImageConfigObject() {
+      const obj = {
+        imageMode: this.apiConfig.imageMode || 'disabled',
+        provider: this.apiConfig.imageProvider || 'siliconflow',
+        model: this.apiConfig.imageModel || '',
+        api_url: this.apiConfig.imageUrl || '',
+        size: this.apiConfig.imageSize || '16:9',
+        resolution: this.apiConfig.imageResolution || '1536x864',
+        quality: this.apiConfig.imageQuality || 'auto',
+        style_prompt: this.apiConfig.imageStylePrompt || '',
+        refine_prompt: this.apiConfig.imageRefinePrompt || '',
+        timeout: this.apiConfig.imageTimeout || 60
+      };
+      // 生图API密钥
+      if (this.apiConfig.clearExistingImageKey) {
+        obj.api_key = '';
+      } else if (this.apiConfig.imageApiKey && this.apiConfig.imageApiKey.trim() !== '') {
+        obj.api_key = this.apiConfig.imageApiKey;
+      }
+      // 独立AI配置
+      if (this.apiConfig.imageMode === 'dedicated') {
+        obj.dedicated_llm = {
+          model: this.apiConfig.imageLlmModel,
+          api_url: this.apiConfig.imageLlmUrl,
+          interface_type: this.apiConfig.imageLlmType === 'custom' ? this.normalizeCustomInterfaceType(this.apiConfig.imageLlmInterfaceType) : this.apiConfig.imageLlmType,
+          original_type: this.apiConfig.imageLlmType,
+          timeout: this.apiConfig.imageLlmTimeout || 30
+        };
+        if (this.apiConfig.clearExistingImageLlmKey) {
+          obj.dedicated_llm.api_key = '';
+        } else if (this.apiConfig.imageLlmApiKey && this.apiConfig.imageLlmApiKey.trim() !== '') {
+          obj.dedicated_llm.api_key = this.apiConfig.imageLlmApiKey;
+        }
+      }
+      return obj;
+    },
+
     async testGlobalAi() {
       // 先清空之前的错误（在验证之前）
       this.testGlobalAiError = null;
@@ -3766,6 +4483,28 @@ Vue.js features reactive data binding and a component-based architecture, enabli
   max-width: 200px;
 }
 
+.resolution-input {
+  width: 100%;
+  max-width: 240px;
+}
+
+.resolution-presets {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.resolution-presets .presets-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.resolution-presets .preset-tag {
+  cursor: pointer;
+}
+
 .number-input {
   width: 180px;
 }
@@ -3936,6 +4675,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
 .dialog-title-custom .title-text {
   font-size: 18px;
   font-weight: 600;
+  color: #303133;
 }
 
 /* TOON提示 */
@@ -4041,6 +4781,36 @@ Vue.js features reactive data binding and a component-based architecture, enabli
   margin-right: 4px;
 }
 
+/* 生图预览 */
+.image-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.image-preview {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.image-preview .el-image__inner {
+  max-height: 400px;
+  border-radius: 8px;
+}
+
+.image-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 /* 对话框底部 */
 .dialog-footer {
   padding: 16px 24px;
@@ -4064,7 +4834,8 @@ Vue.js features reactive data binding and a component-based architecture, enabli
   border-bottom: 1px solid #404040;
 }
 
-.dark-mode .test-dialog .el-dialog__title {
+.dark-mode .test-dialog .el-dialog__title,
+.dark-mode .dialog-title-custom .title-text {
   color: #e4e4e4;
 }
 

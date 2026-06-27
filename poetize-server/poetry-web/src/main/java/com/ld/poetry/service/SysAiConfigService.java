@@ -64,6 +64,19 @@ public interface SysAiConfigService {
     SysAiConfig getArticleAiConfigInternal(String configName);
 
     /**
+     * 为生图测试回填已保存的密钥。
+     *
+     * <p>前端加载已保存配置后 api_key 字段为空，提交测试时不会携带该字段。
+     * 此方法当 incomingImageConfig 中 api_key 或 dedicated_llm.api_key 缺失/为 {@code ***} 占位时，
+     * 从已保存配置中解密回填真实密钥，保留其它字段的当前值（不整体覆盖）。
+     *
+     * @param incomingImageConfig 前端提交的生图配置 JSON
+     * @param configName          配置名称
+     * @return 合并后的生图配置 JSON（密钥已回填则更新，否则原样返回）
+     */
+    String resolveImageConfigSecretsForTest(String incomingImageConfig, String configName);
+
+    /**
      * 获取AI API配置
      *
      * @param configName 配置名称

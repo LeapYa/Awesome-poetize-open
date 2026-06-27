@@ -5,6 +5,7 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.controller.dto.RagPreviewRequest;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.ai.AiImageService;
 import com.ld.poetry.service.ai.rag.RagSyncService;
 import com.ld.poetry.utils.DockerNetworkUtil;
 import com.ld.poetry.utils.PoetryUtil;
@@ -38,6 +39,7 @@ public class SysAiConfigController {
 
     private final SysAiConfigService sysAiConfigService;
     private final RagSyncService ragSyncService;
+    private final AiImageService aiImageService;
 
     // ========== AI聊天配置接口 ==========
 
@@ -368,9 +370,44 @@ public class SysAiConfigController {
         try {
             Map<String, Object> result = sysAiConfigService.testConnection(config);
             return PoetryResult.success(result);
-            
+
         } catch (Exception e) {
             log.error("测试文章AI助手连接失败: {}", e.getMessage(), e);
+            return PoetryResult.fail("测试失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 测试 AI 生图连接。
+     *
+     * <p>请求体为完整的 {@link SysAiConfig}，其中 {@code imageConfig} 字段需包含完整 JSON。
+     * 若 {@code api_key} 缺失或为 {@code ***} 脱敏占位（前端加载已保存配置后未重新输入密钥的常见情况），
+     * 则自动从已保存配置中回填真实密钥后再测试，仅合并密钥字段，保留其它字段当前值。
+     *
+     * <p>可选参数 {@code title} / {@code content}：传入后走完整生图流程（含 LLM prompt 提炼），
+     * 用于评估模型对真实文章内容的生图效果；两者均为空时使用固定测试 prompt。
+     *
+     * @param config  完整 AI 配置（请求体）
+     * @param title   测试文章标题（可选）
+     * @param content 测试文章正文（可选，HTML/Markdown 均可）
+     */
+    @PostMapping("/articleAi/testImage")
+    @LoginCheck(0)
+    public PoetryResult<Map<String, Object>> testImageGeneration(
+            @RequestBody SysAiConfig config,
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "content", required = false) String content) {
+        try {
+            // 前端加载已保存配置后 api_key 为空、提交测试时不会携带该字段；
+            // 此处从已保存配置回填真实密钥（仅合并 api_key 与 dedicated_llm.api_key，保留其它字段当前值）
+            config.setImageConfig(sysAiConfigService.resolveImageConfigSecretsForTest(
+                    config.getImageConfig(),
+                    config.getConfigName() != null ? config.getConfigName() : "default"));
+
+            Map<String, Object> result = aiImageService.testImageGeneration(config, title, content);
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("测试AI生图连接失败: {}", e.getMessage(), e);
             return PoetryResult.fail("测试失败: " + e.getMessage());
         }
     }

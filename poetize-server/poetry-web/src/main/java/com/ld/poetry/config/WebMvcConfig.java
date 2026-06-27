@@ -15,6 +15,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.io.File;
+
 import java.io.IOException;
 
 @Slf4j
@@ -87,15 +89,24 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         // 只处理用户上传的文件资源，不处理前端静态资源
-        // 确保路径以 file: 开头并以 / 结尾
+        // ResourceHandlerRegistry 的 file: 位置需要绝对路径，相对路径会被误解析。
+        // 这里统一转换为绝对 URI，确保 Windows / Linux 下相对路径配置都能工作。
         String location = uploadUrl;
-        if (!location.startsWith("file:")) {
-            location = "file:" + location;
+        if (location.startsWith("file:")) {
+            location = location.substring("file:".length());
         }
+        File locationFile = new File(location);
+        if (!locationFile.isAbsolute()) {
+            locationFile = locationFile.getAbsoluteFile();
+            log.info("local.uploadUrl 为相对路径，已解析为绝对路径: {} -> {}",
+                    uploadUrl, locationFile.getAbsolutePath());
+        }
+        // toURI().toString() 会生成合法的 file:/... URL（跨平台用 /）
+        location = locationFile.toURI().toString();
         if (!location.endsWith("/")) {
             location = location + "/";
         }
-        
+
         log.info("配置静态资源映射: /static/** -> {}", location);
         registry.addResourceHandler("/static/**")
                 .addResourceLocations(location)

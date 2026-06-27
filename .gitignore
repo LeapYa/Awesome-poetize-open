@@ -39,8 +39,12 @@ build/
 ### Codex / AI tooling ###
 .agents/
 .github/prompts/
+.trae/
 poetize-admin/diff.txt
 poetize-server/poetry-web/.m2/
+
+# AI 生成的封面图（用户生成内容，不提交）
+poetize-server/poetry-web/static/ai_covers/
 
 ### History ###
 .history/

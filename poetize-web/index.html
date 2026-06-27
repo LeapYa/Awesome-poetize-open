@@ -65,12 +65,15 @@
             '-webkit-filter: none !important; ' +
             'filter: none !important; ' +
           '}' +
-          '@media (prefers-color-scheme: dark) {' +
-            'html:not(.dark-mode), html:not(.dark-mode) body {' +
-              'background-color: #fff !important;' +
-              'color: #333 !important;' +
-            '}' +
-          '}';
+            '@media (prefers-color-scheme: dark) {' +
+              'html:not(.dark-mode) {' +
+                'background-color: #fff !important;' +
+                'color: #333 !important;' +
+              '}' +
+              'html:not(.dark-mode) body {' +
+                'background-color: transparent !important;' +
+              '}' +
+            '}';
         
         if (document.head) {
           document.head.insertBefore(style, document.head.firstChild);

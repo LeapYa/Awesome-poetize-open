@@ -28,7 +28,7 @@
     </div>
 
     <!-- 评论内容 -->
-    <div v-if="comments.length > 0">
+    <div v-if="comments.length > 0" id="comment-content">
       <!-- 评论数量 -->
       <div class="commentInfo-title">
         <span style="font-size: 1.15rem">Comments | </span>
@@ -36,8 +36,8 @@
       </div>
       <!-- 评论详情 -->
       <div
-        id="comment-content"
-        class="commentInfo-detail"
+        :id="'comment-item-' + item.id"
+        class="commentInfo-detail comment-item-wrapper"
         v-for="(item, index) in comments"
         :key="index"
       >
@@ -107,9 +107,9 @@
           <div v-if="item.childComments && item.childComments.total > 0">
             <!-- 子评论列表 -->
             <div
-              v-if="
-                getDisplayReplies(item).length > 0
-              "
+              v-if="getDisplayReplies(item).length > 0"
+              :id="'replies-container-' + item.id"
+              class="replies-container"
             >
               <div
                 class="commentInfo-detail"
@@ -207,7 +207,7 @@
               </div>
 
               <!-- 折叠回复按钮 -->
-              <div class="pagination-wrap" v-if="item.expanded && !item.hasMoreReplies">
+              <div class="pagination-wrap" v-if="item.expanded && !item.hasMoreReplies && !item.collapsing">
                 <div
                   class="collapse-replies-btn"
                   @click="collapseReplies(item)"
@@ -1043,9 +1043,79 @@ export default {
      * @param {Object} comment - 主评论对象
      */
     collapseReplies(comment) {
-      comment['expanded'] = false
-      comment['collapsedByUser'] = true
-      this.$forceUpdate()
+      if (comment.collapsing) return
+      comment.collapsing = true
+
+      const repliesEl = document.getElementById(`replies-container-${comment.id}`)
+      const commentEl = document.getElementById(`comment-item-${comment.id}`)
+
+      if (repliesEl && commentEl) {
+        const headerOffset = 80
+        
+        // 临时关闭全局平滑滚动
+        const htmlEl = document.documentElement
+        const originalScrollBehavior = window.getComputedStyle(htmlEl).scrollBehavior
+        if (originalScrollBehavior === 'smooth') {
+          htmlEl.style.scrollBehavior = 'auto'
+        }
+
+        // 使用 requestAnimationFrame 锁定滚动位置，抵消浏览器的 scroll anchoring 调整
+        const keepScrollLocked = () => {
+          if (!comment.collapsing) return
+          
+          const elementPosition = commentEl.getBoundingClientRect().top
+          const targetScrollTop = elementPosition + window.pageYOffset - headerOffset
+          
+          window.scrollTo({
+            top: targetScrollTop,
+            behavior: 'auto'
+          })
+          
+          requestAnimationFrame(keepScrollLocked)
+        }
+        
+        // 启动滚动锁定
+        requestAnimationFrame(keepScrollLocked)
+
+        // 2. 测量当前高度并固定，为过渡动画做准备
+        const currentHeight = repliesEl.scrollHeight
+        repliesEl.style.height = `${currentHeight}px`
+
+        // 强制重绘
+        repliesEl.offsetHeight
+
+        // 3. 平滑收缩高度至 0
+        repliesEl.style.transition = 'height 300ms cubic-bezier(0.4, 0, 0.2, 1)'
+        repliesEl.style.height = '0px'
+
+        setTimeout(() => {
+          // 修改状态，Vue 将在下一个 tick 更新 DOM 并移除 replies-container
+          comment['expanded'] = false
+          comment['collapsedByUser'] = true
+
+          // 在 DOM 卸载和布局整理期间，继续保持 RAF 滚动锁定 150ms
+          setTimeout(() => {
+            // 停止滚动锁定 loop
+            comment.collapsing = false
+
+            // 再次在下一个渲染帧恢复 smooth 滚动，确保浏览器滚动彻底稳定
+            requestAnimationFrame(() => {
+              setTimeout(() => {
+                if (originalScrollBehavior === 'smooth') {
+                  htmlEl.style.scrollBehavior = ''
+                }
+              }, 100)
+            })
+          }, 150)
+
+          this.$forceUpdate()
+        }, 300)
+      } else {
+        comment['expanded'] = false
+        comment['collapsedByUser'] = true
+        comment.collapsing = false
+        this.$forceUpdate()
+      }
     },
 
     /**
@@ -1786,9 +1856,10 @@ export default {
   color: var(--greyFont);
   user-select: none;
 }
-#comment-content {
+.comment-item-wrapper {
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
+  overflow-anchor: none;
 }
 .commentInfo-detail {
   display: flex;
@@ -2079,5 +2150,9 @@ export default {
 .ai-reply-icon {
   width: 14px;
   height: 14px;
+}
+.replies-container {
+  overflow: hidden;
+  overflow-anchor: none;
 }
 </style>

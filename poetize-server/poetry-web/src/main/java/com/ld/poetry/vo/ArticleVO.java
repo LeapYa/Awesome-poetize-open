@@ -103,6 +103,9 @@ public class ArticleVO {
     private String pendingTranslationContent; // 暂存翻译内容
     private String pendingTranslationLanguage; // 暂存翻译语言
 
+    // 保存文章时的封面控制参数
+    private Boolean autoGenerateCover; // 是否在保存时自动生成 AI 封面（仅当 articleCover 为空时生效）
+
     // 文章主题配置（合并到文章接口，避免额外请求导致样式闪烁）
     private String articleThemeConfig; // JSON 字符串，来自激活的 article_theme 插件的 pluginConfig
 

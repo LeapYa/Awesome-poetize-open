@@ -781,6 +781,7 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   `llm_config` json DEFAULT NULL COMMENT 'LLM配置 {model, api_url, api_key, prompt, interface_type, timeout}',
   `translation_llm_config` json DEFAULT NULL COMMENT '翻译独立AI配置 {model, api_url, api_key, prompt, interface_type, timeout}',
   `summary_config` json DEFAULT NULL COMMENT '摘要生成配置 {summaryMode, style, max_length, prompt, dedicated_llm}',
+  `image_config` TEXT NULL COMMENT 'AI生图功能配置JSON：{imageMode, provider, model, api_url, api_key, size(宽高比), resolution(像素), quality, style_prompt, refine_prompt, timeout, dedicated_llm?}',
   `extra_config` json DEFAULT NULL COMMENT '其他扩展配置(JSON格式)',
   
   -- ========== 元数据字段 ==========
@@ -861,7 +862,7 @@ INSERT INTO `sys_ai_config` (
 INSERT INTO `sys_ai_config` (
   `config_type`, `config_name`, `enabled`,
   `translation_type`, `default_source_lang`, `default_target_lang`,
-  `llm_config`, `summary_config`,
+  `llm_config`, `summary_config`, `image_config`,
   `remark`
 ) VALUES (
   'article_ai', 'default', 0,
@@ -879,6 +880,19 @@ INSERT INTO `sys_ai_config` (
     'style', 'concise',
     'max_length', 150,
     'prompt', '请为以下{source_lang}文章生成多语言摘要，要求：\n1. 生成语言：{languages}\n2. 风格：{style_desc}\n3. 每个语言的摘要长度控制在{max_length}字符以内\n4. 保持TOON格式结构不变（2个空格缩进）\n5. 只返回TOON格式数据，不添加任何解释或markdown代码块标记\n6. 注意：为每个目标语言生成该语言的摘要（如需要英文摘要，则生成英文；如需要日文摘要，则生成日文）\n\n文章内容：\n\n{source_content}\n\n请返回TOON格式的摘要，格式如下：\n{toon_example}'
+  ),
+  JSON_OBJECT(
+    'imageMode', 'disabled',
+    'provider', 'siliconflow',
+    'model', 'Qwen/Qwen-Image',
+    'api_url', 'https://api.siliconflow.cn/v1/images/generations',
+    'api_key', '',
+    'size', '16:9',
+    'resolution', '1536x864',
+    'quality', 'auto',
+    'style_prompt', '高质量、艺术感强、构图简洁、色彩协调',
+    'refine_prompt', '你是一名 AI 生图 prompt 工程师。根据文章内容生成英文生图 prompt。\n\n要求：\n- 提炼文章的核心视觉意象，不要直译标题\n- 以主体开头，包含场景、光影和风格\n- 不超过 60 词，逗号分隔\n- 直接输出 prompt，不要解释或前缀',
+    'timeout', 60
   ),
   '文章AI助手配置默认值'
 ) ON DUPLICATE KEY UPDATE id=id;

@@ -9,6 +9,7 @@ export const DRAFT_META_FIELDS = [
   'password',
   'tips',
   'articleCover',
+  'autoGenerateCover',
   'videoUrl',
   'sortId',
   'labelId',

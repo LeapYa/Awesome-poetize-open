@@ -347,7 +347,12 @@ public class SysPluginController {
             SysPlugin maxSortPlugin = sysPluginService.getOne(queryWrapper);
             plugin.setSortOrder(maxSortPlugin != null ? maxSortPlugin.getSortOrder() + 1 : 0);
         }
-        
+
+        // manifest 列为 MariaDB JSON 类型，空字符串会触发 JSON_VALID 约束失败，统一归一化为 null
+        if (!StringUtils.hasText(plugin.getManifest())) {
+            plugin.setManifest(null);
+        }
+
         boolean success = sysPluginService.save(plugin);
         if (success) {
             log.info("新增插件成功: type={}, key={}, name={}", plugin.getPluginType(), plugin.getPluginKey(), plugin.getPluginName());
@@ -380,7 +385,12 @@ public class SysPluginController {
         plugin.setPluginType(existing.getPluginType()); // 不允许修改类型
         plugin.setIsSystem(existing.getIsSystem()); // 保持系统插件标识不变
         plugin.setUpdateTime(LocalDateTime.now());
-        
+
+        // manifest 列为 MariaDB JSON 类型，空字符串会触发 JSON_VALID 约束失败，统一归一化为 null
+        if (!StringUtils.hasText(plugin.getManifest())) {
+            plugin.setManifest(null);
+        }
+
         boolean success = sysPluginService.updateById(plugin);
         if (success) {
             log.info("更新插件成功: id={}, name={}", plugin.getId(), plugin.getPluginName());
