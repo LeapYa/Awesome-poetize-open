@@ -243,7 +243,7 @@
 </template>
 
 <script>
-import { computed, onMounted, nextTick, ref } from 'vue'
+import { computed, onMounted, onUnmounted, nextTick, ref } from 'vue'
 import { useAIChatStore } from '@/stores/aiChat'
 import { useLive2DStore } from '@/stores/live2d'
 import MarkdownRenderer from './MarkdownRenderer.vue'
@@ -350,7 +350,11 @@ export default {
     const formatToolEventLabel = (segment) => {
       const toolName = segment.tool || '未知工具'
       if (segment.status === 'executing') {
-        return `正在调用 ${toolName}`
+        let label = `正在调用 ${toolName}`
+        if (segment.queueInfo && segment.queueInfo.queueSize > 0) {
+          label += `（排队 ${segment.queueInfo.queueSize} 人，预计 ${segment.queueInfo.maxEstimatedWaitSec}s）`
+        }
+        return label
       }
       if (segment.status === 'failed') {
         return `${toolName} 调用失败`
@@ -395,6 +399,11 @@ export default {
           emit('rendered')
         })
       }
+    })
+
+    onUnmounted(() => {
+      // 组件销毁时停止 Jina 排队轮询，防止 interval/setTimeout 泄漏
+      aiChatStore.stopJinaQueuePolling()
     })
 
     const messageClass = computed(() => ({

@@ -782,6 +782,10 @@ export default {
           memoryAutoSave: true,
           memoryAutoRecall: true,
           memoryRecallLimit: 5,
+          // Web Fetch 工具配置：enableWebFetch 三态（null=继承 enableTools / 0=关闭 / 1=开启）
+          enableWebFetch: null,
+          enableJinaReader: true,
+          jinaApiKey: '',
           rag: {
             enabled: false,
             indexName: 'poetize_ai_chat',
@@ -1487,6 +1491,10 @@ export default {
             memoryAutoSave: config.memoryAutoSave !== false && config.memoryAutosave !== false,
             memoryAutoRecall: config.memoryAutoRecall !== false && config.memoryAutorecall !== false,
             memoryRecallLimit: config.memoryRecallLimit || 5,
+            // Web Fetch 工具配置：enableWebFetch 三态（null=继承 / 0=关闭 / 1=开启）
+            enableWebFetch: config.enableWebFetch === null || config.enableWebFetch === undefined ? null : (config.enableWebFetch ? 1 : 0),
+            enableJinaReader: config.enableJinaReader === true || config.enableJinaReader === 1,
+            jinaApiKey: config.jinaApiKey || '',
             rag: {
               enabled: rag.enabled || false,
               indexName: rag.indexName || 'poetize_ai_chat',
@@ -1557,6 +1565,9 @@ export default {
           memoryAutoSave: this.aiConfigs.toolsConfig.memoryAutoSave,
           memoryAutoRecall: this.aiConfigs.toolsConfig.memoryAutoRecall,
           memoryRecallLimit: this.aiConfigs.toolsConfig.memoryRecallLimit,
+          // Web Fetch 工具配置
+          enableWebFetch: this.aiConfigs.toolsConfig.enableWebFetch,
+          enableJinaReader: this.aiConfigs.toolsConfig.enableJinaReader === true ? 1 : 0,
           // 视觉模型配置（图像识别）
           visionSupported: this.aiConfigs.visionConfig.visionSupported === true,
           visionProvider: this.aiConfigs.visionConfig.visionProvider || '',
@@ -1588,6 +1599,10 @@ export default {
         }
         if (this.aiConfigs.visionConfig.visionApiKey && !this.aiConfigs.visionConfig.visionApiKey.includes('*')) {
           saveData.visionApiKey = this.aiConfigs.visionConfig.visionApiKey;
+        }
+        // Jina API Key 仅当未带掩码星号时回填（保存后后端会返回掩码版）
+        if (this.aiConfigs.toolsConfig.jinaApiKey && !this.aiConfigs.toolsConfig.jinaApiKey.includes('*')) {
+          saveData.jinaApiKey = this.aiConfigs.toolsConfig.jinaApiKey;
         }
         if (this.aiConfigs.toolsConfig.rag.embeddingApiKey && !this.aiConfigs.toolsConfig.rag.embeddingApiKey.includes('*')) {
           const extraConfig = JSON.parse(saveData.extraConfig);

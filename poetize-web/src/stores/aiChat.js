@@ -144,6 +144,8 @@ export const useAIChatStore = defineStore('aiChat', {
     attachedPageContext: null,
     attachedImages: [],
     attachedDocuments: [],
+    // Jina Reader 排队轮询 interval ID
+    jinaQueuePolling: null,
   }),
 
   getters: {
@@ -538,6 +540,7 @@ export const useAIChatStore = defineStore('aiChat', {
           error: '',
           status: toolEvent.status || 'executing',
           startedAt: Date.now(),
+          queueInfo: null,
         })
       } else {
         const target = [...message.segments]
@@ -602,6 +605,102 @@ export const useAIChatStore = defineStore('aiChat', {
       const remaining = minimumDuration - (Date.now() - toolSegment.startedAt)
       if (remaining > 0) {
         await new Promise((resolve) => setTimeout(resolve, remaining))
+      }
+    },
+
+    /**
+     * 判断是否为网页访问工具（支持 camelCase 和 snake_case 命名）。
+     */
+    isWebFetchTool(toolName) {
+      if (!toolName) return false
+      const lower = toolName.toLowerCase()
+      return lower === 'fetchwebpage' || lower === 'fetch_web_page'
+    },
+
+    /**
+     * 启动 Jina Reader 排队状态轮询。
+     * 在 fetchWebPage 工具执行期间，每 2 秒查询一次队列状态，
+     * 若有排队则更新工具 segment 的 queueInfo 供 UI 展示。
+     */
+    startJinaQueuePolling(messageId) {
+      this.stopJinaQueuePolling()
+
+      // 使用 session 对象作为取消令牌，避免 setTimeout 重叠和旧轮询泄漏
+      const session = { active: true, timeoutId: null }
+      this.jinaQueuePolling = session
+
+      const poll = async () => {
+        if (!session.active) return
+        try {
+          const resp = await fetch(
+            `${constant.baseURL}/ai/jina-queue/status`,
+            { method: 'GET', credentials: 'include' }
+          )
+          if (!resp.ok) return
+          const json = await resp.json()
+          if (!json.success || !json.data) return
+
+          const data = json.data
+          if (!data.queueActive) {
+            this.stopJinaQueuePolling()
+            return
+          }
+
+          // 队列有排队请求，更新工具 segment
+          const message = this.messages.find((m) => m.id === messageId)
+          if (!message) {
+            this.stopJinaQueuePolling()
+            return
+          }
+
+          const segment = message.segments
+            ?.slice()
+            .reverse()
+            .find(
+              (s) =>
+                s.type === 'tool' &&
+                this.isWebFetchTool(s.tool) &&
+                s.status === 'executing'
+            )
+
+          if (!segment) {
+            this.stopJinaQueuePolling()
+            return
+          }
+
+          // 估算排队位置：队列中最后一条最可能是当前请求（后入队者排后面）
+          const entries = data.entries || []
+          const queueSize = data.queueSize || entries.length
+          const maxWaitMs = data.maxEstimatedWaitMs || 0
+
+          segment.queueInfo = {
+            queueSize,
+            maxEstimatedWaitMs: maxWaitMs,
+            maxEstimatedWaitSec: Math.ceil(maxWaitMs / 1000),
+          }
+        } catch (e) {
+          // 轮询失败静默忽略，不打断聊天
+        }
+        if (session.active) {
+          session.timeoutId = setTimeout(poll, 2000)
+        }
+      }
+
+      // 立即执行一次
+      poll()
+    },
+
+    /**
+     * 停止 Jina Reader 排队状态轮询。
+     */
+    stopJinaQueuePolling() {
+      const session = this.jinaQueuePolling
+      if (session) {
+        session.active = false
+        if (session.timeoutId) {
+          clearTimeout(session.timeoutId)
+        }
+        this.jinaQueuePolling = null
       }
     },
 
@@ -1386,12 +1485,17 @@ export const useAIChatStore = defineStore('aiChat', {
                     firstChunkReceived = true
                   }
 
+                  const toolName = toolData.tool || '未知工具'
                   this.addOrUpdateToolEvent(aiMessage.id, {
                     type: 'call',
-                    tool: toolData.tool || '未知工具',
+                    tool: toolName,
                     arguments: toolData.arguments ?? null,
                     status: toolData.status || 'executing',
                   })
+                  // 网页访问工具执行期间启动 Jina 排队状态轮询
+                  if (this.isWebFetchTool(toolName)) {
+                    this.startJinaQueuePolling(aiMessage.id)
+                  }
                   await this.flushStreamingToolState()
                   continue
                 }
@@ -1419,6 +1523,11 @@ export const useAIChatStore = defineStore('aiChat', {
                       streaming: true,
                     })
                     firstChunkReceived = true
+                  }
+
+                  // 网页访问工具完成时停止 Jina 排队轮询
+                  if (this.isWebFetchTool(toolData.tool)) {
+                    this.stopJinaQueuePolling()
                   }
 
                   await this.ensureToolIndicatorVisible(
@@ -1533,6 +1642,7 @@ export const useAIChatStore = defineStore('aiChat', {
 
         this.streaming = false
         this.typing = false
+        this.stopJinaQueuePolling()
 
         // cacheMiss 重试：服务端告知 baseHistoryHash 已失效，清空 hash 并用完整历史重试一次
         // 流式未产生任何内容（aiMessage 可能为 null 或为空），直接重入不会出现重复消息
@@ -1577,6 +1687,7 @@ export const useAIChatStore = defineStore('aiChat', {
       } catch (error) {
         this.typing = false
         this.streaming = false
+        this.stopJinaQueuePolling()
 
         if (error.name === 'AbortError' || this.shouldStop) {
           return {
@@ -2240,6 +2351,7 @@ export const useAIChatStore = defineStore('aiChat', {
       }
       this.typing = false
       this.streaming = false
+      this.stopJinaQueuePolling()
     },
   },
 })

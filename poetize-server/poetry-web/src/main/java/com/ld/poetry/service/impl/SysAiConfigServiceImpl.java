@@ -738,6 +738,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             config.setVisionApiKey(encrypted);
         }
 
+        // 加密 Jina Reader API Key（与 apiKey/visionApiKey 同套 AES 加密）
+        if (StringUtils.hasText(config.getJinaApiKey())) {
+            String encrypted = aesCryptoUtil.encrypt(config.getJinaApiKey());
+            config.setJinaApiKey(encrypted);
+        }
+
         // 加密JSON字段中的敏感信息
         encryptJsonFields(config);
     }
@@ -872,6 +878,14 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             String decrypted = aesCryptoUtil.decrypt(config.getVisionApiKey());
             if (decrypted != null) {
                 config.setVisionApiKey(aesCryptoUtil.mask(decrypted));
+            }
+        }
+
+        // 解密并脱敏 Jina Reader API Key
+        if (StringUtils.hasText(config.getJinaApiKey())) {
+            String decrypted = aesCryptoUtil.decrypt(config.getJinaApiKey());
+            if (decrypted != null) {
+                config.setJinaApiKey(aesCryptoUtil.mask(decrypted));
             }
         }
 
@@ -1027,6 +1041,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             if (StringUtils.hasText(config.getVisionApiKey())) {
                 String decrypted = aesCryptoUtil.decrypt(config.getVisionApiKey());
                 config.setVisionApiKey(decrypted);
+            }
+
+            // 解密 Jina Reader API Key（不脱敏，供 WebFetchTools 内部调用使用）
+            if (StringUtils.hasText(config.getJinaApiKey())) {
+                String decrypted = aesCryptoUtil.decrypt(config.getJinaApiKey());
+                config.setJinaApiKey(decrypted);
             }
 
             // 解密JSON字段（不脱敏，供Python服务使用）

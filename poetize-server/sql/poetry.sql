@@ -753,6 +753,9 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   `enable_thinking` tinyint(1) DEFAULT 0 COMMENT '启用思考模式 (0:否 1:是)',
   `reasoning_effort` varchar(20) DEFAULT NULL COMMENT '思考程度 (low/medium/high/xhigh)',
   `enable_tools` tinyint(1) DEFAULT 1 COMMENT '启用MCP工具 (0:否 1:是)',
+  `enable_web_fetch` tinyint(1) DEFAULT NULL COMMENT 'AI 网页访问工具开关 NULL=继承enable_tools 0=关闭 1=开启',
+  `enable_jina_reader` tinyint(1) NOT NULL DEFAULT 1 COMMENT 'SPA fallback Jina Reader 开关 1=启用 0=关闭（默认开启，Fetcher Chain 第 6 层兜底）',
+  `jina_api_key` varchar(512) DEFAULT NULL COMMENT 'Jina Reader API Key（加密存储，留空使用免费 20 RPM 模式）',
 
   -- ========== 视觉模型配置（图像识别） ==========
   `vision_supported` tinyint(1) DEFAULT 0 COMMENT '主模型是否支持视觉(0:否 1:是)',
@@ -831,6 +834,7 @@ INSERT INTO `sys_ai_config` (
   `response_delay`, `enable_quick_actions`, `enable_chat_history`, `enable_streaming`,
   `rate_limit`, `max_message_length`, `require_login`, `enable_content_filter`,
   `custom_instructions`, `enable_thinking`, `reasoning_effort`, `enable_tools`,
+  `enable_web_fetch`, `enable_jina_reader`, `jina_api_key`,
   `enable_memory`, `mem0_api_key`, `memory_auto_save`, `memory_auto_recall`, `memory_recall_limit`,
   `remark`
 ) VALUES (
@@ -842,6 +846,7 @@ INSERT INTO `sys_ai_config` (
   1000, 1, 1, 0,
   20, 500, 1, 1,
   '', 0, NULL, 1,
+  NULL, 1, '',
   0, '', 1, 1, 3,
   'AI聊天默认配置'
 ) ON DUPLICATE KEY UPDATE id=id;

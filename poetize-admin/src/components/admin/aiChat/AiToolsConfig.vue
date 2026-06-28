@@ -408,6 +408,106 @@
         <el-button size="small" type="primary" @click="visionDialogVisible = false">完成</el-button>
       </div>
     </el-dialog>
+
+    <!-- 网页访问工具配置弹窗 -->
+    <el-dialog
+      title="配置网页访问 (Web Fetch)"
+      :visible.sync="webFetchDialogVisible"
+      width="560px"
+      custom-class="centered-dialog"
+      :close-on-click-modal="false"
+      append-to-body>
+
+      <el-form v-if="webFetchDialogVisible" label-width="140px" class="compact-form">
+        <div class="form-tip" style="margin-bottom: 12px; color: #909399;">
+          此工具允许 AI 按用户提供的具体 URL 抓取公开网页正文，经<strong>六层 Fetcher Chain</strong>流水线提取后阅读/总结。
+          <strong>前 5 层均为本地处理，零外部 SaaS 依赖</strong>；Jina 为可选兜底。
+          仅在用户明确要求阅读某个具体 URL 时调用，不主动抓取顺带提到的链接。
+        </div>
+
+        <div class="form-tip" style="margin-bottom: 12px; color: #67c23a; background: #f0f9eb; padding: 8px 12px; border-radius: 4px;">
+          <strong>Fetcher Chain 优先级：</strong>
+          <ol style="margin: 4px 0 0 18px; line-height: 1.6;">
+            <li>Readability4J 正文提取（Mozilla Readability 算法，本地）</li>
+            <li>JSON-LD articleBody（SEO 友好 SPA 站点的结构化数据，本地）</li>
+            <li>RSS/Atom Feed（覆盖 WordPress/Ghost/Hexo/Hugo/Typecho 等博客，本地）</li>
+            <li>llms.txt（AI 友好站点的内容索引文件，本地）</li>
+            <li>Archive.org 历史快照（死链/被封站点的兜底，本地 HTTP 调用）</li>
+            <li>Jina Reader SPA 渲染（<strong>默认开启</strong>，纯 CSR SPA 兜底，无 Key 时走 20 RPM 免费 + 排队）</li>
+          </ol>
+        </div>
+
+        <el-form-item id="field-ai-web-fetch-enable" label="网页访问开关">
+          <el-select
+            :value="localConfig.enableWebFetch"
+            @input="onEnableWebFetchChange"
+            placeholder="继承总开关"
+            size="small"
+            style="width: 180px;">
+            <el-option label="继承总开关 (默认)" :value="null"></el-option>
+            <el-option label="启用" :value="1"></el-option>
+            <el-option label="禁用" :value="0"></el-option>
+          </el-select>
+          <div class="form-tip">三态开关：继承=跟随 enableTools 总开关；启用/禁用=独立覆盖总开关。即使总开关开启，也可在此单独关闭网页抓取。</div>
+        </el-form-item>
+
+        <el-form-item id="field-ai-jina-reader-enable" label="Jina Reader fallback">
+          <el-switch
+            :value="localConfig.enableJinaReader"
+            @input="onEnableJinaReaderChange"
+            active-color="#13ce66"
+            inactive-color="#ff4949">
+          </el-switch>
+          <div class="form-tip">
+            默认开启。<strong>仅当 Fetcher Chain 前 5 层均失败时</strong>（纯 CSR SPA 且无 RSS/JSON-LD/llms.txt/历史快照）才会触发此兜底层，触发频率极低。
+            启用后对极少数极端场景的 SPA 站点调用 Jina Reader API 渲染并抓取正文。
+            <strong>无需 API Key 即可使用</strong>，免费 20 RPM 永久免费且不消耗 Token 额度。
+          </div>
+          <div class="form-tip" style="margin-top: 6px; color: #909399;">
+            <strong>计费说明（滑动窗口限流，严格保证 60 秒窗口内不超配额）：</strong>
+            <ul style="margin: 4px 0 0 18px; line-height: 1.6;">
+              <li>无 Key 模式：<strong>60 秒窗口内最多 20 次请求</strong>（20 RPM）。窗口未满时直接放行并记录时间戳；窗口满后<strong>自动入队排队</strong>，等最早请求滑出窗口后按 FIFO 顺序消费空缺席位。<strong>永久免费</strong>，超限时前端实时显示排队位置与预计等待</li>
+              <li>有 Key 模式：<strong>60 秒窗口内最多 500 次请求</strong>（500 RPM）。<strong>10M 免费 Token（一次性赠送，用完即止，不重置）</strong>，窗口满后同样<strong>自动排队</strong>。Token 用完后可付费充值（$0.05/M Token，Prototype tier）或退回无 Key 模式</li>
+            </ul>
+          </div>
+          <div class="form-tip" style="margin-top: 6px; color: #e6a23c;">
+            ⚠️ 隐私提示：Jina Reader 是第三方 SaaS 服务，启用后会将用户提供的 URL 发送给 Jina 处理。
+          </div>
+        </el-form-item>
+
+        <el-form-item id="field-ai-jina-api-key" label="Jina API Key" v-if="localConfig.enableJinaReader">
+          <el-input
+            v-model="localConfig.jinaApiKey"
+            type="password"
+            show-password
+            placeholder="可选 — 留空则使用免费 20 RPM 模式"
+            @input="onJinaApiKeyInput">
+          </el-input>
+          <div v-if="isJinaApiKeyMasked" class="form-tip" style="color: #67c23a;">
+            密钥已保存（出于安全考虑部分隐藏）
+            <el-button type="text" size="small" @click="showFullJinaApiKey" v-if="!showingFullJinaKey">重新输入密钥</el-button>
+          </div>
+          <div v-else class="form-tip">
+            <strong>可留空</strong> — 无 Key 时使用 20 RPM 免费模式（永久免费，不消耗 Token 额度）。
+            如需更高频率，可前往 <a href="https://jina.ai/" target="_blank" class="link-primary">jina.ai</a> 注册免费 Key（500 RPM + 10M Token 赠送）。
+          </div>
+        </el-form-item>
+
+        <el-form-item label="当前状态">
+          <div class="form-tip">
+            <span v-if="localConfig.enableWebFetch === 0" style="color: #f56c6c;">● 已禁用（独立覆盖总开关）</span>
+            <span v-else-if="localConfig.enableWebFetch === 1" style="color: #67c23a;">● 已启用（独立覆盖总开关）</span>
+            <span v-else style="color: #909399;">○ 继承总开关（enableTools 开启时生效）</span>
+            <span v-if="localConfig.enableJinaReader" style="color: #67c23a; margin-left: 12px;">● Jina fallback 已启用</span>
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <div slot="footer" class="dialog-footer">
+        <el-button size="small" @click="webFetchDialogVisible = false">关闭</el-button>
+        <el-button size="small" type="primary" @click="webFetchDialogVisible = false">完成</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -467,6 +567,9 @@ export default {
       visionConfig: this.normalizeVisionConfig(this.visionConfigProp),
       isVisionApiKeyMasked: false,
       showingFullVisionKey: false,
+      webFetchDialogVisible: false,
+      isJinaApiKeyMasked: false,
+      showingFullJinaKey: false,
       visionDefaultBaseUrls: {
         openai: 'https://api.openai.com/v1',
         anthropic: 'https://api.anthropic.com/v1/messages',
@@ -522,6 +625,14 @@ export default {
           svgIcon: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>',
           features: ['独立视觉模型', 'analyze_image 工具', 'Function Calling', '多模态识别'],
           configurable: true
+        },
+        {
+          id: 'web_fetch',
+          name: '网页访问 (Web Fetch)',
+          description: '允许 AI 按用户提供的具体 URL 抓取公开网页正文，经六层 Fetcher Chain（Readability + JSON-LD + RSS + llms.txt + Archive.org + Jina）提取后阅读/总结；前 5 层本地处理零 SaaS 依赖；超长文档支持分页续读。',
+          svgIcon: '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>',
+          features: ['六层 Fetcher Chain', '前 5 层零 SaaS 依赖', 'SSRF 防护 + DNS 重绑定防御', '语义边界分页', '质量验证回退', '独立开关'],
+          configurable: true
         }
       ]
     }
@@ -530,6 +641,7 @@ export default {
     value: {
       handler(val) {
         this.localConfig = this.normalizeConfig(val);
+        this.isJinaApiKeyMasked = !!(this.localConfig.jinaApiKey && this.localConfig.jinaApiKey.includes('*'));
       },
       deep: true
     },
@@ -564,6 +676,10 @@ export default {
         memoryAutoSave: config.memoryAutoSave !== false && config.memoryAutosave !== false,
         memoryAutoRecall: config.memoryAutoRecall !== false && config.memoryAutorecall !== false,
         memoryRecallLimit: config.memoryRecallLimit || 5,
+        // Web Fetch 工具配置：enableWebFetch 三态（null=继承 enableTools / 0=关闭 / 1=开启）
+        enableWebFetch: config.enableWebFetch === null || config.enableWebFetch === undefined ? null : (config.enableWebFetch ? 1 : 0),
+        enableJinaReader: config.enableJinaReader !== 0 && config.enableJinaReader !== false,
+        jinaApiKey: config.jinaApiKey || '',
         rag: {
           enabled: rag.enabled || false,
           indexName: rag.indexName || 'poetize_ai_chat',
@@ -611,6 +727,9 @@ export default {
       }
       if (id === 'ai_vision') {
         this.visionDialogVisible = true;
+      }
+      if (id === 'web_fetch') {
+        this.webFetchDialogVisible = true;
       }
     },
     refreshRagStatus() {
@@ -748,6 +867,41 @@ export default {
         visionApiBase: normalized.visionApiBase,
         visionModel: normalized.visionModel
       });
+    },
+    onJinaApiKeyInput() {
+      if (this.localConfig.jinaApiKey && !this.localConfig.jinaApiKey.includes('*')) {
+        this.isJinaApiKeyMasked = false;
+        this.showingFullJinaKey = false;
+      }
+      if (!this.localConfig.jinaApiKey) {
+        this.isJinaApiKeyMasked = false;
+        this.showingFullJinaKey = false;
+      }
+      this.emitChange();
+    },
+    showFullJinaApiKey() {
+      this.$confirm('要重新输入 Jina Reader API Key 吗？当前密钥将被清空。', '重新输入密钥', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }).then(() => {
+        this.isJinaApiKeyMasked = false;
+        this.showingFullJinaKey = false;
+        this.localConfig.jinaApiKey = '';
+        this.$message.info('请重新输入您的 Jina Reader API Key');
+        this.emitChange();
+      }).catch(() => {
+        // 用户取消操作
+      });
+    },
+    onEnableWebFetchChange(value) {
+      // el-select 三态切换：null（继承）/ 0（关闭）/ 1（开启）
+      this.localConfig.enableWebFetch = value;
+      this.emitChange();
+    },
+    onEnableJinaReaderChange(value) {
+      this.localConfig.enableJinaReader = value;
+      this.emitChange();
     }
   }
 }

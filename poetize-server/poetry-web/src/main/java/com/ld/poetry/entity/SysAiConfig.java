@@ -222,6 +222,36 @@ public class SysAiConfig implements Serializable {
      */
     private Boolean enableTools;
 
+    // ========== 网页访问工具（Web Fetch）配置 ==========
+
+    /**
+     * 启用网页访问工具 (NULL:继承 enable_tools / 0:关闭 / 1:开启)
+     * <p>
+     * 站长可单独关闭此工具而保留其他工具（计算器、搜索等）。
+     * NULL 视为继承 enable_tools，向后兼容。
+     */
+    @TableField("enable_web_fetch")
+    private Integer enableWebFetch;
+
+    /**
+     * 启用 Jina Reader SPA fallback (0:关闭 1:开启，默认 1)
+     * <p>
+     * Fetcher Chain 第 6 层兜底（前 5 层本地处理失败后触发，频率极低）。
+     * 无 API Key 时走免费 20 RPM 模式（永久免费，超限排队等待）。
+     * 用于处理纯 CSR Vue/React SPA 站点（HTML 中无正文，正文需 JS 执行后渲染）。
+     */
+    @TableField("enable_jina_reader")
+    private Integer enableJinaReader = 1;
+
+    /**
+     * Jina Reader API Key（加密存储）
+     * <p>
+     * 前往 https://jina.ai/ 获取。免费额度 10M tokens + 500 RPM。
+     * 启用后会将 URL 发送给 Jina SaaS 服务做 SPA 渲染。
+     */
+    @TableField("jina_api_key")
+    private String jinaApiKey;
+
     // ========== 视觉模型配置（图像识别） ==========
 
     /**

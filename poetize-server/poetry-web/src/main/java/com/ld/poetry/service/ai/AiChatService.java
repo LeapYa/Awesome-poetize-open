@@ -10,6 +10,7 @@ import com.ld.poetry.service.ai.tools.CommentTools;
 import com.ld.poetry.service.ai.tools.CalculatorTools;
 import com.ld.poetry.service.ai.tools.TimeTools;
 import com.ld.poetry.service.ai.tools.VisionTools;
+import com.ld.poetry.service.ai.tools.WebFetchTools;
 import com.ld.poetry.service.ai.rag.KnowledgeRetrievalService;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.RedisUtil;
@@ -116,6 +117,9 @@ public class AiChatService {
 
     @Autowired
     private com.ld.poetry.service.ai.tools.PageTools pageTools;
+
+    @Autowired
+    private WebFetchTools webFetchTools;
 
     @Autowired
     private com.ld.poetry.service.SysAuditLogService sysAuditLogService;
@@ -281,7 +285,7 @@ public class AiChatService {
             ChatOptions options = buildChatOptions(chatModel);
             // 构建工具规格 + ChatClient（ToolCallingAdvisor 驱动多轮 tool loop）
             ToolSpec toolSpec = buildToolSpec(enableTools, visionMode, null, resolvedConversationId,
-                    resolvedUserId, new AtomicBoolean(false), true, currentPage);
+                    resolvedUserId, new AtomicBoolean(false), true, currentPage, config);
             ChatClient chatClient = buildChatClient(chatModel, options, toolSpec, visionMode);
             // 工具调用记录器引用：供审计日志在调用结束后读取（同步 list，工具并行执行时线程安全）
             final List<Map<String, Object>> toolCalls = extractToolCallRecorder(toolSpec);
@@ -377,7 +381,7 @@ public class AiChatService {
             // 构建工具规格 + ChatClient（ToolCallingAdvisor 驱动多轮 tool loop）
             // 评论场景面向公开评论，不开放 Skill 管理工具；页面上下文已在评论上下文中注入，无需 currentPage
             ToolSpec toolSpec = buildToolSpec(enableTools, VisionMode.DISABLED, null, resolvedConversationId,
-                    resolvedUserId, new AtomicBoolean(false), false, null);
+                    resolvedUserId, new AtomicBoolean(false), false, null, config);
             ChatClient chatClient = buildChatClient(chatModel, options, toolSpec, VisionMode.DISABLED);
             final List<Map<String, Object>> toolCalls = extractToolCallRecorder(toolSpec);
 
@@ -514,7 +518,7 @@ public class AiChatService {
         ChatOptions options = buildChatOptions(chatModel);
         // 构建工具规格（工具回调 + 工具上下文）
         ToolSpec toolSpec = buildToolSpec(enableTools, visionMode, emitter, resolvedConversationId,
-                resolvedUserId, streamCancelled, true, currentPage);
+                resolvedUserId, streamCancelled, true, currentPage, config);
         // 构建带工具注册的 ChatClient，由 ToolCallingAdvisor 驱动多轮 tool loop
         ChatClient chatClient = buildChatClient(chatModel, options, toolSpec, visionMode);
         // 工具调用记录器引用：供 reactor 回调中的审计日志读取（同步 list，工具并行执行时线程安全）
@@ -1520,7 +1524,7 @@ public class AiChatService {
      */
     private ToolSpec buildToolSpec(boolean enableTools, VisionMode visionMode, SseEmitter emitter,
             String conversationId, String userId, AtomicBoolean streamCancelled,
-            boolean allowSkillManagement, Map<String, Object> currentPage) {
+            boolean allowSkillManagement, Map<String, Object> currentPage, SysAiConfig config) {
         // 仅注册视觉工具的场景：用户禁用了工具但配置了独立视觉模型（TOOL 模式）
         boolean visionToolsOnly = !enableTools && visionMode == VisionMode.TOOL;
         if (!enableTools && !visionToolsOnly) {
@@ -1530,6 +1534,10 @@ public class AiChatService {
         // 加载当前用户身份（用于身份感知与 Skill 管理权限判定）
         UserIdentity identity = loadCurrentUserIdentity();
 
+        // enableWebFetch 三态：NULL/1 → 继承 enableTools；0 → 显式关闭
+        boolean effectiveEnableWebFetch = config != null
+                && (config.getEnableWebFetch() == null || Integer.valueOf(1).equals(config.getEnableWebFetch()));
+
         List<ToolCallback> toolCallbacks = new ArrayList<>();
         if (visionToolsOnly) {
             // TOOL 模式且用户未启用工具：只注册视觉工具，避免违背用户禁用工具的意图
@@ -1538,6 +1546,12 @@ public class AiChatService {
             toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(
                     articleTools, timeTools, calculatorTools, commentTools, visionTools, memorySearchTool,
                     skillTools, pageTools)));
+            // WebFetch 工具按独立开关注册（NULL 视为继承 enableTools）。
+            // 评论场景同样不应注册此工具：评论触发外网抓取存在被滥用为盲打 SSRF 的风险，
+            // 与 SkillAdminTools 的隔离策略一致。
+            if (allowSkillManagement && effectiveEnableWebFetch) {
+                toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(webFetchTools)));
+            }
             // Skill 管理工具仅对站长/管理员开放，且仅在非评论场景（聊天/同步聊天）注册。
             // 评论场景（generateCommentReply）面向公开评论，即使是管理员触发也不应创建 Skill。
             if (allowSkillManagement && identity.admin()) {
@@ -1990,7 +2004,10 @@ public class AiChatService {
         // 工具说明增强
         if (includeToolInstructions) {
             sb.append("\n\nTOOLS AVAILABLE:\n");
-            sb.append(buildToolSummary(visionMode, identity.admin()));
+            // enableWebFetch 三态：NULL/1 → 继承 enableTools；0 → 显式关闭
+            boolean effectiveEnableWebFetch = config != null
+                    && (config.getEnableWebFetch() == null || Integer.valueOf(1).equals(config.getEnableWebFetch()));
+            sb.append(buildToolSummary(visionMode, identity.admin(), effectiveEnableWebFetch));
             String articleGuidance = buildArticleToolGuidance(ragContext, visionMode);
             sb.append("""
 
@@ -2142,7 +2159,7 @@ public class AiChatService {
                 """ + imageMarkerGuidance;
     }
 
-    private String buildToolSummary(VisionMode visionMode, boolean isAdmin) {
+    private String buildToolSummary(VisionMode visionMode, boolean isAdmin, boolean enableWebFetch) {
         List<String> lines = new ArrayList<>();
         lines.add("Built-in Articles:");
         lines.add("- searchArticles: 按关键词定位候选文章，主要用于导航，不是文章事实问答的默认路径");
@@ -2162,6 +2179,14 @@ public class AiChatService {
         lines.add("- calculate: 计算数学表达式，支持 + - * / % ^、括号、pi/e 和 sqrt/abs/round/floor/ceil/pow/max/min");
         lines.add("Built-in Page:");
         lines.add("- get_current_page: 获取用户当前浏览的页面内容（标题/类型/URL/正文）。当用户提到「当前页面」「这篇文章」「本页」「这个」「这里」等指代当前浏览内容，但消息中未附带页面内容时调用，避免凭空猜测；若返回「无可用页面上下文」则提示用户手动附加页面。");
+        if (enableWebFetch) {
+            lines.add("Built-in Web:");
+            lines.add("- fetch_web_page: 访问用户提供的具体公网 URL，经元数据预提取 + Readability 正文提取 + Jina Reader SPA fallback 三段式流水线后，以 Markdown 形式返回正文（每次约 32000 字符）");
+            lines.add("  调用时机: 仅当用户明确要求你阅读/总结/提取某个具体 URL 的内容时才调用。用户消息中顺带提到的 URL（如「我看了 https://... 挺好」）不要主动抓取；搜索结果列表中的多个链接不要批量抓取");
+            lines.add("  分页机制: 返回元信息中 Has-More=true 时，用 Next-Offset 再次调用续读。续读应尽快完成，缓存 TTL 5 分钟，过期需重新发起抓取");
+            lines.add("  质量警告: 返回元信息中若包含 WARNING 字段，应诚实告知用户提取质量可能不佳");
+            lines.add("  限制: 仅支持公开网页，不支持 PDF/图片正文、不支持内网地址；纯 CSR SPA 站点（如未启用 Jina fallback）只能拿到元数据");
+        }
         lines.add("Built-in Memory:");
         // 根据视觉模式动态生成 search_memory 工具说明
         if (visionMode == VisionMode.DISABLED) {
