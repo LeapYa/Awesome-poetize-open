@@ -71,6 +71,12 @@ public class HistoryInfo implements Serializable {
     private String pageUri;
 
     /**
+     * HTTP Referer 来源页地址(用于来源站点统计)
+     */
+    @TableField("referer")
+    private String referer;
+
+    /**
      * User-Agent
      */
     @TableField("user_agent")

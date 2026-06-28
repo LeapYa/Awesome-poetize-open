@@ -241,6 +241,7 @@ CREATE TABLE `poetize`.`history_info` (
   `province` varchar(64) DEFAULT NULL COMMENT '省份',
   `city` varchar(64) DEFAULT NULL COMMENT '城市',
   `page_uri` varchar(512) DEFAULT NULL COMMENT '页面URI',
+  `referer` varchar(512) DEFAULT NULL COMMENT 'Referer',
   `user_agent` varchar(512) DEFAULT NULL COMMENT 'User-Agent',
   `ua_type` varchar(32) DEFAULT NULL COMMENT 'User-Agent类型',
   `ua_name` varchar(128) DEFAULT NULL COMMENT 'User-Agent聚合名称',

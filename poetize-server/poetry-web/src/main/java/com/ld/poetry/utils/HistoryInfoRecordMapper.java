@@ -29,6 +29,7 @@ public final class HistoryInfoRecordMapper {
         historyInfo.setProvince(text(record.get("province")));
         historyInfo.setCity(text(record.get("city")));
         historyInfo.setPageUri(text(record.get("pageUri")));
+        historyInfo.setReferer(text(record.get("referer")));
         historyInfo.setUserAgent(text(record.get("userAgent")));
         historyInfo.setUaType(text(firstNonNull(record.get("uaType"), record.get("ua_type"))));
         historyInfo.setUaName(text(firstNonNull(record.get("uaName"), record.get("ua_name"))));

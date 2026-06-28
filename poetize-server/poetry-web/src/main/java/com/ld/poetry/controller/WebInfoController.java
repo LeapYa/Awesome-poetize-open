@@ -1377,6 +1377,174 @@ public class WebInfoController {
     }
 
     /**
+     * 获取访客来源站点统计
+     * <p>
+     * 按 Referer 的 host 聚合，referer 为空或站内跳转归为 Direct。
+     * 合并 DB 历史数据（排除今天）与 Redis 今日实时数据。
+     *
+     * @param days 查询天数(1-365)，默认7
+     */
+    @LoginCheck(0)
+    @GetMapping("/getReferrerStats")
+    public PoetryResult<Map<String, Object>> getReferrerStats(
+            @RequestParam(value = "days", defaultValue = "7") Integer days,
+            HttpServletRequest request) {
+        if (days == null || days <= 0) {
+            days = 7;
+        } else if (days > 365) {
+            days = 365;
+        }
+
+        try {
+            // 站点自身 host（去掉端口，用于识别站内跳转并归为 Direct）
+            String siteHost = resolveSiteHost(request);
+            List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
+
+            // 1. DB 历史数据（排除今天）
+            List<Map<String, Object>> dbStats = historyInfoMapper.getReferrerStatsExcludeToday(days, siteHost, ignoredIps);
+            if (dbStats == null) {
+                dbStats = new ArrayList<>();
+            }
+
+            // 2. Redis 今日实时数据，按 host 聚合
+            Map<String, long[]> todayAgg = aggregateTodayReferrerFromRedis(siteHost, ignoredIps);
+
+            // 3. 合并 DB + Redis
+            Map<String, long[]> merged = new LinkedHashMap<>();
+            for (Map<String, Object> row : dbStats) {
+                String host = row.get("referrer_host") != null ? row.get("referrer_host").toString() : "Direct";
+                long visits = toLong(row.get("visits"));
+                long unique = toLong(row.get("unique_visitors"));
+                long[] acc = merged.computeIfAbsent(host, k -> new long[]{0, 0});
+                acc[0] += visits;
+                acc[1] += unique;
+            }
+            for (Map.Entry<String, long[]> e : todayAgg.entrySet()) {
+                long[] acc = merged.computeIfAbsent(e.getKey(), k -> new long[]{0, 0});
+                acc[0] += e.getValue()[0];
+                acc[1] += e.getValue()[1];
+            }
+
+            // 4. 排序并计算占比
+            long totalVisits = merged.values().stream().mapToLong(a -> a[0]).sum();
+            List<Map<String, Object>> items = new ArrayList<>();
+            merged.entrySet().stream()
+                    .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                    .limit(30)
+                    .forEach(e -> {
+                        Map<String, Object> item = new HashMap<>();
+                        item.put("referrer_host", e.getKey());
+                        item.put("visits", e.getValue()[0]);
+                        item.put("unique_visitors", e.getValue()[1]);
+                        double pct = totalVisits > 0
+                                ? Math.round(e.getValue()[0] * 10000.0 / totalVisits) / 100.0
+                                : 0.0;
+                        item.put("percentage", pct);
+                        items.add(item);
+                    });
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("total_visits", totalVisits);
+            result.put("items", items);
+            return PoetryResult.success(result);
+
+        } catch (Exception e) {
+            log.error("获取访客来源统计失败", e);
+            return PoetryResult.fail("获取访客来源统计失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析站点自身 host（去掉端口，小写），用于识别站内跳转。
+     */
+    private String resolveSiteHost(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String host = request.getHeader("Host");
+        if (host == null || host.isEmpty()) {
+            return null;
+        }
+        int colon = host.indexOf(':');
+        if (colon >= 0) {
+            host = host.substring(0, colon);
+        }
+        return host.toLowerCase();
+    }
+
+    /**
+     * 从 Redis 当日访问记录聚合来源 host。
+     * 返回 Map: host -> [visits, unique_visitors]，站内跳转/空 referer 归为 Direct。
+     */
+    private Map<String, long[]> aggregateTodayReferrerFromRedis(String siteHost, List<String> ignoredIps) {
+        Map<String, long[]> agg = new HashMap<>();
+        Set<String> ignored = ignoredIps != null ? new HashSet<>(ignoredIps) : Collections.emptySet();
+        // 按 host 维护独立 IP 集合，与 SQL 的 COUNT(DISTINCT ip) GROUP BY referrer_host 语义一致
+        Map<String, Set<String>> uniqueIpsByHost = new HashMap<>();
+        try {
+            String todayKey = CacheConstants.DAILY_VISIT_RECORDS_PREFIX +
+                    java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            List<Object> todayRecords = redisTemplate.opsForList().range(todayKey, 0, -1);
+            if (todayRecords == null || todayRecords.isEmpty()) {
+                return agg;
+            }
+            for (Object record : todayRecords) {
+                try {
+                    Map<String, Object> visitRecord = JsonUtils.parseObject(record.toString(), Map.class);
+                    Object ipValue = visitRecord.get("ip");
+                    String ip = ipValue != null ? ipValue.toString() : "";
+                    if (ignored.contains(ip)) {
+                        continue;
+                    }
+                    String referer = visitRecord.get("referer") != null ? visitRecord.get("referer").toString() : null;
+                    String host = extractRefererHost(referer);
+                    if (host == null || (siteHost != null && host.equals(siteHost))) {
+                        host = "Direct";
+                    }
+                    long[] acc = agg.computeIfAbsent(host, k -> new long[]{0, 0});
+                    acc[0] += 1;
+                    if (uniqueIpsByHost.computeIfAbsent(host, k -> new HashSet<>()).add(ip)) {
+                        acc[1] += 1;
+                    }
+                } catch (Exception e) {
+                    log.warn("解析Redis访问记录(referer)失败: {}", record, e);
+                }
+            }
+        } catch (Exception e) {
+            log.error("从Redis聚合今日来源统计失败", e);
+        }
+        return agg;
+    }
+
+    /**
+     * 从 Referer 字符串提取 host（去协议、去端口、小写）。
+     */
+    private String extractRefererHost(String referer) {
+        if (referer == null || referer.isBlank()) {
+            return null;
+        }
+        try {
+            String s = referer.trim();
+            int schemeIdx = s.indexOf("://");
+            if (schemeIdx >= 0) {
+                s = s.substring(schemeIdx + 3);
+            }
+            int slash = s.indexOf('/');
+            if (slash >= 0) {
+                s = s.substring(0, slash);
+            }
+            int colon = s.indexOf(':');
+            if (colon >= 0) {
+                s = s.substring(0, colon);
+            }
+            s = s.trim();
+            return s.isEmpty() ? null : s.toLowerCase();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * 从Redis获取今天的访问统计
      */
     private Map<String, Object> getTodayVisitStatsFromRedis() {

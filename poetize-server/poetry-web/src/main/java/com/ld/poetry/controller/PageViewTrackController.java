@@ -45,7 +45,10 @@ public class PageViewTrackController {
         // 获取客户端 IP
         String clientIp = IpUtil.getClientPublicIp(request);
 
-        String referer = request.getHeader("Referer");
+        // 优先使用前端传递的 document.referrer（真实来源页，SPA 内部跳转时保持不变），
+        // HTTP Referer 头作为兜底（fetch 请求的 Referer 通常是自家域名，对来源统计无意义）。
+        String refParam = request.getParameter("ref");
+        String referer = (refParam != null && !refParam.isBlank()) ? refParam : request.getHeader("Referer");
         String lang = request.getHeader("Accept-Language");
         Map<String, Object> uaSignals = buildUaSignals(request);
 

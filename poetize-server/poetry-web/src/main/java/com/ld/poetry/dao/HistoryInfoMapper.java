@@ -332,4 +332,40 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
             "</script>")
     List<Map<String, Object>> getDailyVisitStatsExcludeToday(@Param("days") Integer days,
                                                              @Param("ignoredIps") List<String> ignoredIps);
+
+    /**
+     * 访客来源站点统计（排除今天，今日数据由 Redis 实时补充）
+     * <p>
+     * 按 Referer 的 host 聚合，referer 为空或站内跳转归为 Direct。
+     * host 提取：SUBSTRING_INDEX 三层嵌套，先取前3段(协议+host[:port])，
+     * 再取最后一段(host[:port])，最后去掉端口。
+     *
+     * @param days       统计天数
+     * @param siteHost   站点自身 host（用于识别站内跳转并归为 Direct），可为 null
+     * @param ignoredIps 需排除的 IP（管理员等）
+     */
+    @Select("<script>" +
+            "SELECT" +
+            " CASE" +
+            "  WHEN referer IS NULL OR referer = '' THEN 'Direct'" +
+            "  <if test=\"siteHost != null and siteHost != ''\">" +
+            "  WHEN SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(referer, '/', 3), '/', -1), ':', 1) = #{siteHost} THEN 'Direct'" +
+            "  </if>" +
+            "  ELSE SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(referer, '/', 3), '/', -1), ':', 1)" +
+            " END AS referrer_host," +
+            " COUNT(*) AS visits," +
+            " COUNT(DISTINCT ip) AS unique_visitors" +
+            " FROM history_info" +
+            " WHERE create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)" +
+            " AND DATE(create_time) &lt; CURDATE()" +
+            " <if test='ignoredIps != null and ignoredIps.size > 0'>" +
+            " AND ip not in" +
+            " <foreach collection='ignoredIps' item='ignoredIp' open='(' separator=',' close=')'>#{ignoredIp}</foreach>" +
+            " </if>" +
+            " GROUP BY referrer_host" +
+            " ORDER BY visits DESC" +
+            "</script>")
+    List<Map<String, Object>> getReferrerStatsExcludeToday(@Param("days") Integer days,
+                                                            @Param("siteHost") String siteHost,
+                                                            @Param("ignoredIps") List<String> ignoredIps);
 }

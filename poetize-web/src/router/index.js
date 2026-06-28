@@ -286,6 +286,8 @@ function appendVisitSignals(params) {
   setVisitSignal(params, 'wdd', automation.webdriverDescriptor)
   setVisitSignal(params, 'glv', automation.webglVendor, 128)
   setVisitSignal(params, 'glr', automation.webglRenderer, 128)
+  // 传递 document.referrer（真实来源页），SPA 内部跳转时保持不变
+  setVisitSignal(params, 'ref', document.referrer, 512)
 }
 
 let cachedWebglInfo

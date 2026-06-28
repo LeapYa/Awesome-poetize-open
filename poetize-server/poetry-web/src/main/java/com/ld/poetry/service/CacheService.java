@@ -1566,6 +1566,7 @@ public class CacheService {
             );
             String safeUserAgent = limitText(userAgent, 512);
             UserAgentClassifier.UaInfo safeUaInfo = uaInfo != null ? uaInfo : UserAgentClassifier.classify(safeUserAgent);
+            String safeReferer = limitText(referer, 512);
             
             // 将访问记录添加到当日记录集合中（每次访问都记录）
             String recordsKey = CacheConstants.buildDailyVisitRecordsKey(today);
@@ -1586,6 +1587,9 @@ public class CacheService {
             // 用户请求元数据（可选，用于后续分析）
             if (normalizedPageUri != null && !normalizedPageUri.isEmpty()) {
                 visitRecord.put("pageUri", normalizedPageUri);
+            }
+            if (safeReferer != null && !safeReferer.isEmpty()) {
+                visitRecord.put("referer", safeReferer);
             }
             if (safeUserAgent != null && !safeUserAgent.isEmpty()) {
                 visitRecord.put("userAgent", safeUserAgent);

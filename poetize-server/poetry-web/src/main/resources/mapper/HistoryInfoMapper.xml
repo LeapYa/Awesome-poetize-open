@@ -11,6 +11,7 @@
         <result column="province" property="province"/>
         <result column="city" property="city"/>
         <result column="page_uri" property="pageUri"/>
+        <result column="referer" property="referer"/>
         <result column="user_agent" property="userAgent"/>
         <result column="ua_type" property="uaType"/>
         <result column="ua_name" property="uaName"/>
@@ -21,21 +22,21 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, user_id, ip, nation, province, city, page_uri, user_agent,
+        id, user_id, ip, nation, province, city, page_uri, referer, user_agent,
         ua_type, ua_name, bot_verify_status, bot_verify_reason, create_time
     </sql>
 
     <!-- 批量插入访问记录 -->
     <insert id="batchInsert" parameterType="java.util.List">
         INSERT INTO history_info (
-            user_id, ip, nation, province, city, page_uri, user_agent,
+            user_id, ip, nation, province, city, page_uri, referer, user_agent,
             ua_type, ua_name, bot_verify_status, bot_verify_reason, create_time
         )
         VALUES
         <foreach collection="list" item="item" separator=",">
             (
                 #{item.userId}, #{item.ip}, #{item.nation}, #{item.province}, #{item.city}, #{item.pageUri},
-                #{item.userAgent}, #{item.uaType}, #{item.uaName}, #{item.botVerifyStatus},
+                #{item.referer}, #{item.userAgent}, #{item.uaType}, #{item.uaName}, #{item.botVerifyStatus},
                 #{item.botVerifyReason}, #{item.createTime}
             )
         </foreach>
