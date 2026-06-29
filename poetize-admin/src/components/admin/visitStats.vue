@@ -25,7 +25,7 @@
               <button 
                 v-for="period in ['7', '30', '90']" 
                 :key="period"
-                @click="timeRange = period; fetchVisitStats(); fetchReferrerStats()"
+                @click="timeRange = period; fetchVisitStats()"
                 :class="['time-btn', timeRange === period ? 'active' : '']">
                 {{ period === '7' ? '最近7天' : period === '30' ? '最近30天' : '最近90天' }}
               </button>
@@ -42,38 +42,6 @@
           <div class="loading-spinner"></div>
         </div>
       </div>
-
-      <!-- 来源网站统计（Referring Sites） -->
-      <div class="referrer-wrapper">
-        <div class="chart-header">
-          <h3 class="chart-title">来源网站</h3>
-          <div class="chart-controls">
-            <button class="refresh-btn" @click="fetchReferrerStats()">
-              <i class="el-icon-refresh"></i>
-            </button>
-          </div>
-        </div>
-        <div class="referrer-list">
-          <div v-if="referrerLoading" class="loading-overlay">
-            <div class="loading-spinner"></div>
-          </div>
-          <div v-if="!referrerStats.length && !referrerLoading" class="empty-tip">
-            暂无来源数据
-          </div>
-          <div v-for="(item, index) in referrerStats" :key="index" class="referrer-row">
-            <span class="referrer-rank">{{ index + 1 }}</span>
-            <span class="referrer-host" :title="item.referrer_host">
-              <i v-if="item.referrer_host === 'Direct'" class="el-icon-link direct-icon"></i>
-              {{ item.referrer_host }}
-            </span>
-            <div class="referrer-bar-wrapper">
-              <div class="referrer-bar" :style="{ width: Math.max(item.percentage, 2) + '%' }"></div>
-            </div>
-            <span class="referrer-visits">{{ item.visits }}</span>
-            <span class="referrer-pct">{{ item.percentage }}%</span>
-          </div>
-        </div>
-      </div>
     </div>
   </template>
   
@@ -87,8 +55,6 @@
         timeRange: '30',
         loading: false,
         visitStats: [],
-        referrerStats: [],
-        referrerLoading: false,
         chart: null,
         isDarkMode: false
       }
@@ -115,7 +81,6 @@
       this.setupThemeListener();
       this.initChart();
       this.fetchVisitStats();
-      this.fetchReferrerStats();
       
       // 响应窗口大小变化
       window.addEventListener('resize', this.resizeChart);
@@ -408,43 +373,6 @@
           });
       },
 
-      fetchReferrerStats() {
-        this.referrerLoading = true;
-        this.$http.get(this.$constant.baseURL + `/webInfo/getReferrerStats?days=${this.timeRange}`, {}, true)
-          .then(res => {
-            if ((res.code === 200 || res.success) && res.data) {
-              this.referrerStats = res.data.items || [];
-            } else {
-              this.referrerStats = [];
-              this.$message.error(res.message || '获取来源统计数据失败');
-            }
-          })
-          .catch(error => {
-            console.error('获取来源统计数据出错:', error);
-            this.referrerStats = [];
-            let errorMessage = '获取来源统计数据出错';
-            if (error.response) {
-              if (error.response.status === 401) {
-                errorMessage = '权限不足，请确认您有管理员权限';
-              } else if (error.response.status === 403) {
-                errorMessage = '访问被拒绝，请重新登录';
-              } else if (error.response.data && error.response.data.message) {
-                errorMessage = error.response.data.message;
-              } else {
-                errorMessage = `服务器错误 (${error.response.status})`;
-              }
-            } else if (error.request) {
-              errorMessage = '网络连接失败，请检查网络连接';
-            } else {
-              errorMessage = error.message || '未知错误';
-            }
-            this.$message.error(errorMessage);
-          })
-          .finally(() => {
-            this.referrerLoading = false;
-          });
-      },
-      
       // 更新主题状态
       updateTheme() {
         const theme = localStorage.getItem('theme');
@@ -611,88 +539,7 @@
     height: 300px;
   }
 
-  /* 来源网站区块 */
-  .referrer-wrapper {
-    background-color: #f5f5f7;
-    border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 16px;
-  }
 
-  .referrer-list {
-    position: relative;
-    min-height: 60px;
-  }
-
-  .empty-tip {
-    text-align: center;
-    color: #86868b;
-    font-size: 13px;
-    padding: 24px 0;
-  }
-
-  .referrer-row {
-    display: grid;
-    grid-template-columns: 28px minmax(140px, 1.2fr) minmax(80px, 2fr) 56px 52px;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 4px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-    font-size: 13px;
-  }
-
-  .referrer-row:last-child {
-    border-bottom: none;
-  }
-
-  .referrer-rank {
-    color: #86868b;
-    font-size: 12px;
-    text-align: center;
-  }
-
-  .referrer-host {
-    color: #1d1d1f;
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .direct-icon {
-    color: #86868b;
-    font-size: 12px;
-  }
-
-  .referrer-bar-wrapper {
-    height: 6px;
-    background-color: rgba(0, 0, 0, 0.05);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-
-  .referrer-bar {
-    height: 100%;
-    background-color: #0071e3;
-    border-radius: 3px;
-    transition: width 0.4s ease;
-  }
-
-  .referrer-visits {
-    color: #1d1d1f;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-
-  .referrer-pct {
-    color: #86868b;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    font-size: 12px;
-  }
   
   /* 加载遮罩 */
   .loading-overlay {
@@ -798,33 +645,5 @@
     border-top-color: #0071e3 !important;
   }
 
-  .stats-dark-mode .referrer-wrapper {
-    background-color: rgba(255, 255, 255, 0.05) !important;
-  }
 
-  .stats-dark-mode .referrer-host {
-    color: rgba(255, 255, 255, 0.9) !important;
-  }
-
-  .stats-dark-mode .referrer-rank,
-  .stats-dark-mode .referrer-pct,
-  .stats-dark-mode .direct-icon {
-    color: rgba(255, 255, 255, 0.6) !important;
-  }
-
-  .stats-dark-mode .referrer-visits {
-    color: rgba(255, 255, 255, 0.9) !important;
-  }
-
-  .stats-dark-mode .referrer-row {
-    border-bottom-color: rgba(255, 255, 255, 0.06) !important;
-  }
-
-  .stats-dark-mode .referrer-bar-wrapper {
-    background-color: rgba(255, 255, 255, 0.08) !important;
-  }
-
-  .stats-dark-mode .empty-tip {
-    color: rgba(255, 255, 255, 0.6) !important;
-  }
   </style>

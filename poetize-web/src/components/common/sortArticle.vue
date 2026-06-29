@@ -13,10 +13,11 @@
       <div class="recent-post-item-image">
         <el-image
           class="my-el-image"
-          v-once
           lazy
-          :src="article.articleCover"
+          :key="getArticleCoverUrl(article)"
+          :src="getArticleCoverUrl(article)"
           fit="cover"
+          @error="handleCoverError(article)"
         >
           <template v-slot:error>
             <div
@@ -208,6 +209,7 @@
 </template>
 
 <script>
+import { useArticleCover } from '@/composables/useArticleCover'
 import { getArticlePath } from '@/utils/article-url'
 
 export default {
@@ -215,6 +217,10 @@ export default {
     articleList: {
       type: Array,
     },
+  },
+  setup() {
+    const { getArticleCoverUrl, handleCoverError } = useArticleCover()
+    return { getArticleCoverUrl, handleCoverError }
   },
   methods: {
     // 处理拖拽开始事件

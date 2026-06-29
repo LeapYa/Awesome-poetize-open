@@ -38,10 +38,11 @@
         <div class="image-container">
           <el-image
             class="my-el-image"
-            v-once
             lazy
-            :src="article.articleCover"
+            :key="getArticleCoverUrl(article)"
+            :src="getArticleCoverUrl(article)"
             fit="cover"
+            @error="handleCoverError(article)"
           >
             <!--
               安全说明：文章标题、正文和翻译内容仅由站长/管理员写入，普通用户没有发布入口。
@@ -270,6 +271,7 @@
 
 <script>
 import { Document as ElIconDocument } from '@element-plus/icons-vue'
+import { useArticleCover } from '@/composables/useArticleCover'
 import { getLanguageName } from '@/utils/languageUtils'
 import { getArticlePath } from '@/utils/article-url'
 
@@ -285,6 +287,10 @@ export default {
       type: String,
       default: '',
     },
+  },
+  setup() {
+    const { getArticleCoverUrl, handleCoverError } = useArticleCover()
+    return { getArticleCoverUrl, handleCoverError }
   },
   methods: {
     // 处理拖拽开始事件

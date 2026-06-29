@@ -58,7 +58,7 @@ public class SkillAdminTools {
             + "AI 可在多轮对话中逐步细化内容后再次调用以覆盖保存。"
             + "调用前应已与用户确认 skill_key、scene、description 和 body。")
     public String create_skill(
-            @ToolParam(description = "Skill 唯一标识，小写字母/数字/连字符组成，开头需为字母或数字，不超过64字符，例如 poetize-comment-reply") String skill_key,
+            @ToolParam(description = "Skill 唯一标识，小写字母/数字/连字符组成，开头需为字母或数字，不超过64字符，例如 comment-reply") String skill_key,
             @ToolParam(description = "适用场景，取值：comment(评论)/chat(聊天)/article(文章)/universal(通用)") String scene,
             @ToolParam(description = "一句话用途说明，会写入 frontmatter description，AI 据此判断是否加载该 Skill") String description,
             @ToolParam(description = "Skill 指令正文（Markdown 格式），作为 AI 执行该 Skill 时的规范。不要包含 YAML frontmatter，只需正文部分") String body,

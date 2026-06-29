@@ -2,10 +2,11 @@
   <div class="article-head my-animation-slide-top">
     <el-image
       class="article-image my-el-image"
-      v-once
       lazy
-      :src="article.articleCover"
+      :key="getArticleCoverUrl(article)"
+      :src="getArticleCoverUrl(article)"
       fit="cover"
+      @error="handleCoverError(article)"
     >
       <template #error>
         <div
@@ -180,7 +181,9 @@
 </template>
 
 <script setup>
-defineProps({
+import { useArticleCover } from '@/composables/useArticleCover'
+
+const props = defineProps({
   article: {
     type: Object,
     required: true,
@@ -209,4 +212,6 @@ const emit = defineEmits([
   'language-touchstart',
   'open-news',
 ])
+
+const { getArticleCoverUrl, handleCoverError } = useArticleCover()
 </script>

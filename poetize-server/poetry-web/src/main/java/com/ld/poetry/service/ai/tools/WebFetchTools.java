@@ -82,9 +82,15 @@ public class WebFetchTools {
     private static final int CACHE_MAX_SIZE = 200;
     private static final int CACHE_EVICT_COUNT = 50;
     private static final int MAX_CONCURRENT = 5;
-    private static final String USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Poetize-WebFetch/1.0";
+    private static final int CHROME_VERSION;
+    private static final String USER_AGENT;
+
+    static {
+        java.time.LocalDate baseDate = java.time.LocalDate.of(2022, 3, 29);
+        long daysDiff = java.time.temporal.ChronoUnit.DAYS.between(baseDate, java.time.LocalDate.now());
+        CHROME_VERSION = 100 + (int) (daysDiff / 32);
+        USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + CHROME_VERSION + ".0.0.0 Safari/537.36";
+    }
 
     // 提取策略常量
     private static final String STRATEGY_READABILITY = "READABILITY";
@@ -95,6 +101,20 @@ public class WebFetchTools {
     private static final String STRATEGY_JINA_READER = "JINA_READER";
     private static final String STRATEGY_RAW_FALLBACK = "RAW_FALLBACK";
     private static final String STRATEGY_METADATA_ONLY = "METADATA_ONLY";
+
+    /**
+     * 噪音元素选择器 — 这些元素的内容不是正文载体，在计算正文长度与 RAW_FALLBACK 输出前需统一移除：
+     * <ul>
+     *   <li>{@code script} / {@code style} — 代码与样式，非可见正文</li>
+     *   <li>{@code noscript} / {@code template} — JS 禁用时的兜底内容或模板片段，非实际渲染正文</li>
+     *   <li>{@code textarea} — 百度等站点用隐藏 textarea 存放转义 CSS/模板（反爬手段），
+     *       Jsoup {@code .text()} 会反转义后当作正文输出，曾导致 bodyTextLength 从 ~1K 膨胀到 257K</li>
+     *   <li>{@code iframe} — 外部嵌入内容，Jsoup 不递归解析其 src</li>
+     *   <li>{@code svg} — 矢量图形内嵌文本，通常为图标/装饰</li>
+     * </ul>
+     */
+    private static final String NOISE_ELEMENTS_SELECTOR =
+            "script, style, noscript, template, textarea, iframe, svg";
 
     // ========== 依赖 ==========
     private final SysAiConfigService sysAiConfigService;
@@ -248,7 +268,12 @@ public class WebFetchTools {
 
             // ===== 第 11 步：SPA 检测 =====
             boolean isSpa = SpaDetector.isSpa(document);
-            int bodyTextLength = document.body() != null ? document.body().text().length() : 0;
+            // 计算正文文本长度前先移除噪音元素，避免隐藏 textarea 里转义的 CSS/模板
+            // 虚增 bodyTextLength（百度首页曾因此从真实 ~1K 膨胀到 257K，
+            // 导致 Readability ratio=0.001 触发 RAW_FALLBACK 并输出 CSS 噪音）。
+            Document cleanForMetrics = document.clone();
+            stripNoiseElements(cleanForMetrics, fetchResult.finalUrl, "bodyTextLength");
+            int bodyTextLength = cleanForMetrics.body() != null ? cleanForMetrics.body().text().length() : 0;
             log.info("页面分析: url={}, isSpa={}, bodyTextLength={}, hasJsonLdBody={}, hasOgTitle={}",
                     fetchResult.finalUrl, isSpa, bodyTextLength,
                     metadata.getJsonLdArticleBody() != null, metadata.getOgTitle() != null);
@@ -375,11 +400,23 @@ public class WebFetchTools {
                 return result;
             }
 
+            // 注意：不要手动设置 Accept-Encoding: gzip。
+            // OkHttp 的 BridgeInterceptor 仅在「自己添加」该头时才会透明解压 gzip；
+            // 一旦手动设置，OkHttp 会跳过解压逻辑，body.byteStream() 将返回原始压缩字节，
+            // 导致后续按 UTF-8/HTML 解析得到二进制乱码。这里省略该头，让 OkHttp 自动协商并解压。
             Request request = new Request.Builder()
                     .url(currentUrl)
                     .header("User-Agent", USER_AGENT)
-                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7")
-                    .header("Accept-Encoding", "gzip")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                    .header("Sec-Ch-Ua", "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"" + CHROME_VERSION + "\", \"Google Chrome\";v=\"" + CHROME_VERSION + "\"")
+                    .header("Sec-Ch-Ua-Mobile", "?0")
+                    .header("Sec-Ch-Ua-Platform", "\"Windows\"")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "none")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("Upgrade-Insecure-Requests", "1")
                     .build();
 
             try (Response response = mainHttpClient.newCall(request).execute()) {
@@ -491,18 +528,22 @@ public class WebFetchTools {
     private ExtractResult extractWithReadability(Document document, String finalUrl, PageMetadata metadata,
                                                   boolean isSpa, int bodyTextLength, SysAiConfig config,
                                                   ExtractResult result) {
+        // Readability4J.parse() 会修改传入的 Document（清理 DOM 结构），
+        // 因此先用 clone 保护原始 DOM，供质量验证和 raw body fallback 使用。
+        Document originalDocument = document.clone();
+
         Article article;
         try {
             Readability4JExtended readability = new Readability4JExtended(finalUrl, document);
             article = readability.parse();
         } catch (Exception e) {
             log.warn("Readability4J 解析失败: url={}, error={}", finalUrl, e.getMessage());
-            return fallbackToRawText(document, finalUrl, result,
+            return fallbackToRawText(originalDocument, finalUrl, result,
                     "Readability 解析异常：" + e.getMessage());
         }
 
         if (article == null) {
-            return fallbackToRawText(document, finalUrl, result, "Readability 返回 null");
+            return fallbackToRawText(originalDocument, finalUrl, result, "Readability 返回 null");
         }
 
         String articleTitle = article.getTitle();
@@ -512,8 +553,9 @@ public class WebFetchTools {
             articleText = "";
         }
 
-        // 质量验证
-        QualityVerifier.QualityResult quality = QualityVerifier.verify(articleTitle, articleText, document, metadata);
+        // 质量验证：使用 parse 前保存的原始 body 长度，避免 Readability 破坏 DOM 后指标失真
+        QualityVerifier.QualityResult quality = QualityVerifier.verify(
+                articleTitle, articleText, originalDocument, metadata, bodyTextLength);
         double ratio = quality.getExtractionRatio();
         result.qualityWarnings.addAll(quality.getWarnings());
 
@@ -521,32 +563,53 @@ public class WebFetchTools {
                 String.format("%.3f", ratio), quality.isHasTitle(),
                 String.format("%.3f", quality.getKeySignalCoverage()), bodyTextLength, articleText.length());
 
-        // 决策回退
+        // 决策回退（统一使用 originalDocument，避免 Readability 清理后的 DOM 导致 fallback 为空）
         if (ratio < 0.10 && isSpa) {
             // 提取失败且为 SPA → 转入完整 SPA fallback 路径（JSON-LD → Jina → 元数据）
             log.info("比例 < 0.10 且 SPA 签名，转入 SPA fallback 路径");
             // 保留已收集的警告，复用 SPA 提取逻辑
             result.qualityWarnings.add("WARNING: Readability 提取比例过低（"
                     + String.format("%.1f%%", ratio * 100) + "），SPA 签名触发 fallback");
-            return extractFromSpa(document, finalUrl, metadata, config, result);
+            return extractFromSpa(originalDocument, finalUrl, metadata, config, result);
         }
 
         if (ratio < 0.10) {
             // 提取失败，无 SPA 签名 → 回退到 raw body text
-            return fallbackToRawText(document, finalUrl, result,
+            return fallbackToRawText(originalDocument, finalUrl, result,
                     "Readability 提取比例过低（" + String.format("%.1f%%", ratio * 100) + "），可能页面结构特殊");
         }
 
-        if (ratio > 0.90) {
-            // 去噪失败，正文占比过高 → 回退到 raw body text
-            return fallbackToRawText(document, finalUrl, result,
-                    "Readability 提取比例过高（" + String.format("%.1f%%", ratio * 100) + "），去噪可能失败");
+        if (ratio > 0.98) {
+            // 提取结果几乎等于原始 body（常见于预渲染 SPA 或单区块页面），
+            // 不再强制回退到 raw body（Readability 已清理 script/style，通常更干净），
+            // 仅追加警告供调用方感知。
+            result.qualityWarnings.add("Readability 提取比例接近 100%，可能为预渲染页面或正文占满 body");
+            log.info("Readability 提取比例接近 100%，接受 Readability 结果: url={}, ratio={}",
+                    finalUrl, String.format("%.3f", ratio));
+        }
+
+        // 低质量短页面检测：关键信号覆盖率低 + 提取比例低 + 提取内容过短 + 页面本身也短。
+        // 典型场景：搜索引擎门户/工具型页面（如百度首页），Readability 倾向于提取页脚/备案信息，
+        // 遗漏搜索框 placeholder、导航链接等页面主体。此时 RAW_FALLBACK 反而能输出更完整的可见文本。
+        // 4 项条件同时满足才触发，避免误伤：
+        //   - 正常短文章通常 coverage>0.30（title 关键词在正文中命中）
+        //   - Readability 已提取大部分内容的页面 ratio>0.80，RAW_FALLBACK 不会带来更多内容，
+        //     反而会丢失 markdown 中的链接 URL 等结构化信息（如 juejin 首页 ratio=0.949）
+        if (quality.getKeySignalCoverage() < 0.30
+                && ratio < 0.80
+                && articleText.length() < 1000
+                && bodyTextLength < 2000) {
+            log.info("低质量短页面检测: url={}, coverage={}, ratio={}, articleLen={}, bodyLen={} → 改用 RAW_FALLBACK",
+                    finalUrl, String.format("%.3f", quality.getKeySignalCoverage()),
+                    String.format("%.3f", ratio), articleText.length(), bodyTextLength);
+            return fallbackToRawText(originalDocument, finalUrl, result,
+                    "Readability 提取内容不完整（关键信号覆盖率低，可能为非文章型页面）");
         }
 
         // 正常路径：将 Readability 提取的 HTML 转为 Markdown
         String markdown;
         if (StringUtils.hasText(articleHtml)) {
-            markdown = convertHtmlToMarkdown(articleHtml);
+            markdown = convertHtmlToMarkdown(articleHtml, finalUrl);
         } else {
             markdown = articleText;
         }
@@ -582,7 +645,7 @@ public class WebFetchTools {
             if (rssContent.isPresent()) {
                 String content = rssContent.get();
                 // RSS 内容可能是 HTML，转换为 Markdown
-                String markdown = convertHtmlToMarkdown(content);
+                String markdown = convertHtmlToMarkdown(content, finalUrl);
                 if (markdown.length() > 200) {
                     result.markdown = markdown;
                     result.strategy = STRATEGY_RSS_FEED;
@@ -613,7 +676,7 @@ public class WebFetchTools {
         try {
             Optional<String> archivedHtml = archiveOrgClient.fetchArchivedSnapshot(finalUrl);
             if (archivedHtml.isPresent()) {
-                String archivedMarkdown = convertHtmlToMarkdown(archivedHtml.get());
+                String archivedMarkdown = convertHtmlToMarkdown(archivedHtml.get(), finalUrl);
                 if (archivedMarkdown.length() > 200) {
                     result.markdown = archivedMarkdown;
                     result.strategy = STRATEGY_ARCHIVE_ORG;
@@ -688,24 +751,91 @@ public class WebFetchTools {
         return result;
     }
 
+    /**
+     * 从文档中移除噪音元素（{@link #NOISE_ELEMENTS_SELECTOR}）并记录详细日志。
+     * <p>
+     * 统一应用于以下路径，确保噪音元素不会虚增正文长度或泄漏到输出：
+     * <ul>
+     *   <li>bodyTextLength 计算 — 影响 Readability ratio 决策树</li>
+     *   <li>RAW_FALLBACK 输出 — 直接作为正文返回给 AI</li>
+     *   <li>convertHtmlToMarkdown 兜底 — flexmark 转换失败时回退到 Jsoup 纯文本</li>
+     * </ul>
+     * <p>
+     * 日志输出各类型噪音元素的数量，便于排查反爬手段（如百度隐藏 textarea CSS）。
+     *
+     * @param document 待清洗的文档（会被原地修改，调用方应先 clone）
+     * @param url      页面 URL，用于日志定位
+     * @param context  调用上下文标记（如 "bodyTextLength"、"RAW_FALLBACK"），用于日志区分
+     * @return 被移除的噪音元素总数（0 表示无需清洗）
+     */
+    private int stripNoiseElements(Document document, String url, String context) {
+        int scriptCount = document.select("script").size();
+        int styleCount = document.select("style").size();
+        int textareaCount = document.select("textarea").size();
+        int noscriptCount = document.select("noscript").size();
+        int templateCount = document.select("template").size();
+        int iframeCount = document.select("iframe").size();
+        int svgCount = document.select("svg").size();
+        int totalBefore = scriptCount + styleCount + textareaCount
+                + noscriptCount + templateCount + iframeCount + svgCount;
+
+        if (totalBefore == 0) {
+            log.debug("噪音元素清洗: url={}, context={}, 无噪音元素", url, context);
+            return 0;
+        }
+
+        document.select(NOISE_ELEMENTS_SELECTOR).remove();
+
+        // 常规 script/style/iframe 等噪音属于常态，降为 debug 避免污染生产日志；
+        // 仅当出现 textarea 反爬手段（百度等隐藏 CSS 的典型特征）时升级为 info 告警。
+        if (textareaCount > 0) {
+            log.info("噪音元素清洗(检测到 textarea 反爬): url={}, context={}, textarea={}, script={}, "
+                            + "style={}, noscript={}, template={}, iframe={}, svg={}, 总计={}",
+                    url, context, textareaCount, scriptCount, styleCount,
+                    noscriptCount, templateCount, iframeCount, svgCount, totalBefore);
+        } else {
+            log.debug("噪音元素清洗: url={}, context={}, 移除 script={}, style={}, textarea={}, "
+                            + "noscript={}, template={}, iframe={}, svg={}, 总计={}",
+                    url, context, scriptCount, styleCount, textareaCount,
+                    noscriptCount, templateCount, iframeCount, svgCount, totalBefore);
+        }
+
+        return totalBefore;
+    }
+
     private ExtractResult fallbackToRawText(Document document, String finalUrl, ExtractResult result, String reason) {
-        String rawText = document.body() != null ? document.body().text() : "";
+        // 克隆后移除噪音元素，避免把隐藏 textarea 里转义的 CSS/模板当作正文。
+        // 关键点：百度等站点把大段 CSS 以转义文本存放在 <textarea style="display:none"> 中
+        // （如 s_is_result_css），Jsoup .text() 会将其反转义后当作正文输出，导致 RAW_FALLBACK
+        // 返回 250KB+ 的 CSS 噪音。
+        Document clean = document.clone();
+        stripNoiseElements(clean, finalUrl, "RAW_FALLBACK");
+        String rawText = clean.body() != null ? clean.body().text() : "";
+        // 压缩多余空白
+        rawText = rawText.replaceAll("\\s{2,}", " ").trim();
+
         result.markdown = rawText;
         result.strategy = STRATEGY_RAW_FALLBACK;
-        result.qualityWarnings.add("WARNING: Readability 提取异常（" + reason + "），已回退到原始 body 文本，可能含噪音");
+        result.qualityWarnings.add("WARNING: Readability 提取异常（" + reason + "），已回退到清洗后的 body 文本，可能含噪音");
         log.warn("回退到 raw body text: url={}, reason={}, rawLen={}", finalUrl, reason, rawText.length());
         return result;
     }
 
-    private String convertHtmlToMarkdown(String html) {
+    private String convertHtmlToMarkdown(String html, String url) {
         try {
             return htmlToMarkdownConverter.convert(html);
         } catch (Exception e) {
-            log.warn("flexmark HTML→Markdown 转换失败: error={}, 回退到纯文本", e.getMessage());
-            // 回退到 Jsoup 纯文本
+            log.warn("flexmark HTML→Markdown 转换失败: url={}, error={}, 回退到 Jsoup 纯文本（含噪音清洗）",
+                    url, e.getMessage());
+            // flexmark 转换失败时回退到 Jsoup 纯文本，同样需清洗噪音元素，
+            // 避免 script/style/textarea 内容泄漏到正文
             try {
-                return Jsoup.parse(html).text();
+                Document doc = Jsoup.parse(html);
+                stripNoiseElements(doc, url, "convertHtmlToMarkdown-fallback");
+                String text = doc.body() != null ? doc.body().text() : "";
+                return text.replaceAll("\\s{2,}", " ").trim();
             } catch (Exception e2) {
+                log.error("Jsoup 纯文本回退也失败: url={}, error={}", url, e2.getMessage());
                 return "";
             }
         }

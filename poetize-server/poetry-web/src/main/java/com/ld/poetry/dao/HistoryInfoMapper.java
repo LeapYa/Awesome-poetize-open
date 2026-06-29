@@ -368,4 +368,57 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     List<Map<String, Object>> getReferrerStatsExcludeToday(@Param("days") Integer days,
                                                             @Param("siteHost") String siteHost,
                                                             @Param("ignoredIps") List<String> ignoredIps);
+
+    /**
+     * 访客来源站点历史统计（所有历史数据）
+     */
+    @Select("<script>" +
+            "SELECT" +
+            " CASE" +
+            "  WHEN referer IS NULL OR referer = '' THEN 'Direct'" +
+            "  <if test=\"siteHost != null and siteHost != ''\">" +
+            "  WHEN SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(referer, '/', 3), '/', -1), ':', 1) = #{siteHost} THEN 'Direct'" +
+            "  </if>" +
+            "  ELSE SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(referer, '/', 3), '/', -1), ':', 1)" +
+            " END AS referrer_host," +
+            " COUNT(*) AS num" +
+            " FROM history_info" +
+            " <where>" +
+            " <if test='ignoredIps != null and ignoredIps.size > 0'>" +
+            " ip not in" +
+            " <foreach collection='ignoredIps' item='ignoredIp' open='(' separator=',' close=')'>#{ignoredIp}</foreach>" +
+            " </if>" +
+            " </where>" +
+            " GROUP BY referrer_host" +
+            " ORDER BY num DESC" +
+            " LIMIT 200" +
+            "</script>")
+    List<Map<String, Object>> getReferrerHistory(@Param("siteHost") String siteHost,
+                                                 @Param("ignoredIps") List<String> ignoredIps);
+
+    /**
+     * 昨日访客来源站点统计
+     */
+    @Select("<script>" +
+            "SELECT" +
+            " CASE" +
+            "  WHEN referer IS NULL OR referer = '' THEN 'Direct'" +
+            "  <if test=\"siteHost != null and siteHost != ''\">" +
+            "  WHEN SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(referer, '/', 3), '/', -1), ':', 1) = #{siteHost} THEN 'Direct'" +
+            "  </if>" +
+            "  ELSE SUBSTRING_INDEX(SUBSTRING_INDEX(SUBSTRING_INDEX(referer, '/', 3), '/', -1), ':', 1)" +
+            " END AS referrer_host," +
+            " COUNT(*) AS num" +
+            " FROM history_info" +
+            " WHERE date(create_time) = date_sub(curdate(), interval 1 day)" +
+            " <if test='ignoredIps != null and ignoredIps.size > 0'>" +
+            " AND ip not in" +
+            " <foreach collection='ignoredIps' item='ignoredIp' open='(' separator=',' close=')'>#{ignoredIp}</foreach>" +
+            " </if>" +
+            " GROUP BY referrer_host" +
+            " ORDER BY num DESC" +
+            " LIMIT 200" +
+            "</script>")
+    List<Map<String, Object>> getReferrerHistoryYesterday(@Param("siteHost") String siteHost,
+                                                          @Param("ignoredIps") List<String> ignoredIps);
 }

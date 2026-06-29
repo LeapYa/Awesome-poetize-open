@@ -147,3 +147,24 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.handle-box {
+  margin-bottom: 20px;
+}
+
+.handle-input {
+  width: 150px;
+  display: inline-block;
+}
+
+.table {
+  width: 100%;
+  font-size: 14px;
+}
+
+.mrb10 {
+  margin-right: 10px;
+  margin-bottom: 10px;
+}
+</style>

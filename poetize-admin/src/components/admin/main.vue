@@ -208,6 +208,23 @@
                 </el-table>
               </div>
             </div>
+            <div class="visit-table-panel">
+              <div class="history-name">来源网站TOP10</div>
+              <div>
+                <el-table :data="getReferrerRows('referrer_history_top')">
+                  <el-table-column type="index" align="center" width="60"></el-table-column>
+                  <el-table-column prop="referrer_host" align="center" label="来源网站" min-width="120">
+                    <template slot-scope="scope">
+                      <span :title="scope.row.referrer_host">
+                        <i v-if="scope.row.referrer_host === 'Direct'" class="el-icon-link" style="color: #909399; margin-right: 3px;"></i>
+                        {{ scope.row.referrer_host }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="80"></el-table-column>
+                </el-table>
+              </div>
+            </div>
           </div>
         </el-tab-pane>
 
@@ -277,6 +294,23 @@
                 </el-table>
               </div>
             </div>
+            <div class="visit-table-panel">
+              <div class="history-name">今日来源网站统计</div>
+              <div>
+                <el-table :data="getReferrerRows('referrer_today')">
+                  <el-table-column type="index" align="center" width="60"></el-table-column>
+                  <el-table-column prop="referrer_host" align="center" label="来源网站" min-width="120">
+                    <template slot-scope="scope">
+                      <span :title="scope.row.referrer_host">
+                        <i v-if="scope.row.referrer_host === 'Direct'" class="el-icon-link" style="color: #909399; margin-right: 3px;"></i>
+                        {{ scope.row.referrer_host }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="80"></el-table-column>
+                </el-table>
+              </div>
+            </div>
           </div>
         </el-tab-pane>
 
@@ -336,6 +370,23 @@
                 </el-table>
               </div>
             </div>
+            <div class="visit-table-panel">
+              <div class="history-name">昨日来源网站统计</div>
+              <div>
+                <el-table :data="getReferrerRows('referrer_yest')">
+                  <el-table-column type="index" align="center" width="60"></el-table-column>
+                  <el-table-column prop="referrer_host" align="center" label="来源网站" min-width="120">
+                    <template slot-scope="scope">
+                      <span :title="scope.row.referrer_host">
+                        <i v-if="scope.row.referrer_host === 'Direct'" class="el-icon-link" style="color: #909399; margin-right: 3px;"></i>
+                        {{ scope.row.referrer_host }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="num" align="center" label="数量" width="80"></el-table-column>
+                </el-table>
+              </div>
+            </div>
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -345,66 +396,6 @@
           <span><i class="el-icon-s-data"></i> 访问量历史趋势</span>
         </div>
         <visit-stats ref="visitStatsChart"></visit-stats>
-      </el-card>
-
-      <!-- 封禁IP列表 -->
-      <el-card shadow="hover" class="dashboard-box-card" style="margin: 30px 10px 30px;">
-        <div slot="header" class="dashboard-box-header">
-          <span><i class="el-icon-warning-outline"></i> 验证码封禁IP列表</span>
-          <el-button type="text" 
-                     style="float: right; padding: 3px 0; color: #409EFF;"
-                     @click="refreshBlockedIps"
-                     :loading="loadingBlockedIps"
-                     title="刷新封禁IP列表">
-            <i class="el-icon-refresh"></i> 刷新列表
-          </el-button>
-        </div>
-        
-        <div>
-          <el-table 
-            :data="blockedIps" 
-            v-loading="loadingBlockedIps"
-            style="width: 100%;">
-            <el-table-column type="index" label="序号" width="80" align="center"></el-table-column>
-            
-            <el-table-column prop="ip" label="IP地址" min-width="180" align="center">
-              <template slot-scope="scope">
-                <el-tag type="danger" size="medium">{{ scope.row.ip }}</el-tag>
-              </template>
-            </el-table-column>
-            
-            <el-table-column label="近期失败次数" width="150" align="center">
-              <template slot-scope="scope">
-                <el-tag type="warning" size="medium" style="font-weight: bold;">{{ scope.row.failCount }} 次</el-tag>
-              </template>
-            </el-table-column>
-            
-            <el-table-column label="剩余封禁时间" width="150" align="center">
-              <template slot-scope="scope">
-                <el-tag :type="getTimeTagType(scope.row.remainingMinutes)" size="medium">
-                  <i class="el-icon-time"></i> {{ scope.row.remainingMinutes }} 分钟
-                </el-tag>
-              </template>
-            </el-table-column>
-            
-            <el-table-column label="操作" width="150" align="center">
-              <template slot-scope="scope">
-                <el-button
-                  size="small"
-                  type="success"
-                  plain
-                  @click="handleUnblock(scope.row)"
-                  :loading="unblockingIps[scope.row.ip]">
-                  解除封禁
-                </el-button>
-              </template>
-            </el-table-column>
-            
-            <template slot="empty">
-              <el-empty description="当前暂无被封禁IP" :image-size="100"></el-empty>
-            </template>
-          </el-table>
-        </div>
       </el-card>
 
       <el-dialog
@@ -499,9 +490,6 @@ export default {
       loading: false,
       refreshing: false,
       isDarkMode: false,
-      blockedIps: [],
-      loadingBlockedIps: false,
-      unblockingIps: {},
       activeTab: 'total',
       cleanDialogVisible: false,
       currentVisitIp: '',
@@ -523,7 +511,6 @@ export default {
 
   created() {
     this.getHistoryInfo();
-    this.getBlockedIps();
     // 初始化主题
     this.updateTheme();
   },
@@ -550,10 +537,10 @@ export default {
   methods: {
     goToBlacklist() {
       this.$confirm(
-        '将跳转到「系统日志」页面的封禁IP列表，是否继续？',
+        '将跳转到「系统日志」页面的 IP 封禁列表（含安全黑名单与验证码自动封禁），是否继续？',
         '封禁IP',
         {
-          confirmButtonText: '前往封禁',
+          confirmButtonText: '前往查看',
           cancelButtonText: '取消',
           type: 'warning'
         }
@@ -806,6 +793,11 @@ export default {
       return Array.isArray(rows) ? rows : [];
     },
 
+    getReferrerRows(key) {
+      const rows = this.historyInfo && this.historyInfo[key];
+      return Array.isArray(rows) ? rows : [];
+    },
+
     getUaTagType(type) {
       const tagTypes = {
         search_engine: 'success',
@@ -818,66 +810,6 @@ export default {
         unknown: 'danger'
       };
       return tagTypes[type] || 'info';
-    },
-    
-    // 获取封禁IP列表
-    getBlockedIps() {
-      this.loadingBlockedIps = true;
-      
-      this.$http.get(this.$constant.baseURL + "/captcha/getBlockedIps", {}, true)
-        .then(res => {
-          this.blockedIps = res.data || [];
-        })
-        .catch(error => {
-          console.error('获取封禁IP列表失败:', error);
-        })
-        .finally(() => {
-          this.loadingBlockedIps = false;
-        });
-    },
-    
-    // 刷新封禁IP列表
-    refreshBlockedIps() {
-      this.getBlockedIps();
-    },
-    
-    // 解除IP封禁
-    handleUnblock(row) {
-      this.$confirm(`确定要解除IP "${row.ip}" 的封禁吗？`, '确认操作', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        this.$set(this.unblockingIps, row.ip, true);
-        
-        this.$http.post(this.$constant.baseURL + "/captcha/unblockIp", { ip: row.ip }, true)
-          .then(res => {
-            this.$message({
-              message: '解除封禁成功！',
-              type: 'success'
-            });
-            // 从列表中移除
-            this.blockedIps = this.blockedIps.filter(item => item.ip !== row.ip);
-          })
-          .catch(error => {
-            this.$message({
-              message: '解除封禁失败: ' + error.message,
-              type: 'error'
-            });
-          })
-          .finally(() => {
-            this.$delete(this.unblockingIps, row.ip);
-          });
-      }).catch(() => {
-        // 取消操作
-      });
-    },
-    
-    // 根据剩余时间获取标签类型
-    getTimeTagType(minutes) {
-      if (minutes > 20) return 'danger';
-      if (minutes > 10) return 'warning';
-      return 'info';
     }
   }
 }
@@ -997,15 +929,15 @@ export default {
   }
 
   .history-info--total {
-    max-width: 1360px;
+    max-width: 1680px;
   }
 
   .history-info--today {
-    max-width: 1400px;
+    max-width: 1720px;
   }
 
   .history-info--yesterday {
-    max-width: 1080px;
+    max-width: 1400px;
   }
 
   .visit-table-panel {

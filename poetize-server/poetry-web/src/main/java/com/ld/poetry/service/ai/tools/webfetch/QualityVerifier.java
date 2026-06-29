@@ -39,23 +39,23 @@ public final class QualityVerifier {
     /**
      * 验证 Readability 提取结果的质量。
      *
-     * @param articleTitle Readability 提取的标题（可能为 null）
-     * @param articleText  Readability 提取的纯文本正文（可能为 null）
-     * @param document     原始 Jsoup Document（用于计算 body 文本长度 + H1 信号）
-     * @param metadata     预提取的元数据（用于关键词信号）
+     * @param articleTitle          Readability 提取的标题（可能为 null）
+     * @param articleText           Readability 提取的纯文本正文（可能为 null）
+     * @param document              原始 Jsoup Document（用于 H1 关键词信号）
+     * @param metadata              预提取的元数据（用于关键词信号）
+     * @param originalBodyTextLength 原始 body 文本长度（Readability 解析前的快照，避免 DOM 被修改后失真）
      * @return 质量验证结果
      */
     public static QualityResult verify(String articleTitle, String articleText,
-                                       Document document, PageMetadata metadata) {
+                                       Document document, PageMetadata metadata,
+                                       int originalBodyTextLength) {
         QualityResult result = new QualityResult();
         if (articleText == null) {
             articleText = "";
         }
 
-        // 1. extractionRatio
-        String bodyText = (document != null && document.body() != null)
-                ? document.body().text() : "";
-        int bodyTextLen = bodyText.length();
+        // 1. extractionRatio：使用解析前保存的原始 body 长度，避免 Readability 修改 DOM 后指标失真
+        int bodyTextLen = Math.max(0, originalBodyTextLength);
         double ratio = bodyTextLen > 0 ? (double) articleText.length() / bodyTextLen : 0.0;
         result.setExtractionRatio(ratio);
 

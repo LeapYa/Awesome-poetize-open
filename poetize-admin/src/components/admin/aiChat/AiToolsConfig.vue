@@ -31,7 +31,7 @@
               </div>
               <el-button v-if="tool.configurable" size="mini" type="text" icon="el-icon-setting" style="padding: 0; margin-left: auto;" @click.stop="openConfigDialog(tool.id)">配置</el-button>
             </div>
-            <div class="tool-desc">{{ tool.description }}</div>
+            <div class="tool-desc" :title="tool.description">{{ tool.description }}</div>
             <div class="tool-features">
               <span v-for="feat in tool.features" :key="feat" class="feature-tag">{{ feat }}</span>
             </div>
@@ -95,7 +95,7 @@
                 {{ tool.enabled ? '已启用' : '未启用' }}
               </span>
             </div>
-            <div class="tool-desc">{{ tool.pluginDescription }}</div>
+            <div class="tool-desc" :title="tool.pluginDescription">{{ tool.pluginDescription }}</div>
             <div class="tool-meta">
               <span class="meta-item"><i class="el-icon-info"></i> {{ tool.pluginKey }}</span>
             </div>
@@ -112,7 +112,7 @@
           </div>
           <div class="tool-info justify-center">
             <div class="tool-name text-primary">安装更多扩展</div>
-            <div class="tool-desc">安装、配置或管理更多如联网搜索之类的外部 API 工具。</div>
+            <div class="tool-desc" title="安装、配置或管理更多如联网搜索之类的外部 API 工具。">安装、配置或管理更多如联网搜索之类的外部 API 工具。</div>
           </div>
         </div>
       </div>
@@ -631,7 +631,7 @@ export default {
           name: '网页访问 (Web Fetch)',
           description: '允许 AI 按用户提供的具体 URL 抓取公开网页正文，经六层 Fetcher Chain（Readability + JSON-LD + RSS + llms.txt + Archive.org + Jina）提取后阅读/总结；前 5 层本地处理零 SaaS 依赖；超长文档支持分页续读。',
           svgIcon: '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>',
-          features: ['六层 Fetcher Chain', '前 5 层零 SaaS 依赖', 'SSRF 防护 + DNS 重绑定防御', '语义边界分页', '质量验证回退', '独立开关'],
+          features: ['精准正文提取', '超长文档续读', '动态网页渲染', '严格安全防护'],
           configurable: true
         }
       ]

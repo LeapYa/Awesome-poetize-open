@@ -717,6 +717,7 @@ public class WebInfoController {
                 }
             }
 
+            String siteHost = resolveSiteHost(PoetryUtil.getRequest());
             List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
             // 访问统计需要使用最新口径，避免旧缓存继续显示已忽略的站长IP。
             result.put(CommonConst.IP_HISTORY_PROVINCE, getFreshProvinceStatistics(history));
@@ -775,6 +776,26 @@ public class WebInfoController {
             } catch (Exception e) {
                 log.error("获取昨日文章页面访问统计失败", e);
                 result.put("article_yest", new ArrayList<>());
+            }
+
+            try {
+                result.put("referrer_history_top", buildReferrerVisitStats(
+                        historyInfoMapper.getReferrerHistory(siteHost, cacheService.getVisitIgnoreIpList()),
+                        unsyncedTodayRecords,
+                        siteHost));
+            } catch (Exception e) {
+                log.error("获取来源网站总访问统计失败", e);
+                result.put("referrer_history_top", new ArrayList<>());
+            }
+
+            try {
+                result.put("referrer_yest", buildReferrerVisitStats(
+                        historyInfoMapper.getReferrerHistoryYesterday(siteHost, cacheService.getVisitIgnoreIpList()),
+                        null,
+                        siteHost));
+            } catch (Exception e) {
+                log.error("获取昨日来源网站访问统计失败", e);
+                result.put("referrer_yest", new ArrayList<>());
             }
 
             // 处理24小时数据（昨日数据）
@@ -881,6 +902,12 @@ public class WebInfoController {
                 result.put("province_today", todayStats.get("province_today"));
                 result.put("ua_today", todayStats.get("ua_today"));
                 result.put("article_today", buildArticleVisitStats(null, cacheService.getDailyVisitRecords(today)));
+                try {
+                    result.put("referrer_today", buildReferrerVisitStats(null, cacheService.getDailyVisitRecords(today), siteHost));
+                } catch (Exception e) {
+                    log.error("获取今日来源网站统计失败", e);
+                    result.put("referrer_today", new ArrayList<>());
+                }
 
             } catch (Exception e) {
                 log.error("从Redis获取今日访问统计失败，使用默认值", e);
@@ -889,6 +916,7 @@ public class WebInfoController {
                 result.put("province_today", new ArrayList<>());
                 result.put("ua_today", new ArrayList<>());
                 result.put("article_today", new ArrayList<>());
+                result.put("referrer_today", new ArrayList<>());
             }
 
             // 统计各种总数
@@ -933,6 +961,9 @@ public class WebInfoController {
         defaultResult.put("article_history_top", new ArrayList<>());
         defaultResult.put("article_today", new ArrayList<>());
         defaultResult.put("article_yest", new ArrayList<>());
+        defaultResult.put("referrer_history_top", new ArrayList<>());
+        defaultResult.put("referrer_today", new ArrayList<>());
+        defaultResult.put("referrer_yest", new ArrayList<>());
 
         log.info("返回默认历史统计结果");
         return defaultResult;
@@ -1874,5 +1905,51 @@ public class WebInfoController {
         }
         return UserAgentClassifier.aggregateRawUserAgentCounts(
                 historyInfoMapper.getHistoryByUserAgentYesterday(cacheService.getVisitIgnoreIpList()));
+    }
+
+    /**
+     * 聚合数据库和实时记录中的来源网站数据
+     */
+    private List<Map<String, Object>> buildReferrerVisitStats(List<Map<String, Object>> rawReferrerRows,
+                                                              List<Map<String, Object>> visitRecords,
+                                                              String siteHost) {
+        Map<String, Long> counts = new HashMap<>();
+
+        // 1. 累计数据库记录中的 referrer_host 和数量
+        if (rawReferrerRows != null) {
+            for (Map<String, Object> row : rawReferrerRows) {
+                if (row == null) continue;
+                Object hostObj = row.get("referrer_host");
+                long num = toLong(row.get("num"));
+                if (hostObj != null && num > 0) {
+                    counts.put(hostObj.toString(), counts.getOrDefault(hostObj.toString(), 0L) + num);
+                }
+            }
+        }
+
+        // 2. 累计 Redis/实时记录中的 referer，并解析其 host
+        if (visitRecords != null) {
+            for (Map<String, Object> record : visitRecords) {
+                if (record == null) continue;
+                Object refererObj = record.get("referer");
+                String referer = refererObj != null ? refererObj.toString() : null;
+                String host = extractRefererHost(referer);
+                if (host == null || (siteHost != null && host.equals(siteHost))) {
+                    host = "Direct";
+                }
+                counts.put(host, counts.getOrDefault(host, 0L) + 1L);
+            }
+        }
+
+        return counts.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .limit(10)
+                .map(entry -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("referrer_host", entry.getKey());
+                    item.put("num", entry.getValue());
+                    return item;
+                })
+                .collect(Collectors.toList());
     }
 }

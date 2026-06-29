@@ -34,7 +34,11 @@
       class="table"
       header-cell-class-name="table-header"
       empty-text="暂无系统日志">
-      <el-table-column prop="createTime" label="时间" width="165" align="center"></el-table-column>
+      <el-table-column label="时间" width="180" align="center">
+        <template slot-scope="scope">
+          {{ formatLogTime(scope.row.createTime) }}
+        </template>
+      </el-table-column>
       <el-table-column label="类型" width="92" align="center">
         <template slot-scope="scope">
           <el-tag :type="getTypeTag(scope.row.logType)" disable-transitions>
@@ -49,7 +53,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作者/登录账号" min-width="160" show-overflow-tooltip>
+      <el-table-column label="操作者/登录账号" min-width="130" show-overflow-tooltip>
         <template slot-scope="scope">
           {{ formatPrincipal(scope.row) }}
         </template>
@@ -120,7 +124,7 @@
       destroy-on-close>
       <div v-if="currentLog" class="detail-dialog">
         <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="时间">{{ currentLog.createTime || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="时间">{{ formatLogTime(currentLog.createTime) }}</el-descriptions-item>
           <el-descriptions-item label="类型">{{ getTypeLabel(currentLog.logType) }}</el-descriptions-item>
           <el-descriptions-item label="结果">
             <el-tag :type="currentLog.success ? 'success' : 'danger'" size="mini">
@@ -209,53 +213,112 @@
     <el-dialog
       title="IP 封禁列表"
       :visible.sync="blacklistDialog.visible"
-      width="780px"
+      width="820px"
       custom-class="centered-dialog"
-      :append-to-body="true"
-      destroy-on-close>
-      <div v-loading="blacklistDialog.loading" class="blacklist-page">
-        <div class="blacklist-toolbar">
-          <el-input
-            v-model="blacklistDialog.search"
-            placeholder="按 IP / 原因搜索"
-            clearable
-            prefix-icon="el-icon-search"
-            class="blacklist-search"></el-input>
-          <el-button type="danger" icon="el-icon-plus" @click="openAddBlockIp">添加封禁</el-button>
-          <el-button type="primary" icon="el-icon-refresh" @click="loadBlacklist">刷新</el-button>
-          <span class="blacklist-count">共 {{ blacklistFiltered.length }} 条</span>
-        </div>
-        <el-table
-          :data="blacklistFiltered"
-          border
-          max-height="420"
-          empty-text="暂无封禁记录"
-          class="blacklist-table">
-          <el-table-column prop="ip" label="IP" min-width="140"></el-table-column>
-          <el-table-column label="类型" width="92" align="center">
-            <template slot-scope="scope">
-              <el-tag :type="scope.row.permanent ? 'danger' : 'warning'" size="mini" disable-transitions>
-                {{ scope.row.permanent ? '永久' : '定时' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="剩余时长" width="140" align="center">
-            <template slot-scope="scope">
-              {{ formatTtl(scope.row) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="reason" label="原因" min-width="200" show-overflow-tooltip></el-table-column>
-          <el-table-column label="操作" width="100" align="center" fixed="right">
-            <template slot-scope="scope">
-              <el-button
-                type="text"
-                icon="el-icon-unlock"
-                class="unblock-btn"
-                :loading="blacklistDialog.unblockLoading === scope.row.ip"
-                @click="confirmUnblock(scope.row)">解除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+      :append-to-body="true">
+      <div class="blacklist-page">
+        <el-tabs v-model="blacklistDialog.activeTab" @tab-click="handleBlacklistTabClick">
+          <!-- 安全黑名单（全局拦截，403） -->
+          <el-tab-pane label="安全黑名单" name="security">
+            <div v-loading="blacklistDialog.loading" class="blacklist-tab-body">
+              <div class="blacklist-toolbar">
+                <el-input
+                  v-model="blacklistDialog.search"
+                  placeholder="按 IP / 原因搜索"
+                  clearable
+                  prefix-icon="el-icon-search"
+                  class="blacklist-search"></el-input>
+                <el-button type="danger" icon="el-icon-plus" @click="openAddBlockIp">添加封禁</el-button>
+                <el-button type="primary" icon="el-icon-refresh" @click="loadBlacklist">刷新</el-button>
+                <span class="blacklist-count">共 {{ blacklistFiltered.length }} 条</span>
+              </div>
+              <el-table
+                :data="blacklistFiltered"
+                border
+                max-height="420"
+                empty-text="暂无封禁记录"
+                class="blacklist-table">
+                <el-table-column prop="ip" label="IP" min-width="140"></el-table-column>
+                <el-table-column label="类型" width="92" align="center">
+                  <template slot-scope="scope">
+                    <el-tag :type="scope.row.permanent ? 'danger' : 'warning'" size="mini" disable-transitions>
+                      {{ scope.row.permanent ? '永久' : '定时' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="剩余时长" width="140" align="center">
+                  <template slot-scope="scope">
+                    {{ formatTtl(scope.row) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="reason" label="原因" min-width="200" show-overflow-tooltip></el-table-column>
+                <el-table-column label="操作" width="100" align="center" fixed="right">
+                  <template slot-scope="scope">
+                    <el-button
+                      type="text"
+                      icon="el-icon-unlock"
+                      class="unblock-btn"
+                      :loading="blacklistDialog.unblockLoading === scope.row.ip"
+                      @click="confirmUnblock(scope.row)">解除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="blacklist-hint">
+                <i class="el-icon-info"></i>
+                安全黑名单由 SecurityFilter 在请求入口直接拦截（返回 403），来源：管理员手动拉黑 / 攻击阈值自动拉黑。默认 24 小时，可设永久。
+              </div>
+            </div>
+          </el-tab-pane>
+          <!-- 验证码自动封禁（仅拦截验证码流程，30 分钟） -->
+          <el-tab-pane label="验证码自动封禁" name="captcha">
+            <div v-loading="blacklistDialog.captchaLoading" class="blacklist-tab-body">
+              <div class="blacklist-toolbar">
+                <el-input
+                  v-model="blacklistDialog.captchaSearch"
+                  placeholder="按 IP 搜索"
+                  clearable
+                  prefix-icon="el-icon-search"
+                  class="blacklist-search"></el-input>
+                <el-button type="primary" icon="el-icon-refresh" @click="loadCaptchaBlockList">刷新</el-button>
+                <span class="blacklist-count">共 {{ captchaFiltered.length }} 条</span>
+              </div>
+              <el-table
+                :data="captchaFiltered"
+                border
+                max-height="420"
+                empty-text="暂无封禁记录"
+                class="blacklist-table">
+                <el-table-column prop="ip" label="IP" min-width="160"></el-table-column>
+                <el-table-column label="失败次数" width="120" align="center">
+                  <template slot-scope="scope">
+                    <el-tag type="warning" size="mini" disable-transitions>{{ scope.row.failCount }} 次</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="剩余封禁时间" width="160" align="center">
+                  <template slot-scope="scope">
+                    <el-tag :type="getCaptchaTimeTagType(scope.row.remainingMinutes)" size="mini" disable-transitions>
+                      <i class="el-icon-time"></i> {{ scope.row.remainingMinutes }} 分钟
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="100" align="center" fixed="right">
+                  <template slot-scope="scope">
+                    <el-button
+                      type="text"
+                      icon="el-icon-unlock"
+                      class="unblock-btn"
+                      :loading="blacklistDialog.captchaUnblockLoading === scope.row.ip"
+                      @click="confirmCaptchaUnblock(scope.row)">解除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="blacklist-hint">
+                <i class="el-icon-info"></i>
+                验证码自动封禁由验证码服务在 5 分钟内验证失败 ≥15 次时触发，固定 30 分钟，<b>仅拦截验证码流程</b>，不影响其他请求。
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </div>
       <span slot="footer" class="dialog-footer">
         <el-button type="primary" @click="blacklistDialog.visible = false">关 闭</el-button>
@@ -302,7 +365,13 @@ export default {
         loading: false,
         unblockLoading: '',
         search: '',
-        list: []
+        list: [],
+        activeTab: 'security',
+        captchaList: [],
+        captchaLoading: false,
+        captchaUnblockLoading: '',
+        captchaSearch: '',
+        captchaLoaded: false
       },
       durationKeyMap: {
         '1h': 3600,
@@ -438,6 +507,16 @@ export default {
         const ip = (item.ip || '').toLowerCase();
         const reason = (item.reason || '').toLowerCase();
         return ip.indexOf(kw) >= 0 || reason.indexOf(kw) >= 0;
+      });
+    },
+    captchaFiltered() {
+      const kw = (this.blacklistDialog.captchaSearch || '').trim().toLowerCase();
+      if (!kw) {
+        return this.blacklistDialog.captchaList;
+      }
+      return this.blacklistDialog.captchaList.filter(item => {
+        const ip = (item.ip || '').toLowerCase();
+        return ip.indexOf(kw) >= 0;
       });
     }
   },
@@ -628,7 +707,7 @@ export default {
       }
       const lines = [];
       lines.push('=========== 系统日志 ===========');
-      lines.push(`时间: ${row.createTime || '-'}`);
+      lines.push(`时间: ${this.formatLogTime(row.createTime)}`);
       lines.push(`类型: ${this.getTypeLabel(row.logType)}`);
       lines.push(`结果: ${row.success ? '成功' : '失败'}`);
       lines.push(`操作: ${this.getActionLabel(row.action)}`);
@@ -791,6 +870,15 @@ export default {
     openBlacklistDialog() {
       this.blacklistDialog.visible = true;
       this.loadBlacklist();
+      // 验证码 tab 懒加载：仅在已访问过时刷新
+      if (this.blacklistDialog.captchaLoaded) {
+        this.loadCaptchaBlockList();
+      }
+    },
+    handleBlacklistTabClick(tab) {
+      if (tab && tab.name === 'captcha' && !this.blacklistDialog.captchaLoaded) {
+        this.loadCaptchaBlockList();
+      }
     },
     loadBlacklist() {
       this.blacklistDialog.loading = true;
@@ -808,6 +896,66 @@ export default {
         .finally(() => {
           this.blacklistDialog.loading = false;
         });
+    },
+    loadCaptchaBlockList() {
+      this.blacklistDialog.captchaLoading = true;
+      this.$http.get(this.$constant.baseURL + '/captcha/getBlockedIps', {}, true)
+        .then((res) => {
+          this.blacklistDialog.captchaList = (res && res.data) || [];
+          this.blacklistDialog.captchaLoaded = true;
+        })
+        .catch((error) => {
+          this.$message({
+            message: '加载验证码封禁列表失败: ' + (error && error.message ? error.message : '未知错误'),
+            type: 'error'
+          });
+        })
+        .finally(() => {
+          this.blacklistDialog.captchaLoading = false;
+        });
+    },
+    confirmCaptchaUnblock(row) {
+      const ip = (row && row.ip) || '';
+      if (!ip) {
+        this.$message.warning('IP 不存在');
+        return;
+      }
+      this.$confirm(
+        `确定要解除对 IP "${ip}" 的验证码封禁吗？解除后该 IP 可立即继续验证码流程。`,
+        '解除验证码封禁',
+        {
+          confirmButtonText: '确定解除',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      ).then(() => {
+        this.blacklistDialog.captchaUnblockLoading = ip;
+        this.$http.post(
+          this.$constant.baseURL + '/captcha/unblockIp',
+          { ip },
+          true
+        ).then(() => {
+          this.$message({
+            message: `已解除 IP ${ip} 的验证码封禁`,
+            type: 'success'
+          });
+          this.loadCaptchaBlockList();
+        }).catch((error) => {
+          this.$message({
+            message: '解除验证码封禁失败: ' + (error && error.message ? error.message : '未知错误'),
+            type: 'error'
+          });
+        }).finally(() => {
+          this.blacklistDialog.captchaUnblockLoading = '';
+        });
+      }).catch(() => {
+        // 取消
+      });
+    },
+    getCaptchaTimeTagType(minutes) {
+      if (minutes > 20) return 'danger';
+      if (minutes > 10) return 'warning';
+      return 'info';
     },
     confirmUnblock(row) {
       const ip = (row && row.ip) || '';
@@ -876,6 +1024,22 @@ export default {
         return `${hours}时 ${minutes}分`;
       }
       return `${minutes}分`;
+    },
+    formatLogTime(dateTime) {
+      if (!dateTime) return '-';
+      let date = new Date(dateTime);
+      if (isNaN(date.getTime()) && typeof dateTime === 'string') {
+        date = new Date(dateTime.replace(/-/g, '/'));
+      }
+      if (isNaN(date.getTime())) {
+        return dateTime;
+      }
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}年${month}月${day}日 ${hours}:${minutes}`;
     }
   }
 };
@@ -918,13 +1082,31 @@ export default {
   width: 360px;
 }
 
+/* 亮色模式显式恢复，避免从暗色切换后仍残留暗色样式 */
+.system-log-page >>> .log-date-range.el-date-editor {
+  background-color: #ffffff !important;
+  border-color: #dcdfe6 !important;
+}
+
+.system-log-page >>> .log-date-range .el-range-input {
+  background-color: #ffffff !important;
+  color: #606266 !important;
+}
+
+.system-log-page >>> .log-date-range .el-range-input::placeholder,
+.system-log-page >>> .log-date-range .el-range-separator,
+.system-log-page >>> .log-date-range .el-range__icon,
+.system-log-page >>> .log-date-range .el-range__close-icon {
+  color: #c0c4cc !important;
+}
+
 body.dark-mode .system-log-page >>> .log-date-range.el-date-editor {
   background-color: #2d2d2d !important;
   border-color: #4a4a4a !important;
 }
 
 body.dark-mode .system-log-page >>> .log-date-range .el-range-input {
-  background-color: transparent !important;
+  background-color: #2d2d2d !important;
   color: #e0e0e0 !important;
 }
 
@@ -1064,6 +1246,57 @@ body.dark-mode .system-log-page >>> .log-date-range .el-range__close-icon {
 /* ===== 封禁列表弹窗 ===== */
 .blacklist-page {
   min-height: 200px;
+  padding: 0 8px;
+}
+
+/* tab 标签左右留白，避免紧贴边缘 */
+.blacklist-page ::v-deep .el-tabs__header {
+  margin-bottom: 16px;
+}
+
+.blacklist-page ::v-deep #tab-security {
+  padding-left: 20px !important;
+}
+
+.blacklist-page ::v-deep #tab-captcha {
+  padding-right: 20px !important;
+}
+
+body.dark-mode .blacklist-page ::v-deep .el-tabs__item.is-active {
+  background-color: transparent !important;
+}
+
+body.dark-mode .blacklist-page ::v-deep .el-tabs__header {
+  background-color: transparent !important;
+}
+
+.blacklist-page ::v-deep .el-tabs__nav-wrap::after {
+  background-color: #ebeef5;
+}
+
+.blacklist-page ::v-deep .el-tabs__item {
+  font-weight: 500;
+}
+
+.blacklist-tab-body {
+  min-height: 200px;
+  padding: 0 8px;
+}
+
+.blacklist-hint {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f4f6fa;
+  border-left: 3px solid #409eff;
+  border-radius: 4px;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.blacklist-hint i {
+  color: #409eff;
+  margin-right: 4px;
 }
 
 .blacklist-toolbar {

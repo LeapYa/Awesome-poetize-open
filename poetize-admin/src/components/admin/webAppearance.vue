@@ -623,11 +623,11 @@ const AiToolsConfig = () => import('./aiChat/AiToolsConfig');
 const AiSkillConfig = () => import('./aiChat/AiSkillConfig');
 
 const DEFAULT_COMMENT_SKILL_DOCUMENT = `---
-name: poetize-comment-reply
-description: Generate public Markdown replies in Poetize shared comment sections when users mention the configured bot name. Use for article, message board, and love wall comments.
+name: comment-reply
+description: Generate public Markdown replies in shared comment sections when users mention the configured bot name. Use for article, message board, and love wall comments.
 ---
 
-# Poetize Comment Reply
+# Comment Reply
 
 Use this skill after a public shared comment mentions @{{botName}}.
 The response will be published as a normal public comment.
