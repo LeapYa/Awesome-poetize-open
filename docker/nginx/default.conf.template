@@ -100,6 +100,14 @@ map $request_uri $is_api_request {
     default 0;
 }
 
+# 空 User-Agent 识别（爬虫/扫描器典型特征：抹除UA）
+# 正常浏览器一定携带 UA；空 UA 或仅"-"几乎必为恶意探测
+map $http_user_agent $is_empty_user_agent {
+    default 0;
+    "" 1;
+    "-" 1;
+}
+
 server {
     listen 80;
     server_name example.com www.example.com;
@@ -110,6 +118,13 @@ server {
     # 在 access 阶段执行，命中黑名单的 IP 直接返回 403，连 HTML 源码也不会返回
     # fail-open：Redis 不可用时放行，避免误伤全站
     access_by_lua_file /usr/local/openresty/nginx/lua/ip_blacklist.lua;
+
+    # 拦截空 User-Agent 请求（爬虫/扫描器典型特征）
+    # 正常浏览器一定携带 UA；空 UA 或仅"-"几乎必为恶意探测
+    # 返回 403 走统一 @handle_403 处理，请求不会到达后端，避免污染访问统计
+    if ($is_empty_user_agent) {
+        return 403;
+    }
 
     # 设置访问日志路径
     access_log /var/log/nginx/access.log main;
@@ -317,6 +332,14 @@ server {
 
     # ===== 安全防护规则 =====
 
+    # 0. 拦截所有 .php 请求（本站为 Java 应用，不存在任何 PHP 文件）
+    # 所有 .php 请求均为扫描器/僵尸网络对 webshell 与 WordPress 漏洞的探测
+    # 直接 444 断开连接：零带宽消耗、不泄露任何信息、不触发 error_page 跳转首页
+    # 注意：用负向先行断言排除 /static/articleFile/，保留用户上传的 .php 附件走强制下载规则
+    location ~ ^(?!/static/articleFile/).*\.php$ {
+        return 444;
+    }
+
     # 1. 防止目录遍历攻击
     location ~* \.\./  {
         return 403 "Directory traversal not allowed";
@@ -328,13 +351,31 @@ server {
     }
 
     # 3. 禁止访问敏感文件类型
-    location ~* \.(htaccess|htpasswd|gitignore|git|env|config|ini|log|sql|bak|backup|old|tmp|temp|swp|swo)$ {
+    # 排除 /static/articleFile/ 以保留用户上传的 .sql/.conf/.log 等附件走普通静态文件下载
+    location ~* ^(?!/static/articleFile/).*\.(htaccess|htpasswd|gitignore|git|env|config|conf|ini|log|sql|bak|backup|old|tmp|temp|swp|swo)$ {
         return 403 "Access to sensitive files denied";
     }
 
     # 4. 禁止访问系统配置目录
     location ~* /(config|configs|configuration|administrator|manager|management|system|private|secret|internal)/ {
         return 403 "Access to system directories denied";
+    }
+
+    # 5. 拦截 WordPress 相关路径（本站非 WordPress，所有 wp-* 请求均为扫描器探测）
+    #    数据显示 /wp-admin/、/wp-json/gravitysmtp、/wp-includes/ 等被高频扫描
+    location ~* ^/(wp-admin|wp-login|wp-content|wp-includes|wp-json|wp-config) {
+        return 444;
+    }
+
+    # 6. 拦截其他动态脚本后缀（本站为 Java + Vue 前后端分离，不存在 ASP/JSP/CGI/Python/Perl/Ruby 脚本）
+    # 同样排除 /static/articleFile/ 以保留用户上传的脚本类附件走强制下载规则
+    location ~* ^(?!/static/articleFile/).*\.(asp|aspx|jsp|cgi|pl|py|rb)$ {
+        return 444;
+    }
+
+    # 7. 拦截常见管理工具与状态页探测路径
+    location ~* ^/(phpmyadmin|pma|adminer|mysql|server-status|server-info|cgi-bin) {
+        return 444;
     }
 
     # 设置默认字符集
