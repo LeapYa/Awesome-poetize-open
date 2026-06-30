@@ -522,16 +522,54 @@ export default {
 
     // 异步并行获取所有数据
     async fetchAllData() {
+      // 侧边栏资源（联系方式/快捷入口/背景）走聚合端点，首次加载后缓存到 store
+      // 路由切换回首页时复用缓存，避免重复请求
+      if (this.mainStore.asideBootstrap) {
+        this.applyAsideBootstrap(this.mainStore.asideBootstrap)
+      } else {
+        this.fetchAsideBootstrap()
+      }
+
       try {
         await Promise.all([
           this.getRecommendArticles(),
           this.getAdmire(),
-          this.getContactList(),
-          this.getAsideBackground(),
         ])
       } catch (error) {
         console.error('获取侧边栏数据失败:', error)
       }
+    },
+
+    // 应用聚合数据到组件状态
+    applyAsideBootstrap(data) {
+      if (!this.$common.isEmpty(data.contactList)) {
+        this.contactList = data.contactList
+      }
+      if (!this.$common.isEmpty(data.quickEntryList)) {
+        this.quickEntryList = data.quickEntryList
+      }
+      if (!this.$common.isEmpty(data.asideBackground)) {
+        const bgConfig = data.asideBackground
+        this.asideBackgroundImage = bgConfig.cover
+        this.asideExtraBackground = bgConfig.extraBackground || ''
+      }
+    },
+
+    // 请求聚合端点并缓存到 store
+    fetchAsideBootstrap() {
+      this.$http
+        .get(this.$constant.baseURL + '/webInfo/asideBootstrap')
+        .then((res) => {
+          const data = (res && res.data) || {}
+          this.applyAsideBootstrap(data)
+          this.mainStore.loadAsideBootstrap(data)
+        })
+        .catch((error) => {
+          console.error('获取侧边栏聚合数据失败:', error)
+          // 回退到旧的独立接口
+          this.getContactList()
+          this.getAsideBackground()
+        })
     },
 
     // 判断是否为CSS背景代码

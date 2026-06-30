@@ -21,7 +21,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -342,43 +345,95 @@ public class ResourceAggregationController {
         
         List<ResourcePath> resourcePaths = resultPage.getRecords();
         if (!CollectionUtils.isEmpty(resourcePaths)) {
-            List<ResourcePathVO> resourcePathVOs = resourcePaths.stream().map(rp -> {
-                ResourcePathVO resourcePathVO = new ResourcePathVO();
-                BeanUtils.copyProperties(rp, resourcePathVO);
-                
-                // 快捷入口、联系方式、侧边栏背景：解析remark中的JSON，设置样式字段
-                if ((CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(rp.getType()) || 
-                     CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(rp.getType()) ||
-                     CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(rp.getType())) && StringUtils.hasText(rp.getRemark())) {
-                    String remark = rp.getRemark().trim();
-                    if (remark.startsWith("{") && remark.endsWith("}")) {
-                        // 简单的JSON解析（避免引入额外依赖）
-                        remark = remark.substring(1, remark.length() - 1); // 去掉 {}
-                        String[] pairs = remark.split(",");
-                        for (String pair : pairs) {
-                            String[] keyValue = pair.split(":", 2);
-                            if (keyValue.length == 2) {
-                                String key = keyValue[0].trim().replace("\"", "");
-                                String value = keyValue[1].trim().replace("\"", "");
-                                if ("btnWidth".equals(key)) {
-                                    resourcePathVO.setBtnWidth(value);
-                                } else if ("btnHeight".equals(key)) {
-                                    resourcePathVO.setBtnHeight(value);
-                                } else if ("btnRadius".equals(key)) {
-                                    resourcePathVO.setBtnRadius(value);
-                                } else if ("extraBackground".equals(key)) {
-                                    resourcePathVO.setExtraBackground(value);
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                return resourcePathVO;
-            }).collect(Collectors.toList());
+            List<ResourcePathVO> resourcePathVOs = resourcePaths.stream()
+                .map(this::toResourcePathVO)
+                .collect(Collectors.toList());
             baseRequestVO.setRecords(resourcePathVOs);
             baseRequestVO.setTotal(resultPage.getTotal());
         }
         return PoetryResult.success(baseRequestVO);
+    }
+
+    /**
+     * ResourcePath -> ResourcePathVO，并对快捷入口/联系方式/侧边栏背景解析 remark 中的样式 JSON。
+     */
+    private ResourcePathVO toResourcePathVO(ResourcePath rp) {
+        ResourcePathVO vo = new ResourcePathVO();
+        BeanUtils.copyProperties(rp, vo);
+
+        // 快捷入口、联系方式、侧边栏背景：解析remark中的JSON，设置样式字段
+        if ((CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(rp.getType()) ||
+             CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(rp.getType()) ||
+             CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(rp.getType())) && StringUtils.hasText(rp.getRemark())) {
+            String remark = rp.getRemark().trim();
+            if (remark.startsWith("{") && remark.endsWith("}")) {
+                // 简单的JSON解析（避免引入额外依赖）
+                remark = remark.substring(1, remark.length() - 1); // 去掉 {}
+                String[] pairs = remark.split(",");
+                for (String pair : pairs) {
+                    String[] keyValue = pair.split(":", 2);
+                    if (keyValue.length == 2) {
+                        String key = keyValue[0].trim().replace("\"", "");
+                        String value = keyValue[1].trim().replace("\"", "");
+                        if ("btnWidth".equals(key)) {
+                            vo.setBtnWidth(value);
+                        } else if ("btnHeight".equals(key)) {
+                            vo.setBtnHeight(value);
+                        } else if ("btnRadius".equals(key)) {
+                            vo.setBtnRadius(value);
+                        } else if ("extraBackground".equals(key)) {
+                            vo.setExtraBackground(value);
+                        }
+                    }
+                }
+            }
+        }
+
+        return vo;
+    }
+
+    /**
+     * 前台侧边栏首屏聚合：一次返回联系方式、快捷入口、侧边栏背景。
+     * 替代 myAside.vue 中对 /webInfo/listResourcePath 的 3 次独立请求。
+     */
+    @GetMapping("/asideBootstrap")
+    public PoetryResult<Map<String, Object>> asideBootstrap() {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        try {
+            List<ResourcePath> contacts = new LambdaQueryChainWrapper<>(resourcePathMapper)
+                .eq(ResourcePath::getType, CommonConst.RESOURCE_PATH_TYPE_CONTACT)
+                .eq(ResourcePath::getStatus, Boolean.TRUE)
+                .orderByAsc(ResourcePath::getCreateTime)
+                .list();
+            result.put("contactList", contacts.stream().map(this::toResourcePathVO).collect(Collectors.toList()));
+        } catch (Exception e) {
+            result.put("contactList", Collections.emptyList());
+        }
+
+        try {
+            List<ResourcePath> quickEntries = new LambdaQueryChainWrapper<>(resourcePathMapper)
+                .eq(ResourcePath::getType, CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY)
+                .eq(ResourcePath::getStatus, Boolean.TRUE)
+                .orderByAsc(ResourcePath::getCreateTime)
+                .list();
+            result.put("quickEntryList", quickEntries.stream().map(this::toResourcePathVO).collect(Collectors.toList()));
+        } catch (Exception e) {
+            result.put("quickEntryList", Collections.emptyList());
+        }
+
+        try {
+            List<ResourcePath> backgrounds = new LambdaQueryChainWrapper<>(resourcePathMapper)
+                .eq(ResourcePath::getType, CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND)
+                .eq(ResourcePath::getStatus, Boolean.TRUE)
+                .orderByDesc(ResourcePath::getCreateTime)
+                .last("LIMIT 1")
+                .list();
+            result.put("asideBackground", backgrounds.isEmpty() ? null : toResourcePathVO(backgrounds.get(0)));
+        } catch (Exception e) {
+            result.put("asideBackground", null);
+        }
+
+        return PoetryResult.success(result);
     }
 }

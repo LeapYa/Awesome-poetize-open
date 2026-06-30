@@ -75,6 +75,9 @@ let isAdminLoading = false
 let loadPromise = null
 let loadAdminPromise = null
 
+const ARTICLE_DEFAULT_LANG_KEY = 'articleDefaultLanguages'
+const LANGUAGE_CACHE_MAX_AGE = 24 * 60 * 60 * 1000
+
 /**
  * 获取语言映射配置
  * 优先从数据库读取，失败则使用默认配置
@@ -170,6 +173,43 @@ export async function getAdminLanguageMapping() {
  */
 export function getLanguageMappingSync() {
   return cachedLanguageMap || DEFAULT_LANGUAGE_MAP
+}
+
+export function applyLanguageBootstrap(bootstrap = {}) {
+  if (bootstrap.languageMap && typeof bootstrap.languageMap === 'object') {
+    cachedLanguageMap = bootstrap.languageMap
+  }
+
+  if (
+    bootstrap.articleDefaultLanguages &&
+    typeof bootstrap.articleDefaultLanguages === 'object'
+  ) {
+    localStorage.setItem(
+      ARTICLE_DEFAULT_LANG_KEY,
+      JSON.stringify({
+        timestamp: Date.now(),
+        data: bootstrap.articleDefaultLanguages,
+      })
+    )
+  }
+}
+
+export function getCachedArticleDefaultLanguages() {
+  const cached = localStorage.getItem(ARTICLE_DEFAULT_LANG_KEY)
+  if (!cached) return null
+
+  try {
+    const parsed = JSON.parse(cached)
+    if (!parsed || !parsed.timestamp || !parsed.data) return null
+    if (Date.now() - parsed.timestamp > LANGUAGE_CACHE_MAX_AGE) {
+      localStorage.removeItem(ARTICLE_DEFAULT_LANG_KEY)
+      return null
+    }
+    return parsed.data
+  } catch (error) {
+    localStorage.removeItem(ARTICLE_DEFAULT_LANG_KEY)
+    return null
+  }
 }
 
 /**

@@ -83,6 +83,10 @@ export const useMainStore = defineStore('main', {
     // 访问量统计
     visitCounts: {},
 
+    // 侧边栏首屏聚合缓存（contactList/quickEntryList/asideBackground）
+    // 由 myAside 首次加载后注入，路由切换回首页时复用，避免重复请求
+    asideBootstrap: null,
+
     // 验证码相关状态
     captcha: {
       show: false, // 是否显示验证码
@@ -153,6 +157,14 @@ export const useMainStore = defineStore('main', {
         this.sortInfo = sortedData
         localStorage.setItem('sortInfo', JSON.stringify(cacheData))
       }
+    },
+
+    /**
+     * 加载侧边栏首屏聚合数据（contactList/quickEntryList/asideBackground）
+     * 首次加载后缓存到 store，路由切换回首页时复用，避免重复请求
+     */
+    loadAsideBootstrap(data) {
+      this.asideBootstrap = data
     },
 
     /**
