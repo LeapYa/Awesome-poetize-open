@@ -95,7 +95,7 @@
 1. ✅ 实现token签名算法HMAC-SHA256认证 —— 完全替换简单UUID token，新增防伪造、防篡改、防重放攻击能力
 1. ✅ 彻底重构 IM 系统 —— 移除 t-io 依赖，迁移至原生 Spring WebSocket，降低架构复杂度和维护成本，配合Java 25 虚拟线程，性能也能媲美 t-io
 1. ✅ 支持账号多端登录 —— 实现多设备同时在线登录，并加强了账号安全，改密码后强制下线所有设备
-1. ✅ 核心技术栈升级 —— 主站前端升级到 Vue3.5，后端升级到 Java 25 LTS + Spring Boot 3.5.11，全面启用虚拟线程，并使用 Redis缓存，性能与响应速度显著提升
+1. ✅ 核心技术栈升级 —— 主站前端升级到 Vue3.5，后端升级到 Java 25 LTS + Spring Boot 4.1.0，全面启用虚拟线程，并使用 Redis缓存，性能与响应速度显著提升
 1. ✅ 插件系统 —— 支持通过 .zip 插件包扩展前端展示和后端逻辑，无需修改核心代码，详见 [插件开发指南](docs/插件开发指南.md)
 
 > 更多功能，就不一一列举了...
@@ -692,7 +692,7 @@ cd poetize-admin && npm install && npm run dev
 ## 🛠️ 技术栈
 
 * **前端** - Vue3（前台+聊天室）、Vue2（后台管理）、Element Plus/Element UI、WebSocket、Live2D
-* **后端** - Spring Boot 3.5.11、Java 25 LTS
+* **后端** - Spring Boot 4.1.0、Java 25 LTS
 * **数据库** - MariaDB 11、Redis 7
 * **部署** - Docker、Docker Compose、OpenResty（Nginx）、Shell 脚本
 
