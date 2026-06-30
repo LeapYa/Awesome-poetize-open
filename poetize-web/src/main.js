@@ -124,70 +124,70 @@ if (disposeAntiDebug) {
 }
 
 // ==================== 挂载应用 ====================
-app.mount('#app')
+// 等待路由就绪后再挂载：Vite dev 首次冷启动时异步路由组件需按需编译，
+// 同步挂载会在组件未就绪时渲染，触发 resolveComponent / ref owner context 警告导致白屏。
+router.isReady().then(() => {
+    app.mount('#app')
 
-function deferNonCriticalTask(task) {
-    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-        window.requestIdleCallback(() => task(), { timeout: 2000 })
-        return
+    function deferNonCriticalTask(task) {
+        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(() => task(), { timeout: 2000 })
+            return
+        }
+
+        setTimeout(() => task(), 0)
     }
 
-    setTimeout(() => task(), 0)
-}
+    // ==================== 应用挂载后初始化 ====================
+    nextTick(() => {
+        // 触发应用挂载完成事件
+        window.dispatchEvent(new CustomEvent('app-mounted', {
+            detail: {
+                timestamp: Date.now(),
+                prerendered: !!window.PRERENDER_DATA,
+                mountType: window.PRERENDER_DATA ? 'hydration' : 'normal'
+            }
+        }))
 
-// ==================== 应用挂载后初始化 ====================
-nextTick(() => {
-    // 触发应用挂载完成事件
-    window.dispatchEvent(new CustomEvent('app-mounted', {
-        detail: {
-            timestamp: Date.now(),
-            prerendered: !!window.PRERENDER_DATA,
-            mountType: window.PRERENDER_DATA ? 'hydration' : 'normal'
+        // 添加挂载完成标记
+        const appElement = document.getElementById('app')
+        if (appElement) {
+            appElement.classList.add('vue-mounted')
         }
-    }))
+        document.documentElement.classList.add('loaded')
+        document.documentElement.classList.remove('prerender')
 
-    // 添加挂载完成标记
-    const appElement = document.getElementById('app')
-    if (appElement) {
-        appElement.classList.add('vue-mounted')
-    }
-    document.documentElement.classList.add('loaded')
-    document.documentElement.classList.remove('prerender')
-
-    deferNonCriticalTask(async () => {
-        try {
-            const [{ initImageLoader }, { registerServiceWorker }, { initParticleEffect }] = await Promise.all([
-                import('./utils/image-loader'),
-                import('./utils/pwa-manager'),
-                import('./composables/useParticleEffect'),
-            ])
-
-            // 初始化图片懒加载
-            initImageLoader()
-
-            // 注册 PWA Service Worker
-            registerServiceWorker(notificationManager.info)
-
-            await router.isReady().catch(err => {
-                console.debug('等待首屏路由就绪失败:', err)
-            })
-
-            // 启动当前激活的粒子特效插件
-            initParticleEffect()
-        } catch (err) {
-            console.error('初始化非关键模块失败:', err)
-        }
-    })
-
-    // 字体加载 - 在应用挂载后执行，确保 store 已完全初始化
-    if (mainStore.sysConfig) {
         deferNonCriticalTask(async () => {
             try {
-                const { loadFonts } = await import('./utils/font-loader')
-                await loadFonts(mainStore.sysConfig)
+                const [{ initImageLoader }, { registerServiceWorker }, { initParticleEffect }] = await Promise.all([
+                    import('./utils/image-loader'),
+                    import('./utils/pwa-manager'),
+                    import('./composables/useParticleEffect'),
+                ])
+
+                // 初始化图片懒加载
+                initImageLoader()
+
+                // 注册 PWA Service Worker
+                registerServiceWorker(notificationManager.info)
+
+                // 启动当前激活的粒子特效插件
+                initParticleEffect()
             } catch (err) {
-                console.error('加载字体失败:', err)
+                console.error('初始化非关键模块失败:', err)
             }
         })
-    }
+
+        // 字体加载 - 在应用挂载后执行，确保 store 已完全初始化
+        if (mainStore.sysConfig) {
+            deferNonCriticalTask(async () => {
+                try {
+                    const { loadFonts } = await import('./utils/font-loader')
+                    await loadFonts(mainStore.sysConfig)
+                } catch (err) {
+                    console.error('加载字体失败:', err)
+                }
+            })
+        }
+    })
 })

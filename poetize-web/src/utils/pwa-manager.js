@@ -100,6 +100,25 @@ export function registerServiceWorker(notifyFn = null) {
     return
   }
 
+  // 开发态禁用 Service Worker：SW 会缓存旧 chunk，导致改代码后 F5 拿到旧缓存
+  // 出现 Vue 渲染错乱（ref owner context / resolveComponent 警告）→ 白屏
+  // 只能 Ctrl+Shift+R 绕过 SW 才能恢复。开发态主动注销残留 SW 并清理缓存。
+  if (import.meta.env.DEV) {
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => {
+        if (regs.length > 0) {
+          console.info('[PWA] 开发环境：注销残留 Service Worker', regs.length)
+          regs.forEach((r) => r.unregister())
+          // 清理 SW 缓存（caches API）
+          if ('caches' in window) {
+            caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)))
+          }
+        }
+      })
+      .catch(() => {})
+    return
+  }
+
   navigator.serviceWorker
     .register('/sw.js')
     .then(function (registration) {

@@ -32,21 +32,11 @@
         }
       }
 
-      // 1. 捕获动态 import / preload 加载失败（Vite 预加载错误）
-      window.addEventListener('vite:preloadError', function (event) {
-        reloadPage('preloadError');
-      });
-
-      // 2. 捕获静态 JS/CSS 资源 404/加载失败（Script/Link 标签加载失败）
-      window.addEventListener('error', function (event) {
-        var target = event.target;
-        if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
-          // 排除非静态资源的普通脚本运行错误
-          if (target.src || target.href) {
-            reloadPage('assetLoadError: ' + (target.src || target.href));
-          }
-        }
-      }, true);
+      // 仅捕获 Vite 动态 import / preload 加载失败
+        // 不再监听全局 SCRIPT/LINK error：非关键资源（背景图、CDN、代理样式等）加载失败不应触发整页刷新
+        window.addEventListener('vite:preloadError', function (event) {
+          reloadPage('preloadError');
+        });
     })();
   </script>
   <title></title>

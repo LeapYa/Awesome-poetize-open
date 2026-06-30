@@ -249,7 +249,7 @@ public class RssFeedClient {
                 return true;
             }
             // 部分 Feed 的 link 是相对路径或缺少协议
-            if (normalizedTarget.contains(link.toLowerCase()) || link.toLowerCase().contains(normalizedTarget)) {
+            if (link.toLowerCase().contains(normalizedTarget)) {
                 return true;
             }
         }

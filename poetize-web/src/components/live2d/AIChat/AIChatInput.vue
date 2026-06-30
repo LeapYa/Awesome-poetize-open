@@ -320,7 +320,16 @@ export default {
     })
 
     // 检测是否为移动端
-    const isMobile = computed(() => window.innerWidth <= 768)
+    const isMobile = ref(window.innerWidth <= 768)
+    const handleResize = () => {
+      isMobile.value = window.innerWidth <= 768
+    }
+    onMounted(() => {
+      window.addEventListener('resize', handleResize)
+    })
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', handleResize)
+    })
 
     // 已附加的页面
     const attachedPage = computed(() => aiChatStore.attachedPageContext)
@@ -337,7 +346,7 @@ export default {
     // 是否可发送（文档解析中禁止发送，避免丢失正在解析的附件）
     const canSend = computed(() => {
       const hasParsingDoc = (aiChatStore.attachedDocuments || []).some((doc) => doc.parsing)
-      return localValue.value.trim().length > 0 && !props.sending && !hasParsingDoc
+      return localValue.value.trim().length > 0 && !props.sending && !hasParsingDoc && !imageUploading.value && !documentUploading.value
     })
 
     /**

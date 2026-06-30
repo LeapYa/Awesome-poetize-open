@@ -236,8 +236,9 @@
               <el-image
                 lazy
                 class="my-el-image"
-                :src="article.articleCover"
+                :src="getArticleCoverUrl(article)"
                 fit="cover"
+                @error="handleCoverError(article)"
               >
                 <template v-slot:error>
                   <div class="image-slot">
@@ -419,6 +420,7 @@ import {
 import { Vue3SeamlessScroll } from 'vue3-seamless-scroll'
 import { useMainStore } from '@/stores/main'
 import { getArticlePath } from '@/utils/article-url'
+import { useArticleCover } from '@/composables/useArticleCover'
 
 export default {
   components: {
@@ -428,6 +430,10 @@ export default {
     ElIconDelete,
     ElIconDate,
     ElIconFolderOpened,
+  },
+  setup() {
+    const { getArticleCoverUrl, handleCoverError } = useArticleCover()
+    return { getArticleCoverUrl, handleCoverError }
   },
   data() {
     return {

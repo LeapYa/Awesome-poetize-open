@@ -264,6 +264,8 @@ public class JinaRateLimiter {
             int before = requestTimestamps.size();
             // 清理过期时间戳后再塞入新时间戳，确保塞入数量等于 maxRpm
             cleanExpiredTimestamps(now);
+            // 清空未过期时间戳，确保惩罚后 size 恰好等于 maxRpm
+            requestTimestamps.clear();
             // 塞入 maxRpm 个当前时间戳，让窗口立即变满
             // 下次 cleanExpiredTimestamps 调用前，所有 acquire 都会走排队分支
             for (int i = 0; i < maxRpm; i++) {

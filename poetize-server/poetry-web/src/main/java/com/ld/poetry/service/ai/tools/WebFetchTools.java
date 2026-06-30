@@ -455,6 +455,14 @@ public class WebFetchTools {
                     }
                 }
 
+                // 检查 Content-Encoding：OkHttp 自动解压 gzip/deflate 并移除该头，
+                // 但 br(brotli)/zstd 不会自动解压，直接读取会乱码。
+                String contentEncoding = response.header("Content-Encoding");
+                if (contentEncoding != null && !"identity".equalsIgnoreCase(contentEncoding)) {
+                    result.errorMessage = "不支持的 Content-Encoding: " + contentEncoding + "（无法解压，可能乱码）";
+                    return result;
+                }
+
                 // 流式读取响应体（5MB 上限）
                 ResponseBody body = response.body();
                 if (body == null) {

@@ -179,9 +179,10 @@ public class JinaReaderClient {
                 return Optional.empty();
             }
             if (markdown.length() > MAX_RESPONSE_LENGTH) {
+                int origLen = markdown.length();
                 markdown = markdown.substring(0, MAX_RESPONSE_LENGTH);
                 log.warn("Jina Reader 响应体超限，已截断到 5MB: origLen={}, url={}",
-                        markdown.length(), targetUrl);
+                        origLen, targetUrl);
             }
             log.info("Jina Reader 调用成功: len={}, duration={}ms, url={}",
                     markdown.length(), duration, targetUrl);

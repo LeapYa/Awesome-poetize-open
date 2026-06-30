@@ -714,17 +714,6 @@ export const useAIChatStore = defineStore('aiChat', {
         }
       }
 
-      if (!this.checkRateLimit()) {
-        const remainingTime = Math.ceil(
-          (this.rateLimitData.resetTime - Date.now()) / 1000
-        )
-        return {
-          success: false,
-          error: 'rate_limit',
-          message: `发送频率太快了，请等待${remainingTime}秒后再试`,
-        }
-      }
-
       if (this.config?.enable_content_filter) {
         const filtered = this.filterContent(content)
         if (!filtered.pass) {
@@ -775,6 +764,18 @@ export const useAIChatStore = defineStore('aiChat', {
           success: false,
           error: 'require_login',
           message: '需要登录后才能使用聊天功能',
+        }
+      }
+
+      // 速率限制校验放在内容过滤与登录校验之后，避免被拦截的消息也计数
+      if (!this.checkRateLimit()) {
+        const remainingTime = Math.ceil(
+          (this.rateLimitData.resetTime - Date.now()) / 1000
+        )
+        return {
+          success: false,
+          error: 'rate_limit',
+          message: `发送频率太快了，请等待${remainingTime}秒后再试`,
         }
       }
 
@@ -1352,7 +1353,7 @@ export const useAIChatStore = defineStore('aiChat', {
       }
     },
 
-    async sendStreamingMessage(content, images = [], documents = []) {
+    async sendStreamingMessage(content, images = [], documents = [], isRetry = false) {
       this.typing = true
       this.streaming = true
       this.shouldStop = false
@@ -1645,19 +1646,20 @@ export const useAIChatStore = defineStore('aiChat', {
         this.stopJinaQueuePolling()
 
         // cacheMiss 重试：服务端告知 baseHistoryHash 已失效，清空 hash 并用完整历史重试一次
-        // 流式未产生任何内容（aiMessage 可能为 null 或为空），直接重入不会出现重复消息
-        if (cacheMissReceived) {
+        // 仅允许重试一次（isRetry），避免服务端持续 cacheMiss 导致递归栈溢出
+        if (cacheMissReceived && !isRetry) {
           this.lastHistoryHash = null
           this.lastSyncedHistoryLength = 0
-          // 移除可能被创建的空 assistant 消息（避免重试后出现空白消息）
+          // 无条件移除本次流创建的 assistant 消息（可能已收到 reasoning/tool_call 段，
+          // 若保留会在重试后产生重复消息）
           if (aiMessage) {
             const idx = this.messages.findIndex((m) => m.id === aiMessage.id)
-            if (idx >= 0 && (!this.messages[idx].content || this.messages[idx].content.trim() === '')) {
+            if (idx >= 0) {
               this.messages.splice(idx, 1)
             }
           }
-          // 重置状态后重试一次（不带 baseHistoryHash → 走完整历史）
-          return this.sendStreamingMessage(content, images, documents)
+          // 重置状态后重试一次（不带 baseHistoryHash → 走完整历史），标记 isRetry=true
+          return this.sendStreamingMessage(content, images, documents, true)
         }
 
         if (aiMessage) {
@@ -2220,7 +2222,53 @@ export const useAIChatStore = defineStore('aiChat', {
       )
       if (messageIndex === -1) return
 
-      this.messages[messageIndex].content = this.editingContent
+      // === 校验前置：任何校验失败都保持原状态，用户可通过 cancelEdit 恢复 ===
+      const content = this.editingContent
+
+      if (this.config?.enable_content_filter) {
+        const filtered = this.filterContent(content)
+        if (!filtered.pass) {
+          return {
+            success: false,
+            error: 'content_filter',
+            message: '请文明聊天，避免使用不当词汇',
+          }
+        }
+      }
+
+      this.checkUserLogin()
+      if (this.requireLogin && !this.currentUser) {
+        return {
+          success: false,
+          error: 'require_login',
+          message: '需要登录后才能使用聊天功能',
+        }
+      }
+
+      const documents = (this.attachedDocuments || []).slice()
+
+      // 阻止在文档解析中发送消息：避免发送空内容文档并丢失正在解析的附件
+      if (documents.some((doc) => doc.parsing)) {
+        return {
+          success: false,
+          error: 'document_parsing',
+          message: '文档正在解析中，请稍候再发送',
+        }
+      }
+
+      if (!this.checkRateLimit()) {
+        const remainingTime = Math.ceil(
+          (this.rateLimitData.resetTime - Date.now()) / 1000
+        )
+        return {
+          success: false,
+          error: 'rate_limit',
+          message: `发送频率太快了，请等待${remainingTime}秒后再试`,
+        }
+      }
+
+      // === 校验通过，开始执行不可逆的状态修改 ===
+      this.messages[messageIndex].content = content
       if (this.attachedPageContext) {
         this.messages[messageIndex].attachedPage = {
           title: this.attachedPageContext.title,
@@ -2275,55 +2323,13 @@ export const useAIChatStore = defineStore('aiChat', {
         )
       }
 
-      const content = this.editingContent
       this.editingMessageId = null
       this.editingContent = ''
       this.editingOriginalAttachedPage = null
       this.editingOriginalAttachedImages = null
       this.editingOriginalAttachedDocuments = null
 
-      if (!this.checkRateLimit()) {
-        const remainingTime = Math.ceil(
-          (this.rateLimitData.resetTime - Date.now()) / 1000
-        )
-        return {
-          success: false,
-          error: 'rate_limit',
-          message: `发送频率太快了，请等待${remainingTime}秒后再试`,
-        }
-      }
-
-      if (this.config?.enable_content_filter) {
-        const filtered = this.filterContent(content)
-        if (!filtered.pass) {
-          return {
-            success: false,
-            error: 'content_filter',
-            message: '请文明聊天，避免使用不当词汇',
-          }
-        }
-      }
-
-      this.checkUserLogin()
-      if (this.requireLogin && !this.currentUser) {
-        return {
-          success: false,
-          error: 'require_login',
-          message: '需要登录后才能使用聊天功能',
-        }
-      }
-
       const images = this.attachedImages.map((img) => img.url)
-      const documents = (this.attachedDocuments || []).slice()
-
-      // 阻止在文档解析中发送消息：避免发送空内容文档并丢失正在解析的附件
-      if (documents.some((doc) => doc.parsing)) {
-        return {
-          success: false,
-          error: 'document_parsing',
-          message: '文档正在解析中，请稍候再发送',
-        }
-      }
 
       // 过滤掉无内容的文档（如编辑加载的历史文档未重新上传）
       const documentsToSend = documents.filter((doc) => doc.content && doc.content.trim())

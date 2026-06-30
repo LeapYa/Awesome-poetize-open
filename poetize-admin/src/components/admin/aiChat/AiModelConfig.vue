@@ -426,9 +426,6 @@ export default {
       if (this.modelConfig.provider === 'worldrouter' && this.thinkingConfig.thinkingProfile === 'auto') {
         this.thinkingConfig.thinkingProfile = 'worldrouter';
       }
-      if (['openai', 'anthropic'].includes(this.modelConfig.provider)) {
-        this.modelConfig.baseUrl = '';
-      }
     },
     
     async testConnection() {

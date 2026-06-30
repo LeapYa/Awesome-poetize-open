@@ -223,7 +223,7 @@
 </template>
 
 <script>
-import { computed, onMounted, onUnmounted, nextTick, ref } from 'vue'
+import { computed, onMounted, nextTick, ref } from 'vue'
 import { useAIChatStore } from '@/stores/aiChat'
 import { useLive2DStore } from '@/stores/live2d'
 import MarkdownRenderer from './MarkdownRenderer.vue'
@@ -366,11 +366,6 @@ export default {
           emit('rendered')
         })
       }
-    })
-
-    onUnmounted(() => {
-      // 组件销毁时停止 Jina 排队轮询，防止 interval/setTimeout 泄漏
-      aiChatStore.stopJinaQueuePolling()
     })
 
     const messageClass = computed(() => ({

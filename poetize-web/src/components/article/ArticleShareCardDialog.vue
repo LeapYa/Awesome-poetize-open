@@ -23,7 +23,7 @@
         </div>
 
         <div class="card-cover">
-          <img :src="article.articleCover" alt="文章封面" />
+          <img :src="getArticleCoverUrl(article)" alt="文章封面" @error="handleCoverError(article)" />
         </div>
 
         <div class="card-footer">
@@ -62,8 +62,13 @@ import {
   downloadShareCard,
   captureAndDownloadCard,
 } from '@/utils/article-share-card'
+import { useArticleCover } from '@/composables/useArticleCover'
 
 export default {
+  setup() {
+    const { getArticleCoverUrl, handleCoverError } = useArticleCover()
+    return { getArticleCoverUrl, handleCoverError }
+  },
   props: {
     modelValue: {
       type: Boolean,
