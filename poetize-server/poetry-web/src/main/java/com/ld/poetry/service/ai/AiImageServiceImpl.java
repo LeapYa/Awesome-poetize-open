@@ -3,6 +3,7 @@ package com.ld.poetry.service.ai;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.SysAuditLogService;
+import com.ld.poetry.service.ai.image.CoverPromptTemplate;
 import com.ld.poetry.service.ai.image.DashScopeImageClient;
 import com.ld.poetry.service.ai.image.GeminiImageClient;
 import com.ld.poetry.service.ai.image.GeneratedImage;
@@ -39,13 +40,13 @@ import java.util.UUID;
  *   <li>剥离文章 HTML/Markdown 得到纯文本，截断后作为输入</li>
  *   <li>按 imageMode 构造生图 prompt：
  *     <ul>
- *       <li>{@code plain}：直接拼接标题+内容，不调用 LLM</li>
- *       <li>{@code global}：用全局 llm_config 提炼 prompt（refine_prompt 作为系统提示词）</li>
- *       <li>{@code dedicated}：用 image_config.dedicated_llm 提炼 prompt</li>
+ *       <li>{@code plain}：使用 {@link CoverPromptTemplate} 默认值拼接，主体取文章标题/内容，不调用 LLM</li>
+ *       <li>{@code global}：用全局 llm_config 按 cover_template 对应的系统提示词提炼完整 prompt</li>
+ *       <li>{@code dedicated}：用 image_config.dedicated_llm 按 cover_template 对应的系统提示词提炼 prompt</li>
  *     </ul>
  *   </li>
  *   <li>按 provider 调度 {@link OpenAiCompatibleImageClient} / {@link DashScopeImageClient} / {@link GeminiImageClient}，
- *       各客户端会在 prompt 前拼接 style_prompt 风格前缀</li>
+ *       prompt 已在前一步按 cover_template 构建完成，客户端不再额外拼接风格前缀</li>
  *   <li>对 URL 形态的结果下载为字节，统一通过 {@link FileStorageService} 落库</li>
  *   <li>返回可访问 URL</li>
  * </ol>
@@ -57,14 +58,6 @@ public class AiImageServiceImpl implements AiImageService {
     /** 文章正文送入 LLM 提炼时的最大字符数（避免 token 超限） */
     private static final int MAX_ARTICLE_TEXT_LENGTH = 2000;
 
-    /** 默认 refine_prompt（给AI模型的系统提示词，当配置项为空时使用） */
-    private static final String DEFAULT_REFINE_PROMPT =
-            "你是一名 AI 生图 prompt 工程师。根据文章内容生成英文生图 prompt。\n\n" +
-            "要求：\n" +
-            "- 提炼文章的核心视觉意象，不要直译标题\n" +
-            "- 以主体开头，包含场景、光影和风格\n" +
-            "- 不超过 60 词，逗号分隔\n" +
-            "- 直接输出 prompt，不要解释或前缀";
 
     /** LLM 提炼 prompt 的用户消息模板 */
     private static final String REFINE_USER_TEMPLATE =
@@ -367,34 +360,59 @@ public class AiImageServiceImpl implements AiImageService {
     }
 
     /**
-     * 构造生图 prompt（不含 style_prompt 前缀，前缀由各生图客户端自行拼接）。
+     * 构造生图 prompt。
      *
      * <p>按 imageMode 分三种模式：
      * <ul>
-     *   <li>{@code plain}：不用AI提炼，直接拼接文章标题+内容</li>
-     *   <li>{@code global}：用全局 llm_config 提炼</li>
-     *   <li>{@code dedicated}：用 image_config.dedicated_llm 提炼</li>
+     *   <li>{@code plain}：不用AI提炼，使用 {@link CoverPromptTemplate} 默认值拼接，主体取文章标题/内容</li>
+     *   <li>{@code global}：用全局 llm_config 按真实感模板系统提示词提炼完整 prompt</li>
+     *   <li>{@code dedicated}：用 image_config.dedicated_llm 按真实感模板系统提示词提炼完整 prompt</li>
      * </ul>
-     * global/dedicated 模式下若 LLM 调用失败，自动降级为 plain 模式。
+     * global/dedicated 模式下若 LLM 调用失败，自动降级为默认模板拼接。
      */
     private PromptResult buildPrompt(SysAiConfig sysAiConfig, ImageConfigDto imageConfig,
                                       String title, String plainContent) {
-        // plain 模式：直接拼接，不调用 LLM
+        return buildTemplatePrompt(sysAiConfig, imageConfig, title, plainContent);
+    }
+
+    /**
+     * 真实感封面模板模式：LLM 按真实感公式直接生成完整英文生图 prompt（含材质/镜头/光影等全部细节）。
+     *
+     * <p>用户只需在后台选择模板类型（物品类/人物类），无需手动选择材质/镜头/光影等子选项 —
+     * 这些全部由 LLM 根据文章内容提炼。模板公式作为 refine_prompt 的"输出格式约束"，
+     * 指导 LLM 按真实感摄影公式生成 prompt（用物理材质词和摄影参数词限制 AI 发散）。
+     *
+     * <p>三种 imageMode 下的行为：
+     * <ul>
+     *   <li>{@code plain}：不调用 LLM，用 {@link CoverPromptTemplate} 默认值拼接（材质/镜头/光影用预设默认值）</li>
+     *   <li>{@code global}/{@code dedicated}：LLM 按模板 refine_prompt 生成完整 prompt，直接作为生图 prompt</li>
+     * </ul>
+     * global/dedicated 模式下 LLM 失败时降级为默认拼接。模板模式下 style_prompt 被忽略（避免中文前缀干扰英文模板）。
+     */
+    private PromptResult buildTemplatePrompt(SysAiConfig sysAiConfig, ImageConfigDto imageConfig,
+                                              String title, String plainContent) {
+        String refinePrompt = CoverPromptTemplate.getRefinePrompt(imageConfig);
+
+        // plain 模式：不调用 LLM，用默认值拼接；主体取文章标题/内容，避免完全脱离文章
         if (imageConfig.usePlainMode()) {
-            return new PromptResult(buildPlainPrompt(title, plainContent), false);
+            String subjectHint = title.isEmpty()
+                    ? (plainContent.isEmpty() ? "" : truncate(plainContent, 120))
+                    : title;
+            String prompt = buildPlainPromptByTemplate(imageConfig, subjectHint);
+            return new PromptResult(prompt, false);
         }
 
-        // global / dedicated 模式：通过 LLM 提炼
-        String refinePrompt = imageConfig.getRefinePrompt();
-        if (refinePrompt == null || refinePrompt.isBlank()) {
-            refinePrompt = DEFAULT_REFINE_PROMPT;
-        }
+        // global / dedicated 模式：LLM 按模板公式生成完整 prompt，直接作为生图 prompt
+        String subjectHint = title.isEmpty()
+                ? (plainContent.isEmpty() ? "" : truncate(plainContent, 120))
+                : title;
 
         try {
             ChatModel chatModel = createLlmForPromptRefine(sysAiConfig, imageConfig);
             if (chatModel == null) {
-                log.warn("LLM 创建失败，降级为 plain 模式");
-                return new PromptResult(buildPlainPrompt(title, plainContent), true);
+                log.warn("模板模式 LLM 创建失败，降级为默认拼接");
+                String prompt = buildPlainPromptByTemplate(imageConfig, subjectHint);
+                return new PromptResult(prompt, true);
             }
 
             String userContent = String.format(REFINE_USER_TEMPLATE,
@@ -409,38 +427,55 @@ public class AiImageServiceImpl implements AiImageService {
                     .content();
 
             if (refined == null || refined.isBlank()) {
-                log.warn("LLM 提炼返回空，降级为 plain 模式");
-                return new PromptResult(buildPlainPrompt(title, plainContent), true);
+                log.warn("模板模式 LLM 返回空，降级为默认拼接");
+                String prompt = buildPlainPromptByTemplate(imageConfig, subjectHint);
+                return new PromptResult(prompt, true);
             }
 
-            log.info("LLM 提炼生图 prompt 成功: {}", truncate(refined, 200));
+            // LLM 已按模板公式生成完整 prompt，直接作为生图 prompt（不再需要模板拼接）
+            log.info("模板模式 LLM 生成完整 prompt 成功: {}", truncate(refined, 200));
             return new PromptResult(refined.trim(), false);
         } catch (Exception e) {
-            log.warn("LLM 提炼生图 prompt 失败，降级为 plain 模式: {}", e.getMessage());
-            return new PromptResult(buildPlainPrompt(title, plainContent), true);
+            log.warn("模板模式 LLM 生成失败，降级为默认拼接: {}", e.getMessage());
+            String prompt = buildPlainPromptByTemplate(imageConfig, subjectHint);
+            return new PromptResult(prompt, true);
         }
     }
 
     /**
-     * plain 模式的 prompt 拼接：直接用文章标题+内容组成生图 prompt。
+     * 根据模板类型选择对应的 plain 模式默认拼接方法。
+     * custom 模板无预设公式，降级时复用 object 模板拼接（保证总有可用 prompt）。
      */
-    private String buildPlainPrompt(String title, String plainContent) {
-        StringBuilder sb = new StringBuilder();
-        if (title != null && !title.isBlank()) {
-            sb.append(title.trim());
+    private String buildPlainPromptByTemplate(ImageConfigDto imageConfig, String subjectHint) {
+        if (imageConfig.useFeltTemplate()) {
+            return CoverPromptTemplate.buildFeltPrompt(subjectHint, imageConfig);
         }
-        if (plainContent != null && !plainContent.isBlank()) {
-            if (sb.length() > 0) {
-                sb.append(". ");
-            }
-            // 截断避免 prompt 过长
-            int maxContent = 500;
-            String content = plainContent.length() > maxContent
-                    ? plainContent.substring(0, maxContent) + "..."
-                    : plainContent;
-            sb.append(content);
+        if (imageConfig.useCyberpunkTemplate()) {
+            return CoverPromptTemplate.buildCyberpunkPrompt(subjectHint, imageConfig);
         }
-        return sb.length() > 0 ? sb.toString() : "article cover image";
+        if (imageConfig.useWatercolorTemplate()) {
+            return CoverPromptTemplate.buildWatercolorPrompt(subjectHint, imageConfig);
+        }
+        if (imageConfig.useInkTemplate()) {
+            return CoverPromptTemplate.buildInkPrompt(subjectHint, imageConfig);
+        }
+        if (imageConfig.usePixelTemplate()) {
+            return CoverPromptTemplate.buildPixelPrompt(subjectHint, imageConfig);
+        }
+        if (imageConfig.use3dTemplate()) {
+            return CoverPromptTemplate.build3dPrompt(subjectHint, imageConfig);
+        }
+        if (imageConfig.useMinimalTemplate()) {
+            return CoverPromptTemplate.buildMinimalPrompt(subjectHint, imageConfig);
+        }
+        if (imageConfig.useCollageTemplate()) {
+            return CoverPromptTemplate.buildCollagePrompt(subjectHint, imageConfig);
+        }
+        if (imageConfig.usePortraitTemplate()) {
+            return CoverPromptTemplate.buildPortraitPrompt(subjectHint, imageConfig);
+        }
+        // object 与 custom（无预设公式）统一降级为物品类拼接
+        return CoverPromptTemplate.buildObjectPrompt(subjectHint, imageConfig);
     }
 
     /**

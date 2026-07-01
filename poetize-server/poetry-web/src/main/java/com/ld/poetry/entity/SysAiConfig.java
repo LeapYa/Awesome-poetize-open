@@ -380,11 +380,10 @@ public class SysAiConfig implements Serializable {
     private String summaryConfig;
 
     /**
-     * AI生图功能配置 {imageMode, provider, model, api_url, api_key, size, quality, style_prompt, refine_prompt, timeout, dedicated_llm}
+     * AI生图功能配置 {imageMode, provider, model, api_url, api_key, size, resolution, quality, cover_template, timeout, dedicated_llm}
      * imageMode: disabled(关闭) | plain(直接拼接,不用AI提炼) | global(使用全局AI提炼prompt) | dedicated(使用独立AI提炼prompt)
      * provider: openai | siliconflow | doubao | dashscope | gemini | custom
-     * style_prompt: 给生图模型的风格前缀（所有非disabled模式均生效）
-     * refine_prompt: 给AI模型的系统提示词（仅global/dedicated模式使用）
+     * cover_template: 真实感封面模板类型（object=物品类, portrait=人物类）
      * dedicated_llm: {model, api_url, api_key, interface_type, timeout} (仅imageMode=dedicated时存在)
      */
     private String imageConfig;

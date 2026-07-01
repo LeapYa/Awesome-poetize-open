@@ -101,7 +101,7 @@ public class GeminiImageClient {
         ObjectNode contentItem = objectMapper.createObjectNode();
         ArrayNode parts = objectMapper.createArrayNode();
         ObjectNode textPart = objectMapper.createObjectNode();
-        textPart.put("text", applyStylePrefix(prompt, config.getStylePrompt()));
+        textPart.put("text", prompt);
         parts.add(textPart);
         contentItem.set("parts", parts);
         contents.add(contentItem);
@@ -133,7 +133,7 @@ public class GeminiImageClient {
         // instances: [{ prompt: prompt }]
         ArrayNode instances = objectMapper.createArrayNode();
         ObjectNode instance = objectMapper.createObjectNode();
-        instance.put("prompt", applyStylePrefix(prompt, config.getStylePrompt()));
+        instance.put("prompt", prompt);
         instances.add(instance);
         requestBody.set("instances", instances);
 
@@ -291,13 +291,7 @@ public class GeminiImageClient {
         return b == 0 ? a : gcd(b, a % b);
     }
 
-    /** 将 style_prompt 风格前缀拼接到 prompt 前面 */
-    private String applyStylePrefix(String prompt, String stylePrompt) {
-        if (stylePrompt == null || stylePrompt.isBlank()) {
-            return prompt;
-        }
-        return stylePrompt.trim() + ", " + prompt;
-    }
+
 
     private org.springframework.http.client.SimpleClientHttpRequestFactory buildFactory(int timeoutSeconds) {
         org.springframework.http.client.SimpleClientHttpRequestFactory factory =

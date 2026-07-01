@@ -42,4 +42,5 @@ public interface AiImageService {
      * @return 测试结果，至少包含 success / message，可能包含 url / prompt / durationMs
      */
     Map<String, Object> testImageGeneration(SysAiConfig config, String title, String content);
+
 }

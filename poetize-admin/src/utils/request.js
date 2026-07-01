@@ -190,8 +190,8 @@ function configureTimeout(config) {
     return config;
   }
 
-  // 翻译API：长超时（AI处理需要更多时间）
-  if (url.includes('/api/translation/')) {
+  // 翻译API及AI测试：长超时（AI处理需要更多时间）
+  if (url.includes('/api/translation/') || url.includes('/webInfo/ai/config/articleAi/testImage')) {
     if (isDefaultTimeout) {
       config.timeout = TIMEOUT_CONFIG.TRANSLATION;
     }
@@ -434,7 +434,7 @@ axios.interceptors.response.use(async function (response) {
 export { getTranslationTimeout };
 
 export default {
-  post(url, params = {}, isAdmin = false, json = true) {
+  post(url, params = {}, isAdmin = false, json = true, timeout = null) {
     if (params === null || typeof params !== 'object') {
       params = {};
     }
@@ -442,6 +442,9 @@ export default {
       isAdmin: isAdmin,
       headers: {}
     };
+    if (timeout) {
+      config.timeout = timeout;
+    }
 
     // 注意：token处理已移至请求拦截器中统一处理，此处不再重复处理
 

@@ -1153,12 +1153,6 @@
                     关闭生图
                   </span>
                 </el-option>
-                <el-option key="plain" label="直接拼接（不用AI提炼）" :value="'plain'">
-                  <span class="option-content">
-                    <i class="el-icon-document"></i>
-                    直接拼接（不用AI提炼）
-                  </span>
-                </el-option>
                 <el-option key="global" label="使用全局AI模型提炼" :value="'global'">
                   <span class="option-content">
                     <i class="el-icon-s-grid"></i>
@@ -1171,6 +1165,12 @@
                     使用独立AI模型提炼
                   </span>
                 </el-option>
+                <el-option key="plain" label="直接拼接（不用AI提炼）" :value="'plain'">
+                  <span class="option-content">
+                    <i class="el-icon-document"></i>
+                    直接拼接（不用AI提炼）
+                  </span>
+                </el-option>
               </el-select>
               <div class="form-tip">
                 <i class="el-icon-info"></i>
@@ -1178,7 +1178,7 @@
                   关闭 AI 生图功能，文章编辑器中不显示生成封面按钮
                 </template>
                 <template v-else-if="apiConfig.imageMode === 'plain'">
-                  直接用文章标题+内容拼接 prompt 送入生图模型，不经过 AI 提炼，速度快、零 token 消耗
+                  使用封面模板默认值拼接 prompt，主体取文章标题/内容，不经过 AI 提炼，速度快、零 token 消耗
                 </template>
                 <template v-else-if="apiConfig.imageMode === 'global'">
                   使用上方配置的全局 AI 模型提炼生图 prompt，效果好，需要 API 密钥
@@ -1307,18 +1307,53 @@
                 </div>
               </el-form-item>
 
-              <el-form-item label="风格提示词">
-                <el-input type="textarea" v-model="apiConfig.imageStylePrompt" :rows="2" placeholder="直接拼到生图prompt最前面，不经过AI" class="textarea-field"></el-input>
-                <div class="form-tip"><i class="el-icon-info"></i>直接拼到生图 prompt 最前面，不经过 AI 提炼。用户可统一控制风格（如 "digital art, vibrant colors"）</div>
+              <!-- 真实感封面模板 -->
+              <el-form-item label="封面模板">
+                <el-select v-model="apiConfig.coverTemplate" placeholder="请选择封面模板" class="full-width">
+                  <el-option
+                    v-for="opt in coverTemplateOptions"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value">
+                    <span class="option-content">{{ opt.label }}</span>
+                  </el-option>
+                </el-select>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  <span v-if="apiConfig.coverTemplate === 'object'">用物理材质+摄影参数限制AI发散，极致真实摄影感。材质/镜头/光影等全部由 AI 根据文章内容提炼，无需手动选择</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'portrait'">真实感人像摄影封面。人物特征/情绪/穿搭/镜头/光线等全部由 AI 根据文章内容提炼，无需手动选择</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'felt'">羊毛毡手工质感Q版可爱风。主体Q版化、材质/造型/光影等全部由 AI 根据文章内容提炼，生成蓬松治愈的毛毡插画</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'cyberpunk'">赛博朋克霓虹未来风。主体科技改造化、材质/镜头/光影等全部由 AI 根据文章内容提炼，生成雨夜霓虹质感封面</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'watercolor'">水彩手绘风。色彩/笔触/构图等全部由 AI 根据文章内容提炼，生成通透晕染的文艺清新插画</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'ink'">国风水墨画。笔墨/章法/意境等全部由 AI 根据文章内容提炼，生成留白禅意的传统水墨画</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'pixel'">像素复古风。像素细节/色板/构图等全部由 AI 根据文章内容提炼，生成 8-bit 复古游戏画面</span>
+                  <span v-else-if="apiConfig.coverTemplate === '3d'">3D渲染卡通风。材质/布光/构图等全部由 AI 根据文章内容提炼，生成圆润精致的 3D 渲染插画</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'minimal'">极简几何风。几何形态/配色/构图等全部由 AI 根据文章内容提炼，生成克制的现代设计海报</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'collage'">复古拼贴风。拼贴元素/材质/层次等全部由 AI 根据文章内容提炼，生成怀旧文艺的杂志拼贴画</span>
+                  <span v-else-if="apiConfig.coverTemplate === 'custom'">完全自定义：在下方填写你的 LLM 系统提示词，AI 将按你的公式根据文章内容提炼生图 prompt</span>
+                </div>
+                <div class="form-tip" v-if="apiConfig.imageMode === 'plain'">
+                  <i class="el-icon-warning-outline" style="color: #E6A23C"></i>
+                  <span style="color: #E6A23C">当前为"直接拼接"模式，不调用 AI 提炼，模板将使用文章标题/内容作为主体描述，材质/镜头/光影等使用预设默认值。建议切换到 global/dedicated 模式以获得最佳真实感效果</span>
+                </div>
               </el-form-item>
 
-              <!-- AI提炼模式才显示提炼提示词 -->
-              <template v-if="apiConfig.imageMode === 'global' || apiConfig.imageMode === 'dedicated'">
-                <el-form-item label="提炼提示词">
-                  <el-input type="textarea" v-model="apiConfig.imageRefinePrompt" :rows="4" placeholder="给AI模型的系统提示词，指导如何从文章提炼生图prompt" class="textarea-field"></el-input>
-                  <div class="form-tip"><i class="el-icon-info"></i>给 AI 模型的系统提示词，指导它如何从文章内容提炼生图 prompt。留空则使用默认值</div>
-                </el-form-item>
-              </template>
+              <!-- 自定义模板：填写 LLM 系统提示词 -->
+              <el-form-item v-if="apiConfig.coverTemplate === 'custom'" label="自定义提示词公式">
+                <el-input
+                  type="textarea"
+                  :rows="8"
+                  v-model="apiConfig.customRefinePrompt"
+                  :placeholder="customRefinePromptPlaceholder"
+                  resize="vertical">
+                </el-input>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  <span>此提示词将作为 LLM 的 system 指令，用于指导 AI 根据文章内容生成生图 prompt。建议包含：风格设定、核心主体提取规则、材质/镜头/光影要求、输出格式约束等。留空时将降级为物品类模板</span>
+                </div>
+              </el-form-item>
+
+
 
               <!-- 使用全局AI模型 -->
               <template v-if="apiConfig.imageMode === 'global'">
@@ -1999,9 +2034,11 @@ export default {
         imageSize: '16:9',
         imageResolution: '1536x864',
         imageQuality: 'auto',
-        imageStylePrompt: '高质量、艺术感强、构图简洁、色彩协调',
-        imageRefinePrompt: '你是一名 AI 生图 prompt 工程师。根据文章内容生成英文生图 prompt。\n\n要求：\n- 提炼文章的核心视觉意象，不要直译标题\n- 以主体开头，包含场景、光影和风格\n- 不超过 60 词，逗号分隔\n- 直接输出 prompt，不要解释或前缀',
-        imageTimeout: 60,
+        // 真实感封面模板（材质/镜头/光影等由 AI 提炼，用户只需选模板类型）
+        coverTemplate: 'object',  // object | portrait | felt | cyberpunk | custom
+        // 自定义模板的 LLM 系统提示词（仅 coverTemplate=custom 时使用）
+        customRefinePrompt: '',
+        imageTimeout: 120,
         imageResolutionError: '',
         hasExistingImageKey: false,
         clearExistingImageKey: false,
@@ -2044,6 +2081,22 @@ export default {
           ]
         }
       ],
+      // 真实感封面模板 - 模板类型选项（材质/镜头/光影等由 AI 提炼，无需用户选择）
+      coverTemplateOptions: [
+        { label: '物品类真实感模板（通用，不一定有人物）', value: 'object', desc: '用物理材质+摄影参数限制AI发散，极致真实摄影感。材质/镜头/光影由 AI 提炼' },
+        { label: '人物类真实感模板', value: 'portrait', desc: '真实感人像摄影，人物特征/情绪/穿搭/镜头/光线由 AI 提炼' },
+        { label: '毛毡Q版可爱风模板', value: 'felt', desc: '羊毛毡手工质感Q版插画，蓬松纤维+马卡龙色系+治愈氛围' },
+        { label: '赛博朋克霓虹风模板', value: 'cyberpunk', desc: '未来都市霓虹质感，拉丝金属+LED灯带+雨夜霓虹反射，前卫冷峻' },
+        { label: '水彩手绘风模板', value: 'watercolor', desc: '通透水彩晕染质感，色彩温润+笔触自然+文艺清新，适合文艺/生活类博客' },
+        { label: '国风水墨画模板', value: 'ink', desc: '传统水墨写意美学，枯湿浓淡+留白意境+禅意书卷气，适合文化/历史/艺术类' },
+        { label: '像素复古风模板', value: 'pixel', desc: '8-bit/16-bit 复古游戏美学，方块像素+鲜明色板+怀旧乐趣，适合游戏/技术类' },
+        { label: '3D渲染卡通风模板', value: '3d', desc: '圆润黏土/塑胶质感+柔和三点布光+现代精致，适合科技/产品类' },
+        { label: '极简几何风模板', value: 'minimal', desc: '极简主义设计，几何抽象+高级配色+大量留白，适合设计/商务类' },
+        { label: '复古拼贴风模板', value: 'collage', desc: '旧杂志拼贴美学，手撕纸边+多层叠放+怀旧文艺，适合创意/艺术类' },
+        { label: '自定义模板', value: 'custom', desc: '完全自定义 LLM 系统提示词，按自己的公式生成生图 prompt' }
+      ],
+      // 自定义模板提示词输入框的 placeholder（用真实换行符，避免 Vue 模板不解析 &#10;）
+      customRefinePromptPlaceholder: '在此填写你的 LLM 系统提示词（refine_prompt）。AI 会以此作为系统指令，根据文章标题/内容提炼生成最终的生图 prompt。\n示例：你是一个专注于水彩插画封面的AI提示词工程师。请根据文章内容生成水彩风格的生图提示词，要求...',
       // 保存后端加载的原始配置，用于智能恢复
       savedLlmConfig: null,
       savedTranslationLlmConfig: null,
@@ -3085,9 +3138,11 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.imageSize = imageConfig.size || '1:1';
             this.apiConfig.imageResolution = imageConfig.resolution || '1536x864';
             this.apiConfig.imageQuality = imageConfig.quality || 'auto';
-            this.apiConfig.imageStylePrompt = imageConfig.style_prompt || '';
-            this.apiConfig.imageRefinePrompt = imageConfig.refine_prompt || '';
-            this.apiConfig.imageTimeout = imageConfig.timeout || 60;
+            // 真实感封面模板回显（后端已将旧值 none 归一化为 object）
+            this.apiConfig.coverTemplate = imageConfig.cover_template || 'object';
+            // 自定义模板的 LLM 系统提示词回显
+            this.apiConfig.customRefinePrompt = imageConfig.custom_refine_prompt || '';
+            this.apiConfig.imageTimeout = imageConfig.timeout || 120;
             this.apiConfig.hasExistingImageKey = !!(imageConfig.api_key && imageConfig.api_key !== '' && imageConfig.api_key !== 'null');
             this.apiConfig.imageApiKey = '';
             // 独立AI配置
@@ -4170,12 +4225,27 @@ Vue.js features reactive data binding and a component-based architecture, enabli
           configName: 'default',
           imageConfig: JSON.stringify(imageConfigObj)
         };
+        
+        if (this.apiConfig.imageMode === 'global') {
+          tempConfig.llmConfig = JSON.stringify({
+            type: this.apiConfig.llmType,
+            model: this.apiConfig.llmModel,
+            interface_type: this.apiConfig.llmInterfaceType,
+            api_url: this.apiConfig.llmUrl,
+            api_key: this.apiConfig.hasExistingLlmKey && !this.apiConfig.llmApiKey ? '***' : this.apiConfig.llmApiKey,
+            timeout: this.apiConfig.llmTimeout || 60,
+            thinking_profile: this.apiConfig.llmThinkingProfile || 'auto',
+            thinking_extra_body_text: this.apiConfig.llmThinkingExtraBodyText || '',
+            reasoning_effort: this.apiConfig.llmReasoningEffort || ''
+          });
+        }
+        
         // title/content 通过 query 参数传递，config 通过 body
         const params = new URLSearchParams();
         if (this.testImageForm.title) params.append('title', this.testImageForm.title);
         if (this.testImageForm.content) params.append('content', this.testImageForm.content);
         const url = this.$constant.baseURL + '/webInfo/ai/config/articleAi/testImage?' + params.toString();
-        const res = await this.$http.post(url, tempConfig, true);
+        const res = await this.$http.post(url, tempConfig, true, true, 120000);
 
         if (res && res.code === 200 && res.data) {
           const result = res.data;
@@ -4222,9 +4292,9 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         size: this.apiConfig.imageSize || '16:9',
         resolution: this.apiConfig.imageResolution || '1536x864',
         quality: this.apiConfig.imageQuality || 'auto',
-        style_prompt: this.apiConfig.imageStylePrompt || '',
-        refine_prompt: this.apiConfig.imageRefinePrompt || '',
-        timeout: this.apiConfig.imageTimeout || 60
+        cover_template: this.apiConfig.coverTemplate || 'object',
+        custom_refine_prompt: this.apiConfig.customRefinePrompt || '',
+        timeout: this.apiConfig.imageTimeout || 120
       };
       // 生图API密钥
       if (this.apiConfig.clearExistingImageKey) {

@@ -785,7 +785,7 @@ CREATE TABLE IF NOT EXISTS `sys_ai_config` (
   `llm_config` json DEFAULT NULL COMMENT 'LLM配置 {model, api_url, api_key, prompt, interface_type, timeout}',
   `translation_llm_config` json DEFAULT NULL COMMENT '翻译独立AI配置 {model, api_url, api_key, prompt, interface_type, timeout}',
   `summary_config` json DEFAULT NULL COMMENT '摘要生成配置 {summaryMode, style, max_length, prompt, dedicated_llm}',
-  `image_config` TEXT NULL COMMENT 'AI生图功能配置JSON：{imageMode, provider, model, api_url, api_key, size(宽高比), resolution(像素), quality, style_prompt, refine_prompt, timeout, dedicated_llm?}',
+  `image_config` TEXT NULL COMMENT 'AI生图功能配置JSON：{imageMode, provider, model, api_url, api_key, size(宽高比), resolution(像素), quality, cover_template(封面模板:object|portrait|felt|cyberpunk|watercolor|ink|pixel|3d|minimal|collage|custom), custom_refine_prompt(自定义模板提示词,仅cover_template=custom时使用), timeout, dedicated_llm?}',
   `extra_config` json DEFAULT NULL COMMENT '其他扩展配置(JSON格式)',
   
   -- ========== 元数据字段 ==========
@@ -896,9 +896,9 @@ INSERT INTO `sys_ai_config` (
     'size', '16:9',
     'resolution', '1536x864',
     'quality', 'auto',
-    'style_prompt', '高质量、艺术感强、构图简洁、色彩协调',
-    'refine_prompt', '你是一名 AI 生图 prompt 工程师。根据文章内容生成英文生图 prompt。\n\n要求：\n- 提炼文章的核心视觉意象，不要直译标题\n- 以主体开头，包含场景、光影和风格\n- 不超过 60 词，逗号分隔\n- 直接输出 prompt，不要解释或前缀',
-    'timeout', 60
+    'cover_template', 'object',
+    'custom_refine_prompt', '',
+    'timeout', 120
   ),
   '文章AI助手配置默认值'
 ) ON DUPLICATE KEY UPDATE id=id;

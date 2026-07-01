@@ -400,9 +400,30 @@ public class SysAiConfigController {
         try {
             // 前端加载已保存配置后 api_key 为空、提交测试时不会携带该字段；
             // 此处从已保存配置回填真实密钥（仅合并 api_key 与 dedicated_llm.api_key，保留其它字段当前值）
+            String configName = config.getConfigName() != null ? config.getConfigName() : "default";
             config.setImageConfig(sysAiConfigService.resolveImageConfigSecretsForTest(
                     config.getImageConfig(),
-                    config.getConfigName() != null ? config.getConfigName() : "default"));
+                    configName));
+                    
+            // 从已保存配置回填 global llmConfig 中的真实密钥
+            if (org.springframework.util.StringUtils.hasText(config.getLlmConfig()) && config.getLlmConfig().contains("\"***\"")) {
+                SysAiConfig saved = sysAiConfigService.getArticleAiConfigInternal(configName);
+                if (saved != null && org.springframework.util.StringUtils.hasText(saved.getLlmConfig())) {
+                    try {
+                        tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
+                        tools.jackson.databind.JsonNode iNode = mapper.readTree(config.getLlmConfig());
+                        tools.jackson.databind.JsonNode sNode = mapper.readTree(saved.getLlmConfig());
+                        if (iNode instanceof tools.jackson.databind.node.ObjectNode iObj && sNode.has("api_key")) {
+                            if (iObj.has("api_key") && "***".equals(iObj.get("api_key").asText())) {
+                                iObj.put("api_key", sNode.get("api_key").asText());
+                                config.setLlmConfig(mapper.writeValueAsString(iObj));
+                            }
+                        }
+                    } catch (Exception ex) {
+                        log.warn("回填生图测试的 global llmConfig 密钥失败", ex);
+                    }
+                }
+            }
 
             Map<String, Object> result = aiImageService.testImageGeneration(config, title, content);
             return PoetryResult.success(result);

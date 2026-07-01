@@ -45,7 +45,7 @@ public class DashScopeImageClient {
         }
 
         // 构造 messages 格式请求体
-        String finalPrompt = applyStylePrefix(prompt, config.getStylePrompt());
+        String finalPrompt = prompt;
 
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("model", model);
@@ -163,13 +163,7 @@ public class DashScopeImageClient {
         return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 
-    /** 将 style_prompt 风格前缀拼接到 prompt 前面 */
-    private String applyStylePrefix(String prompt, String stylePrompt) {
-        if (stylePrompt == null || stylePrompt.isBlank()) {
-            return prompt;
-        }
-        return stylePrompt.trim() + ", " + prompt;
-    }
+
 
     /**
      * 解析最终送入 API 的像素尺寸（如 "1024x1024"）。

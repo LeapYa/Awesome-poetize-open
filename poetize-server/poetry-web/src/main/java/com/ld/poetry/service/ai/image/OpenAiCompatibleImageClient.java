@@ -42,8 +42,7 @@ public class OpenAiCompatibleImageClient {
             throw new IllegalArgumentException("生图API密钥为空，provider=" + provider);
         }
 
-        // 拼接 style_prompt 风格前缀
-        String finalPrompt = applyStylePrefix(prompt, config.getStylePrompt());
+        String finalPrompt = prompt;
 
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("model", model);
@@ -134,13 +133,7 @@ public class OpenAiCompatibleImageClient {
         return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 
-    /** 将 style_prompt 风格前缀拼接到 prompt 前面 */
-    private String applyStylePrefix(String prompt, String stylePrompt) {
-        if (stylePrompt == null || stylePrompt.isBlank()) {
-            return prompt;
-        }
-        return stylePrompt.trim() + ", " + prompt;
-    }
+
 
     /**
      * 解析最终送入 API 的像素尺寸（如 "1024x1024"）。
