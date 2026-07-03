@@ -12,7 +12,6 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
 /**
  * Spring WebSocket 配置
- * 替换原 t-io WebSocket 实现
  */
 @Configuration
 @EnableWebSocket

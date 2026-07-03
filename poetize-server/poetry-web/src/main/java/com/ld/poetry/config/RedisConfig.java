@@ -57,8 +57,16 @@ public class RedisConfig {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
+        // defaultTyping 反序列化白名单：仅放行业务实体 + JDK 集合/基础类型包前缀，
+        // 保留 CacheService 靠类型标识往返 User/Article/WebInfo/List/Map 的能力，
+        // 同时堵住非白名单类的反序列化（gadget 攻击面）。
         tools.jackson.databind.jsontype.PolymorphicTypeValidator ptv = tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator.builder()
-                .allowIfSubType(Object.class)
+                .allowIfSubType("com.ld.poetry.")
+                .allowIfSubType("java.util.")
+                .allowIfSubType("java.lang.")
+                .allowIfSubType("java.time.")
+                .allowIfSubType("java.math.")
+                .allowIfSubType(byte[].class)
                 .build();
 
         JsonMapper objectMapper = JsonMapper.builder()

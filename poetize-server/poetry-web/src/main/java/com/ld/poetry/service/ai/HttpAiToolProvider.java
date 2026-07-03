@@ -216,7 +216,12 @@ public class HttpAiToolProvider {
         Map<String, Object> resolvedHeaders = castMap(resolveTemplateValue(runtimeConfig.getHeaders(), args, pluginConfig));
         for (Map.Entry<String, Object> entry : resolvedHeaders.entrySet()) {
             if (entry.getValue() != null) {
-                headers.set(entry.getKey(), String.valueOf(entry.getValue()));
+                // header 名/值均可能由模型入参经模板解析注入，过滤 CR/LF 防 HTTP Header Injection。
+                String headerName = sanitizeHeader(entry.getKey());
+                String headerValue = sanitizeHeader(String.valueOf(entry.getValue()));
+                if (headerName != null && !headerName.isEmpty()) {
+                    headers.set(headerName, headerValue);
+                }
             }
         }
         String contentType = StringUtils.hasText(runtimeConfig.getContentType())
@@ -225,6 +230,19 @@ public class HttpAiToolProvider {
         headers.setContentType(MediaType.parseMediaType(contentType));
         headers.setAccept(List.of(MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN, MediaType.ALL));
         return headers;
+    }
+
+    /**
+     * 清洗 header 名/值：剔除 CR/LF 及其他 ASCII 控制字符，防 HTTP Header Injection。
+     * 若清洗后为空字符串则返回空（调用方据此跳过该 header）。
+     */
+    private String sanitizeHeader(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        // 移除 CR(\r)、LF(\n) 及其余 C0 控制字符（0x00-0x1F、0x7F），保留可见字符与空格
+        String cleaned = raw.replaceAll("[\\r\\n\\t\\x00-\\x1F\\x7F]", "");
+        return cleaned.trim();
     }
 
     private HttpEntity<?> buildRequestEntity(HttpHeaders headers, Object resolvedBody, HttpMethod method)

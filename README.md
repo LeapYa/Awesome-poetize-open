@@ -84,7 +84,7 @@
 1. ✅ 页脚优化 —— 页脚信息更丰富、可自定义
 1. ✅ 图片压缩和转换WebP格式 —— 自动压缩图片，提升网站加载速度
 1. ✅ 智能摘要 —— 自动生成文章摘要，提升阅读体验
-1. ✅ 智能体/OpenClaw 博客自动化 —— 支持通过仓库内置的 Agent skill 使用站点 API 完成文章发布、更新、隐藏、主题切换、SEO运维与博客运营自动化（要求 `awesome-poetize-open v4.0.0` 及以上版本）
+1. ✅ 智能体/OpenClaw 博客自动化 —— 支持通过仓库内置的 Agent skill 使用站点 API 完成文章发布、更新、隐藏、主题切换、SEO运维与博客运营自动化（要求 `v4.0.0` 及以上版本）
 1. ✅ 暗色模式优化、定时暗色模式 —— 支持夜间自动切换暗色主题，优化暗色模式
 1. ✅ 灰色模式 —— 支持全站灰色纪念模式
 1. ✅ 自定义错误页面 —— 提供友好的404、403等错误页面
@@ -148,7 +148,7 @@ bash <(curl -sL install.leapya.com)
 - [阿里云万网](https://wanwang.aliyun.com/)、[腾讯云DNSPod](https://dnspod.cloud.tencent.com/)、[华为云](https://www.huaweicloud.com/product/domain.html) - 国内主流
 - [Cloudflare](https://www.cloudflare.com/products/registrar/)、[Namesilo](https://www.namesilo.com/)、[Namecheap](https://www.namecheap.com/) - 海外注册商
 
-> 如果使用国内服务器，域名需要完成ICP备案才能正常访问，如果需要备案，域名不要选择 **.tk**、**.ml**、**.ga**、**.cf** 等后缀，这些后缀的域名无法备案，选择 **.com**、**.net**、**.org**、**.top**、**.xyz**、**.cn**、**.online** 等后缀的域名，备案流程可参考[ICP备案](https://help.aliyun.com/zh/icp-filing/basic-icp-service/user-guide/icp-filing-application-overview)，其他云服务商也类似，都是向各自的购买云服务器的云服务商申请备案。
+> 如果使用国内服务器，域名需要完成ICP备案才能正常访问，如果需要备案，域名不要选择 **.tk**、**.ml**、**.ga**、**.cf**、**.org** 等后缀，这些后缀的域名无法备案，选择 **.com**、**.net**、**.top**、**.xyz**、**.cn**、**.online** 等后缀的域名，备案流程可参考[ICP备案](https://help.aliyun.com/zh/icp-filing/basic-icp-service/user-guide/icp-filing-application-overview)，其他云服务商也类似，都是向各自的购买云服务器的云服务商申请备案。
 
 #### 1.3 配置域名解析
 
@@ -599,7 +599,7 @@ cd ~/.openclaw/workspace
 clawhub update awesome-poetize-open-blog-automation --force
 ```
 
-#### 3. 手动安装的用户如何更新
+#### 手动安装的用户如何更新
 
 如果用户是手动安装的，后续更新方式也很简单：
 

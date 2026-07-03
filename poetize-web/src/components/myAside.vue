@@ -523,8 +523,9 @@ export default {
     // 异步并行获取所有数据
     async fetchAllData() {
       // 侧边栏资源（联系方式/快捷入口/背景）走聚合端点，首次加载后缓存到 store
-      // 路由切换回首页时复用缓存，避免重复请求
-      if (this.mainStore.asideBootstrap) {
+      // 路由切换回首页时复用缓存，避免重复请求；
+      // 缓存过期（TTL 10 分钟）后重新拉取，保证后台改配置后前台能自动刷新
+      if (this.mainStore.asideBootstrap && !this.mainStore.isAsideBootstrapExpired()) {
         this.applyAsideBootstrap(this.mainStore.asideBootstrap)
       } else {
         this.fetchAsideBootstrap()
@@ -566,7 +567,7 @@ export default {
         })
         .catch((error) => {
           console.error('获取侧边栏聚合数据失败:', error)
-          // 回退到旧的独立接口
+          // 聚合接口失败时回退到独立接口
           this.getContactList()
           this.getAsideBackground()
         })

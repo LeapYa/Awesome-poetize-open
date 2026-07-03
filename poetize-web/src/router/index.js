@@ -578,4 +578,29 @@ async function handleOAuthAuthCode(to, from, next) {
   }
 }
 
+// 全局路由错误处理：捕获异步组件（懒加载 chunk）加载失败、导航守卫异常等，
+// 避免网络波动或部署后 chunk hash 失效导致空白页。
+router.onError((error, to) => {
+  console.error('[Router] 路由错误:', error?.message || error)
+  const msg = error?.message || String(error)
+  const isChunkLoadError = /Loading chunk|Failed to fetch dynamically imported module|Loading CSS chunk|Importing a module script failed/.test(msg)
+  if (isChunkLoadError && typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+    // chunk 加载失败多为网络波动或部署后旧 hash 失效；整页刷新一次重新拉取 manifest。
+    // 用 sessionStorage 标记防止刷新后仍失败时陷入刷新死循环。
+    const reloadKey = '__routeChunkReloaded'
+    if (!sessionStorage.getItem(reloadKey)) {
+      sessionStorage.setItem(reloadKey, '1')
+      const target = to?.fullPath || (window.location.pathname + window.location.search + window.location.hash)
+      window.location.assign(target)
+      return
+    }
+    // 已尝试过一次仍失败：清除标记，让用户后续手动刷新可重新重试
+    sessionStorage.removeItem(reloadKey)
+  }
+  // 非chunk错误，或chunk重试已失败：回到首页避免停留空白页
+  if (to && to.fullPath && to.fullPath !== '/') {
+    router.replace('/')
+  }
+})
+
 export default router

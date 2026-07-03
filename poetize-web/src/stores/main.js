@@ -16,6 +16,11 @@ if (storedVersion !== CACHE_VERSION) {
   localStorage.setItem('cacheVersion', CACHE_VERSION)
 }
 
+// 侧边栏聚合缓存 TTL：10 分钟。
+// 后台改联系方式/快捷入口/侧栏背景后，前台同会话最长 10 分钟内自动刷新；
+// 跨应用（admin→web）无法直接失效 Pinia，靠 TTL 兜底。
+const ASIDE_BOOTSTRAP_TTL_MS = 10 * 60 * 1000
+
 /**
  * 从localStorage获取数据，支持新的带时间戳格式和旧格式兼容
  */
@@ -85,7 +90,9 @@ export const useMainStore = defineStore('main', {
 
     // 侧边栏首屏聚合缓存（contactList/quickEntryList/asideBackground）
     // 由 myAside 首次加载后注入，路由切换回首页时复用，避免重复请求
+    // asideBootstrapExpireAt 记录缓存过期时间戳，TTL 由 ASIDE_BOOTSTRAP_TTL_MS 控制
     asideBootstrap: null,
+    asideBootstrapExpireAt: 0,
 
     // 验证码相关状态
     captcha: {
@@ -161,10 +168,29 @@ export const useMainStore = defineStore('main', {
 
     /**
      * 加载侧边栏首屏聚合数据（contactList/quickEntryList/asideBackground）
-     * 首次加载后缓存到 store，路由切换回首页时复用，避免重复请求
+     * 首次加载后缓存到 store，路由切换回首页时复用，避免重复请求。
+     * 同时记录过期时间戳（ASIDE_BOOTSTRAP_TTL_MS），过期后下次访问会重新拉取，
+     * 保证后台改配置后前台能在 TTL 内自动刷新。
      */
     loadAsideBootstrap(data) {
       this.asideBootstrap = data
+      this.asideBootstrapExpireAt = Date.now() + ASIDE_BOOTSTRAP_TTL_MS
+    },
+
+    /**
+     * 侧边栏聚合缓存是否已过期（或不存在）
+     */
+    isAsideBootstrapExpired() {
+      return !this.asideBootstrap || Date.now() >= this.asideBootstrapExpireAt
+    },
+
+    /**
+     * 显式失效侧边栏聚合缓存。
+     * 跨应用（admin→web）无法直接调用，预留供同应用内配置变更后手动触发。
+     */
+    invalidateAsideBootstrap() {
+      this.asideBootstrap = null
+      this.asideBootstrapExpireAt = 0
     },
 
     /**

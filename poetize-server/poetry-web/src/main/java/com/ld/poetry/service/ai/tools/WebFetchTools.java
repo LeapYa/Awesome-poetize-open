@@ -16,6 +16,7 @@ import com.ld.poetry.service.ai.tools.webfetch.SafeDns;
 import com.ld.poetry.service.ai.tools.webfetch.SpaDetector;
 import com.vladsch.flexmark.html2md.converter.FlexmarkHtmlConverter;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -168,6 +169,35 @@ public class WebFetchTools {
 
         log.info("WebFetchTools 初始化完成：主客户端 + Fetcher Chain（Readability → JSON-LD → RSS → llms.txt → Archive.org → Jina）+ 缓存（容量 {}，TTL {}ms）",
                 CACHE_MAX_SIZE, CACHE_TTL_MS);
+    }
+
+    /**
+     * Bean 销毁时显式关闭 OkHttpClient 的连接池与 dispatcher 线程池，避免容器重启时
+     * 残留空闲连接与 ExecutorService 线程导致资源泄漏。
+     * <p>
+     * 子客户端（JinaReaderClient / RssFeedClient / LlmsTxtClient / ArchiveOrgClient）
+     * 均复用这两个主客户端，无需单独关闭。
+     */
+    @PreDestroy
+    public void destroy() {
+        shutdownClient(mainHttpClient, "mainHttpClient");
+        shutdownClient(jinaHttpClient, "jinaHttpClient");
+        cache.clear();
+    }
+
+    private void shutdownClient(OkHttpClient client, String name) {
+        if (client == null) {
+            return;
+        }
+        try {
+            // 先停止接收新请求，再清理连接池，最后关闭 dispatcher 的 ExecutorService
+            client.dispatcher().cancelAll();
+            client.connectionPool().evictAll();
+            client.dispatcher().executorService().shutdown();
+            log.info("OkHttpClient 已关闭: {}", name);
+        } catch (Exception e) {
+            log.warn("关闭 OkHttpClient 失败: name={}, error={}", name, e.getMessage());
+        }
     }
 
     /**

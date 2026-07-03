@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * AI 聊天请求 DTO（Record）
- * 替代原 Map<String, Object> 请求体，提供类型安全和自动验证
+ * 提供类型安全和自动验证
  *
  * @param message         用户消息内容（必填，最大 10000 字符）
  * @param conversationId  会话 ID（可选，默认 "default"）

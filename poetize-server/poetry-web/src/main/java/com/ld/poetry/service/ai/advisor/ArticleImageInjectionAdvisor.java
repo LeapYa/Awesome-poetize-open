@@ -143,6 +143,9 @@ public class ArticleImageInjectionAdvisor implements CallAdvisor, StreamAdvisor 
     @SuppressWarnings("unchecked")
     private List<String> extractArticleImageUrls(ChatClientRequest request) {
         Set<String> injected = getOrCreateInjectedSet(request);
+        // 预扫描已有 UserMessage 的 Media URL，避免与初始 UserMessage 中
+        // RAG 图片（NATIVE 模式作为 Media 注入）重复注入。
+        seedExistingMediaUrls(request, injected);
         List<String> result = new ArrayList<>();
         for (Message message : request.prompt().getInstructions()) {
             if (!(message instanceof ToolResponseMessage toolResponseMessage)) {
@@ -172,6 +175,31 @@ public class ArticleImageInjectionAdvisor implements CallAdvisor, StreamAdvisor 
             }
         }
         return result;
+    }
+
+    /**
+     * 扫描请求中已有 UserMessage 的 Media，将 URL 形式的图片数据加入去重集合，
+     * 避免初始 UserMessage 中已可见的图片被工具返回的 [图片: URL] 标记重复注入。
+     */
+    private void seedExistingMediaUrls(ChatClientRequest request, Set<String> injected) {
+        for (Message message : request.prompt().getInstructions()) {
+            if (!(message instanceof UserMessage userMessage)) {
+                continue;
+            }
+            List<Media> mediaList = userMessage.getMedia();
+            if (mediaList == null || mediaList.isEmpty()) {
+                continue;
+            }
+            for (Media media : mediaList) {
+                Object data = media.getData();
+                if (data != null) {
+                    String url = data.toString();
+                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                        injected.add(url);
+                    }
+                }
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")

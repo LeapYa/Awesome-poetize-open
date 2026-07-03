@@ -34,6 +34,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.HashSet;
@@ -291,21 +292,33 @@ public class CacheService {
     public void cacheArticleQRCode(Integer articleId, byte[] qrCodeData) {
         if (articleId != null && qrCodeData != null && qrCodeData.length > 0) {
             String key = CacheConstants.buildArticleQRCodeKey(articleId);
-            redisUtil.set(key, qrCodeData, CacheConstants.QRCODE_EXPIRE_TIME);
+            // byte[] 在 defaultTyping.NON_FINAL 下不被打类型标识，
+            // 显式以 base64 String 存储，确保读写往返一致。
+            redisUtil.set(key, Base64.getEncoder().encodeToString(qrCodeData),
+                    CacheConstants.QRCODE_EXPIRE_TIME);
         }
     }
 
     /**
      * 获取缓存的文章二维码
-     * 
+     *
      * @param articleId 文章ID
      * @return 二维码字节数组，如果不存在返回null
      */
     public byte[] getCachedArticleQRCode(Integer articleId) {
         if (articleId == null) return null;
-        
+
         String key = CacheConstants.buildArticleQRCodeKey(articleId);
         Object cached = redisUtil.get(key);
+        if (cached instanceof String) {
+            try {
+                return Base64.getDecoder().decode((String) cached);
+            } catch (IllegalArgumentException e) {
+                // 非 base64 字符串（脏数据/格式不符），按未命中处理
+                return null;
+            }
+        }
+        // 兜底：极端情况下若历史遗留数据确为 byte[]，直接返回
         if (cached instanceof byte[]) {
             return (byte[]) cached;
         }

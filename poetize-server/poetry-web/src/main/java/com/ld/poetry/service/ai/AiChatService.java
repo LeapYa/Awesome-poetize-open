@@ -1060,11 +1060,13 @@ public class AiChatService {
                     .build();
         }
 
-        // TOOL 模式：将图片URL拼接到文本中，引导主模型调用 analyze_image 工具
+        // TOOL 模式：将图片URL拼接到文本中，引导主模型调用 analyze_image 工具。
+        // 与 RAG/文章图片统一使用 [图片: URL] 标记语法（系统提示已解释该标记的含义与调用 analyzeImage 的时机），
+        // 前置 hint 仅用于让模型区分"用户本次上传"与"RAG 命中片段"两类来源。
         StringBuilder textBuilder = new StringBuilder(userMessage);
         textBuilder.append("\n\n[用户上传了以下图片，请使用 analyze_image 工具识别图片内容后回答用户问题]");
-        for (int i = 0; i < images.size(); i++) {
-            textBuilder.append("\n图片").append(i + 1).append(": ").append(images.get(i));
+        for (String imageUrl : images) {
+            textBuilder.append("\n[图片: ").append(imageUrl).append("]");
         }
         return new UserMessage(textBuilder.toString());
     }
@@ -1543,9 +1545,16 @@ public class AiChatService {
             // TOOL 模式且用户未启用工具：只注册视觉工具，避免违背用户禁用工具的意图
             toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(visionTools)));
         } else {
-            toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(
-                    articleTools, timeTools, calculatorTools, commentTools, visionTools, memorySearchTool,
-                    skillTools, pageTools)));
+            // NATIVE 模式：图片已由 ArticleImageInjectionAdvisor 作为 Media 注入主模型，
+            // 注册 analyzeImage 会导致双重视觉处理与额外 token 消耗，违背 NATIVE 设计意图。
+            // TOOL 模式：主模型无视觉能力，需要 analyzeImage 调用独立视觉模型识图。
+            List<Object> toolBeans = new ArrayList<>(Arrays.asList(
+                    articleTools, timeTools, calculatorTools, commentTools,
+                    memorySearchTool, skillTools, pageTools));
+            if (visionMode != VisionMode.NATIVE) {
+                toolBeans.add(visionTools);
+            }
+            toolCallbacks.addAll(Arrays.asList(ToolCallbacks.from(toolBeans.toArray())));
             // WebFetch 工具按独立开关注册（NULL 视为继承 enableTools）。
             // 评论场景同样不应注册此工具：评论触发外网抓取存在被滥用为盲打 SSRF 的风险，
             // 与 SkillAdminTools 的隔离策略一致。
@@ -2135,8 +2144,11 @@ public class AiChatService {
         // 图片标记处理指引：无论视觉模式如何都附加，让 AI 理解 [图片: URL] 标记的含义。
         // 标记来源于 getArticleContent 工具结果和 RAG 检索片段（由 RagTextUtils.normalize 生成）。
         String imageMarkerGuidance = switch (visionMode) {
-            case TOOL, NATIVE -> """
+            case TOOL -> """
                     - Article text and RAG snippets may contain markers like [图片: URL] indicating an image at that position. When the user asks about image content (e.g. "图里画了什么"、"截图中的报错"、"配图说明什么"), call analyzeImage(URL) to recognize the image and answer based on its description. Do NOT call analyzeImage for images the user did not ask about.
+                    """;
+            case NATIVE -> """
+                    - Article text and RAG snippets may contain markers like [图片: URL] indicating an image at that position. In NATIVE vision mode, these images are already attached to you as Media — you can see them directly. Do NOT call analyzeImage for images already visible in the conversation.
                     """;
             case DISABLED -> """
                     - Article text and RAG snippets may contain markers like [图片: URL] indicating an image at that position. Vision is currently disabled, so you cannot analyze image content. If the user asks about an image, tell them the article has an image there but you cannot view its content.
