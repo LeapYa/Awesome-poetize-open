@@ -2,7 +2,7 @@
 name: poetize-blog-automation
 description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。仅支持 awesome-poetize-open 开源版，不适用于原版 POETIZE。开源仓库：https://github.com/LeapYa/awesome-poetize-open
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/openclaw-skills/poetize-blog-automation
-version: 1.1.0
+version: 1.1.1
 primaryEnv: POETIZE_API_KEY
 requires:
   anyBins:
@@ -39,6 +39,58 @@ Use this skill to operate a POETIZE blog as a personal publishing and maintenanc
 It is built on the existing POETIZE API feature, not browser automation.
 It is free-first, growth-first, and maintenance-first.
 It is not monetization-first.
+
+## Security Warnings
+
+This skill performs real, irreversible operations on your live blog. Read carefully before installing.
+
+### API Key Security
+
+- `POETIZE_API_KEY` is a high-privilege credential that can publish, modify, and hide articles on your blog.
+- Store it in a secure location (e.g., OpenClaw's `auth-profiles.json` or a protected environment file).
+- Do not commit the API key to source control, paste it into chat transcripts, or expose it in logs.
+- Rotate the key immediately if you suspect it has been leaked.
+
+### Mutating Operations
+
+This skill can publish, update, and hide articles on your live blog. These actions affect public visibility immediately upon completion.
+
+- Publishing makes content publicly visible (unless saved as draft with `viewStatus: false`).
+- Updating overwrites existing article content, categories, tags, and metadata.
+- Hiding removes an article from public view by setting `viewStatus: false`.
+- Always review the strategy brief and payload before confirming mutating commands.
+- Use `--draft` or `viewStatus: false` when you want to preview before going live.
+
+### Local Image Upload
+
+When your Markdown references local image files (e.g., `![alt](./diagram.png)`), the CLI will automatically upload those files to your blog's server before publishing.
+
+- Only reference images you intend to publish.
+- The CLI resolves relative paths from the Markdown file's directory.
+- Files must exist on disk before publishing; missing files cause the command to fail.
+- To avoid automatic upload, upload images first with `poetize_cli.py upload-image` and use the returned URL in Markdown.
+
+### Payment Plugin Configuration (Article Monetization)
+
+POETIZE supports article monetization through payment plugins (e.g., Epay/易支付). When publishing paid articles (`payType > 0`), this skill can check, configure, and activate the payment plugin through your blog's API.
+
+- The payment config file (`--payment-config-file payment.json`) contains payment gateway credentials (merchant ID, API keys, etc.) for your blog's payment plugin.
+- These credentials are sent to **your own blog server** (`POETIZE_BASE_URL`) via `/api/api/payment/plugin/configure`, not to any third party.
+- All API calls require your `POETIZE_API_KEY` (admin API key), ensuring only authorized operations.
+- The config is stored in your blog's database and used to process article payments from readers.
+
+**Security considerations:**
+- Payment config files contain sensitive credentials. Keep them out of source control and chat transcripts.
+- Only use this feature when you intentionally want to configure article monetization.
+- For most personal blogs, keep `payType: 0` (free articles) and skip payment configuration entirely.
+
+### Scope Limitation
+
+This skill is for blog content management. It does NOT:
+
+- Modify server-level system settings or OS-level infrastructure.
+- Access or modify files outside the skill folder, the Markdown file, and the payment config file you explicitly provide.
+- Execute arbitrary commands or scripts beyond the bundled Python CLI.
 
 ## Public Distribution Position
 

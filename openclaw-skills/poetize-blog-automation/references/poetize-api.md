@@ -139,7 +139,7 @@ skipAiTranslation: true
 - `payAmount` -> `payAmount`
 - `freePercent` -> `freePercent`
 - `paymentPluginKey` -> choose the payment plugin checked through `/api/api/payment/plugin/status`
-- `paymentConfigFile` -> local JSON file used with `/api/api/payment/plugin/configure` when the target payment plugin still needs configuration
+- `paymentConfigFile` -> local JSON file used with `/api/api/payment/plugin/configure` when the target payment plugin still needs configuration. Warning: this file may contain sensitive payment credentials.
 - `requirePaid` -> fail instead of auto-downgrading to `payType: 0`
 - `allowCreateTaxonomy` -> allow creating both category and tag when they do not already exist
 - `allowCreateSort` -> allow creating a missing category
