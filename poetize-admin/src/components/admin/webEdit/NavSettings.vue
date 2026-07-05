@@ -59,17 +59,17 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="operation" label="操作" min-width="180" fixed="right">
+          <el-table-column prop="operation" label="操作" :min-width="isMobileDevice ? 110 : 180" fixed="right">
             <template slot-scope="scope">
               <div>
-                <el-button type="text" size="small" :disabled="scope.$index === 0" @click="moveNavItem(scope.$index, 'up')">
-                  <i class="el-icon-top"></i> 上移
+                <el-button type="text" size="small" :disabled="scope.$index === 0" @click="moveNavItem(scope.$index, 'up')" class="nav-op-btn">
+                  <i class="el-icon-top"></i> <span class="nav-op-text">上移</span>
                 </el-button>
-                <el-button type="text" size="small" :disabled="scope.$index === navItems.length - 1" @click="moveNavItem(scope.$index, 'down')">
-                  <i class="el-icon-bottom"></i> 下移
+                <el-button type="text" size="small" :disabled="scope.$index === navItems.length - 1" @click="moveNavItem(scope.$index, 'down')" class="nav-op-btn">
+                  <i class="el-icon-bottom"></i> <span class="nav-op-text">下移</span>
                 </el-button>
-                <el-button type="text" size="small" class="delete-btn" @click="deleteNavItem(scope.$index)">
-                  <i class="el-icon-delete"></i> 删除
+                <el-button type="text" size="small" class="delete-btn nav-op-btn" @click="deleteNavItem(scope.$index)">
+                  <i class="el-icon-delete"></i> <span class="nav-op-text">删除</span>
                 </el-button>
               </div>
             </template>
@@ -409,6 +409,8 @@ export default {
 
 @media screen and (max-width: 768px) {
   .mobile-table .hidden-xs-only { display: none !important; }
+  .nav-op-btn { padding-left: 6px !important; padding-right: 6px !important; }
+  .nav-op-btn .nav-op-text { display: none !important; }
 }
 
 @media screen and (max-width: 500px) {

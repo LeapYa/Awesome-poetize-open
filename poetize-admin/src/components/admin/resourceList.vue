@@ -74,6 +74,10 @@
                      :stroke-width="6">
         </el-progress>
       </div>
+      <div v-if="isOrphanResourceType" class="orphan-resource-warning">
+        <i class="el-icon-warning"></i>
+        <span>注意甄别：孤儿资源仅通过数据库引用关系检测，可能误报被前端代码、JSON 配置、默认素材占用的文件，也可能包含重新生成图标/封面后遗留的旧版本文件，删除前请仔细核对。</span>
+      </div>
       <el-table :data="displayedResources"
                 border
                 class="table"
@@ -422,7 +426,7 @@ const RESOURCE_TYPE_GROUPS = [
   {
     label: '筛选视图',
     options: [
-      { label: '孤儿资源', value: 'orphanResource', description: '已入库但没有被页面或内容引用的文件' },
+      { label: '孤儿资源', value: 'orphanResource', description: '已入库但没有被页面或内容引用的文件；可能包含被前端代码、JSON 配置、默认素材占用的资源，或重新生成图标/封面后遗留的旧版本文件，删除前请仔细甄别' },
       { label: '无效资源', value: 'invalidResource', description: '路径无法访问或本地文件不存在的资源' }
     ]
   },
@@ -693,6 +697,9 @@ export default {
     },
     isInvalidResourceType() {
       return this.pagination.resourceType === 'invalidResource';
+    },
+    isOrphanResourceType() {
+      return this.pagination.resourceType === 'orphanResource';
     },
     scanTaskTitle() {
       if (this.scanTask.status === 'PENDING') {
@@ -1288,10 +1295,14 @@ export default {
       }
     },
     handleDelete(item) {
-      this.$confirm('确认删除资源？', '提示', {
+      const isOrphanView = this.pagination.resourceType === 'orphanResource';
+      const confirmMessage = isOrphanView
+        ? '孤儿资源仅通过数据库引用关系检测，可能误报被前端代码、JSON 配置、默认素材占用的文件，也可能包含重新生成图标/封面后遗留的旧版本文件。确认删除“' + (item.path || '') + '”？'
+        : '确认删除资源？';
+      this.$confirm(confirmMessage, isOrphanView ? '注意甄别：孤儿资源删除' : '提示', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
-        type: 'success',
+        type: isOrphanView ? 'warning' : 'success',
         center: true,
         customClass: 'mobile-responsive-confirm'
       }).then(() => {
@@ -2074,6 +2085,32 @@ export default {
 
   .scan-progress-bar .el-progress {
     margin-top: 2px;
+  }
+
+  .orphan-resource-warning {
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #fdf6ec;
+    border: 1px solid #f5dab1;
+    color: #e6a23c;
+    font-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.6;
+  }
+
+  .orphan-resource-warning i {
+    font-size: 16px;
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+
+  body.dark-mode .orphan-resource-warning {
+    background: #3b2e1f;
+    border-color: #7d5b30;
+    color: #f0c98b;
   }
 
   .handle-box {

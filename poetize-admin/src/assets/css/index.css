@@ -607,3 +607,18 @@ body {
     opacity: 0 !important;
     transform: scaleY(0) translateY(-10px) !important;
 }
+
+/* 向上展开（drop-up）时下拉菜单动画应由下到上，覆盖默认 transform-origin */
+.el-select-dropdown[x-placement^="top"].el-zoom-in-top-enter-active,
+.el-select-dropdown[x-placement^="top"].el-zoom-in-top-leave-active,
+.el-select-dropdown[x-placement^="top"] .el-zoom-in-top-enter-active,
+.el-select-dropdown[x-placement^="top"] .el-zoom-in-top-leave-active {
+    transform-origin: bottom center !important;
+}
+
+.el-select-dropdown[x-placement^="top"].el-zoom-in-top-enter,
+.el-select-dropdown[x-placement^="top"].el-zoom-in-top-leave-active,
+.el-select-dropdown[x-placement^="top"] .el-zoom-in-top-enter,
+.el-select-dropdown[x-placement^="top"] .el-zoom-in-top-leave-active {
+    transform: scaleY(0) translateY(10px) !important;
+}

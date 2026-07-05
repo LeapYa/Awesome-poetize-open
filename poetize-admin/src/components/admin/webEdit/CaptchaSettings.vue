@@ -275,5 +275,19 @@ export default {
     max-width: 100% !important;
     flex: 0 0 100% !important;
   }
+  #field-captcha .el-form-item__label {
+    float: none;
+    display: block;
+    text-align: left;
+    width: auto !important;
+    padding-bottom: 6px;
+  }
+  #field-captcha .el-form-item__content {
+    margin-left: 0 !important;
+    clear: both;
+  }
+  #field-captcha .el-slider {
+    width: 100%;
+  }
 }
 </style>
