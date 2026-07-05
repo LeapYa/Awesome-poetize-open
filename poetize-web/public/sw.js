@@ -1,7 +1,7 @@
 // POETIZE PWA Service Worker
 // 提供智能缓存和PWA功能
 
-const CACHE_NAME = 'pwa-cache-v1.0.1-live2d';
+const CACHE_NAME = 'pwa-cache-v1.0.3-live2d';
 
 // 需要预缓存的关键资源
 const PRECACHE_RESOURCES = [
@@ -50,9 +50,11 @@ self.addEventListener('fetch', event => {
   // 跳过chrome-extension请求
   if (url.protocol === 'chrome-extension:') return;
 
-  // 不同类型资源使用不同缓存策略
+  // 不同类型资源使用不同缓存策略（注意判断顺序：带 hash 的构建产物优先）
   if (isPageRequest(request)) {
     event.respondWith(handlePageRequest(request));
+  } else if (isHashedBuildAsset(request)) {
+    event.respondWith(handleHashedBuildAsset(request));
   } else if (isMutableDefaultIcon(request)) {
     event.respondWith(handleMutableDefaultIcon(request));
   } else if (isLive2DResource(request)) {
@@ -76,6 +78,16 @@ function isStaticAsset(request) {
   // 排除 manifest.json，避免浏览器使用缓存导致网站名称等配置更新不生效
   if (url.pathname === '/manifest.json') return false;
   return url.pathname.match(/\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|eot|json|mp4)$/);
+}
+
+// Vite/Rolldown 构建产物通常带 hash（如 /static/index-CqjO_wHz.js、/static/ep-actions-O6yX_5R4.css）
+// 文件名格式为 name-hash.ext，hash 字符集为 base64url（大小写字母+数字+下划线+连字符）
+// 这类资源必须走网络优先，否则新版本部署后旧页面引用已删除的 chunk 会触发 vite:preloadError
+function isHashedBuildAsset(request) {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+  return /-[\w-]{6,}\.(js|css)(\?.*)?$/i.test(pathname) &&
+    (pathname.startsWith('/static/') || pathname.startsWith('/assets/'));
 }
 
 // 检查是否为API请求
@@ -116,6 +128,29 @@ async function handlePageRequest(request) {
     const cachedResponse = await caches.match(request);
     if (cachedResponse) return cachedResponse;
     throw error;
+  }
+}
+
+// 处理带 hash 的 Vite/Rolldown 构建产物：网络优先
+// 这些资源文件名包含内容 hash，新版本部署后旧文件会被删除，缓存优先会导致 vite:preloadError
+async function handleHashedBuildAsset(request) {
+  try {
+    const networkResponse = await fetch(request, { cache: 'no-cache' });
+    // 不要把 HTML fallback（如 SPA 回退页）缓存成 JS/CSS
+    if (networkResponse.ok && !isHtmlFallbackResponse(request, networkResponse)) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (error) {
+    // 网络失败时回退到缓存，尽量保证可用性
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) return cachedResponse;
+    return new Response('服务暂时不可用', {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
+    });
   }
 }
 

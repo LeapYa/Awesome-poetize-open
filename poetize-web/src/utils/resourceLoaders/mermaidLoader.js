@@ -19,12 +19,13 @@ export async function loadMermaidResources() {
   }
 
   try {
-    // 使用动态导入加载 Mermaid
-    // @vite-ignore 告诉 Vite 不要预分析此动态导入
-    const mermaid = await import(/* @vite-ignore */ 'mermaid')
+    const mod = await import('mermaid')
+    const mermaid = mod?.default || mod
+    if (!mermaid) {
+      throw new Error('Mermaid 模块不可用')
+    }
 
-    // 将mermaid挂载到window对象，供其他地方使用
-    window.mermaid = mermaid.default || mermaid
+    window.mermaid = mermaid
 
     // 检测是否为暗色模式
     const isDark =

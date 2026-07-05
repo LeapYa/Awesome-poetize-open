@@ -28,15 +28,32 @@
         if (!lastReload || now - parseInt(lastReload) > 10000) {
           sessionStorage.setItem(key, now.toString());
           console.warn('检测到资源加载失败 (' + reason + ')，正在自动刷新页面恢复...');
-          window.location.reload(true);
+          // 先尝试注销 Service Worker，避免旧缓存导致刷新后仍然加载失败的 chunk
+          if (navigator.serviceWorker) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              return Promise.all(registrations.map(function(reg) { return reg.unregister(); }));
+            }).catch(function() {}).finally(function() {
+              window.location.reload(true);
+            });
+          } else {
+            window.location.reload(true);
+          }
         }
       }
 
       // 仅捕获 Vite 动态 import / preload 加载失败
-        // 不再监听全局 SCRIPT/LINK error：非关键资源（背景图、CDN、代理样式等）加载失败不应触发整页刷新
-        window.addEventListener('vite:preloadError', function (event) {
-          reloadPage('preloadError');
-        });
+      // 不再监听全局 SCRIPT/LINK error：非关键资源（背景图、CDN、代理样式等）加载失败不应触发整页刷新
+      window.addEventListener('vite:preloadError', function (event) {
+        // mermaid 等通过 @vite-ignore 加载的 bare module specifier 在浏览器中
+        // 无法解析（没有 import map），会触发 vite:preloadError，但不应刷新页面
+        var msg = (event.payload && event.payload.message) || String(event.payload || '');
+        if (msg.indexOf('mermaid') !== -1) {
+          console.error('mermaid module load failed (ignored):', msg);
+          event.preventDefault();
+          return;
+        }
+        reloadPage('preloadError');
+      });
     })();
   </script>
   <title></title>

@@ -23,7 +23,16 @@
           if (!lastReload || now - parseInt(lastReload) > 10000) {
             sessionStorage.setItem(key, now.toString());
             console.warn('检测到 Vite 预加载失败 (' + reason + ')，正在自动刷新页面恢复...');
-            window.location.reload(true);
+            // 先尝试注销 Service Worker，避免旧缓存导致刷新后仍然加载失败的 chunk
+            if (navigator.serviceWorker) {
+              navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                return Promise.all(registrations.map(function(reg) { return reg.unregister(); }));
+              }).catch(function() {}).finally(function() {
+                window.location.reload(true);
+              });
+            } else {
+              window.location.reload(true);
+            }
           }
         }
 
