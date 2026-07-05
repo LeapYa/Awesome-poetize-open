@@ -691,14 +691,6 @@ server {
 
         try_files $uri @handle_404;
     }
-    location ^~ /im/static/ {
-        root /usr/share/nginx/html/poetize;
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-
-        try_files $uri @handle_404;
-    }
-
     # 聊天室页面 - SPA路由处理（使用^~优先匹配，跳过通用SEO处理）
     location ^~ /im {
         root /usr/share/nginx/html/poetize;
