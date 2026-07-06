@@ -445,14 +445,19 @@ server {
         root /usr/share/nginx/html/poetize;
         # $1=语言代码, $2=文章ID
         # 预渲染文件路径：/prerender/article/123/index-en.html
-        try_files /prerender/article/$2/index-$1.html /prerender/article/$2/index.html @spa_article;
+        # 使用 set 保存捕获组，防止 map 正则评估时 $1/$2 被覆盖
+        set $article_lang $1;
+        set $article_path_id $2;
+        try_files /prerender/article/$article_path_id/index-$article_lang.html /prerender/article/$article_path_id/index.html @spa_article;
     }
 
     # 原文文章页静态预渲染 - 格式 /article/id-or-slug
     location ~ ^/article/([A-Za-z0-9-]+)(\?.*)?$ {
         root /usr/share/nginx/html/poetize;
         # 根据 $lang_suffix 智能选择文件：en->index-en.html，否则 index.html
-        try_files /prerender/article/$1/index$lang_suffix.html /prerender/article/$1/index.html @spa_article;
+        # 使用 set 保存 $1，防止 map 正则评估时 $1 被覆盖导致预渲染文件找不到
+        set $article_path_id $1;
+        try_files /prerender/article/$article_path_id/index$lang_suffix.html /prerender/article/$article_path_id/index.html @spa_article;
     }
     location @spa_article {
         root /usr/share/nginx/html/poetize;
