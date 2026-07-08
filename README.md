@@ -474,9 +474,10 @@ bash <(curl -sL install.leapya.com)
 
 若已安装，则直接尝试安装技能 `awesome-poetize-open-blog-automation`。
 
-如果该技能尚未发布、在 ClawHub 中搜索不到，或者遇到 ClawHub 限流，请改为克隆项目 `https://github.com/LeapYa/awesome-poetize-open.git`，然后按手动安装方式把 `openclaw-skills/poetize-blog-automation` 复制到智能体对应的 `skills/` 目录中完成安装。
+如果该技能尚未发布、在 ClawHub 中搜索不到，或者遇到 ClawHub 限流，请改为克隆项目 `https://github.com/LeapYa/awesome-poetize-open.git`，然后按手动安装方式把 `skills/poetize-blog-automation` 复制到智能体对应的 `skills/` 目录中完成安装。
 
-安装目标默认使用智能体的 `skills/` 目录（例如 OpenClaw 的 `~/.openclaw/workspace/skills/`），配置默认写入智能体对应的配置文件（例如 OpenClaw 的 `~/.openclaw/openclaw.json`）。
+安装目标默认使用智能体的 `skills/` 目录，配置默认写入智能体对应的配置文件（具体路径因框架而异，请参考对应框架的文档）。
+
 安装完成后，请务必主动向我索要本技能所需的两项配置项，并附带以下获取指引：
 1. `POETIZE_BASE_URL`：仅填站点根地址（提醒我不要带 `/api` 前缀，例如 `https://your-blog.example.com`）。
 2. `POETIZE_API_KEY`：API 密钥（提醒我可以在“后台管理 -> 导航与接口 -> API 配置”界面中获取）。
@@ -485,7 +486,7 @@ bash <(curl -sL install.leapya.com)
 
 ### 安装方式二：手动通过 ClawHub CLI 安装
 
-默认在智能体的工作目录（例如 OpenClaw 的 `~/.openclaw/workspace/`）执行：
+在智能体的工作目录下执行：
 
 ```bash
 cd ~/.openclaw/workspace
@@ -521,20 +522,12 @@ clawhub install awesome-poetize-open-blog-automation
 仓库已经内置 skill，目录如下：
 
 ```text
-openclaw-skills/poetize-blog-automation/
+skills/poetize-blog-automation/
 ```
 
-手动安装时，默认把 `poetize-blog-automation` 整个目录复制到智能体对应的 `skills/` 目录下（例如 OpenClaw 的 `~/.openclaw/workspace/skills/`）：
+手动安装时，把 `poetize-blog-automation` 整个目录复制到你使用的智能体框架所指定的 `skills/` 目录下（具体路径因框架而异，请参考对应框架的文档）。
 
-```text
-~/.openclaw/workspace/
-  skills/
-    poetize-blog-automation/
-```
-
-如果你自定义过智能体的 workspace，就放到你自己的 `skills/` 目录里。
-
-然后在默认配置文件（例如 OpenClaw 的 `~/.openclaw/openclaw.json`）中加入和上面相同的配置：
+然后在智能体的配置文件中加入和上面相同的配置：
 
 ```json
 {
@@ -604,14 +597,15 @@ clawhub update awesome-poetize-open-blog-automation --force
 如果用户是手动安装的，后续更新方式也很简单：
 
 1. 获取仓库最新版本
-2. 用新的 `openclaw-skills/poetize-blog-automation/` 覆盖旧的 `~/.openclaw/workspace/skills/poetize-blog-automation/`
+2. 用新的 `skills/poetize-blog-automation/` 覆盖旧的 `~/.openclaw/workspace/skills/poetize-blog-automation/`
 3. 保留原来的 `~/.openclaw/openclaw.json` 配置
 
 ### 参考文档
 
-- [智能体技能接入说明 (OpenClaw/Hermes/Trae/Tencent)](openclaw-skills/poetize-blog-automation/references/agent-setup.md)
-- [Skill 规范与工作流](openclaw-skills/poetize-blog-automation/SKILL.md)
-- [POETIZE API 参考](openclaw-skills/poetize-blog-automation/references/poetize-api.md)
+- [Skill 规范与工作流](skills/poetize-blog-automation/SKILL.md)
+- [内容策略手册](skills/poetize-blog-automation/references/strategy-playbook.md)
+- [决策矩阵](skills/poetize-blog-automation/references/decision-matrix.md)
+- [创意工作流](skills/poetize-blog-automation/references/creativity-workflow.md)
 
 ## 🤝 贡献与许可
 

@@ -29,6 +29,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * LLM 翻译与摘要服务
@@ -665,7 +667,15 @@ public class LlmTranslationService {
                 rawBuffer.append(text);
                 int receivedLength = receivedChars.addAndGet(text.length());
                 int responseLength = rawBuffer.length();
-                StreamingTranslationView currentView = parseStreamingTranslationView(rawBuffer.toString());
+                String rawSoFar = rawBuffer.toString();
+
+                // JSON 格式：流式过程中不尝试解析不完整的 JSON，也不把原始 JSON 片段推给前端
+                if (isLikelyJsonResponse(rawSoFar)) {
+                    emitTranslationJsonProgress(responseLength, receivedLength, attempt, progressListener);
+                    return;
+                }
+
+                StreamingTranslationView currentView = parseStreamingTranslationView(rawSoFar);
                 if (currentView.title().isEmpty() && currentView.content().isEmpty()) {
                     emitTranslationRawProgress(text, responseLength, receivedLength, attempt, progressListener);
                 }
@@ -893,6 +903,27 @@ public class LlmTranslationService {
                 "receivedLength", receivedLength,
                 "attempt", attempt,
                 "message", "正在接收AI翻译响应... 已接收 " + receivedLength + " 字"));
+    }
+
+    private void emitTranslationJsonProgress(int currentLength, int receivedLength, int attempt,
+            TranslationService.TranslationProgressListener progressListener) {
+        if (progressListener == null) {
+            return;
+        }
+        progressListener.onEvent("translation_progress", Map.of(
+                "currentLength", currentLength,
+                "responseLength", currentLength,
+                "receivedLength", receivedLength,
+                "attempt", attempt,
+                "message", "正在接收 JSON 翻译响应... 已接收 " + receivedLength + " 字"));
+    }
+
+    private boolean isLikelyJsonResponse(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String trimmed = raw.trim();
+        return trimmed.startsWith("{") || trimmed.startsWith("[");
     }
 
     private Map<String, String> validateStreamingTranslationState(StreamingTranslationState state,
@@ -1175,21 +1206,34 @@ public class LlmTranslationService {
             // 尝试提取 JSON
             String jsonStr = extractJson(response);
             if (jsonStr != null) {
-                JsonUtils.JsonObj json = JsonUtils.parseObject(jsonStr);
-                String translatedTitle = firstJsonString(json, "translated_title", "title");
-                String translatedContent = firstJsonString(json, "translated_content", "content");
+                // 先尝试严格 JSON 解析
+                try {
+                    JsonUtils.JsonObj json = JsonUtils.parseObject(jsonStr);
+                    String translatedTitle = firstJsonString(json, "translated_title", "title");
+                    String translatedContent = firstJsonString(json, "translated_content", "content");
 
-                if (translatedTitle != null && !translatedTitle.isBlank()
-                        && translatedContent != null && !translatedContent.isBlank()
-                        && !translatedTitle.equals(originalTitle)
-                        && !translatedContent.equals(originalContent)) {
+                    if (translatedTitle != null && !translatedTitle.isBlank()
+                            && translatedContent != null && !translatedContent.isBlank()
+                            && !translatedTitle.equals(originalTitle)
+                            && !translatedContent.equals(originalContent)) {
 
-                    Map<String, String> result = new HashMap<>();
-                    result.put("title", translatedTitle);
-                    result.put("content", translatedContent);
-                    result.put("language", targetLang);
-                    log.info("LLM 文章翻译解析成功");
-                    return result;
+                        Map<String, String> result = new HashMap<>();
+                        result.put("title", translatedTitle);
+                        result.put("content", translatedContent);
+                        result.put("language", targetLang);
+                        log.info("LLM 文章翻译解析成功");
+                        return result;
+                    }
+                } catch (Exception ignored) {
+                    // 严格解析失败，继续尝试不合法 JSON 兜底提取
+                }
+
+                // 严格 JSON 解析失败：尝试从模型输出的不合法 JSON 中提取字段
+                //（长文章+代码块容易导致字符串内引号/反斜杠未转义）
+                Map<String, String> malformedResult = extractTranslationFromMalformedJson(
+                        jsonStr, originalTitle, originalContent, targetLang);
+                if (malformedResult != null) {
+                    return malformedResult;
                 }
             }
 
@@ -1233,6 +1277,182 @@ public class LlmTranslationService {
             }
         }
         return null;
+    }
+
+    /**
+     * 从模型输出的不合法 JSON 中尽力提取 title/content。
+     * 主要应对长文章+代码块场景：字符串内存在未转义的引号、换行、反斜杠等，
+     * 导致严格 JSON 解析失败，但字段结构仍然可识别。
+     */
+    private Map<String, String> extractTranslationFromMalformedJson(
+            String jsonText, String originalTitle, String originalContent, String targetLang) {
+        try {
+            // content 一般是最后一个字段，要求其后直接是对象结束
+            String translatedContent = extractJsonStringValue(jsonText,
+                    new String[]{"translated_content", "content"},
+                    new String[]{});
+            // title 后通常跟着 content 字段
+            String translatedTitle = extractJsonStringValue(jsonText,
+                    new String[]{"translated_title", "title"},
+                    new String[]{"translated_content", "content"});
+
+            if (translatedTitle == null || translatedContent == null) {
+                return null;
+            }
+
+            translatedTitle = unescapeJsonLikeString(translatedTitle).trim();
+            translatedContent = unescapeJsonLikeString(translatedContent).trim();
+
+            if (translatedTitle.isBlank() || translatedContent.isBlank()
+                    || translatedTitle.equals(originalTitle)
+                    || translatedContent.equals(originalContent)) {
+                return null;
+            }
+
+            Map<String, String> result = new HashMap<>();
+            result.put("title", translatedTitle);
+            result.put("content", translatedContent);
+            result.put("language", targetLang);
+            log.info("LLM 文章翻译从不合法 JSON 中提取成功");
+            return result;
+        } catch (Exception e) {
+            log.debug("从不合法 JSON 提取翻译失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 在文本中定位 key:"value" 结构，按转义规则提取 value。
+     * 兼容 value 内部出现未转义引号的情况：通过 nextKeys / 对象结束做结构锚点，
+     * 取最后一个符合结构预期的候选引号作为字段结束，避免被内容中的 "}" 等截断。
+     */
+    private String extractJsonStringValue(String text, String[] keys, String[] nextKeys) {
+        for (String key : keys) {
+            Pattern keyPattern = Pattern.compile(
+                    "\"?" + Pattern.quote(key) + "\"?\\s*:\\s*\"",
+                    Pattern.CASE_INSENSITIVE);
+            Matcher matcher = keyPattern.matcher(text);
+            if (!matcher.find()) {
+                continue;
+            }
+
+            int valueStart = matcher.end();
+            int lastClosingQuote = -1;
+            int pos = valueStart;
+            while (pos < text.length()) {
+                int quotePos = findNextUnescapedQuote(text, pos);
+                if (quotePos < 0) {
+                    break;
+                }
+                if (isClosingQuoteCandidate(text, quotePos, nextKeys)) {
+                    lastClosingQuote = quotePos;
+                }
+                pos = quotePos + 1;
+            }
+
+            if (lastClosingQuote >= 0) {
+                return text.substring(valueStart, lastClosingQuote);
+            }
+            if (pos > valueStart) {
+                return text.substring(valueStart);
+            }
+        }
+        return null;
+    }
+
+    private int findNextUnescapedQuote(String text, int start) {
+        boolean escaped = false;
+        for (int i = start; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == '"') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean isClosingQuoteCandidate(String text, int quotePos, String[] nextKeys) {
+        int after = quotePos + 1;
+        while (after < text.length() && Character.isWhitespace(text.charAt(after))) {
+            after++;
+        }
+        if (after >= text.length()) {
+            return true;
+        }
+
+        char c = text.charAt(after);
+        if (c == ',') {
+            if (nextKeys == null || nextKeys.length == 0) {
+                return false;
+            }
+            String rest = text.substring(after + 1).trim();
+            for (String nextKey : nextKeys) {
+                if (rest.startsWith("\"" + nextKey + "\"")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (c == '}') {
+            // 只有当前字段是最后一个字段（nextKeys 为空）时，'}' 才可能是结束符
+            if (nextKeys != null && nextKeys.length > 0) {
+                return false;
+            }
+            // 要求 '}' 之后就是对象结束（空白或 EOF），适用于最后一个字段
+            int afterBrace = after + 1;
+            while (afterBrace < text.length() && Character.isWhitespace(text.charAt(afterBrace))) {
+                afterBrace++;
+            }
+            return afterBrace >= text.length();
+        }
+        return false;
+    }
+
+    /**
+     * 反转义类 JSON 字符串中的常见转义序列。
+     */
+    private String unescapeJsonLikeString(String value) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '\\' && i + 1 < value.length()) {
+                char next = value.charAt(i + 1);
+                switch (next) {
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    case 'b' -> sb.append('\b');
+                    case 'f' -> sb.append('\f');
+                    case '"', '\\', '/' -> sb.append(next);
+                    case 'u' -> {
+                        if (i + 5 < value.length()) {
+                            try {
+                                int code = Integer.parseInt(value.substring(i + 2, i + 6), 16);
+                                sb.append((char) code);
+                                i += 5;
+                            } catch (NumberFormatException e) {
+                                sb.append(c);
+                            }
+                        } else {
+                            sb.append(c);
+                        }
+                    }
+                    default -> sb.append(c);
+                }
+                i++;
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private Map<String, String> parseCsvArticleTranslation(

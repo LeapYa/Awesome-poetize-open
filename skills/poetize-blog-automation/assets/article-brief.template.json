@@ -1,0 +1,13 @@
+{
+  "taskType": "create_article",
+  "primaryGoal": "asset_maintenance",
+  "targetAudience": "{{目标读者画像}}",
+  "publishIntent": "public",
+  "reasoning": "{{为什么这篇文章值得写/更新}}",
+  "selectedAngle": "{{最终选择的写作角度}}",
+  "alternativesConsidered": [
+    "{{候选角度 1}}",
+    "{{候选角度 2}}"
+  ],
+  "monetizationIntent": "free_default"
+}

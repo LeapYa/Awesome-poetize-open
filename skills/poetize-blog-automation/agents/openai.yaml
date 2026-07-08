@@ -1,0 +1,7 @@
+interface:
+  display_name: "POETIZE 博客自动化（非官方）"
+  short_description: "让 AI 帮你运营 POETIZE 博客：写文章、发布、管理分类标签、切换主题、查看数据、配置 SEO。仅支持 awesome-poetize-open 开源版。开源仓库：https://github.com/LeapYa/awesome-poetize-open"
+  default_prompt: "使用 $poetize-blog-automation 通过 POETIZE API 完成博客日常运营：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。定位是个人博客运营助手。发文默认策略：免费优先、维护优先、质量优先。仅支持 awesome-poetize-open 开源版，不适用于原版 POETIZE。"
+
+policy:
+  allow_implicit_invocation: true
