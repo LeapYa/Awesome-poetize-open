@@ -596,9 +596,10 @@ public class PrerenderEngine {
                 + "      });\n"
                 + "    });\n"
                 + "  }\n"
-                + "  function markAsLoaded(){requestAnimationFrame(function(){document.documentElement.classList.add('loaded');document.documentElement.classList.remove('prerender');handleImageLoad();});}\n"
-                + "  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',markAsLoaded);}else{markAsLoaded();}\n"
-                + "  window.addEventListener('app-mounted',function(){var a=document.getElementById('app');if(a)a.classList.add('loaded');handleImageLoad();});\n"
+                + "  // app-mounted：Vue 挂载成功，class 切换由 main.js 负责，这里只处理图片加载\n"
+                + "  window.addEventListener('app-mounted',function(){handleImageLoad();});\n"
+                + "  // 超时兜底：Vue 加载失败时强制切 class + 处理图片，避免永久白屏\n"
+                + "  setTimeout(function(){if(!document.documentElement.classList.contains('loaded')){document.documentElement.classList.add('loaded');document.documentElement.classList.remove('prerender');handleImageLoad();}},4000);\n"
                 + "  if(document.fonts){document.fonts.ready.then(function(){document.documentElement.classList.add('fonts-loaded');});}\n"
                 + "})();\n"
                 + "</script>";
