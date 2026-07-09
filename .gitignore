@@ -162,6 +162,7 @@ py/data/.encryption_key
 *.pem
 *.p12
 *.pfx
+credentials.json
 
 # 环境变量文件
 .env

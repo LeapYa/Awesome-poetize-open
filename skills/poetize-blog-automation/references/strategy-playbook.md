@@ -25,10 +25,11 @@ Keyword decision rules:
 
 Internal-link decision rules:
 
-- Reuse existing article list/search before drafting when article history is available.
-- Identify older articles this article should link to.
-- Identify older articles that should later link back to this article.
-- Prefer refreshing an existing article when the keyword overlaps heavily with content we already have.
+- **Run `manage list-articles` before drafting.** This is required when the API is reachable. Identify:
+  - Older articles this new post should link to (include links in the article body).
+  - Older articles that should later link back to this post (note them in `reasoning` for follow-up).
+- If the API is not yet reachable, note the absence in `reasoning` as "internal-link plan deferred: no API access" and revisit after publishing.
+- Prefer `refresh_article` when the keyword overlaps heavily with an existing article. Creating a near-duplicate fragments traffic and search intent.
 
 ## Action selection
 

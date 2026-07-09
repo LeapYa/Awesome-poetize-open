@@ -72,12 +72,19 @@ def run_article_eval_suite() -> None:
     assert_true(bool(draft_result.get("password")), "Draft brief should auto-fill a password.")
     assert_true(bool(draft_result.get("tips")), "Draft brief should auto-fill preview tips.")
 
+    # Empty list must still be rejected (min_items=1).
     bad_alternatives = dict(free_brief)
-    bad_alternatives["alternativesConsidered"] = ["Only one option"]
+    bad_alternatives["alternativesConsidered"] = []
     expect_strategy_error(
         lambda: apply_article_strategy(bad_alternatives, {"title": "Example", "content": "Body"}, is_update=False, cli_publish=False, cli_draft=False),
         "alternativesConsidered",
     )
+
+    # Single alternative is now valid (min_items relaxed from 2 to 1).
+    single_alternative = dict(free_brief)
+    single_alternative["alternativesConsidered"] = ["Generic broad overview (rejected: too shallow for target audience)"]
+    single_result = apply_article_strategy(single_alternative, {"title": "Example", "content": "Body"}, is_update=False, cli_publish=False, cli_draft=False)
+    assert_true(single_result["viewStatus"] is True, "Single-alternative brief should still produce a valid public article.")
 
     invalid_paid = dict(free_brief)
     invalid_paid["monetizationIntent"] = "paid_explicit"

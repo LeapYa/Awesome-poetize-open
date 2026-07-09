@@ -906,7 +906,8 @@ def ensure_payment_plugin_ready(
         return payload
 
     requested_plugin_key = args.payment_plugin_key or meta.get("paymentPluginKey")
-    strict_paid = bool(args.require_paid or meta.get("requirePaid"))
+    # Security constraint: paid articles must never be silently downgraded to free.
+    strict_paid = True
     status_url = f"{args.base_url.rstrip('/')}/api/api/payment/plugin/status"
     if isinstance(requested_plugin_key, str) and requested_plugin_key:
         status_url = (

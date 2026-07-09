@@ -35,6 +35,11 @@ import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.service.WebInfoService;
 import com.ld.poetry.service.payment.PaymentService;
 import com.ld.poetry.service.impl.ArticleServiceImpl.ArticleSaveStatus;
+import com.ld.poetry.service.CommentService;
+import com.ld.poetry.entity.Comment;
+import com.ld.poetry.enums.CommentTypeEnum;
+import com.ld.poetry.vo.CommentVO;
+import com.ld.poetry.utils.XssFilterUtil;
 import com.ld.poetry.utils.IpUtil;
 import com.ld.poetry.utils.ArticleUrlUtil;
 import com.ld.poetry.utils.PoetryUtil;
@@ -137,6 +142,8 @@ public class ApiController {
     private final ApplicationEventPublisher eventPublisher;
 
     private final Executor asyncExecutor;
+    
+    private final CommentService commentService;
 
     public ApiController(ArticleService articleService,
                         LabelMapper labelMapper,
@@ -158,7 +165,8 @@ public class ApiController {
                         FileStorageService fileStorageService,
                         FileSecurityValidator fileSecurityValidator,
                         ApplicationEventPublisher eventPublisher,
-                        @Qualifier("asyncExecutor") Executor asyncExecutor) {
+                        @Qualifier("asyncExecutor") Executor asyncExecutor,
+                        CommentService commentService) {
         this.articleService = articleService;
         this.labelMapper = labelMapper;
         this.sortMapper = sortMapper;
@@ -180,6 +188,7 @@ public class ApiController {
         this.fileSecurityValidator = fileSecurityValidator;
         this.eventPublisher = eventPublisher;
         this.asyncExecutor = asyncExecutor;
+        this.commentService = commentService;
     }
 
     /**
@@ -1856,6 +1865,62 @@ public class ApiController {
             return PoetryResult.fail(e.getMessage());
         } catch (Exception e) {
             log.error("API查询标签列表出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    /**
+     * API查询评论列表
+     */
+    @PostMapping("/comment/list")
+    public PoetryResult getCommentList(HttpServletRequest request, @RequestBody BaseRequestVO baseRequestVO) {
+        try {
+            validateApiKey(request);
+            return commentService.listComment(baseRequestVO);
+        } catch (PoetryRuntimeException e) {
+            log.error("API查询评论列表失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API查询评论列表出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    /**
+     * API发表/回复评论（免验证码，支持通过 commentInfo 设置 aiReply 属性进行 AI/管理员 模拟）
+     */
+    @PostMapping("/comment/save")
+    public PoetryResult saveComment(HttpServletRequest request, @RequestBody CommentVO commentVO) {
+        try {
+            validateApiKey(request);
+            
+            if (CommentTypeEnum.getEnumByCode(commentVO.getType()) == null) {
+                return PoetryResult.fail("评论来源类型不存在！");
+            }
+            
+            if (CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode().equals(commentVO.getType())) {
+                Article one = articleService.lambdaQuery().eq(Article::getId, commentVO.getSource())
+                        .select(Article::getId, Article::getCommentStatus).one();
+                if (one == null) {
+                    return PoetryResult.fail("文章不存在");
+                }
+                if (!one.getCommentStatus()) {
+                    return PoetryResult.fail("评论功能已关闭！");
+                }
+            }
+            
+            String content = XssFilterUtil.clean(commentVO.getCommentContent());
+            if (!StringUtils.hasText(content)) {
+                return PoetryResult.fail("评论内容不合法！");
+            }
+            commentVO.setCommentContent(content);
+            
+            return commentService.saveAiReplyComment(commentVO);
+        } catch (PoetryRuntimeException e) {
+            log.error("API保存评论失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API保存评论出现未知错误", e);
             return PoetryResult.fail("服务器内部错误");
         }
     }

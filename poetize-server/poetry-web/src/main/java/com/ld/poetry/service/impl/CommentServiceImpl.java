@@ -25,6 +25,7 @@ import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.CommentService;
 import com.ld.poetry.service.LocationService;
 import com.ld.poetry.service.SysAiConfigService;
+import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.utils.*;
 import com.ld.poetry.utils.mail.MailSendUtil;
@@ -85,10 +86,25 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     @Autowired
     private SysAiConfigService sysAiConfigService;
 
+    @Autowired
+    private SysConfigService sysConfigService;
+
     private final JsonMapper objectMapper = JsonMapper.builder().build();
+
+    /**
+     * 全局评论开关（sys_config: enableComment）。
+     * 与前端 article.vue 的 enableComment 计算属性保持一致：
+     * 仅当配置值为 "true" 时视为开启，缺失或其它值视为关闭。
+     */
+    private boolean isGlobalCommentEnabled() {
+        return "true".equalsIgnoreCase(sysConfigService.getConfigValueByKey("enableComment"));
+    }
 
     @Override
     public PoetryResult saveComment(CommentVO commentVO) {
+        if (!isGlobalCommentEnabled()) {
+            return PoetryResult.fail("全局评论功能已关闭！");
+        }
         if (CommentTypeEnum.getEnumByCode(commentVO.getType()) == null) {
             return PoetryResult.fail("评论来源类型不存在！");
         }
@@ -173,6 +189,9 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Override
     public PoetryResult<Comment> saveAiReplyComment(CommentVO commentVO) {
+        if (!isGlobalCommentEnabled()) {
+            return PoetryResult.fail("全局评论功能已关闭！");
+        }
         if (CommentTypeEnum.getEnumByCode(commentVO.getType()) == null) {
             return PoetryResult.fail("评论来源类型不存在！");
         }

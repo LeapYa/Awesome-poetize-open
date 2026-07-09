@@ -3,11 +3,18 @@
   "primaryGoal": "asset_maintenance",
   "targetAudience": "{{目标读者画像}}",
   "publishIntent": "public",
-  "reasoning": "{{为什么这篇文章值得写/更新}}",
+  "reasoning": "{{为什么这篇文章值得写/更新；如无法访问 API 进行内部链接规划，在此标注 'internal-link plan deferred: no API access'}}",
   "selectedAngle": "{{最终选择的写作角度}}",
   "alternativesConsidered": [
-    "{{候选角度 1}}",
-    "{{候选角度 2}}"
+    "{{候选角度 1（已排除：原因）}}"
   ],
-  "monetizationIntent": "free_default"
+  "monetizationIntent": "free_default",
+  "_topic_validation": {
+    "targetKeyword": "{{目标关键词，例如：vue3 composable 最佳实践}}",
+    "serpValidation": "{{top-10 搜索结果概况：强竞争/蓝海/GitHub repo 为主}}",
+    "internalLinkPlan": {
+      "linksTo": ["{{本文应链接的已有文章标题或 ID}}"],
+      "linkedFromLater": ["{{将来应回链本文的已有文章标题或 ID}}"]
+    }
+  }
 }

@@ -39,14 +39,14 @@ OPS_BRIEF_REQUIRED_FIELDS = [
 # an Agent that omitted a field knows exactly how to repair the brief and retry,
 # instead of having to re-read SKILL.md and guess.
 FIELD_SUGGESTIONS: dict[str, str] = {
-    "taskType": "specify one of create_article / refresh_article / hide_article / create_ops_post / refresh_ops_post / hide_ops_post",
-    "primaryGoal": "specify one of asset_maintenance / audience_growth / conversion / content_maintenance",
+    "taskType": "for article create/refresh (publish command): create_article / refresh_article / repurpose_article; for ops actions (manage update-article / hide-article): update_article / hide_article — must exactly match the subcommand you are calling",
+    "primaryGoal": "specify one of asset_maintenance / seo_growth / brand_expression / conversion",
     "targetAudience": "non-empty string describing the reader, e.g. \"developers learning RAG\"",
-    "publishIntent": "specify public / private / hidden",
+    "publishIntent": "specify draft / public",
     "reasoning": "non-empty string explaining the strategy rationale",
     "selectedAngle": "non-empty string naming the chosen angle",
-    "alternativesConsidered": "list of 2-3 rejected candidate angles, e.g. [\"broad overview\", \"tactical checklist\"]. This is the most-forgotten field — brainstorm at least 2 alternatives first, then list the ones you rejected",
-    "monetizationIntent": "specify free_default / free_promote / paid_explicit",
+    "alternativesConsidered": "list of 1-3 rejected candidate angles you considered but did not choose, e.g. [\"broad overview\", \"tactical checklist\"]. At least 1 item is required. If only one obvious angle exists, still list it and briefly note why other directions were not viable — the goal is to show you thought it through, not to hit a number",
+    "monetizationIntent": "specify free_default / paid_explicit",
     "expectedOutcome": "non-empty string describing the expected outcome of the ops action",
 }
 
@@ -109,7 +109,7 @@ def ensure_article_brief(
     publish_intent = _require_enum(brief, "publishIntent", PUBLISH_INTENTS)
     reasoning = _require_non_empty_string(brief, "reasoning")
     selected_angle = _require_non_empty_string(brief, "selectedAngle")
-    alternatives = _require_string_list(brief, "alternativesConsidered", min_items=2, max_items=3)
+    alternatives = _require_string_list(brief, "alternativesConsidered", min_items=1, max_items=3)
 
     if selected_angle in alternatives:
         raise StrategyValidationError(

@@ -272,7 +272,7 @@ def resolve_article_id(args: argparse.Namespace) -> int:
 def post_async_update(
     args: argparse.Namespace,
     payload: dict[str, Any],
-) -> None:
+) -> dict[str, Any]:
     response = request_json(
         "POST",
         f"{args.base_url.rstrip('/')}/api/api/article/updateAsync",
@@ -283,15 +283,14 @@ def post_async_update(
         die(json.dumps(response, ensure_ascii=False, indent=2))
 
     if not getattr(args, "wait", False):
-        print(json.dumps(response, ensure_ascii=False, indent=2))
-        return
+        return {"ok": True, **response}
 
     task_id = extract_task_id(response)
     if not task_id:
         die("Async update did not return taskId.")
 
     final_response = poll_task(args.base_url, args.api_key, task_id, args.poll_interval, args.timeout)
-    print(json.dumps(final_response, ensure_ascii=False, indent=2))
+    return {"ok": True, **final_response}
 
 
 if __name__ == "__main__":

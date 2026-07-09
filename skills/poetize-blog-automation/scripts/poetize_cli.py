@@ -50,53 +50,74 @@ from render_openclaw_config import build_config, infer_base_url
 
 
 # ---------------------------------------------------------------------------
-# Credentials storage (~/.config/poetize/credentials.json, XDG-style)
+# Credentials storage (~/.config/poetize/credentials.json, local/CWD fallback)
 # ---------------------------------------------------------------------------
 
-CREDENTIALS_PATH = Path.home() / ".config" / "poetize" / "credentials.json"
+try:
+    CREDENTIALS_PATH = Path.home() / ".config" / "poetize" / "credentials.json"
+except Exception:
+    CREDENTIALS_PATH = None
+
+LOCAL_CREDENTIALS_PATH = Path(__file__).resolve().parent.parent / "credentials.json"
+CWD_CREDENTIALS_PATH = Path.cwd() / "credentials.json"
 
 
 def load_credentials() -> dict[str, str]:
-    """Load saved credentials. Returns {base_url, api_key} or empty dict."""
-    if not CREDENTIALS_PATH.exists():
-        return {}
-    try:
-        data = json.loads(CREDENTIALS_PATH.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            return {
-                k: str(v)
-                for k, v in data.items()
-                if k in ("base_url", "api_key") and v
-            }
-    except (json.JSONDecodeError, OSError):
-        pass
+    """Load saved credentials. Returns {base_url, api_key} or empty dict.
+    Checks:
+    1. Global: ~/.config/poetize/credentials.json
+    2. Local: {baseDir}/credentials.json
+    3. CWD: ./credentials.json
+    """
+    paths_to_check = []
+    if CREDENTIALS_PATH:
+        paths_to_check.append(CREDENTIALS_PATH)
+    paths_to_check.extend([LOCAL_CREDENTIALS_PATH, CWD_CREDENTIALS_PATH])
+
+    for path in paths_to_check:
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    res = {
+                        k: str(v)
+                        for k, v in data.items()
+                        if k in ("base_url", "api_key") and v
+                    }
+                    if res.get("base_url") and res.get("api_key"):
+                        return res
+            except (json.JSONDecodeError, OSError):
+                pass
     return {}
 
 
-def save_credentials(base_url: str, api_key: str) -> None:
+def save_credentials(base_url: str, api_key: str, local: bool = False) -> Path:
     """Save credentials with 0600 permissions."""
-    CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    target_path = LOCAL_CREDENTIALS_PATH if local else (CREDENTIALS_PATH if CREDENTIALS_PATH else LOCAL_CREDENTIALS_PATH)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"base_url": base_url, "api_key": api_key}
-    CREDENTIALS_PATH.write_text(
+    target_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     try:
-        CREDENTIALS_PATH.chmod(0o600)
+        target_path.chmod(0o600)
     except OSError:
         pass  # Windows or non-POSIX filesystems
+    return target_path
 
 
-def clear_credentials() -> bool:
+def clear_credentials(local: bool = False) -> tuple[bool, Path]:
     """Delete credentials file if exists."""
-    if CREDENTIALS_PATH.exists():
-        CREDENTIALS_PATH.unlink()
-        return True
-    return False
+    target_path = LOCAL_CREDENTIALS_PATH if local else (CREDENTIALS_PATH if CREDENTIALS_PATH else LOCAL_CREDENTIALS_PATH)
+    if target_path and target_path.exists():
+        target_path.unlink()
+        return True, target_path
+    return False, target_path
 
 
 def resolve_credentials(args: argparse.Namespace) -> None:
-    """Fill args.base_url and args.api_key from: CLI > env > ~/.config/poetize/credentials.json.
+    """Fill args.base_url and args.api_key from: CLI > env > credentials files (global, local, CWD).
 
     Called once in main() after argparse, before dispatching to cmd_*.
     """
@@ -130,6 +151,46 @@ def _cli_die(message: str) -> None:
     exc = SystemExit(1)
     exc._poetize_detail = message  # type: ignore[attr-defined]
     raise exc
+
+
+# ---------------------------------------------------------------------------
+# Comment endpoints: version-gap guard
+# ---------------------------------------------------------------------------
+
+# /api/api/comment/list and /api/api/comment/save only exist starting from
+# this awesome-poetize-open backend version. Older backends 404/500 on these
+# routes because the endpoint itself does not exist yet — that failure looks
+# identical to a real bug from the CLI's perspective, so we translate it into
+# an explicit version-mismatch message instead of surfacing a raw HTTP error.
+COMMENT_ENDPOINTS_MIN_BACKEND_VERSION = "v5.0.1"
+
+
+def request_json_comment_endpoint(
+    method: str,
+    url: str,
+    api_key: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Wrap request_json for /api/api/comment/* routes.
+
+    On HTTP 404/500 (endpoint not registered on older backends), re-raise
+    with a version-mismatch explanation instead of the raw server error.
+    """
+    try:
+        return request_json(method, url, api_key, payload)
+    except SystemExit as exc:
+        detail = getattr(exc, "_poetize_detail", "") or ""
+        if detail.startswith("HTTP 404") or detail.startswith("HTTP 500"):
+            _cli_die(
+                f"{detail}\n\n"
+                f"This likely means your awesome-poetize-open backend is older than "
+                f"{COMMENT_ENDPOINTS_MIN_BACKEND_VERSION}, which is the first version to "
+                f"expose {url.split('/api/api/', 1)[-1] if '/api/api/' in url else url}. "
+                f"Comment list/reply support (manage list-comments / manage save-comment) "
+                f"requires upgrading the backend to {COMMENT_ENDPOINTS_MIN_BACKEND_VERSION} or later. "
+                f"All other commands in this skill are unaffected."
+            )
+        raise
 
 
 def read_stdin_json(label: str) -> dict[str, Any]:
@@ -241,8 +302,25 @@ def cmd_publish(args: argparse.Namespace) -> None:
             _output_error("Article API returned non-200", detail=json.dumps(response, ensure_ascii=False))
             return
 
+        def attach_agent_guide(res: dict[str, Any], pay: dict[str, Any], resp_data: Any) -> None:
+            if pay.get("viewStatus") is False:
+                article_id = args.article_id
+                if not article_id and isinstance(resp_data, dict):
+                    article_id = resp_data.get("articleId") or resp_data.get("id")
+                id_str = str(article_id) if article_id else "<article_id>"
+                res["agent_guide"] = {
+                    "message": "Draft created/updated successfully with a temporary password.",
+                    "password": pay.get("password"),
+                    "tips": pay.get("tips"),
+                    "next_steps": [
+                        f"Verify the draft format/metadata: python poetize_cli.py manage get-article --article-id {id_str}",
+                        f"Promote this draft to public: python poetize_cli.py publish --markdown-file {args.markdown_file} --article-id {id_str} --publish --wait"
+                    ]
+                }
+
         if not args.wait:
             result = {"ok": True, **response}
+            attach_agent_guide(result, payload, response.get("data"))
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return
 
@@ -258,6 +336,7 @@ def cmd_publish(args: argparse.Namespace) -> None:
             return
 
         result = {"ok": True, **final_response}
+        attach_agent_guide(result, payload, final_data)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except StrategyValidationError as exc:
         _output_error("Strategy validation failed", detail=exc.render())
@@ -350,6 +429,82 @@ def add_manage_subparsers(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("sitemap-update", help="Trigger sitemap update.")
     add_global_args(p)
 
+    # list-comments
+    p = sub.add_parser("list-comments", help="List comments for an article.")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+    p.add_argument("--floor-comment-id", type=int, help="Optional floor/thread ID to fetch replies within a specific comment tree.")
+    p.add_argument("--current", type=int, default=1, help="Page number (default: 1).")
+    p.add_argument("--size", type=int, default=10, help="Page size (default: 10).")
+
+    # save-comment
+    p = sub.add_parser("save-comment", help="Post or reply to a comment.")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+    p.add_argument("--content", required=True, help="Comment text content.")
+    p.add_argument("--parent-comment-id", type=int, help="Optional parent comment ID (to reply).")
+    p.add_argument("--parent-user-id", type=int, help="Optional parent user ID (to reply).")
+    p.add_argument("--floor-comment-id", type=int, help="Ignored by the backend for writes: the server always recomputes floorCommentId from --parent-comment-id and only logs a warning if this disagrees. Safe to omit; kept for symmetry with list-comments.")
+    p.add_argument("--as-ai", action="store_true", help="Comment/reply as the AI assistant persona.")
+
+    # task-status
+    p = sub.add_parser("task-status", help="Get status of an asynchronous article save/update task.")
+    add_global_args(p)
+    p.add_argument("--task-id", required=True, help="Async task ID.")
+
+
+def format_comment_tree(records: list[dict[str, Any]]) -> str:
+    if not records:
+        return "No comments."
+    
+    lines = []
+    comments_map = {c["id"]: c for c in records}
+    
+    children_map = {}
+    for c in records:
+        pid = c.get("parentCommentId") or 0
+        children_map.setdefault(pid, []).append(c)
+        
+    for siblings in children_map.values():
+        siblings.sort(key=lambda x: x.get("createTime", "") or x.get("id", 0))
+        
+    def build_lines(comment_id: int, indent: int = 0):
+        c = comments_map[comment_id]
+        username = c.get("displayUsername") or c.get("username") or f"User {c.get('userId')}"
+        content = c.get("commentContent") or ""
+        
+        info = c.get("commentInfo")
+        is_ai = False
+        if info:
+            try:
+                info_json = json.loads(info) if isinstance(info, str) else info
+                is_ai = bool(info_json.get("aiReply") or info_json.get("ai_reply"))
+            except Exception:
+                is_ai = "aiReply\":true" in str(info) or "ai_reply\":true" in str(info)
+                
+        prefix = "[AI] " if is_ai else ""
+        
+        parent_username = c.get("parentUsername")
+        reply_str = f" Reply to {parent_username}" if parent_username else ""
+        
+        user_id = c.get("userId")
+        user_suffix = f"(user:{user_id})" if user_id is not None else ""
+        
+        indent_str = "  " * indent
+        lines.append(f"{indent_str}- #{c['id']}{user_suffix} {prefix}{username}{reply_str}: {content.strip()}")
+        
+        children = children_map.get(comment_id, [])
+        for child in children:
+            build_lines(child["id"], indent + 1)
+
+    top_level = [c for c in records if (c.get("parentCommentId") or 0) not in comments_map]
+    top_level.sort(key=lambda x: x.get("createTime", "") or x.get("id", 0), reverse=True)
+    
+    for c in top_level:
+        build_lines(c["id"], 0)
+        
+    return "\n".join(lines)
+
 
 def cmd_manage(args: argparse.Namespace) -> None:
     args.base_url = normalize_base_url(str(args.base_url or ""))
@@ -370,12 +525,40 @@ def cmd_manage(args: argparse.Namespace) -> None:
                     if str(item.get("articleTitle", "")).strip() == args.exact_title.strip()
                 ]
                 response = {"code": response.get("code"), "message": response.get("message"), "data": {"records": records, "matched": len(records)}}
+            if response.get("code") == 200:
+                data = response.get("data", {})
+                records = data.get("records", []) if isinstance(data, dict) else []
+                next_steps = []
+                if records:
+                    first_id = records[0].get("id") or records[0].get("articleId")
+                    if first_id:
+                        next_steps.append(f"Fetch article details (content/metadata): python poetize_cli.py manage get-article --article-id {first_id}")
+                next_steps.append("Fetch details of any article: python poetize_cli.py manage get-article --article-id <id>")
+                response["agent_guide"] = {
+                    "message": "Articles listed successfully.",
+                    "next_steps": next_steps
+                }
             print(json.dumps(response, ensure_ascii=False, indent=2))
             return
 
         if mc == "get-article":
             article_id = resolve_article_id(args)
             response = request_json("GET", f"{args.base_url.rstrip('/')}/api/api/article/{article_id}", args.api_key)
+            if response.get("code") == 200:
+                data = response.get("data")
+                next_steps = []
+                if isinstance(data, dict):
+                    art_id = data.get("id")
+                    if art_id:
+                        next_steps.extend([
+                            f"Update metadata fields: python poetize_cli.py manage update-article --article-id {art_id} --payload-file payload.json --stdin-brief",
+                            f"Rewrite article content: edit local markdown file, then run: python poetize_cli.py publish --markdown-file <file> --article-id {art_id} --publish --wait",
+                            f"Hide this article from public view: python poetize_cli.py manage hide-article --article-id {art_id} --stdin-brief"
+                        ])
+                response["agent_guide"] = {
+                    "message": "Article details fetched successfully.",
+                    "next_steps": next_steps
+                }
             print(json.dumps(response, ensure_ascii=False, indent=2))
             return
 
@@ -388,7 +571,15 @@ def cmd_manage(args: argparse.Namespace) -> None:
             if args.print_payload:
                 print(json.dumps(payload, ensure_ascii=False, indent=2))
                 return
-            post_async_update(args, payload)
+            response = post_async_update(args, payload)
+            id_str = str(article_id)
+            response["agent_guide"] = {
+                "message": "Article updated successfully.",
+                "next_steps": [
+                    f"Fetch details to verify update: python poetize_cli.py manage get-article --article-id {id_str}"
+                ]
+            }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
             return
 
         if mc == "hide-article":
@@ -401,7 +592,183 @@ def cmd_manage(args: argparse.Namespace) -> None:
                 "tips": args.tips or "文章已隐藏，仅供受控预览",
             }
             payload = apply_ops_strategy(brief, payload, expected_task_type="hide_article")
-            post_async_update(args, payload)
+            response = post_async_update(args, payload)
+            id_str = str(article_id)
+            response["agent_guide"] = {
+                "message": "Article hidden successfully. It is no longer visible to the public.",
+                "password": payload.get("password"),
+                "tips": payload.get("tips"),
+                "next_steps": [
+                    f"Verify hidden status: python poetize_cli.py manage get-article --article-id {id_str}",
+                    f"To make it public again: edit markdown and run: python poetize_cli.py publish --markdown-file <file> --article-id {id_str} --publish --wait"
+                ]
+            }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "task-status":
+            task_id = args.task_id
+            response = request_json("GET", f"{args.base_url.rstrip('/')}/api/api/article/task/{urllib.parse.quote(task_id, safe='')}", args.api_key)
+            if response.get("code") == 200:
+                data = response.get("data", {})
+                next_steps = []
+                art_id = data.get("articleId")
+                status = data.get("status")
+                if art_id:
+                    # Article exists!
+                    next_steps.extend([
+                        f"Fetch details: python poetize_cli.py manage get-article --article-id {art_id}",
+                        f"Safe retry/update content (prevents duplicates): python poetize_cli.py publish --markdown-file <file> --article-id {art_id} --publish --wait"
+                    ])
+                elif status == "failed":
+                    next_steps.append("Task failed and no article was created in DB. Safe to retry publishing as a new article: python poetize_cli.py publish --markdown-file <file> --draft/--publish --wait")
+                else:
+                    next_steps.append("Task is still processing or in queue. Wait a few seconds and run this command again.")
+                response["agent_guide"] = {
+                    "message": f"Task status retrieved. Status: {status}.",
+                    "next_steps": next_steps
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "list-comments":
+            payload = {
+                "source": args.article_id,
+                "commentType": "article",
+                "current": args.current,
+                "size": args.size
+            }
+            if args.floor_comment_id is not None:
+                payload["floorCommentId"] = args.floor_comment_id
+            response = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, payload)
+            if response.get("code") == 200:
+                data = response.get("data", {})
+                records = data.get("records", []) if isinstance(data, dict) else []
+                
+                all_records = list(records)
+                root_comment_missing = False
+                if args.floor_comment_id is None and records:
+                    for r in records:
+                        child_comments_info = r.get("childComments")
+                        if isinstance(child_comments_info, dict) and child_comments_info.get("total", 0) > 0:
+                            total_replies = child_comments_info.get("total", 0)
+                            reply_payload = {
+                                "source": args.article_id,
+                                "commentType": "article",
+                                "floorCommentId": r["id"],
+                                "current": 1,
+                                "size": 10
+                            }
+                            reply_res = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, reply_payload)
+                            if reply_res.get("code") == 200:
+                                reply_data = reply_res.get("data", {})
+                                reply_records = reply_data.get("records", []) if isinstance(reply_data, dict) else []
+                                all_records.extend(reply_records)
+                                r["childComments"]["records"] = reply_records
+                                
+                                # 如果本楼层实际子回复数量大于首页加载的 10 条
+                                if total_replies > len(reply_records):
+                                    remaining = total_replies - len(reply_records)
+                                    dummy = {
+                                        "id": -r["id"],  # 用负数做主键避免冲突
+                                        "parentCommentId": r["id"],
+                                        "commentContent": f"... [{remaining} more replies under this floor. Run: python poetize_cli.py manage list-comments --article-id {args.article_id} --floor-comment-id {r['id']} --current 2 --size 10 to view]",
+                                        "username": "System"
+                                    }
+                                    all_records.append(dummy)
+                else:
+                    # 单独拉取某楼层的分页数据，尝试获取楼层主评论作为树根以提供完整上下文。
+                    # 注意：后端没有按 id 查单条评论的接口，这里只能在最新一页一级评论
+                    # (size=50, 按 create_time desc 排序) 里线性查找。如果该楼层的主评论
+                    # 不在最新 50 条一级评论内（文章评论数较多、楼层较老），root_comment 会
+                    # 找不到——这种情况必须显式告知调用方，而不是静默丢弃楼层上下文。
+                    root_comment = None
+                    main_payload = {
+                        "source": args.article_id,
+                        "commentType": "article",
+                        "current": 1,
+                        "size": 50
+                    }
+                    main_res = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, main_payload)
+                    if main_res.get("code") == 200:
+                        main_data = main_res.get("data", {})
+                        main_records = main_data.get("records", []) if isinstance(main_data, dict) else []
+                        for mr in main_records:
+                            if mr.get("id") == args.floor_comment_id:
+                                root_comment = mr
+                                break
+                        if root_comment is None:
+                            root_comment_missing = True
+
+                    if root_comment:
+                        all_records = [root_comment] + all_records
+
+                    # 单独拉取某楼层的分页数据，判断是否需要翻页
+                    total = data.get("total", 0)
+                    if total > args.current * args.size:
+                        remaining = total - (args.current * args.size)
+                        dummy = {
+                            "id": -9999,
+                            "parentCommentId": args.floor_comment_id,
+                            "commentContent": f"... [{remaining} more replies on next page. Run: python poetize_cli.py manage list-comments --article-id {args.article_id} --floor-comment-id {args.floor_comment_id} --current {args.current + 1} --size {args.size} to view]",
+                            "username": "System"
+                        }
+                        all_records.append(dummy)
+                
+                response["formatted_tree"] = format_comment_tree(all_records)
+                if root_comment_missing:
+                    response["root_comment_missing"] = True
+
+                next_steps = []
+                if records:
+                    first_comment = records[0]
+                    fc_id = first_comment.get("id")
+                    fc_user = first_comment.get("userId")
+                    fc_floor = first_comment.get("floorCommentId") or fc_id
+                    next_steps.extend([
+                        f"Reply to the first comment: python poetize_cli.py manage save-comment --article-id {args.article_id} --content \"your reply\" --parent-comment-id {fc_id} --parent-user-id {fc_user} --as-ai"
+                    ])
+                next_steps.append(f"Write a new top-level comment: python poetize_cli.py manage save-comment --article-id {args.article_id} --content \"your comment\"")
+                agent_guide_message = "Comments retrieved successfully."
+                if root_comment_missing:
+                    agent_guide_message += (
+                        f" WARNING: the floor's root comment (id={args.floor_comment_id}) was not found among "
+                        "the latest 50 top-level comments, so formatted_tree is showing replies without their "
+                        "root context. This happens when the article has many top-level comments and this floor "
+                        "is older. Run 'manage list-comments --article-id ... --current <N>' with increasing pages "
+                        "against the default (no --floor-comment-id) call to locate the root comment manually if needed."
+                    )
+                response["agent_guide"] = {
+                    "message": agent_guide_message,
+                    "next_steps": next_steps
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "save-comment":
+            comment_info = "{\"aiReply\":true}" if args.as_ai else "{\"aiReply\":false}"
+            payload = {
+                "source": args.article_id,
+                "type": "article",
+                "commentContent": args.content,
+                "commentInfo": comment_info
+            }
+            if args.parent_comment_id is not None:
+                payload["parentCommentId"] = args.parent_comment_id
+            if args.parent_user_id is not None:
+                payload["parentUserId"] = args.parent_user_id
+            if args.floor_comment_id is not None:
+                payload["floorCommentId"] = args.floor_comment_id
+            
+            response = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/save", args.api_key, payload)
+            if response.get("code") == 200:
+                response["agent_guide"] = {
+                    "message": "Comment posted successfully.",
+                    "next_steps": [
+                        f"View updated comments list: python poetize_cli.py manage list-comments --article-id {args.article_id}"
+                    ]
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
             return
 
         if mc == "article-analytics":
@@ -489,7 +856,21 @@ def cmd_upload_image(args: argparse.Namespace) -> None:
         except SystemExit as exc:
             _output_error("Upload failed", detail=getattr(exc, "_poetize_detail", str(exc)))
             return
-        result = {"ok": True, "url": url, "source": "file", "file": args.file, "type": args.type}
+        result = {
+            "ok": True, 
+            "url": url, 
+            "source": "file", 
+            "file": args.file, 
+            "type": args.type,
+            "agent_guide": {
+                "message": "Image uploaded successfully to the blog storage server.",
+                "markdown_syntax": f"![image]({url})",
+                "next_steps": [
+                    "Embed the image in your markdown content using the markdown_syntax.",
+                    "Or use it as article cover via 'cover' or 'coverFile' in your markdown front matter."
+                ]
+            }
+        }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
@@ -548,7 +929,21 @@ def cmd_upload_image(args: argparse.Namespace) -> None:
         finally:
             os.unlink(tmp_path)
 
-        result = {"ok": True, "url": url, "source": "stdin-base64", "filename": args.filename, "type": args.type}
+        result = {
+            "ok": True, 
+            "url": url, 
+            "source": "stdin-base64", 
+            "filename": args.filename, 
+            "type": args.type,
+            "agent_guide": {
+                "message": "Image uploaded successfully to the blog storage server.",
+                "markdown_syntax": f"![image]({url})",
+                "next_steps": [
+                    "Embed the image in your markdown content using the markdown_syntax.",
+                    "Or use it as article cover via 'cover' or 'coverFile' in your markdown front matter."
+                ]
+            }
+        }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
@@ -672,6 +1067,13 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
         "recordsReturned": len(records),
         "responseCode": response.get("code"),
         "responseMessage": response.get("message"),
+        "agent_guide": {
+            "message": "Smoke test passed. API connection is fully functional.",
+            "next_steps": [
+                "List existing articles to plan internal links: python poetize_cli.py manage list-articles",
+                "Create and publish a new draft article: python poetize_cli.py publish --markdown-file article.md --draft --wait"
+            ]
+        }
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
@@ -687,8 +1089,20 @@ def cmd_auth(args: argparse.Namespace) -> None:
         if not base_url or not api_key:
             _output_error("Both --base-url and --api-key are required for auth login.")
             return
-        save_credentials(base_url, api_key)
-        result = {"ok": True, "saved": True, "path": str(CREDENTIALS_PATH)}
+        is_local = getattr(args, "local", False)
+        saved_path = save_credentials(base_url, api_key, local=is_local)
+        result = {
+            "ok": True, 
+            "saved": True, 
+            "path": str(saved_path),
+            "agent_guide": {
+                "message": "API credentials stored successfully.",
+                "next_steps": [
+                    "Verify API connection: python poetize_cli.py smoke-test",
+                    "List recent articles: python poetize_cli.py manage list-articles --size 5"
+                ]
+            }
+        }
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.auth_command == "show":
         creds = load_credentials()
@@ -697,9 +1111,19 @@ def cmd_auth(args: argparse.Namespace) -> None:
         cli_url = getattr(args, "base_url", None)
         cli_key = getattr(args, "api_key", None)
         result = {
-            "file": {
-                "path": str(CREDENTIALS_PATH),
-                "exists": CREDENTIALS_PATH.exists(),
+            "global_file": {
+                "path": str(CREDENTIALS_PATH) if CREDENTIALS_PATH else None,
+                "exists": CREDENTIALS_PATH.exists() if CREDENTIALS_PATH else False,
+            },
+            "local_file": {
+                "path": str(LOCAL_CREDENTIALS_PATH),
+                "exists": LOCAL_CREDENTIALS_PATH.exists(),
+            },
+            "cwd_file": {
+                "path": str(CWD_CREDENTIALS_PATH),
+                "exists": CWD_CREDENTIALS_PATH.exists(),
+            },
+            "active_credentials": {
                 "base_url": creds.get("base_url"),
                 "api_key": "***" if creds.get("api_key") else None,
             },
@@ -711,12 +1135,13 @@ def cmd_auth(args: argparse.Namespace) -> None:
                 "base_url": cli_url,
                 "api_key": "***" if cli_key else None,
             },
-            "resolution_order": "CLI > env > ~/.config/poetize/credentials.json",
+            "resolution_order": "CLI > env > ~/.config/poetize/credentials.json > {baseDir}/credentials.json > ./credentials.json",
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.auth_command == "clear":
-        deleted = clear_credentials()
-        result = {"ok": True, "deleted": deleted, "path": str(CREDENTIALS_PATH)}
+        is_local = getattr(args, "local", False)
+        deleted, target_path = clear_credentials(local=is_local)
+        result = {"ok": True, "deleted": deleted, "path": str(target_path)}
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -783,13 +1208,15 @@ def build_parser() -> argparse.ArgumentParser:
     smoke_parser = sub.add_parser("smoke-test", help="Run read-only smoke test.")
     add_smoke_test_args(smoke_parser)
 
-    auth_parser = sub.add_parser("auth", help="Manage persisted credentials (~/.config/poetize/credentials.json).")
+    auth_parser = sub.add_parser("auth", help="Manage persisted credentials (~/.config/poetize/credentials.json or local fallback).")
     auth_sub = auth_parser.add_subparsers(dest="auth_command", required=True)
     auth_login = auth_sub.add_parser("login", help="Save base-url and api-key for future use.")
     auth_login.add_argument("--base-url", required=True, help="Poetize base URL.")
     auth_login.add_argument("--api-key", required=True, help="Poetize API key.")
+    auth_login.add_argument("--local", action="store_true", help="Save in local skill folder instead of global home directory.")
     auth_sub.add_parser("show", help="Show where credentials are resolved from.")
-    auth_sub.add_parser("clear", help="Delete saved credentials.")
+    auth_clear = auth_sub.add_parser("clear", help="Delete saved credentials.")
+    auth_clear.add_argument("--local", action="store_true", help="Clear from local skill folder instead of global home directory.")
 
     eval_parser = sub.add_parser("eval", help="Run strategy-layer evaluations.")
     add_eval_args(eval_parser)
