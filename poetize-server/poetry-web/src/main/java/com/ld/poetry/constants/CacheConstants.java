@@ -149,6 +149,15 @@ public class CacheConstants {
      * 格式: poetize:security:blacklist:{ip}
      */
     public static final String IP_BLACKLIST_PREFIX = CACHE_PREFIX + "security:blacklist:";
+
+    /**
+     * 自动化浏览器拦截缓存键前缀
+     * <p>
+     * 探针上报判定为高置信度自动化（score &gt;= 70）时写入，
+     * SecurityFilter 检查命中则返回 403。
+     * 格式: poetize:security:automation_block:{ip}
+     */
+    public static final String AUTOMATION_BLOCK_PREFIX = CACHE_PREFIX + "security:automation_block:";
     
     /**
      * 验证码缓存键前缀
@@ -425,6 +434,14 @@ public class CacheConstants {
      */
     public static final long IP_BLACKLIST_EXPIRE_TIME = 86400;
 
+    /**
+     * 自动化浏览器拦截过期时间（秒）- 2小时
+     * <p>
+     * 基于 JS 运行时信号的精确判定，误判率极低，但仍设置较短过期
+     * 以便反检测浏览器更新后能自然恢复。
+     */
+    public static final long AUTOMATION_BLOCK_EXPIRE_TIME = 7200;
+
     // ================================ 工具方法 ================================
     
     /**
@@ -501,6 +518,15 @@ public class CacheConstants {
      */
     public static String buildIpBlacklistKey(String ip) {
         return IP_BLACKLIST_PREFIX + ip;
+    }
+
+    /**
+     * 构建自动化浏览器拦截缓存键
+     * @param ip IP地址
+     * @return 缓存键
+     */
+    public static String buildAutomationBlockKey(String ip) {
+        return AUTOMATION_BLOCK_PREFIX + ip;
     }
     
     /**

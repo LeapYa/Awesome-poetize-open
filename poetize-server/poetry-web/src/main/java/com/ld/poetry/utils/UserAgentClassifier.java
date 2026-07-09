@@ -300,6 +300,8 @@ public final class UserAgentClassifier {
         if (lower.contains("claudebot")) return "ClaudeBot";
         if (lower.contains("claude-user")) return "Claude-User";
         if (lower.contains("claude-searchbot")) return "Claude-SearchBot";
+        if (lower.contains("claude-web")) return "Claude-Web";
+        if (lower.contains("anthropic-ai")) return "anthropic-ai";
         if (lower.contains("perplexitybot")) return "PerplexityBot";
         if (lower.contains("perplexity-user")) return "Perplexity-User";
         if (lower.contains("google-extended")) return "Google-Extended";
@@ -417,22 +419,126 @@ public final class UserAgentClassifier {
         }
 
         int score = 0;
-        if (isTruthy(firstText(signals, "webdriver", "wd")) || hasSignalCode(signals, "wd")) score += 80;
-        if (hasSignalCode(signals, "hch")) score += 80;
-        if (isFalseFlag(signals, "permissionsQueryNative", "pqn") || hasSignalCode(signals, "pqn")) score += 75;
-        if (isFalseFlag(signals, "pluginsItemNative", "pin") || hasSignalCode(signals, "pin")) score += 60;
-        if ("value".equalsIgnoreCase(firstText(signals, "webdriverDescriptor", "wdd"))
-                || hasSignalCode(signals, "wdprop")) {
-            score += 60;
+        for (AutomationSignal sig : AUTOMATION_SIGNALS) {
+            if (isSignalHit(signals, sig.code())) {
+                score += sig.weight();
+            }
         }
-        if (contains(firstText(signals, "webglRenderer", "glr"), "swiftshader") || hasSignalCode(signals, "swg")) {
-            score += 70;
-        }
-        if (hasSignalCode(signals, "gleak")) score += 50;
-        if (hasSignalCode(signals, "wutc")) score += 15;
-        if (hasSignalCode(signals, "wdm")) score += 15;
-        if (hasSignalCode(signals, "wdtype")) score += 15;
         return score;
+    }
+
+    /** 自动化浏览器拦截阈值：分数达到此值触发 403 */
+    public static final int AUTOMATION_BLOCK_THRESHOLD = 70;
+
+    /**
+     * 自动化信号定义：信号码 + 权重 + 是否高置信度。
+     * automationScore 和 evaluateAutomation 共享此列表，避免权重/条件不一致。
+     */
+    private record AutomationSignal(
+            String code,           // 信号码（如 "wd"、"hch"）
+            int weight,           // 权重
+            boolean highConfidence, // 是否高置信度信号
+            String label          // 日志标签（如 "webdriver=true(80)"）
+    ) {
+    }
+
+    /** 所有自动化信号定义（高置信度 + 低置信度），权重和命中条件单一来源 */
+    private static final List<AutomationSignal> AUTOMATION_SIGNALS = List.of(
+            new AutomationSignal("wd", 80, true, "webdriver=true(80)"),
+            new AutomationSignal("hch", 80, true, "HeadlessChrome(80)"),
+            new AutomationSignal("pqn", 75, true, "permissions.query非native(75)"),
+            new AutomationSignal("swg", 70, true, "SwiftShader(70)"),
+            new AutomationSignal("pin", 60, true, "plugins.item非native(60)"),
+            new AutomationSignal("wdprop", 60, true, "webdriver属性异常(60)"),
+            new AutomationSignal("gleak", 50, true, "全局变量泄漏(50)"),
+            new AutomationSignal("wutc", 15, false, "时区不一致(15)"),
+            new AutomationSignal("wdm", 15, false, "设备内存为null(15)"),
+            new AutomationSignal("wdtype", 15, false, "设备类型矛盾(15)")
+    );
+
+    /**
+     * 判断指定信号是否命中。
+     * 每个信号的命中条件与原来 automationScore 中的一致：
+     * - wd：isTruthy(wd/webdriver) 或信号码 wd
+     * - hch：信号码 hch（HeadlessChrome UA 特征）
+     * - pqn：permissionsQueryNative 标志为 false 或信号码 pqn
+     * - swg：webglRenderer 含 swiftshader 或信号码 swg
+     * - pin：pluginsItemNative 标志为 false 或信号码 pin
+     * - wdprop：webdriverDescriptor==value 或信号码 wdprop
+     * - gleak：信号码 gleak
+     * - wutc/wdm/wdtype：仅信号码
+     */
+    private static boolean isSignalHit(Map<String, Object> signals, String code) {
+        switch (code) {
+            case "wd":
+                return isTruthy(firstText(signals, "webdriver", "wd")) || hasSignalCode(signals, "wd");
+            case "hch":
+                return hasSignalCode(signals, "hch");
+            case "pqn":
+                return isFalseFlag(signals, "permissionsQueryNative", "pqn") || hasSignalCode(signals, "pqn");
+            case "swg":
+                return contains(firstText(signals, "webglRenderer", "glr"), "swiftshader")
+                        || hasSignalCode(signals, "swg");
+            case "pin":
+                return isFalseFlag(signals, "pluginsItemNative", "pin") || hasSignalCode(signals, "pin");
+            case "wdprop":
+                return "value".equalsIgnoreCase(firstText(signals, "webdriverDescriptor", "wdd"))
+                        || hasSignalCode(signals, "wdprop");
+            default:
+                return hasSignalCode(signals, code);
+        }
+    }
+
+    /**
+     * 评估自动化浏览器信号，返回结构化判定结果。
+     * <p>
+     * 遍历 {@link #AUTOMATION_SIGNALS} 列表打分，同时收集命中的高置信度信号，
+     * 供拦截层（SecurityFilter）和日志使用。低置信度信号（wutc/wdm/wdtype）
+     * 不触发拦截，仅影响分数供统计参考。
+     *
+     * @param signals 前端探针上报的运行时信号（可为 null）
+     * @return 判定结果，永不返回 null
+     */
+    public static AutomationVerdict evaluateAutomation(Map<String, Object> signals) {
+        if (signals == null || signals.isEmpty()) {
+            return new AutomationVerdict(0, false, List.of(), "无运行时信号");
+        }
+
+        int score = automationScore(signals);
+        List<String> hitHigh = new ArrayList<>();
+
+        for (AutomationSignal sig : AUTOMATION_SIGNALS) {
+            if (sig.highConfidence() && isSignalHit(signals, sig.code())) {
+                hitHigh.add(sig.label());
+            }
+        }
+
+        boolean shouldBlock = score >= AUTOMATION_BLOCK_THRESHOLD;
+        String reason = hitHigh.isEmpty()
+                ? "分数=" + score + "（未命中高置信度信号）"
+                : "分数=" + score + " 命中: " + String.join(", ", hitHigh);
+
+        return new AutomationVerdict(score, shouldBlock, List.copyOf(hitHigh), reason);
+    }
+
+    /**
+     * 自动化浏览器判定结果。
+     *
+     * @param score              总分（高置信度50-80，低置信度10-15）
+     * @param shouldBlock        是否应拦截（score &gt;= {@link #AUTOMATION_BLOCK_THRESHOLD}）
+     * @param hitHighConfidence  命中的高置信度信号列表（含分值，用于日志）
+     * @param reason             人类可读的判定理由
+     */
+    public record AutomationVerdict(
+            int score,
+            boolean shouldBlock,
+            List<String> hitHighConfidence,
+            String reason
+    ) {
+        public AutomationVerdict {
+            hitHighConfidence = hitHighConfidence == null ? List.of() : List.copyOf(hitHighConfidence);
+            reason = hasText(reason) ? reason : "";
+        }
     }
 
     private static String disguisedBrowserClientName(String lower, Map<String, Object> signals) {

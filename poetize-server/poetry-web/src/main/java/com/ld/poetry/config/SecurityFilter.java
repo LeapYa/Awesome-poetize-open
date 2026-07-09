@@ -17,6 +17,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -75,6 +76,12 @@ public class SecurityFilter extends OncePerRequestFilter {
             "/blog/wp-", "/cms/", "/old/", "/new/", "/backup/", "/bak/",
             "/beta/", "/temp/", "/dev/");
 
+    // 拦截的 AI 爬虫 UA 关键词（小写匹配）
+    // 只拦截训练数据采集爬虫，保留搜索索引和用户实时引用爬虫
+    private static final Set<String> BLOCKED_AI_CRAWLER_UA = Set.of(
+            "claudebot", "claude-web", "anthropic-ai",
+            "gptbot");
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
@@ -96,6 +103,23 @@ public class SecurityFilter extends OncePerRequestFilter {
             log.warn("拒绝已拉黑IP的访问: {} from IP: {}", requestURI, clientIP);
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.getWriter().write("403 Forbidden - IP Blacklisted");
+            return;
+        }
+
+        // 检查自动化浏览器拦截（探针上报判定 score >= 70 时写入）
+        if (isAutomationBlocked(clientIP)) {
+            log.warn("拒绝自动化浏览器访问: {} from IP: {}", requestURI, clientIP);
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("403 Forbidden - Automation Detected");
+            return;
+        }
+
+        // 拦截指定 AI 爬虫（基于 UA 关键词，不依赖探针上报）
+        String userAgent = request.getHeader("User-Agent");
+        if (isBlockedAiCrawler(userAgent)) {
+            log.info("拦截 AI 爬虫: {} from IP: {}", userAgent, clientIP);
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("403 Forbidden - AI Crawler Blocked");
             return;
         }
 
@@ -276,6 +300,46 @@ public class SecurityFilter extends OncePerRequestFilter {
     private boolean isIPBlacklisted(String ip) {
         String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
         return redisUtil.hasKey(blacklistKey);
+    }
+
+    /**
+     * 检查IP是否因自动化浏览器行为被拦截
+     * <p>
+     * 探针上报判定为高置信度自动化（score >= 70，命中 webdriver/headless/SwiftShader/
+     * JS原生性异常/全局变量泄漏等硬证据）时写入缓存，2小时过期。
+     */
+    private boolean isAutomationBlocked(String ip) {
+        String blockKey = CacheConstants.buildAutomationBlockKey(ip);
+        return redisUtil.hasKey(blockKey);
+    }
+
+    /**
+     * 检查 UA 是否匹配被拦截的 AI 爬虫关键词
+     * 使用 token 边界匹配：关键词前后必须是非字母数字字符或字符串边界
+     * 避免误伤 UA 中恰好包含关键词子串的正常请求（如 "mygptbotabc" 不会匹配 "gptbot"）
+     */
+    private boolean isBlockedAiCrawler(String userAgent) {
+        if (userAgent == null || userAgent.isEmpty()) {
+            return false;
+        }
+        String lower = userAgent.toLowerCase(Locale.ROOT);
+        for (String pattern : BLOCKED_AI_CRAWLER_UA) {
+            int idx = lower.indexOf(pattern);
+            while (idx != -1) {
+                int end = idx + pattern.length();
+                // 关键词后必须是边界：字符串结束、或非字母数字字符
+                boolean isBoundary = end >= lower.length()
+                        || !Character.isLetterOrDigit(lower.charAt(end));
+                // 关键词前也必须是边界，避免 "mygptbot" 这种误匹配
+                boolean isPrefixBoundary = idx == 0
+                        || !Character.isLetterOrDigit(lower.charAt(idx - 1));
+                if (isBoundary && isPrefixBoundary) {
+                    return true;
+                }
+                idx = lower.indexOf(pattern, end);
+            }
+        }
+        return false;
     }
 
     /**

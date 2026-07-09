@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UserAgentClassifierTest {
 
@@ -336,5 +338,145 @@ class UserAgentClassifierTest {
         assertEquals("疑似伪装 Googlebot", result.get(0).get("ua_name"));
         assertEquals("failed", result.get(0).get("bot_verify_status"));
         assertEquals(4L, result.get(0).get("num"));
+    }
+
+    // ==================== evaluateAutomation 打分与拦截判定测试 ====================
+
+    @Test
+    void evaluateAutomationReturnsZeroForEmptySignals() {
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(null);
+
+        assertEquals(0, verdict.score());
+        assertFalse(verdict.shouldBlock());
+        assertTrue(verdict.hitHighConfidence().isEmpty());
+    }
+
+    @Test
+    void evaluateAutomationReturnsZeroForNormalBrowser() {
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationScore", "0",
+                "automationVerdict", "LIKELY_HUMAN",
+                "permissionsQueryNative", "1",
+                "pluginsItemNative", "1",
+                "platform", "Win32",
+                "timezone", "Asia/Shanghai",
+                "deviceMemory", "8",
+                "pluginCount", "5",
+                "languageCount", "2"));
+
+        assertEquals(0, verdict.score());
+        assertFalse(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationBlocksWebdriverTrue() {
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "webdriver", "true"));
+
+        assertEquals(80, verdict.score());
+        assertTrue(verdict.shouldBlock());
+        assertTrue(verdict.hitHighConfidence().stream().anyMatch(s -> s.contains("webdriver")));
+    }
+
+    @Test
+    void evaluateAutomationBlocksHeadlessChrome() {
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "hch"));
+
+        assertEquals(80, verdict.score());
+        assertTrue(verdict.shouldBlock());
+        assertTrue(verdict.hitHighConfidence().stream().anyMatch(s -> s.contains("HeadlessChrome")));
+    }
+
+    @Test
+    void evaluateAutomationBlocksSwiftShader() {
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "swg",
+                "webglRenderer", "SwiftShader"));
+
+        assertEquals(70, verdict.score());
+        assertTrue(verdict.shouldBlock());
+        assertTrue(verdict.hitHighConfidence().stream().anyMatch(s -> s.contains("SwiftShader")));
+    }
+
+    @Test
+    void evaluateAutomationBlocksPermissionsQueryNonNative() {
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "permissionsQueryNative", "0",
+                "automationSignals", "pqn"));
+
+        assertEquals(75, verdict.score());
+        assertTrue(verdict.shouldBlock());
+        assertTrue(verdict.hitHighConfidence().stream().anyMatch(s -> s.contains("permissions.query")));
+    }
+
+    @Test
+    void evaluateAutomationDoesNotBlockPluginsItemAlone() {
+        // plugins.item非native = 60分，单独不足以触发拦截（阈值70）
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "pluginsItemNative", "0",
+                "automationSignals", "pin"));
+
+        assertEquals(60, verdict.score());
+        assertFalse(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationDoesNotBlockGlobalLeakAlone() {
+        // 全局变量泄漏 = 50分，单独不足以触发拦截
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "gleak"));
+
+        assertEquals(50, verdict.score());
+        assertFalse(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationBlocksCombinationOfPluginsAndGlobalLeak() {
+        // 60 + 50 = 110，超过阈值
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "pluginsItemNative", "0",
+                "automationSignals", "pin,gleak"));
+
+        assertEquals(110, verdict.score());
+        assertTrue(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationDoesNotBlockLowConfidenceSignals() {
+        // 低置信度信号组合：wutc(15) + wdm(15) + wdtype(15) = 45，不达阈值
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "wutc,wdm,wdtype",
+                "platform", "Win32",
+                "timezone", "UTC",
+                "deviceMemory", "null",
+                "webdriverType", "string"));
+
+        assertEquals(45, verdict.score());
+        assertFalse(verdict.shouldBlock());
+        assertTrue(verdict.hitHighConfidence().isEmpty());
+    }
+
+    @Test
+    void evaluateAutomationDoesNotBlockRssReaderWithoutRuntimeSignals() {
+        // RSS阅读器只有传输层信号，无运行时信号 -> 不会被拦截
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "visitSource", "nginx",
+                "headerSnapshot", "1",
+                "accept", "application/json"));
+
+        assertEquals(0, verdict.score());
+        assertFalse(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationReasonContainsScoreAndHitSignals() {
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "webdriver", "true",
+                "automationSignals", "hch"));
+
+        assertTrue(verdict.reason().contains("160"));
+        assertTrue(verdict.reason().contains("webdriver"));
+        assertTrue(verdict.reason().contains("HeadlessChrome"));
     }
 }

@@ -202,6 +202,8 @@ services:
       - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=${REDIS_LETTUCE_MAX_ACTIVE:-32}
       - SPRING_REDIS_LETTUCE_POOL_MAX_IDLE=${REDIS_LETTUCE_MAX_IDLE:-16}
       - SPRING_REDIS_LETTUCE_POOL_MIN_IDLE=${REDIS_LETTUCE_MIN_IDLE:-5}
+      # IP2Region 自动更新开关（生产环境开启，开发环境默认禁用）
+      - IP2REGION_UPDATE_ENABLED=true
       # Token安全配置
       - TOKEN_SECRET_KEY=${TOKEN_SECRET_KEY:-your_super_secure_random_key_here_at_least_32_chars}
       # OAuth代理配置
