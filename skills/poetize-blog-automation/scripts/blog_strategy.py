@@ -9,7 +9,14 @@ from typing import Any
 
 ARTICLE_CREATE_TASK_TYPES = {"create_article", "repurpose_article"}
 ARTICLE_UPDATE_TASK_TYPES = {"refresh_article"}
-OPS_TASK_TYPES = {"update_article", "hide_article"}
+OPS_TASK_TYPES = {
+    "update_article",
+    "hide_article",
+    "update_section",
+    "update_translation",
+    "delete_translation",
+    "regenerate_translation",
+}
 PRIMARY_GOALS = {"asset_maintenance", "seo_growth", "brand_expression", "conversion"}
 PUBLISH_INTENTS = {"draft", "public"}
 MONETIZATION_INTENTS = {"free_default", "paid_explicit"}
@@ -39,7 +46,7 @@ OPS_BRIEF_REQUIRED_FIELDS = [
 # an Agent that omitted a field knows exactly how to repair the brief and retry,
 # instead of having to re-read SKILL.md and guess.
 FIELD_SUGGESTIONS: dict[str, str] = {
-    "taskType": "for article create/refresh (publish command): create_article / refresh_article / repurpose_article; for ops actions (manage update-article / hide-article): update_article / hide_article — must exactly match the subcommand you are calling",
+    "taskType": "for article create/refresh (publish command): create_article / refresh_article / repurpose_article; for ops actions (manage update-article / hide-article / update-section / save-translation / delete-translation / regenerate-translation): update_article / hide_article / update_section / update_translation / delete_translation / regenerate_translation — must exactly match the subcommand you are calling",
     "primaryGoal": "specify one of asset_maintenance / seo_growth / brand_expression / conversion",
     "targetAudience": "non-empty string describing the reader, e.g. \"developers learning RAG\"",
     "publishIntent": "specify draft / public",
@@ -176,7 +183,14 @@ def apply_article_strategy(
 
     adjusted = dict(payload)
     publish_intent = normalized["publishIntent"]
-    adjusted["viewStatus"] = publish_intent == "public"
+    is_public = publish_intent == "public"
+    adjusted["viewStatus"] = is_public
+    submit_to_search = _resolve_boolean(
+        adjusted,
+        "submitToSearchEngine",
+        default=True,
+    )
+    adjusted["submitToSearchEngine"] = submit_to_search if is_public else False
 
     if adjusted["viewStatus"]:
         adjusted.pop("password", None)
@@ -241,11 +255,19 @@ def apply_ops_strategy(
 
     if expected_task_type == "hide_article":
         adjusted["viewStatus"] = False
+        adjusted["submitToSearchEngine"] = False
         if not _has_text(adjusted.get("password")):
             adjusted["password"] = f"hidden-{adjusted.get('id', 'article')}"
         if not _has_text(adjusted.get("tips")):
             adjusted["tips"] = "Article hidden by strategy brief."
         return {key: value for key, value in adjusted.items() if value is not None}
+
+    if expected_task_type == "update_article":
+        adjusted["submitToSearchEngine"] = _resolve_boolean(
+            adjusted,
+            "submitToSearchEngine",
+            default=True,
+        )
 
     if adjusted.get("viewStatus") is False:
         raise StrategyValidationError(
@@ -261,6 +283,16 @@ def apply_ops_strategy(
         )
 
     return {key: value for key, value in adjusted.items() if value is not None}
+
+
+def _resolve_boolean(source: dict[str, Any], key: str, *, default: bool) -> bool:
+    value = source.get(key, default)
+    if not isinstance(value, bool):
+        raise StrategyValidationError(
+            f"{key} must be a boolean.",
+            details={"field": key, "value": value},
+        )
+    return value
 
 
 def _require_non_empty_string(source: dict[str, Any], key: str) -> str:

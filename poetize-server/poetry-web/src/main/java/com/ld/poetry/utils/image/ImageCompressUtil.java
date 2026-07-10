@@ -62,6 +62,10 @@ public class ImageCompressUtil {
     private static final int MAX_HEIGHT = 1080;       // 最大高度
     private static final float DEFAULT_QUALITY = 0.85f; // 默认压缩质量
     private static final long MAX_FILE_SIZE = 500 * 1024; // 目标文件大小：500KB
+    // 长图判定阈值：长宽比超过此值视为长图，避免短边被 maxWidth/maxHeight 双重约束压扁导致糊图
+    private static final double LONG_IMAGE_RATIO_THRESHOLD = 3.0;
+    // 长图长边最大像素：长图仅按长边等比缩放，短边保留原比例以维持细节
+    private static final int MAX_LONG_EDGE = 8000;
     
     // 压缩模式
     private static final String COMPRESSION_MODE_LOSSY = "lossy";      // 有损压缩
@@ -216,6 +220,7 @@ public class ImageCompressUtil {
 
     /**
      * 尺寸压缩
+     * 对长图（长宽比超过阈值）只按长边等比缩放，避免短边被压扁导致糊图
      */
     private static BufferedImage resizeImage(BufferedImage originalImage, int maxWidth, int maxHeight) {
         int originalWidth = originalImage.getWidth();
@@ -226,7 +231,26 @@ public class ImageCompressUtil {
             return originalImage;
         }
 
-        // 计算缩放比例，保持宽高比
+        // 长图检测：长宽比超过阈值时，仅按长边等比缩放
+        // 避免同时应用 maxWidth/maxHeight 把短边压到极小尺寸（如 800x8000 被压成 108x1080）
+        double aspectRatio = Math.max(
+                (double) originalWidth / originalHeight,
+                (double) originalHeight / originalWidth
+        );
+        if (aspectRatio > LONG_IMAGE_RATIO_THRESHOLD) {
+            int longEdge = Math.max(originalWidth, originalHeight);
+            if (longEdge <= MAX_LONG_EDGE) {
+                // 长边在允许范围内，保留原图尺寸不缩放，维持短边细节
+                return originalImage;
+            }
+            // 长边超限：按长边等比缩放，短边按相同比例缩小
+            double scale = (double) MAX_LONG_EDGE / longEdge;
+            int newWidth = Math.max(1, (int) (originalWidth * scale));
+            int newHeight = Math.max(1, (int) (originalHeight * scale));
+            return drawScaledImage(originalImage, newWidth, newHeight);
+        }
+
+        // 普通图：计算缩放比例，保持宽高比
         double scaleWidth = (double) maxWidth / originalWidth;
         double scaleHeight = (double) maxHeight / originalHeight;
         double scale = Math.min(scaleWidth, scaleHeight);
@@ -234,19 +258,29 @@ public class ImageCompressUtil {
         int newWidth = (int) (originalWidth * scale);
         int newHeight = (int) (originalHeight * scale);
 
-        // 创建高质量的缩放图片
-        BufferedImage resizedImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+        return drawScaledImage(originalImage, newWidth, newHeight);
+    }
+
+    /**
+     * 绘制缩放后的图片（高质量双三次插值）
+     */
+    private static BufferedImage drawScaledImage(BufferedImage originalImage, int newWidth, int newHeight) {
+        int safeWidth = Math.max(1, newWidth);
+        int safeHeight = Math.max(1, newHeight);
+        BufferedImage resizedImage = new BufferedImage(safeWidth, safeHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2d = resizedImage.createGraphics();
-        
-        // 设置高质量渲染
-        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
-        
-        // 绘制缩放后的图片
-        g2d.drawImage(originalImage, 0, 0, newWidth, newHeight, null);
-        g2d.dispose();
+        try {
+            // 设置高质量渲染
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+
+            // 绘制缩放后的图片
+            g2d.drawImage(originalImage, 0, 0, safeWidth, safeHeight, null);
+        } finally {
+            g2d.dispose();
+        }
 
         return resizedImage;
     }

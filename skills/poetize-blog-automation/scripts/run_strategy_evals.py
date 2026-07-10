@@ -51,6 +51,41 @@ def expect_die_signal(fn, contains: str) -> None:
 
 
 def run_article_eval_suite() -> None:
+    from publish_post import build_payload
+
+    publish_args = SimpleNamespace(
+        article_id=None,
+        markdown_file="article.md",
+        base_url="https://example.com",
+        api_key="test",
+        publish=False,
+        draft=False,
+        cover_file=None,
+        force=False,
+    )
+    markdown_without_search_flag = (
+        "---\n"
+        "title: Example\n"
+        "sort: AI\n"
+        "label: Automation\n"
+        "---\n\n"
+        "## Section\n\nBody\n"
+    )
+    raw_payload, _ = build_payload(markdown_without_search_flag, publish_args)
+    assert_true(
+        "submitToSearchEngine" not in raw_payload,
+        "Payload builder should leave omitted submitToSearchEngine unset for strategy defaults.",
+    )
+    markdown_with_search_disabled = markdown_without_search_flag.replace(
+        "label: Automation\n",
+        "label: Automation\nsubmitToSearchEngine: false\n",
+    )
+    raw_disabled_payload, _ = build_payload(markdown_with_search_disabled, publish_args)
+    assert_true(
+        raw_disabled_payload["submitToSearchEngine"] is False,
+        "Payload builder should preserve explicit submitToSearchEngine=false.",
+    )
+
     free_brief = {
         "taskType": "create_article",
         "primaryGoal": "asset_maintenance",
@@ -64,11 +99,66 @@ def run_article_eval_suite() -> None:
     result = apply_article_strategy(free_brief, free_payload, is_update=False, cli_publish=False, cli_draft=False)
     assert_true(result["payType"] == 0, "Free-default article should force payType=0.")
     assert_true(result["viewStatus"] is True, "Public brief should produce viewStatus=true.")
+    assert_true(result["submitToSearchEngine"] is True, "Public article should default submitToSearchEngine=true.")
+
+    public_without_search = apply_article_strategy(
+        free_brief,
+        {"title": "Example", "content": "Body", "submitToSearchEngine": False},
+        is_update=False,
+        cli_publish=False,
+        cli_draft=False,
+    )
+    assert_true(
+        public_without_search["submitToSearchEngine"] is False,
+        "Public article should preserve explicit submitToSearchEngine=false.",
+    )
+    expect_strategy_error(
+        lambda: apply_article_strategy(
+            free_brief,
+            {"title": "Example", "content": "Body", "submitToSearchEngine": "false"},
+            is_update=False,
+            cli_publish=False,
+            cli_draft=False,
+        ),
+        "submitToSearchEngine",
+    )
+
+    update_brief = dict(free_brief)
+    update_brief["taskType"] = "refresh_article"
+    update_default = apply_article_strategy(
+        update_brief,
+        {"title": "Example", "content": "Updated body"},
+        is_update=True,
+        cli_publish=False,
+        cli_draft=False,
+    )
+    assert_true(
+        update_default["submitToSearchEngine"] is True,
+        "Public publish update should default submitToSearchEngine=true.",
+    )
+    update_without_search = apply_article_strategy(
+        update_brief,
+        {"title": "Example", "content": "Updated body", "submitToSearchEngine": False},
+        is_update=True,
+        cli_publish=False,
+        cli_draft=False,
+    )
+    assert_true(
+        update_without_search["submitToSearchEngine"] is False,
+        "Public publish update should preserve explicit submitToSearchEngine=false.",
+    )
 
     draft_brief = dict(free_brief)
     draft_brief["publishIntent"] = "draft"
-    draft_result = apply_article_strategy(draft_brief, {"title": "Example", "content": "Body"}, is_update=False, cli_publish=False, cli_draft=False)
+    draft_result = apply_article_strategy(
+        draft_brief,
+        {"title": "Example", "content": "Body", "submitToSearchEngine": True},
+        is_update=False,
+        cli_publish=False,
+        cli_draft=False,
+    )
     assert_true(draft_result["viewStatus"] is False, "Draft brief should force viewStatus=false.")
+    assert_true(draft_result["submitToSearchEngine"] is False, "Draft brief should force submitToSearchEngine=false.")
     assert_true(bool(draft_result.get("password")), "Draft brief should auto-fill a password.")
     assert_true(bool(draft_result.get("tips")), "Draft brief should auto-fill preview tips.")
 
@@ -117,14 +207,30 @@ def run_ops_eval_suite() -> None:
         "paywall",
     )
 
+    update_default = apply_ops_strategy(update_brief, {"id": 12}, expected_task_type="update_article")
+    assert_true(
+        update_default["submitToSearchEngine"] is True,
+        "Metadata update should default submitToSearchEngine=true.",
+    )
+    update_without_search = apply_ops_strategy(
+        update_brief,
+        {"id": 12, "submitToSearchEngine": False},
+        expected_task_type="update_article",
+    )
+    assert_true(
+        update_without_search["submitToSearchEngine"] is False,
+        "Metadata update should preserve explicit submitToSearchEngine=false.",
+    )
+
     hide_brief = {
         "taskType": "hide_article",
         "primaryGoal": "asset_maintenance",
         "reasoning": "Take the post down from public view.",
         "expectedOutcome": "The article is no longer public but remains recoverable.",
     }
-    hidden = apply_ops_strategy(hide_brief, {"id": 12}, expected_task_type="hide_article")
+    hidden = apply_ops_strategy(hide_brief, {"id": 12, "submitToSearchEngine": True}, expected_task_type="hide_article")
     assert_true(hidden["viewStatus"] is False, "hide_article should force viewStatus=false.")
+    assert_true(hidden["submitToSearchEngine"] is False, "hide_article should force submitToSearchEngine=false.")
 
 
 def run_taxonomy_eval_suite() -> None:

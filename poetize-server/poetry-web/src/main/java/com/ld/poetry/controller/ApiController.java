@@ -1,6 +1,7 @@
 package com.ld.poetry.controller;
 
 import com.ld.poetry.utils.JsonUtils;
+import com.ld.poetry.utils.MarkdownSectionEditor;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -1100,6 +1101,10 @@ public class ApiController {
         if (!StringUtils.hasText(articleVO.getArticleContent())) {
             throw new PoetryRuntimeException("文章内容不能为空");
         }
+        MarkdownSectionEditor.validateArticleBody(articleVO.getArticleContent());
+        if (StringUtils.hasText(articleVO.getPendingTranslationContent())) {
+            MarkdownSectionEditor.validateArticleBody(articleVO.getPendingTranslationContent());
+        }
         if (articleVO.getSortId() == null) {
             throw new PoetryRuntimeException("分类不能为空");
         }
@@ -1923,5 +1928,370 @@ public class ApiController {
             log.error("API保存评论出现未知错误", e);
             return PoetryResult.fail("服务器内部错误");
         }
+    }
+
+    // ========================================================================
+    // 翻译管理端点（API Key 认证）
+    // 这些端点复用 TranslationService 的已有能力，但走 /api/api/translation/*
+    // 路径，允许通过 API Key 而非浏览器会话登录来管理文章翻译。
+    // ========================================================================
+
+    /**
+     * API获取文章翻译
+     */
+    @GetMapping("/translation/get")
+    public PoetryResult<Map<String, String>> getTranslation(
+            @RequestParam("articleId") Integer articleId,
+            @RequestParam(value = "language", defaultValue = "en") String language,
+            HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            if (articleId == null || articleId <= 0) {
+                return PoetryResult.fail("文章ID不能为空");
+            }
+            if (!StringUtils.hasText(language)) {
+                return PoetryResult.fail("翻译语言不能为空");
+            }
+            Map<String, String> translationResult = translationService.getArticleTranslation(articleId, language);
+            String translationStatus = translationResult.get("status");
+            if (!"success".equals(translationStatus)) {
+                return PoetryResult.fail(translationResult.getOrDefault("error", "翻译获取失败"));
+            }
+            return PoetryResult.success(translationResult);
+        } catch (PoetryRuntimeException e) {
+            log.error("API获取翻译失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API获取翻译出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    /**
+     * API获取文章可用翻译语言列表
+     */
+    @GetMapping("/translation/languages")
+    public PoetryResult<List<String>> getTranslationLanguages(
+            @RequestParam("articleId") Integer articleId,
+            HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            if (articleId == null || articleId <= 0) {
+                return PoetryResult.fail("文章ID不能为空");
+            }
+            List<String> languages = translationService.getArticleAvailableLanguages(articleId);
+            return PoetryResult.success(languages);
+        } catch (PoetryRuntimeException e) {
+            log.error("API获取翻译语言列表失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API获取翻译语言列表出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    /**
+     * API手动保存/更新文章翻译
+     * <p>
+     * 允许 Agent 直接编辑翻译内容而不需要重新运行 AI 翻译。
+     * 如果该语言的翻译已存在，则覆盖更新；否则新增。
+     */
+    @PostMapping("/translation/save")
+    public PoetryResult<Map<String, Object>> saveTranslation(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            Integer articleId = parseInteger(body.get("articleId"));
+            String targetLanguage = stringValue(body.get("targetLanguage"));
+            String translatedTitle = stringValue(body.get("translatedTitle"));
+            String translatedContent = stringValue(body.get("translatedContent"));
+            String translatedSummary = stringValue(body.get("translatedSummary"));
+
+            if (articleId == null || articleId <= 0) {
+                return PoetryResult.fail("articleId 不能为空");
+            }
+            if (!StringUtils.hasText(targetLanguage)) {
+                return PoetryResult.fail("targetLanguage 不能为空");
+            }
+            if (!StringUtils.hasText(translatedTitle)) {
+                return PoetryResult.fail("translatedTitle 不能为空");
+            }
+            if (!StringUtils.hasText(translatedContent)) {
+                return PoetryResult.fail("translatedContent 不能为空");
+            }
+            try {
+                MarkdownSectionEditor.validateArticleBody(translatedContent);
+            } catch (IllegalArgumentException e) {
+                return PoetryResult.fail(e.getMessage());
+            }
+
+            Article article = articleService.getById(articleId);
+            if (article == null) {
+                return PoetryResult.fail("文章不存在");
+            }
+
+            Map<String, Object> result = translationService.saveManualTranslation(
+                    articleId, targetLanguage, translatedTitle, translatedContent, translatedSummary);
+
+            if (Boolean.TRUE.equals(result.get("success"))) {
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("articleId", articleId);
+                data.put("language", targetLanguage);
+                data.put("message", result.get("message"));
+                return PoetryResult.success(data);
+            }
+            return PoetryResult.fail(String.valueOf(result.getOrDefault("message", "翻译保存失败")));
+        } catch (PoetryRuntimeException e) {
+            log.error("API保存翻译失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API保存翻译出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    /**
+     * API删除文章的特定语言翻译
+     */
+    @PostMapping("/translation/delete")
+    public PoetryResult<Map<String, Object>> deleteTranslation(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            Integer articleId = parseInteger(body.get("articleId"));
+            String language = stringValue(body.get("language"));
+
+            if (articleId == null || articleId <= 0) {
+                return PoetryResult.fail("articleId 不能为空");
+            }
+            if (!StringUtils.hasText(language)) {
+                return PoetryResult.fail("language 不能为空");
+            }
+            language = language.trim();
+
+            Article article = articleService.getById(articleId);
+            if (article == null) {
+                return PoetryResult.fail("文章不存在");
+            }
+
+            boolean deleted = translationService.deleteSpecificTranslation(articleId, language);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("articleId", articleId);
+            data.put("language", language);
+            data.put("deleted", deleted);
+            if (deleted) {
+                data.put("message", "翻译删除成功");
+                return PoetryResult.success(data);
+            }
+            return PoetryResult.fail("翻译不存在或删除失败");
+        } catch (PoetryRuntimeException e) {
+            log.error("API删除翻译失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API删除翻译出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    /**
+     * API重新生成文章翻译（删除现有翻译并重新翻译）
+     */
+    @PostMapping("/translation/regenerate")
+    public PoetryResult<Map<String, Object>> regenerateTranslation(
+            @RequestParam("articleId") Integer articleId,
+            HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            if (articleId == null || articleId <= 0) {
+                return PoetryResult.fail("文章ID不能为空");
+            }
+
+            Article article = articleService.getById(articleId);
+            if (article == null) {
+                return PoetryResult.fail("文章不存在");
+            }
+
+            translationService.refreshArticleTranslation(articleId);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("articleId", articleId);
+            data.put("message", "翻译重新生成已完成");
+            return PoetryResult.success(data);
+        } catch (PoetryRuntimeException e) {
+            log.error("API重新生成翻译失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API重新生成翻译出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    // ========================================================================
+    // 文章局部内容更新端点（API Key 认证）
+    // 允许 Agent 按标题定位章节进行替换/插入/删除，避免整篇重新生成。
+    // ========================================================================
+
+    /**
+     * API局部更新文章内容（按章节标题定位）
+     * <p>
+     * 支持的操作：
+     * <ul>
+     *   <li>replace — 替换匹配章节（标题+正文）为新内容</li>
+     *   <li>insert_after — 在匹配章节之后插入新内容</li>
+     *   <li>insert_before — 在匹配标题之前插入新内容</li>
+     *   <li>delete — 删除匹配章节（标题+正文）</li>
+     *   <li>append — 在文章末尾追加内容</li>
+     * </ul>
+     *
+     * @param body 包含 articleId, heading, action, content, newHeadingLevel, skipAiTranslation
+     */
+    @PostMapping("/article/updateSection")
+    public PoetryResult<Map<String, Object>> updateArticleSection(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            Integer articleId = parseInteger(body.get("articleId"));
+            String heading = stringValue(body.get("heading"));
+            String action = stringValue(body.get("action"));
+            String content = stringValue(body.get("content"));
+            Integer newHeadingLevel = parseInteger(body.get("newHeadingLevel"));
+            boolean skipAiTranslation = Boolean.TRUE.equals(body.get("skipAiTranslation"));
+
+            if (articleId == null || articleId <= 0) {
+                return PoetryResult.fail("articleId 不能为空");
+            }
+            if (!StringUtils.hasText(action)) {
+                return PoetryResult.fail("action 不能为空");
+            }
+            if (!"append".equals(action) && !StringUtils.hasText(heading)) {
+                return PoetryResult.fail("非 append 操作必须指定 heading");
+            }
+            if (!"delete".equals(action) && !StringUtils.hasText(content)) {
+                return PoetryResult.fail("非 delete 操作必须提供 content");
+            }
+            if (newHeadingLevel != null) {
+                if (!"replace".equals(action)) {
+                    return PoetryResult.fail("newHeadingLevel 仅用于 replace 操作");
+                }
+                if (newHeadingLevel < 2 || newHeadingLevel > 6) {
+                    return PoetryResult.fail("newHeadingLevel 必须在 2 到 6 之间；正文一级标题（H1）由文章大标题独占");
+                }
+            }
+
+            Article article = articleService.getById(articleId);
+            if (article == null) {
+                return PoetryResult.fail("文章不存在");
+            }
+
+            String originalContent = article.getArticleContent();
+            if (!StringUtils.hasText(originalContent)) {
+                return PoetryResult.fail("文章内容为空，无法执行章节更新");
+            }
+
+            String updatedContent;
+            try {
+                updatedContent = MarkdownSectionEditor.apply(
+                        originalContent,
+                        new MarkdownSectionEditor.SectionUpdate(
+                                heading, action, content, newHeadingLevel));
+            } catch (IllegalArgumentException e) {
+                return PoetryResult.fail(e.getMessage());
+            }
+
+            if (updatedContent.equals(originalContent)) {
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("articleId", articleId);
+                data.put("message", "内容未发生变化");
+                data.put("changed", false);
+                return PoetryResult.success(data);
+            }
+
+            // 保存修改后的内容（仅更新必要字段，避免全量写回覆盖并发 viewCount 等字段）
+            // CAS 保护：仅当 content 仍为读取时的原值才更新，防止并发编辑互相覆盖
+            User adminUser = PoetryUtil.getAdminUser();
+            String updateBy = adminUser != null ? adminUser.getUsername() : null;
+            boolean updated = articleService.lambdaUpdate()
+                    .eq(Article::getId, articleId)
+                    .eq(Article::getArticleContent, originalContent)
+                    .set(Article::getArticleContent, updatedContent)
+                    .set(Article::getUpdateTime, LocalDateTime.now())
+                    .set(updateBy != null, Article::getUpdateBy, updateBy)
+                    .update();
+            if (!updated) {
+                return PoetryResult.fail("章节内容更新失败：文章内容可能已被其他请求修改，请重试");
+            }
+
+            // 清理缓存
+            cacheService.evictSortArticleList();
+
+            // 异步触发翻译和摘要更新
+            final Integer finalArticleId = articleId;
+            asyncExecutor.execute(() -> {
+                try {
+                    translationService.translateAndSaveArticle(finalArticleId, skipAiTranslation, null);
+                } catch (Exception e) {
+                    log.error("章节更新后自动翻译失败，文章ID: {}", finalArticleId, e);
+                }
+            });
+
+            try {
+                summaryService.updateSummary(articleId, updatedContent);
+            } catch (Exception e) {
+                log.error("章节更新后摘要更新失败，文章ID: {}", articleId, e);
+            }
+
+            try {
+                eventPublisher.publishEvent(new ArticleSavedEvent(
+                        articleId, article.getSortId(), article.getLabelId(),
+                        null, null, null,
+                        article.getViewStatus(), "UPDATE",
+                        article.getSubmitToSearchEngine(), null));
+            } catch (Exception e) {
+                log.warn("章节更新后事件发布失败，文章ID: {}", articleId, e);
+            }
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("articleId", articleId);
+            data.put("changed", true);
+            data.put("action", action);
+            data.put("heading", heading);
+            if (newHeadingLevel != null) {
+                data.put("newHeadingLevel", newHeadingLevel);
+            }
+            data.put("skipAiTranslation", skipAiTranslation);
+            data.put("message", "章节内容更新成功");
+            data.put("agent_guide", Map.of(
+                    "next_steps", List.of(
+                            "查看更新后的文章内容: python poetize_cli.py manage get-article --article-id " + articleId,
+                            skipAiTranslation
+                                    ? "翻译已跳过，如需更新翻译可使用: python poetize_cli.py manage save-translation --article-id " + articleId
+                                    : "翻译正在异步重新生成，查看翻译状态: python poetize_cli.py manage get-translation --article-id " + articleId)));
+            return PoetryResult.success(data);
+        } catch (PoetryRuntimeException e) {
+            log.error("API章节更新失败：{}", e.getMessage());
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API章节更新出现未知错误", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    private Integer parseInteger(Object value) {
+        if (value == null) return null;
+        if (value instanceof Integer i) return i;
+        if (value instanceof Number n) return n.intValue();
+        if (value instanceof String s) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 } 

@@ -154,24 +154,28 @@ def _cli_die(message: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Comment endpoints: version-gap guard
+# v5.0.1+ endpoints: version-gap guard
 # ---------------------------------------------------------------------------
 
-# /api/api/comment/list and /api/api/comment/save only exist starting from
-# this awesome-poetize-open backend version. Older backends 404/500 on these
-# routes because the endpoint itself does not exist yet — that failure looks
-# identical to a real bug from the CLI's perspective, so we translate it into
-# an explicit version-mismatch message instead of surfacing a raw HTTP error.
-COMMENT_ENDPOINTS_MIN_BACKEND_VERSION = "v5.0.1"
+# /api/api/comment/*, /api/api/translation/*, and /api/api/article/updateSection
+# only exist starting from this awesome-poetize-open backend version. Older
+# backends 404/500 on these routes because the endpoint itself does not exist
+# yet — that failure looks identical to a real bug from the CLI's perspective,
+# so we translate it into an explicit version-mismatch message instead of
+# surfacing a raw HTTP error.
+V5_ENDPOINTS_MIN_BACKEND_VERSION = "v5.0.1"
 
 
-def request_json_comment_endpoint(
+def request_json_v5_endpoint(
     method: str,
     url: str,
     api_key: str,
     payload: dict[str, Any] | None = None,
+    *,
+    feature_name: str,
+    commands: str,
 ) -> dict[str, Any]:
-    """Wrap request_json for /api/api/comment/* routes.
+    """Wrap request_json for routes that require backend v5.0.1+.
 
     On HTTP 404/500 (endpoint not registered on older backends), re-raise
     with a version-mismatch explanation instead of the raw server error.
@@ -181,13 +185,14 @@ def request_json_comment_endpoint(
     except SystemExit as exc:
         detail = getattr(exc, "_poetize_detail", "") or ""
         if detail.startswith("HTTP 404") or detail.startswith("HTTP 500"):
+            endpoint = url.split("/api/api/", 1)[-1] if "/api/api/" in url else url
             _cli_die(
                 f"{detail}\n\n"
                 f"This likely means your awesome-poetize-open backend is older than "
-                f"{COMMENT_ENDPOINTS_MIN_BACKEND_VERSION}, which is the first version to "
-                f"expose {url.split('/api/api/', 1)[-1] if '/api/api/' in url else url}. "
-                f"Comment list/reply support (manage list-comments / manage save-comment) "
-                f"requires upgrading the backend to {COMMENT_ENDPOINTS_MIN_BACKEND_VERSION} or later. "
+                f"{V5_ENDPOINTS_MIN_BACKEND_VERSION}, which is the first version to "
+                f"expose {endpoint}. "
+                f"{feature_name} support ({commands}) "
+                f"requires upgrading the backend to {V5_ENDPOINTS_MIN_BACKEND_VERSION} or later. "
                 f"All other commands in this skill are unaffected."
             )
         raise
@@ -235,9 +240,22 @@ def resolve_payload(args: argparse.Namespace) -> dict[str, Any]:
 # Global args
 # ---------------------------------------------------------------------------
 
+def _positive_float(value: str) -> float:
+    try:
+        f = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid float value: '{value}'")
+    if f <= 0:
+        raise argparse.ArgumentTypeError(f"value must be positive, got: {f}")
+    return f
+
+
 def add_global_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base-url", default=None, help="Poetize base URL. Falls back to POETIZE_BASE_URL env or ~/.config/poetize/credentials.json.")
     parser.add_argument("--api-key", default=None, help="Poetize API key. Falls back to POETIZE_API_KEY env or ~/.config/poetize/credentials.json.")
+    parser.add_argument("--wait", action="store_true", help="Poll async task until completion. No-op for synchronous commands.")
+    parser.add_argument("--poll-interval", type=_positive_float, default=2.0, help="Seconds between poll requests (default: 2.0).")
+    parser.add_argument("--timeout", type=_positive_float, default=900.0, help="Maximum wait time in seconds (default: 900.0).")
 
 
 # ---------------------------------------------------------------------------
@@ -260,9 +278,6 @@ def add_publish_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--allow-create-sort", action="store_true", help="Allow creating a missing category.")
     parser.add_argument("--allow-create-label", action="store_true", help="Allow creating a missing tag.")
     parser.add_argument("--print-payload", action="store_true", help="Print JSON payload before sending.")
-    parser.add_argument("--wait", action="store_true", help="Poll async task until completion.")
-    parser.add_argument("--poll-interval", type=float, default=2.0, help="Seconds between poll requests (default: 2.0).")
-    parser.add_argument("--timeout", type=int, default=900, help="Maximum wait time in seconds (default: 900).")
     parser.add_argument("--force", action="store_true", help="Skip the heading-structure validation and publish anyway.")
 
 
@@ -376,9 +391,6 @@ def add_manage_subparsers(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--stdin-payload", action="store_true", help="Read payload JSON from stdin.")
     p.add_argument("--brief-file", help="JSON brief file for strategy validation.")
     p.add_argument("--stdin-brief", action="store_true", help="Read brief JSON from stdin.")
-    p.add_argument("--wait", action="store_true", help="Poll async task until completion.")
-    p.add_argument("--poll-interval", type=float, default=2.0, help="Seconds between poll requests (default: 2.0).")
-    p.add_argument("--timeout", type=int, default=900, help="Maximum wait time in seconds (default: 900).")
     p.add_argument("--print-payload", action="store_true", help="Print JSON payload before sending.")
 
     # hide-article
@@ -389,9 +401,6 @@ def add_manage_subparsers(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--stdin-brief", action="store_true", help="Read brief JSON from stdin.")
     p.add_argument("--password", help="Password for hidden article.")
     p.add_argument("--tips", help="Preview tip for hidden article.")
-    p.add_argument("--wait", action="store_true", help="Poll async task until completion.")
-    p.add_argument("--poll-interval", type=float, default=2.0, help="Seconds between poll requests (default: 2.0).")
-    p.add_argument("--timeout", type=int, default=900, help="Maximum wait time in seconds (default: 900).")
 
     # article-analytics
     p = sub.add_parser("article-analytics", help="Get article analytics.")
@@ -452,6 +461,55 @@ def add_manage_subparsers(parser: argparse.ArgumentParser) -> None:
     add_global_args(p)
     p.add_argument("--task-id", required=True, help="Async task ID.")
 
+    # get-translation
+    p = sub.add_parser("get-translation", help="Get article translation for a specific language.")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+    p.add_argument("--language", default="en", help="Translation language code (default: en).")
+
+    # list-translation-languages
+    p = sub.add_parser("list-translation-languages", help="List available translation languages for an article.")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+
+    # save-translation
+    p = sub.add_parser("save-translation", help="Save or update a manual translation for an article.")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+    p.add_argument("--language", required=True, help="Target translation language code.")
+    p.add_argument("--title", required=True, help="Translated article title.")
+    p.add_argument("--content-file", required=True, help="File containing translated Markdown content.")
+    p.add_argument("--summary", help="Optional translated summary.")
+    p.add_argument("--brief-file", help="JSON brief file for strategy validation.")
+    p.add_argument("--stdin-brief", action="store_true", help="Read brief JSON from stdin.")
+
+    # delete-translation
+    p = sub.add_parser("delete-translation", help="Delete a specific language translation.")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+    p.add_argument("--language", required=True, help="Translation language to delete.")
+    p.add_argument("--brief-file", help="JSON brief file for strategy validation.")
+    p.add_argument("--stdin-brief", action="store_true", help="Read brief JSON from stdin.")
+
+    # regenerate-translation
+    p = sub.add_parser("regenerate-translation", help="Regenerate all translations for an article via AI.")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+    p.add_argument("--brief-file", help="JSON brief file for strategy validation.")
+    p.add_argument("--stdin-brief", action="store_true", help="Read brief JSON from stdin.")
+
+    # update-section
+    p = sub.add_parser("update-section", help="Update a section of an article by heading (avoids full regeneration).")
+    add_global_args(p)
+    p.add_argument("--article-id", type=int, required=True, help="Target article ID.")
+    p.add_argument("--heading", help="Stored heading text to locate; run get-article first and preserve its heading level (required except append).")
+    p.add_argument("--action", required=True, choices=["replace", "insert_after", "insert_before", "delete", "append"], help="Section update action.")
+    p.add_argument("--content-file", help="New section Markdown (required except delete); database body headings must be H2-H6.")
+    p.add_argument("--new-heading-level", type=int, choices=range(2, 7), metavar="2..6", help="Explicit new level for the replacement heading; replace only. Omit to preserve the current level.")
+    p.add_argument("--skip-ai-translation", action="store_true", help="Skip automatic AI translation re-generation.")
+    p.add_argument("--brief-file", help="JSON brief file for strategy validation.")
+    p.add_argument("--stdin-brief", action="store_true", help="Read brief JSON from stdin.")
+
 
 def format_comment_tree(records: list[dict[str, Any]]) -> str:
     if not records:
@@ -506,6 +564,63 @@ def format_comment_tree(records: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _fetch_translation_languages(base_url: str, api_key: str, article_id: int) -> list[str]:
+    """Fetch the list of available translation languages for an article."""
+    url = build_url(base_url, "/api/api/translation/languages", {"articleId": article_id})
+    response = request_json_v5_endpoint(
+        "GET", url, api_key,
+        feature_name="Translation management",
+        commands="manage list-translation-languages",
+    )
+    if response.get("code") != 200:
+        return []
+    languages = response.get("data", [])
+    return languages if isinstance(languages, list) else []
+
+
+def _wait_for_translations(
+    base_url: str,
+    api_key: str,
+    article_id: int,
+    poll_interval: float,
+    timeout: float,
+) -> dict[str, Any]:
+    """Poll list-translation-languages until the language list stabilizes or timeout.
+
+    Stabilization = same non-empty language set for 2 consecutive polls. This is a
+    heuristic since the backend has no translation task-status endpoint.
+    """
+    import time
+
+    elapsed = 0.0
+    prev_langs: set[str] | None = None
+    stable_count = 0
+
+    while elapsed < timeout:
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+        current_langs = set(_fetch_translation_languages(base_url, api_key, article_id))
+        if prev_langs is not None and current_langs == prev_langs and len(current_langs) > 0:
+            stable_count += 1
+            if stable_count >= 1:
+                return {
+                    "ok": True,
+                    "languages": sorted(current_langs),
+                    "elapsed": elapsed,
+                    "message": "Translation languages stabilized.",
+                }
+        else:
+            stable_count = 0
+        prev_langs = current_langs
+
+    return {
+        "ok": False,
+        "languages": sorted(prev_langs) if prev_langs else [],
+        "elapsed": elapsed,
+        "message": f"Timed out after {timeout}s; translation may still be in progress.",
+    }
+
+
 def cmd_manage(args: argparse.Namespace) -> None:
     args.base_url = normalize_base_url(str(args.base_url or ""))
     if not args.base_url:
@@ -552,7 +667,9 @@ def cmd_manage(args: argparse.Namespace) -> None:
                     if art_id:
                         next_steps.extend([
                             f"Update metadata fields: python poetize_cli.py manage update-article --article-id {art_id} --payload-file payload.json --stdin-brief",
+                            f"Edit one section without full rewrite (preserve the stored heading's exact # count; database content starts at H2 and must not gain an H1): python poetize_cli.py manage update-section --article-id {art_id} --heading \"<heading>\" --action replace --content-file <file> --stdin-brief",
                             f"Rewrite article content: edit local markdown file, then run: python poetize_cli.py publish --markdown-file <file> --article-id {art_id} --publish --wait",
+                            f"Manage translations: python poetize_cli.py manage list-translation-languages --article-id {art_id}",
                             f"Hide this article from public view: python poetize_cli.py manage hide-article --article-id {art_id} --stdin-brief"
                         ])
                 response["agent_guide"] = {
@@ -640,7 +757,7 @@ def cmd_manage(args: argparse.Namespace) -> None:
             }
             if args.floor_comment_id is not None:
                 payload["floorCommentId"] = args.floor_comment_id
-            response = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, payload)
+            response = request_json_v5_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, payload, feature_name="Comment list/reply", commands="manage list-comments / manage save-comment")
             if response.get("code") == 200:
                 data = response.get("data", {})
                 records = data.get("records", []) if isinstance(data, dict) else []
@@ -659,7 +776,7 @@ def cmd_manage(args: argparse.Namespace) -> None:
                                 "current": 1,
                                 "size": 10
                             }
-                            reply_res = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, reply_payload)
+                            reply_res = request_json_v5_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, reply_payload, feature_name="Comment list/reply", commands="manage list-comments / manage save-comment")
                             if reply_res.get("code") == 200:
                                 reply_data = reply_res.get("data", {})
                                 reply_records = reply_data.get("records", []) if isinstance(reply_data, dict) else []
@@ -689,7 +806,7 @@ def cmd_manage(args: argparse.Namespace) -> None:
                         "current": 1,
                         "size": 50
                     }
-                    main_res = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, main_payload)
+                    main_res = request_json_v5_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/list", args.api_key, main_payload, feature_name="Comment list/reply", commands="manage list-comments / manage save-comment")
                     if main_res.get("code") == 200:
                         main_data = main_res.get("data", {})
                         main_records = main_data.get("records", []) if isinstance(main_data, dict) else []
@@ -760,7 +877,7 @@ def cmd_manage(args: argparse.Namespace) -> None:
             if args.floor_comment_id is not None:
                 payload["floorCommentId"] = args.floor_comment_id
             
-            response = request_json_comment_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/save", args.api_key, payload)
+            response = request_json_v5_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/comment/save", args.api_key, payload, feature_name="Comment list/reply", commands="manage list-comments / manage save-comment")
             if response.get("code") == 200:
                 response["agent_guide"] = {
                     "message": "Comment posted successfully.",
@@ -810,6 +927,209 @@ def cmd_manage(args: argparse.Namespace) -> None:
 
         if mc == "sitemap-update":
             response = request_json("POST", f"{args.base_url.rstrip('/')}/api/api/seo/sitemap/update", args.api_key, {})
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "get-translation":
+            url = build_url(args.base_url, "/api/api/translation/get", {
+                "articleId": args.article_id,
+                "language": args.language,
+            })
+            response = request_json_v5_endpoint("GET", url, args.api_key, feature_name="Translation management", commands="manage get-translation / list-translation-languages / save-translation / delete-translation / regenerate-translation")
+            if response.get("code") == 200:
+                data = response.get("data")
+                next_steps = []
+                if isinstance(data, dict) and data:
+                    next_steps.append(
+                        f"Edit this translation: python poetize_cli.py manage save-translation "
+                        f"--article-id {args.article_id} --language {args.language} "
+                        f"--title \"<title>\" --content-file <file> --stdin-brief"
+                    )
+                    next_steps.append(
+                        f"Delete this translation: python poetize_cli.py manage delete-translation "
+                        f"--article-id {args.article_id} --language {args.language} --stdin-brief"
+                    )
+                else:
+                    next_steps.append(
+                        f"Generate translation: python poetize_cli.py manage regenerate-translation "
+                        f"--article-id {args.article_id} --stdin-brief"
+                    )
+                    next_steps.append(
+                        f"Save a manual translation: python poetize_cli.py manage save-translation "
+                        f"--article-id {args.article_id} --language {args.language} "
+                        f"--title \"<title>\" --content-file <file> --stdin-brief"
+                    )
+                response["agent_guide"] = {
+                    "message": f"Translation for '{args.language}' retrieved.",
+                    "next_steps": next_steps,
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "list-translation-languages":
+            url = build_url(args.base_url, "/api/api/translation/languages", {
+                "articleId": args.article_id,
+            })
+            response = request_json_v5_endpoint("GET", url, args.api_key, feature_name="Translation management", commands="manage get-translation / list-translation-languages / save-translation / delete-translation / regenerate-translation")
+            if response.get("code") == 200:
+                languages = response.get("data", [])
+                next_steps = []
+                if isinstance(languages, list) and languages:
+                    first_lang = languages[0]
+                    next_steps.append(
+                        f"Get translation: python poetize_cli.py manage get-translation "
+                        f"--article-id {args.article_id} --language {first_lang}"
+                    )
+                next_steps.append(
+                    f"Regenerate all translations: python poetize_cli.py manage regenerate-translation "
+                    f"--article-id {args.article_id} --stdin-brief"
+                )
+                response["agent_guide"] = {
+                    "message": f"Available translation languages: {languages if isinstance(languages, list) else []}",
+                    "next_steps": next_steps,
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "save-translation":
+            brief = resolve_brief(args)
+            if not args.title or not args.title.strip():
+                _cli_die("--title cannot be empty or whitespace.")
+            try:
+                with open(args.content_file, "r", encoding="utf-8") as handle:
+                    translated_content = handle.read()
+            except FileNotFoundError:
+                _cli_die(f"Content file does not exist: {args.content_file}")
+            except OSError as exc:
+                _cli_die(f"Failed to read content file: {exc}")
+
+            payload = {
+                "articleId": args.article_id,
+                "targetLanguage": args.language,
+                "translatedTitle": args.title,
+                "translatedContent": translated_content,
+            }
+            if args.summary:
+                payload["translatedSummary"] = args.summary
+            payload = apply_ops_strategy(brief, payload, expected_task_type="update_translation")
+            response = request_json_v5_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/translation/save", args.api_key, payload, feature_name="Translation management", commands="manage get-translation / list-translation-languages / save-translation / delete-translation / regenerate-translation")
+            if response.get("code") == 200:
+                response["agent_guide"] = {
+                    "message": f"Translation for '{args.language}' saved successfully.",
+                    "next_steps": [
+                        f"Verify translation: python poetize_cli.py manage get-translation "
+                        f"--article-id {args.article_id} --language {args.language}",
+                    ],
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "delete-translation":
+            brief = resolve_brief(args)
+            payload = {
+                "articleId": args.article_id,
+                "language": args.language,
+            }
+            payload = apply_ops_strategy(brief, payload, expected_task_type="delete_translation")
+            response = request_json_v5_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/translation/delete", args.api_key, payload, feature_name="Translation management", commands="manage get-translation / list-translation-languages / save-translation / delete-translation / regenerate-translation")
+            if response.get("code") == 200:
+                response["agent_guide"] = {
+                    "message": f"Translation for '{args.language}' deleted.",
+                    "next_steps": [
+                        f"List remaining translations: python poetize_cli.py manage list-translation-languages "
+                        f"--article-id {args.article_id}",
+                        f"Regenerate translation: python poetize_cli.py manage regenerate-translation "
+                        f"--article-id {args.article_id} --stdin-brief",
+                    ],
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "regenerate-translation":
+            brief = resolve_brief(args)
+            apply_ops_strategy(brief, {}, expected_task_type="regenerate_translation")
+            url = build_url(args.base_url, "/api/api/translation/regenerate", {
+                "articleId": args.article_id,
+            })
+            response = request_json_v5_endpoint("POST", url, args.api_key, feature_name="Translation management", commands="manage get-translation / list-translation-languages / save-translation / delete-translation / regenerate-translation")
+            if response.get("code") == 200:
+                if getattr(args, "wait", False):
+                    wait_result = _wait_for_translations(
+                        args.base_url, args.api_key, args.article_id,
+                        args.poll_interval, args.timeout,
+                    )
+                    response["translation_wait"] = wait_result
+                    if not wait_result.get("ok"):
+                        print(json.dumps(response, ensure_ascii=False, indent=2))
+                        _output_error(wait_result.get("message", "Translation wait failed."))
+                        return
+                response["agent_guide"] = {
+                    "message": f"Translation regeneration started for article {args.article_id}.",
+                    "next_steps": [
+                        f"Check available languages after a few minutes: "
+                        f"python poetize_cli.py manage list-translation-languages --article-id {args.article_id}",
+                        f"Get a specific translation: python poetize_cli.py manage get-translation "
+                        f"--article-id {args.article_id} --language en",
+                    ],
+                }
+            print(json.dumps(response, ensure_ascii=False, indent=2))
+            return
+
+        if mc == "update-section":
+            brief = resolve_brief(args)
+            if args.action != "append" and not args.heading:
+                _cli_die("--heading is required for non-append actions (replace/insert_after/insert_before/delete).")
+            if args.new_heading_level is not None and args.action != "replace":
+                _cli_die("--new-heading-level can only be used with --action replace.")
+            content = None
+            if args.action != "delete":
+                if not args.content_file:
+                    _cli_die("--content-file is required for non-delete actions.")
+                try:
+                    with open(args.content_file, "r", encoding="utf-8") as handle:
+                        content = handle.read()
+                except FileNotFoundError:
+                    _cli_die(f"Content file does not exist: {args.content_file}")
+                except OSError as exc:
+                    _cli_die(f"Failed to read content file: {exc}")
+
+            payload = {
+                "articleId": args.article_id,
+                "action": args.action,
+                "content": content,
+            }
+            if args.heading:
+                payload["heading"] = args.heading
+            if args.new_heading_level is not None:
+                payload["newHeadingLevel"] = args.new_heading_level
+            if args.skip_ai_translation:
+                payload["skipAiTranslation"] = True
+            payload = apply_ops_strategy(brief, payload, expected_task_type="update_section")
+            response = request_json_v5_endpoint("POST", f"{args.base_url.rstrip('/')}/api/api/article/updateSection", args.api_key, payload, feature_name="Section-level article editing", commands="manage update-section")
+            if response.get("code") == 200:
+                data = response.get("data", {})
+                changed = data.get("changed", False) if isinstance(data, dict) else False
+                skip_msg = (
+                    "Translation was skipped."
+                    if args.skip_ai_translation
+                    else "AI translation is being regenerated asynchronously."
+                )
+                if getattr(args, "wait", False) and not args.skip_ai_translation:
+                    wait_result = _wait_for_translations(
+                        args.base_url, args.api_key, args.article_id,
+                        args.poll_interval, args.timeout,
+                    )
+                    response["translation_wait"] = wait_result
+                    if not wait_result.get("ok"):
+                        print(json.dumps(response, ensure_ascii=False, indent=2))
+                        _output_error(wait_result.get("message", "Translation wait failed."))
+                        return
+                response["agent_guide"] = {
+                    "message": f"Section update {'applied' if changed else 'resulted in no changes'}. {skip_msg}",
+                    "next_steps": [
+                        f"Verify updated content: python poetize_cli.py manage get-article --article-id {args.article_id}",
+                    ],
+                }
             print(json.dumps(response, ensure_ascii=False, indent=2))
             return
 

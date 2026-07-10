@@ -112,6 +112,53 @@ MANAGE_HIDE_FLAGS = {
     "--wait", "--poll-interval", "--timeout",
 }
 
+# Legitimate flags for `manage update-section`.
+MANAGE_UPDATE_SECTION_FLAGS = {
+    "--base-url", "--api-key",
+    "--article-id", "--heading", "--action", "--content-file",
+    "--new-heading-level", "--skip-ai-translation",
+    "--brief-file", "--stdin-brief",
+    "--wait", "--poll-interval", "--timeout",
+}
+
+# Legitimate flags for `manage get-translation` (read-only, no brief).
+MANAGE_GET_TRANSLATION_FLAGS = {
+    "--base-url", "--api-key",
+    "--article-id", "--language",
+    "--wait", "--poll-interval", "--timeout",
+}
+
+# Legitimate flags for `manage list-translation-languages` (read-only, no brief).
+MANAGE_LIST_TRANSLATION_LANGUAGES_FLAGS = {
+    "--base-url", "--api-key",
+    "--article-id",
+    "--wait", "--poll-interval", "--timeout",
+}
+
+# Legitimate flags for `manage save-translation`.
+MANAGE_SAVE_TRANSLATION_FLAGS = {
+    "--base-url", "--api-key",
+    "--article-id", "--language", "--title", "--content-file",
+    "--summary", "--brief-file", "--stdin-brief",
+    "--wait", "--poll-interval", "--timeout",
+}
+
+# Legitimate flags for `manage delete-translation`.
+MANAGE_DELETE_TRANSLATION_FLAGS = {
+    "--base-url", "--api-key",
+    "--article-id", "--language",
+    "--brief-file", "--stdin-brief",
+    "--wait", "--poll-interval", "--timeout",
+}
+
+# Legitimate flags for `manage regenerate-translation`.
+MANAGE_REGENERATE_TRANSLATION_FLAGS = {
+    "--base-url", "--api-key",
+    "--article-id",
+    "--brief-file", "--stdin-brief",
+    "--wait", "--poll-interval", "--timeout",
+}
+
 # Legitimate front matter field names; populated from skill_consistency_check
 # so the test stays aligned with the documented field reference table.
 FRONT_MATTER_FIELDS: set[str] = set()
@@ -168,7 +215,7 @@ SCENARIOS: list[dict[str, Any]] = [
     {
         "name": "update_article",
         "title": "Scenario 3: update article",
-        "user_intent": "帮我更新 ID 为 123 的文章,补充一个关于性能优化的新章节",
+        "user_intent": "帮我重写 ID 为 123 的文章全文,内容方向保持不变但需要更深入的技术细节",
         "command_kind": "publish",
         "scenario_flag_check": ("article_id_flag", "--article-id 123"),
         "require_markdown_content": True,
@@ -183,6 +230,39 @@ SCENARIOS: list[dict[str, Any]] = [
         "scenario_flag_check": ("hide_article_subcommand", "manage hide-article"),
         "extra_command_check": ("article_id_456", "--article-id 456"),
         "require_markdown_content": False,
+        "require_brief": False,
+        "expect_brief_publish_intent": None,
+    },
+    {
+        "name": "update_section",
+        "title": "Scenario 5: update section",
+        "user_intent": '帮我把 ID 为 789 的文章中"性能优化"这一节的内容替换为最新的优化方案,跳过自动翻译',
+        "command_kind": "manage",
+        "scenario_flag_check": ("update_section_subcommand", "manage update-section"),
+        "extra_command_check": ("article_id_789", "--article-id 789"),
+        "require_markdown_content": True,
+        "require_brief": False,
+        "expect_brief_publish_intent": None,
+    },
+    {
+        "name": "get_translation",
+        "title": "Scenario 6: get translation",
+        "user_intent": "帮我查看 ID 为 123 的文章的英文翻译",
+        "command_kind": "manage",
+        "scenario_flag_check": ("get_translation_subcommand", "manage get-translation"),
+        "extra_command_check": ("article_id_123", "--article-id 123"),
+        "require_markdown_content": False,
+        "require_brief": False,
+        "expect_brief_publish_intent": None,
+    },
+    {
+        "name": "save_translation",
+        "title": "Scenario 7: save translation",
+        "user_intent": "帮我为 ID 为 123 的文章保存一份手动编辑的英文翻译",
+        "command_kind": "manage",
+        "scenario_flag_check": ("save_translation_subcommand", "manage save-translation"),
+        "extra_command_check": ("article_id_123_translation", "--article-id 123"),
+        "require_markdown_content": True,
         "require_brief": False,
         "expect_brief_publish_intent": None,
     },
@@ -216,7 +296,7 @@ def build_user_prompt(skill_md_content: str, user_intent: str) -> str:
         f'{{"commands": ["python {BASE_DIR}/scripts/poetize_cli.py publish ..."], '
         f'"markdown_content": "---\\n...\\n---\\n# 标题\\n正文"}}\n'
         f"要求:\n"
-        f"1. commands 数组里每个命令必须以 python 开头,使用 poetize_cli.py。\n"
+        f"1. commands 数组里每个命令必须通过 python 调用 poetize_cli.py,允许用管道(如 echo '...' | python poetize_cli.py ...)向 CLI 输送 stdin。\n"
         f"2. 如果场景需要写文章,markdown_content 必须包含 front matter 和正文;否则可为空字符串。\n"
         f"3. 不要实际执行命令,只输出你打算执行的命令和打算写的 markdown 内容。"
     )
@@ -466,8 +546,19 @@ def extract_json(content: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 def parse_command_flags(command: str) -> list[str]:
-    """Return all --flag tokens from a shell command string."""
-    tokens = command.split()
+    """Return all --flag tokens from the poetize_cli.py segment of a shell command.
+
+    If the command contains a pipe/heredoc, only the segment that invokes
+    poetize_cli.py is parsed, so flags inside upstream pipe content or
+    heredoc bodies are not falsely validated.
+    """
+    if "poetize_cli.py" not in command:
+        return []
+    # Find the segment containing poetize_cli.py — split on pipe/heredoc boundaries
+    # and take the segment that contains the CLI invocation.
+    segments = re.split(r'\||<<\s*\w+|>>?', command)
+    cli_segment = next((seg for seg in segments if "poetize_cli.py" in seg), command)
+    tokens = cli_segment.split()
     return [t for t in tokens if t.startswith("--")]
 
 
@@ -486,6 +577,58 @@ def command_is_publish(command: str) -> bool:
 
 def command_is_manage_hide(command: str) -> bool:
     return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+hide-article\b", command))
+
+
+def command_is_manage_update_section(command: str) -> bool:
+    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+update-section\b", command))
+
+
+def command_is_manage_get_translation(command: str) -> bool:
+    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+get-translation\b", command))
+
+
+def command_is_manage_list_translation_languages(command: str) -> bool:
+    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+list-translation-languages\b", command))
+
+
+def command_is_manage_save_translation(command: str) -> bool:
+    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+save-translation\b", command))
+
+
+def command_is_manage_delete_translation(command: str) -> bool:
+    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+delete-translation\b", command))
+
+
+def command_is_manage_regenerate_translation(command: str) -> bool:
+    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+regenerate-translation\b", command))
+
+
+def command_is_manage_update_article(command: str) -> bool:
+    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+update-article\b", command))
+
+
+def command_is_async_long_running(command: str) -> bool:
+    """Return True for commands that trigger a backend async job or AI translation.
+
+    These are the only commands where ``--wait`` is meaningful (though still
+    optional). Synchronous commands (reads, ``save-translation``,
+    ``delete-translation``, ``update-section --skip-ai-translation``, etc.)
+    must NOT carry ``--wait``.
+    """
+    if command_is_publish(command):
+        return True
+    if command_is_manage_hide(command):
+        return True
+    if command_is_manage_regenerate_translation(command):
+        return True
+    if command_is_manage_update_article(command):
+        return True
+    if command_is_manage_update_section(command):
+        # update-section is async only when AI translation is NOT skipped.
+        if command_has_flag(command, "--skip-ai-translation"):
+            return False
+        return True
+    return False
 
 
 def command_has_flag(command: str, flag: str) -> bool:
@@ -567,14 +710,39 @@ def check_exploration_behavior(raw_content: str) -> CheckResult:
 
 
 def check_command_format(commands: list[str]) -> CheckResult:
-    """Validate commands are non-empty, start with python, and use poetize_cli.py."""
+    """Validate commands are non-empty and at least one invokes poetize_cli.py.
+
+    Tolerates two common LLM patterns that the old strict check rejected:
+
+    1. **Pipe commands**: ``echo '...' | python poetize_cli.py ...`` — the
+       upstream segment (echo/cat/heredoc) feeds stdin to the CLI and should
+       not be rejected just because the command does not start with
+       ``python``. We only require that ``python`` appears somewhere in the
+       command so the CLI is actually invoked via the Python interpreter.
+    2. **Helper commands**: ``python -c "import json; ..."`` or ``echo > file``
+       — these build temp files (brief JSON, markdown content) and are not
+       CLI invocations, so they are skipped as long as at least one real CLI
+       command exists in the list.
+    """
     if not commands:
         return CheckResult("command_format", False, "no commands returned")
+
+    has_cli_command = False
     for cmd in commands:
-        if not command_starts_with_python(cmd):
-            return CheckResult("command_format", False, f"command does not start with python: {cmd}")
-        if not command_contains_poetize_cli(cmd):
-            return CheckResult("command_format", False, f"command missing poetize_cli.py: {cmd}")
+        if command_contains_poetize_cli(cmd):
+            # CLI command: accept both direct invocation and pipe-fed stdin.
+            # Only require that python appears somewhere in the command.
+            if "python" not in cmd:
+                return CheckResult(
+                    "command_format",
+                    False,
+                    f"poetize_cli.py invoked without python: {cmd}",
+                )
+            has_cli_command = True
+        # Non-CLI commands (python -c helpers, echo, cat, etc.) are skipped.
+
+    if not has_cli_command:
+        return CheckResult("command_format", False, "no poetize_cli.py command found")
     return CheckResult("command_format", True, "valid")
 
 
@@ -585,6 +753,18 @@ def check_flags_valid(commands: list[str]) -> CheckResult:
         flags = parse_command_flags(cmd)
         if command_is_manage_hide(cmd):
             allowed = MANAGE_HIDE_FLAGS
+        elif command_is_manage_update_section(cmd):
+            allowed = MANAGE_UPDATE_SECTION_FLAGS
+        elif command_is_manage_get_translation(cmd):
+            allowed = MANAGE_GET_TRANSLATION_FLAGS
+        elif command_is_manage_list_translation_languages(cmd):
+            allowed = MANAGE_LIST_TRANSLATION_LANGUAGES_FLAGS
+        elif command_is_manage_save_translation(cmd):
+            allowed = MANAGE_SAVE_TRANSLATION_FLAGS
+        elif command_is_manage_delete_translation(cmd):
+            allowed = MANAGE_DELETE_TRANSLATION_FLAGS
+        elif command_is_manage_regenerate_translation(cmd):
+            allowed = MANAGE_REGENERATE_TRANSLATION_FLAGS
         elif command_is_publish(cmd):
             allowed = PUBLISH_FLAGS
         else:
@@ -597,6 +777,36 @@ def check_flags_valid(commands: list[str]) -> CheckResult:
     if bad:
         return CheckResult("flags_valid", False, f"invalid flags: {bad}")
     return CheckResult("flags_valid", True, "all valid")
+
+
+def check_wait_flag_usage(commands: list[str]) -> CheckResult:
+    """Verify ``--wait`` is only added to async long-running commands.
+
+    Per SKILL.md, ``--wait`` is an optional convenience flag for async
+    commands (publish, hide-article, update-article, update-section without
+    ``--skip-ai-translation``, regenerate-translation). Adding it or not on
+    those commands is fine. But adding it to a synchronous command (reads,
+    save-translation, delete-translation, update-section
+    ``--skip-ai-translation``, config, smoke-test, etc.) is a misuse that
+    indicates the Agent did not understand the flag's purpose.
+    """
+    misused: list[str] = []
+    for cmd in commands:
+        if not command_contains_poetize_cli(cmd):
+            continue  # Skip non-CLI helper commands (e.g. python -c temp file).
+        if command_has_flag(cmd, "--wait") and not command_is_async_long_running(cmd):
+            misused.append(cmd)
+    if misused:
+        return CheckResult(
+            "wait_flag_usage",
+            False,
+            f"--wait misused on synchronous command(s): {misused}",
+        )
+    return CheckResult(
+        "wait_flag_usage",
+        True,
+        "--wait only on async commands (or absent)",
+    )
 
 
 def check_markdown_file_flag(commands: list[str]) -> CheckResult:
@@ -727,6 +937,7 @@ def validate_scenario(
     # Command-level checks
     checks.append(check_command_format(commands))
     checks.append(check_flags_valid(commands))
+    checks.append(check_wait_flag_usage(commands))
 
     if scenario["command_kind"] == "publish":
         checks.append(check_markdown_file_flag(commands))
@@ -792,7 +1003,7 @@ def run_ai_dry_run(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     verbose: bool = True,
 ) -> bool:
-    """Run all 4 AI dry-run scenarios against a real LLM.
+    """Run all AI dry-run scenarios against a real LLM.
 
     Returns ``True`` if every scenario passed. Raises ``LlmApiError`` if the
     LLM API itself is unreachable (network / auth), so callers can treat

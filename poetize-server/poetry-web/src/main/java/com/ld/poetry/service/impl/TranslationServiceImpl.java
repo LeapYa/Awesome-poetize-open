@@ -9,6 +9,7 @@ import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
 import com.ld.poetry.service.ai.LlmTranslationService;
 import com.ld.poetry.utils.ArticleSummaryTextUtil;
+import com.ld.poetry.utils.MarkdownSectionEditor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -305,6 +306,14 @@ public class TranslationServiceImpl implements TranslationService {
 
     private boolean saveOrUpdateTranslation(Integer articleId, String targetLanguage, String translatedTitle,
             String translatedContent, String translatedSummary, boolean summaryProvided) {
+        try {
+            MarkdownSectionEditor.validateArticleBody(translatedContent);
+        } catch (IllegalArgumentException e) {
+            log.error("拒绝保存不符合标题契约的文章翻译，文章ID: {}, 目标语言: {}, 错误: {}",
+                    articleId, targetLanguage, e.getMessage());
+            return false;
+        }
+
         String normalizedSummary = summaryProvided ? ArticleSummaryTextUtil.toPlainText(translatedSummary, 500) : null;
         // 使用重试机制处理并发问题
         int maxRetries = 3;

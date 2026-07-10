@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
@@ -318,6 +319,106 @@ class ImageCompressUtilTest {
         // 计算实际的压缩率
         double expectedRatio = (1.0 - (double) result.getCompressedSize() / result.getOriginalSize()) * 100;
         assertEquals(expectedRatio, result.getCompressionRatio(), 0.01, "压缩率计算应该正确");
+    }
+
+    @Test
+    @DisplayName("测试纵向长图压缩 - 短边不应被压扁")
+    void testVerticalLongImageCompression() throws IOException {
+        // 200x2000 纵向长图，长宽比 10:1，长边 2000 < MAX_LONG_EDGE(8000)，应保留原尺寸
+        BufferedImage longImage = createTestImage(200, 2000);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(longImage, "jpg", baos);
+        byte[] imageData = baos.toByteArray();
+
+        MockMultipartFile file = new MockMultipartFile(
+            "long_v.jpg", "long_v.jpg", "image/jpeg", imageData
+        );
+
+        ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
+
+        assertNotNull(result, "长图压缩结果不应为null");
+        BufferedImage compressedImage = ImageIO.read(new ByteArrayInputStream(result.getData()));
+        assertNotNull(compressedImage, "压缩后图片应能正常读取");
+        // 旧逻辑会把短边压到 108 像素左右导致糊图；新逻辑应保留原短边
+        assertEquals(200, compressedImage.getWidth(),
+            "纵向长图短边（宽度）应保留原尺寸，实际: " + compressedImage.getWidth());
+        assertEquals(2000, compressedImage.getHeight(),
+            "纵向长图长边未超限时应保留原尺寸，实际: " + compressedImage.getHeight());
+    }
+
+    @Test
+    @DisplayName("测试横向长图压缩 - 短边不应被压扁")
+    void testHorizontalLongImageCompression() throws IOException {
+        // 2000x200 横向长图，长宽比 10:1，长边 2000 < MAX_LONG_EDGE(8000)，应保留原尺寸
+        BufferedImage longImage = createTestImage(2000, 200);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(longImage, "jpg", baos);
+        byte[] imageData = baos.toByteArray();
+
+        MockMultipartFile file = new MockMultipartFile(
+            "long_h.jpg", "long_h.jpg", "image/jpeg", imageData
+        );
+
+        ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
+
+        assertNotNull(result, "长图压缩结果不应为null");
+        BufferedImage compressedImage = ImageIO.read(new ByteArrayInputStream(result.getData()));
+        assertNotNull(compressedImage, "压缩后图片应能正常读取");
+        assertEquals(2000, compressedImage.getWidth(),
+            "横向长图长边未超限时应保留原尺寸，实际: " + compressedImage.getWidth());
+        assertEquals(200, compressedImage.getHeight(),
+            "横向长图短边（高度）应保留原尺寸，实际: " + compressedImage.getHeight());
+    }
+
+    @Test
+    @DisplayName("测试超长图压缩 - 按长边等比缩放，短边维持比例")
+    void testUltraLongImageCompression() throws IOException {
+        // 100x9000 超长纵图，长宽比 90:1，长边 9000 > MAX_LONG_EDGE(8000)，按长边等比缩放
+        BufferedImage longImage = createTestImage(100, 9000);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(longImage, "jpg", baos);
+        byte[] imageData = baos.toByteArray();
+
+        MockMultipartFile file = new MockMultipartFile(
+            "ultra_long.jpg", "ultra_long.jpg", "image/jpeg", imageData
+        );
+
+        ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
+
+        assertNotNull(result, "超长图压缩结果不应为null");
+        BufferedImage compressedImage = ImageIO.read(new ByteArrayInputStream(result.getData()));
+        assertNotNull(compressedImage, "压缩后图片应能正常读取");
+        // 长边缩到 MAX_LONG_EDGE(8000)，短边按相同比例 0.889 缩到约 88
+        assertEquals(8000, compressedImage.getHeight(),
+            "超长图长边应缩到 MAX_LONG_EDGE，实际: " + compressedImage.getHeight());
+        assertEquals(88, compressedImage.getWidth(),
+            "超长图短边应按比例缩放，实际: " + compressedImage.getWidth());
+    }
+
+    @Test
+    @DisplayName("测试长宽比正好等于阈值 - 按普通图逻辑处理")
+    void testBoundaryAspectRatioImage() throws IOException {
+        // 3240x1080 长宽比正好 3:1，等于阈值不算长图，按普通图逻辑（maxWidth=1920）
+        BufferedImage boundaryImage = createTestImage(3240, 1080);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(boundaryImage, "jpg", baos);
+        byte[] imageData = baos.toByteArray();
+
+        MockMultipartFile file = new MockMultipartFile(
+            "boundary.jpg", "boundary.jpg", "image/jpeg", imageData
+        );
+
+        ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
+
+        assertNotNull(result, "边界图压缩结果不应为null");
+        BufferedImage compressedImage = ImageIO.read(new ByteArrayInputStream(result.getData()));
+        assertNotNull(compressedImage, "压缩后图片应能正常读取");
+        // 普通图逻辑：scaleWidth=1920/3240=0.593, scaleHeight=1080/1080=1.0, scale=0.593
+        // 新尺寸 1920x640
+        assertEquals(1920, compressedImage.getWidth(),
+            "边界长宽比应按普通图逻辑缩放宽度到1920，实际: " + compressedImage.getWidth());
+        assertEquals(640, compressedImage.getHeight(),
+            "边界长宽比应按普通图逻辑等比缩放高度，实际: " + compressedImage.getHeight());
     }
 
     /**

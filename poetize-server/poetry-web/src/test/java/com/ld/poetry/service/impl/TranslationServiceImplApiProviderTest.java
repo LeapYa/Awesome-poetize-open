@@ -1,5 +1,6 @@
 package com.ld.poetry.service.impl;
 
+import com.ld.poetry.dao.ArticleTranslationMapper;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.ai.ApiTranslationProviderRegistry;
@@ -9,6 +10,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -63,5 +65,21 @@ class TranslationServiceImplApiProviderTest {
         assertNull(service.translateArticleOnly("Title", "Content", false, null));
         verify(registry).translateArticle(config, "Title", "Content", "en", "zh", null);
         verifyNoInteractions(llmTranslationService);
+    }
+
+    @Test
+    void saveTranslationResult_rejectsBodyH1BeforePersistence() {
+        TranslationServiceImpl service = new TranslationServiceImpl();
+        ArticleTranslationMapper articleTranslationMapper = mock(ArticleTranslationMapper.class);
+        ReflectionTestUtils.setField(service, "articleTranslationMapper", articleTranslationMapper);
+
+        boolean saved = service.saveTranslationResult(
+                123,
+                "Translated title",
+                "# Duplicate page title\n\nTranslated body",
+                "en");
+
+        assertFalse(saved);
+        verifyNoInteractions(articleTranslationMapper);
     }
 }

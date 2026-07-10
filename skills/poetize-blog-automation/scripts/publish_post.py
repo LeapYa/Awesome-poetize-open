@@ -255,41 +255,61 @@ def strip_matching_title_heading(body: str, title: str) -> str:
     return body
 
 
-HEADING_LINE_PATTERN = re.compile(r"^(?P<hashes>#{1,6})\s+\S")
+HEADING_LINE_PATTERN = re.compile(r"^ {0,3}(?P<hashes>#{1,6})[ \t]+\S")
+FENCE_LINE_PATTERN = re.compile(r"^ {0,3}(?P<marker>`{3,}|~{3,})(?P<rest>.*)$")
+
+
+def markdown_heading_levels(body: str) -> list[int]:
+    """Return ATX heading levels outside fenced code blocks."""
+    levels: list[int] = []
+    active_fence: tuple[str, int] | None = None
+
+    for line in body.splitlines():
+        fence_match = FENCE_LINE_PATTERN.match(line)
+        if active_fence is not None:
+            if fence_match:
+                marker = fence_match.group("marker")
+                rest = fence_match.group("rest")
+                if (
+                    marker[0] == active_fence[0]
+                    and len(marker) >= active_fence[1]
+                    and not rest.strip()
+                ):
+                    active_fence = None
+            continue
+
+        if fence_match:
+            marker = fence_match.group("marker")
+            rest = fence_match.group("rest")
+            if marker[0] != "`" or "`" not in rest:
+                active_fence = (marker[0], len(marker))
+                continue
+
+        heading_match = HEADING_LINE_PATTERN.match(line)
+        if heading_match:
+            levels.append(len(heading_match.group("hashes")))
+
+    return levels
+
+
+def validate_stored_markdown_headings(body: str, *, require_section: bool = True) -> None:
+    """Enforce the database-body heading contract: H2-H6 only."""
+    levels = markdown_heading_levels(body)
+    if 1 in levels:
+        die(
+            "Article body must not contain H1. The page's only H1 comes from "
+            "the separate article title; use H2-H6 in stored body content."
+        )
+    if require_section and not any(level >= 2 for level in levels):
+        die(
+            "The article body has no section headings. "
+            "Add at least one level-2 heading (e.g., '## Section Name')."
+        )
 
 
 def validate_markdown_headings(body: str, *, force: bool = False) -> None:
-    """Ensure the article body has at least one subheading (## or deeper).
-
-    The H1 title is guaranteed by the front matter ``title`` field or by
-    ``extract_title_from_body``; this validator only checks that the body
-    has structural depth beyond the title. Pass ``--force`` to publish an
-    article with no subheadings.
-    """
-    lines = body.splitlines()
-    in_code_block = False
-    has_subheading = False
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            in_code_block = not in_code_block
-            continue
-        if in_code_block:
-            continue
-        match = HEADING_LINE_PATTERN.match(stripped)
-        if not match:
-            continue
-        level = len(match.group("hashes"))
-        if level >= 2:
-            has_subheading = True
-
-    if not has_subheading and not force:
-        die(
-            "The article body has no section headings. "
-            "Add at least one level-2 heading (e.g., '## Section Name') "
-            "before publishing, or pass --force to publish anyway."
-        )
+    """Validate stored-body headings after the source title H1 is removed."""
+    validate_stored_markdown_headings(body, require_section=not force)
 
 
 def request_json(
@@ -539,7 +559,7 @@ def poll_task(
     api_key: str,
     task_id: str,
     interval_seconds: float,
-    timeout_seconds: int,
+    timeout_seconds: float,
 ) -> dict[str, Any]:
     status_url = f"{base_url.rstrip('/')}/api/api/article/task/{urllib.parse.quote(task_id, safe='')}"
     deadline = time.time() + timeout_seconds
@@ -1143,10 +1163,9 @@ def build_payload(markdown_text: str, args: argparse.Namespace) -> tuple[dict[st
     if recommend_status is not MISSING:
         payload["recommendStatus"] = bool(recommend_status)
 
-    submit_default = bool(view_status) if view_status_explicit else (False if not is_update else MISSING)
-    submit_to_search = meta_value(meta, "submitToSearchEngine", submit_default)
+    submit_to_search = meta_value(meta, "submitToSearchEngine")
     if submit_to_search is not MISSING:
-        payload["submitToSearchEngine"] = bool(submit_to_search)
+        payload["submitToSearchEngine"] = submit_to_search
 
     password = meta_value(meta, "password")
     tips = meta_value(meta, "tips")
