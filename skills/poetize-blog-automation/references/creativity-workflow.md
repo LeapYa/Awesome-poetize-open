@@ -6,9 +6,9 @@ This skill should preserve creativity by separating idea generation from executi
 
 Before writing or publishing, produce:
 
-- 2 or 3 possible content angles
-- 2 or 3 possible title directions
-- 2 or 3 possible structural approaches when structure is not obvious
+- 1 or more content angles (a single strong angle is enough — do not pad with weak options just to hit a count; up to 3 if they are genuinely distinct)
+- 1 or more possible title directions (a single good title is enough — do not pad with weak options just to hit a count; up to 3 if they are genuinely distinct)
+- 1 or more possible structural approaches when structure is not obvious (a single clear structure is enough — do not pad; up to 3 if they are genuinely distinct)
 
 The output of this stage should help answer:
 

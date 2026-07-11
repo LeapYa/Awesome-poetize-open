@@ -2,11 +2,13 @@
 """Unified CLI for Poetize blog automation.
 
 Usage:
-    python poetize_cli.py publish --markdown-file article.md --brief-file brief.json --publish --wait
-    python poetize_cli.py manage list-articles --search-key "AI"
-    python poetize_cli.py config --output openclaw.json --api-key KEY
-    python poetize_cli.py smoke-test --base-url URL --api-key KEY
-    python poetize_cli.py eval
+    poetize-blog publish --markdown-file article.md --brief-file brief.json --publish --wait
+    poetize-blog manage list-articles --search-key "AI"
+    poetize-blog config --output openclaw.json --api-key KEY
+    poetize-blog smoke-test --base-url URL --api-key KEY
+    poetize-blog eval
+
+(Equivalent: `python scripts/poetize_cli.py ...` via the wrapper at the skill root.)
 
 Supports --stdin-brief and --stdin-payload to read JSON from stdin,
 which avoids temporary files and CLI escaping issues for Agent runtimes.
@@ -1508,7 +1510,7 @@ def print_help_path(parser: argparse.ArgumentParser, path: list[str]) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="poetize",
+        prog="poetize-blog",
         description="Unified CLI for Poetize blog automation.",
     )
     sub = parser.add_subparsers(dest="command", required=True)

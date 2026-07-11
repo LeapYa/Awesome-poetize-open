@@ -38,6 +38,7 @@ build/
 
 ### Codex / AI tooling ###
 .agents/
+.codebuddy/
 .github/prompts/
 .trae/
 poetize-admin/diff.txt

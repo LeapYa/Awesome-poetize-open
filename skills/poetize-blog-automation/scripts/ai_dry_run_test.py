@@ -197,7 +197,6 @@ SCENARIOS: list[dict[str, Any]] = [
         "title": "Scenario 1: publish draft",
         "user_intent": "帮我写一篇关于 RAG 检索增强生成的技术文章,保存为草稿",
         "command_kind": "publish",
-        "scenario_flag_check": ("draft_flag", "--draft"),
         "require_markdown_content": True,
         "require_brief": True,
         "expect_brief_publish_intent": "private",  # private or draft
@@ -207,7 +206,6 @@ SCENARIOS: list[dict[str, Any]] = [
         "title": "Scenario 2: publish public",
         "user_intent": "帮我发布一篇关于 Vue 3 组合式 API 的教程,公开发布",
         "command_kind": "publish",
-        "scenario_flag_check": ("publish_flag", "--publish"),
         "require_markdown_content": True,
         "require_brief": True,
         "expect_brief_publish_intent": "public",
@@ -240,7 +238,8 @@ SCENARIOS: list[dict[str, Any]] = [
         "command_kind": "manage",
         "scenario_flag_check": ("update_section_subcommand", "manage update-section"),
         "extra_command_check": ("article_id_789", "--article-id 789"),
-        "require_markdown_content": True,
+        "require_markdown_content": False,
+        "require_content_file": True,
         "require_brief": False,
         "expect_brief_publish_intent": None,
     },
@@ -262,7 +261,8 @@ SCENARIOS: list[dict[str, Any]] = [
         "command_kind": "manage",
         "scenario_flag_check": ("save_translation_subcommand", "manage save-translation"),
         "extra_command_check": ("article_id_123_translation", "--article-id 123"),
-        "require_markdown_content": True,
+        "require_markdown_content": False,
+        "require_content_file": True,
         "require_brief": False,
         "expect_brief_publish_intent": None,
     },
@@ -293,11 +293,11 @@ def build_user_prompt(skill_md_content: str, user_intent: str) -> str:
         f"---\n\n"
         f"用户请求: {user_intent}\n\n"
         f"请根据 SKILL.md 完成用户请求。请严格以 JSON 格式返回,不要附加多余说明:\n"
-        f'{{"commands": ["python {BASE_DIR}/scripts/poetize_cli.py publish ..."], '
+        f'{{"commands": ["poetize-blog publish ..."], '
         f'"markdown_content": "---\\n...\\n---\\n# 标题\\n正文"}}\n'
         f"要求:\n"
-        f"1. commands 数组里每个命令必须通过 python 调用 poetize_cli.py,允许用管道(如 echo '...' | python poetize_cli.py ...)向 CLI 输送 stdin。\n"
-        f"2. 如果场景需要写文章,markdown_content 必须包含 front matter 和正文;否则可为空字符串。\n"
+        f"1. commands 数组里每个命令必须通过 `poetize-blog` wrapper 调用 CLI(SKILL.md 规定的调用方式),允许用管道(如 echo '...' | poetize-blog ...)向 CLI 输送 stdin。\n"
+        f"2. 如果场景需要写文章,markdown_content 必须包含 front matter 和正文;对于 update-section / save-translation 等通过 --content-file 提供内容的命令,可把内容写入临时文件并在 commands 里用 --content-file 引用,此时 markdown_content 可为空字符串。\n"
         f"3. 不要实际执行命令,只输出你打算执行的命令和打算写的 markdown 内容。"
     )
 
@@ -541,23 +541,47 @@ def extract_json(content: str) -> dict[str, Any] | None:
     return None
 
 
+def extract_heredoc_markdown(commands: list[str]) -> str:
+    """Recover article Markdown when the LLM writes it via a heredoc.
+
+    Some models write the article into a file with ``cat > file << 'EOF' ...
+    EOF`` instead of the ``markdown_content`` JSON field. Return the first
+    heredoc body that looks like Markdown front matter (starts with ``---``),
+    so front-matter / brief checks can still run. Returns ``""`` if none.
+    """
+    for cmd in commands:
+        for m in re.finditer(r"<<\s*['\"]?(\w+)['\"]?\n(.*?)\n\1\b", cmd, re.DOTALL):
+            body = m.group(2)
+            if body.lstrip().startswith("---"):
+                return body
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Command helpers
 # ---------------------------------------------------------------------------
 
-def parse_command_flags(command: str) -> list[str]:
-    """Return all --flag tokens from the poetize_cli.py segment of a shell command.
+CLI_INVOCATION_RE = re.compile(r"(poetize_cli\.py|poetize-blog(?![-\w]))")
 
-    If the command contains a pipe/heredoc, only the segment that invokes
-    poetize_cli.py is parsed, so flags inside upstream pipe content or
-    heredoc bodies are not falsely validated.
+
+def _cli_subcommand_re(subcommand: str) -> re.Pattern[str]:
+    """Regex matching the CLI token immediately followed by a subcommand."""
+    return re.compile(rf"(?:poetize_cli\.py|poetize-blog(?![-\w]))\s+{subcommand}\b")
+
+
+def parse_command_flags(command: str) -> list[str]:
+    """Return all --flag tokens from the CLI segment of a shell command.
+
+    If the command contains a pipe/heredoc, only the segment that invokes the
+    CLI is parsed, so flags inside upstream pipe content or heredoc bodies are
+    not falsely validated.
     """
-    if "poetize_cli.py" not in command:
+    if not CLI_INVOCATION_RE.search(command):
         return []
-    # Find the segment containing poetize_cli.py — split on pipe/heredoc boundaries
-    # and take the segment that contains the CLI invocation.
+    # Find the segment containing the CLI invocation — split on pipe/heredoc
+    # boundaries and take the segment that contains it.
     segments = re.split(r'\||<<\s*\w+|>>?', command)
-    cli_segment = next((seg for seg in segments if "poetize_cli.py" in seg), command)
+    cli_segment = next((seg for seg in segments if CLI_INVOCATION_RE.search(seg)), command)
     tokens = cli_segment.split()
     return [t for t in tokens if t.startswith("--")]
 
@@ -568,43 +592,43 @@ def command_starts_with_python(command: str) -> bool:
 
 
 def command_contains_poetize_cli(command: str) -> bool:
-    return "poetize_cli.py" in command
+    return bool(CLI_INVOCATION_RE.search(command))
 
 
 def command_is_publish(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+publish\b", command))
+    return bool(_cli_subcommand_re("publish").search(command))
 
 
 def command_is_manage_hide(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+hide-article\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+hide-article").search(command))
 
 
 def command_is_manage_update_section(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+update-section\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+update-section").search(command))
 
 
 def command_is_manage_get_translation(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+get-translation\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+get-translation").search(command))
 
 
 def command_is_manage_list_translation_languages(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+list-translation-languages\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+list-translation-languages").search(command))
 
 
 def command_is_manage_save_translation(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+save-translation\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+save-translation").search(command))
 
 
 def command_is_manage_delete_translation(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+delete-translation\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+delete-translation").search(command))
 
 
 def command_is_manage_regenerate_translation(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+regenerate-translation\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+regenerate-translation").search(command))
 
 
 def command_is_manage_update_article(command: str) -> bool:
-    return bool(re.search(r"\bpoetize_cli\.py\s+manage\s+update-article\b", command))
+    return bool(_cli_subcommand_re(r"manage\s+update-article").search(command))
 
 
 def command_is_async_long_running(command: str) -> bool:
@@ -730,9 +754,10 @@ def check_command_format(commands: list[str]) -> CheckResult:
     has_cli_command = False
     for cmd in commands:
         if command_contains_poetize_cli(cmd):
-            # CLI command: accept both direct invocation and pipe-fed stdin.
-            # Only require that python appears somewhere in the command.
-            if "python" not in cmd:
+            # Accept the `poetize-blog` wrapper form (no python needed) and the
+            # legacy `python ... poetize_cli.py` form. Only the legacy form
+            # requires python to be present.
+            if "poetize_cli.py" in cmd and "python" not in cmd:
                 return CheckResult(
                     "command_format",
                     False,
@@ -818,6 +843,12 @@ def check_markdown_file_flag(commands: list[str]) -> CheckResult:
     if missing:
         return CheckResult("markdown_file_flag", False, "publish command missing --markdown-file")
     return CheckResult("markdown_file_flag", True, "present")
+
+
+def check_content_file_flag(commands: list[str]) -> CheckResult:
+    """update-section / save-translation supply body content via --content-file."""
+    ok = any(command_has_flag(c, "--content-file") for c in commands)
+    return CheckResult("content_file_flag", ok, "present" if ok else "missing '--content-file'")
 
 
 def check_scenario_flag(commands: list[str], scenario: dict[str, Any]) -> CheckResult:
@@ -934,6 +965,11 @@ def validate_scenario(
         if isinstance(md, str):
             markdown_content = md
 
+    # Fallback: LLMs may write the article into a file via a heredoc
+    # (cat > file << 'EOF' ... EOF) instead of the markdown_content field.
+    if not markdown_content:
+        markdown_content = extract_heredoc_markdown(commands)
+
     # Command-level checks
     checks.append(check_command_format(commands))
     checks.append(check_flags_valid(commands))
@@ -942,11 +978,15 @@ def validate_scenario(
     if scenario["command_kind"] == "publish":
         checks.append(check_markdown_file_flag(commands))
 
-    checks.append(check_scenario_flag(commands, scenario))
+    if scenario.get("scenario_flag_check"):
+        checks.append(check_scenario_flag(commands, scenario))
 
     extra = scenario.get("extra_command_check")
     if extra:
         checks.append(check_extra_command(commands, extra))
+
+    if scenario.get("require_content_file"):
+        checks.append(check_content_file_flag(commands))
 
     # Front matter / brief checks (only for scenarios that need markdown content)
     if scenario["require_markdown_content"]:

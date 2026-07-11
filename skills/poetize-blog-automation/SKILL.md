@@ -1,6 +1,6 @@
 ---
 name: poetize-blog-automation
-description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、评论区管理、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。仅支持 awesome-poetize-open 开源版，不适用于原版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。开源仓库：https://github.com/LeapYa/awesome-poetize-open
+description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、评论区管理、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。开源仓库：https://github.com/LeapYa/awesome-poetize-open
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/skills/poetize-blog-automation
 version: 2.1.0
 primaryEnv: POETIZE_API_KEY
@@ -27,11 +27,7 @@ disable-model-invocation: false
 ---
 # POETIZE 博客自动化
 
-装上这个技能，你可以让 AI 帮你完成 POETIZE 博客的日常运营：写文章并一键发布、更新或隐藏已有文章、管理评论、分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。
-
-仅支持 `awesome-poetize-open` 开源版，不适用于原版 POETIZE。开源仓库：https://github.com/LeapYa/awesome-poetize-open
-
-定位是个人博客运营助手。发文默认策略：免费优先、维护优先、质量优先。
+个人博客运营助手，仅适配 `awesome-poetize-open`。发文默认策略：免费优先、维护优先、质量优先。
 
 ## Security Warnings
 
@@ -43,21 +39,24 @@ disable-model-invocation: false
 
 ## Agent-First Execution Rules
 
-- This skill is for `awesome-poetize-open` only. Do not use it with the original POETIZE or a fork whose API compatibility has not been verified.
-- Use `{baseDir}` for paths inside this skill folder. Run all operations through `python {baseDir}/scripts/poetize_cli.py <command> [subcommand] ...`; use `python3` if `python` is unavailable.
+- This skill is for `awesome-poetize-open` only. Do not use it with the closed-source POETIZE or a fork whose API compatibility has not been verified.
+- Use `{baseDir}` for paths inside this skill folder. Run all operations through the `poetize-blog` wrapper. The wrapper auto-detects its own directory, so you never pass baseDir to it — just reach the wrapper file:
+  - macOS / Linux: `{baseDir}/poetize-blog` (bash)
+  - Windows (cmd or PowerShell): `{baseDir}\poetize-blog.cmd`
+  - Or put `{baseDir}` on `PATH` and call `poetize-blog` directly (on Windows the `.cmd` extension is implied).
+  Python 3 is still required at runtime (declared in `requires.anyBins`); the wrapper auto-selects `py` / `python3` / `python`.
 - Invoke this skill only for explicit POETIZE tasks, not generic writing or SEO requests.
-- Generate framework config with `poetize_cli.py config`: use `--format openclaw` for OpenClaw and `--format env` for IDE agents or shell environments.
+- Generate framework config with `poetize-blog config`: use `--format openclaw` for OpenClaw and `--format env` for IDE agents or shell environments.
 - Use native credential persistence when the framework provides it. Otherwise use global `auth login`; in ephemeral sandboxes use `auth login --local` or CLI args/env.
 - Credential resolution priority: CLI args > env vars > global config (`~/.config/poetize/credentials.json`) > local skill config (`{baseDir}/credentials.json`) > CWD config (`./credentials.json`).
-- Run `poetize_cli.py smoke-test` before the first real write action in a new Agent environment.
+- Run `poetize-blog smoke-test` before the first real write action in a new Agent environment.
 - Set `POETIZE_BASE_URL` to the public domain origin without a trailing `/api`; requests resolve under `${POETIZE_BASE_URL}/api/api/...`.
-- For `publish`, prefer an inline `_brief`; use `--stdin-brief` or `--brief-file` when a separate audit trail is needed.
-- For strategy-validated `manage` mutations, pipe JSON with `--stdin-brief` (prefer a heredoc) or use `--brief-file`. Never pass `--stdin-brief` without stdin data, and do not create a Python wrapper merely to pipe it.
+- For `publish`, prefer an inline `_brief`; use `--stdin-brief` (with actual piped/heredoc JSON) or `--brief-file` when a separate audit trail is needed. Never pass `--stdin-brief` without stdin data, and do not create a Python wrapper merely to pipe it.
 
 Read [references/strategy-playbook.md](references/strategy-playbook.md) before deciding whether to create, refresh, or hide content.
 Read [references/decision-matrix.md](references/decision-matrix.md) before setting publish posture, search posture, or paywall posture.
 Read [references/creativity-workflow.md](references/creativity-workflow.md) before drafting article copy.
-Run `python {baseDir}/scripts/poetize_cli.py eval` to verify the local strategy layer before shipping skill changes.
+Run `poetize-blog eval` to verify the local strategy layer before shipping skill changes.
 
 ## Writing Voice
 
@@ -88,19 +87,16 @@ If web search or article-list access is unavailable, record that limitation in `
    Run Pre-Writing Topic Validation only when applicable.
    A strategy brief is required for `publish` and these `manage` mutations: `update-article`, `hide-article`, `update-section`, `save-translation`, `delete-translation`, and `regenerate-translation`. Other commands do not consume a brief.
 2. Create the matching brief.
-   Use `{baseDir}/assets/article-brief.template.json` for `publish` and `{baseDir}/assets/ops-brief.template.json` for the strategy-validated `manage` commands. Prefer inline `_brief` for `publish`; use `--brief-file` or correctly piped `--stdin-brief` otherwise.
+   Use `{baseDir}/assets/article-brief.template.json` for `publish` and `{baseDir}/assets/ops-brief.template.json` for the strategy-validated `manage` commands. See Agent-First rules for inline `_brief` / `--stdin-brief` / `--brief-file` usage.
    Article briefs require `taskType`, `primaryGoal`, `targetAudience`, `publishIntent`, `reasoning`, `selectedAngle`, and `alternativesConsidered`; `monetizationIntent` defaults to `free_default`. Ops briefs require `taskType`, `primaryGoal`, `reasoning`, and `expectedOutcome`.
    Infer strategy fields from the user's goal and explain them in `reasoning`. Ask only when missing information would materially change the target, public visibility, monetization, or taxonomy.
 3. Diverge, then converge.
    Consider 2-4 plausible directions, choose one as `selectedAngle`, and record 1-3 rejected directions in `alternativesConsidered`. Even when one direction is strongly preferred, include at least one plausible rejected alternative.
 4. Write the article in Markdown following Content Layout Rules and Writing Voice.
-   For images: either reference local files (CLI auto-uploads at publish time) or upload first via `poetize_cli.py upload-image` and embed the URL.
+   For images: either reference local files (CLI auto-uploads at publish time) or upload first via `poetize-blog upload-image` and embed the URL.
    When the task is maintenance, prefer revising existing articles over creating duplicates.
 5. Add front matter for the article title, routing, and publishing metadata.
-   New articles require `title`, `sort` or `sortId`, and `label` or `labelId`; content updates require `title` and may omit unchanged taxonomy.
-   With inline `_brief`, omit `viewStatus`: `_brief.publishIntent` is authoritative. For public article creation or modification, `submitToSearchEngine` defaults to `true`; set it explicitly to `false` when frequent edits should not trigger search submission. Drafts force it to `false`.
-   For `free_default`, omit `payType` because the strategy forces `0`; `paid_explicit` instead requires `primaryGoal: conversion`, non-empty `whyPaid`, and `payType > 0`.
-   Use existing taxonomy names when IDs are unknown. Exact matches are resolved; close matches are suggestions only. Set `coverBlank: true` when no cover is needed.
+   New articles require `title`, `sort`/`sortId`, and `label`/`labelId`; content updates require `title` and may omit unchanged taxonomy. With inline `_brief`, omit `viewStatus` (derived from `publishIntent`) and omit `payType` for `free_default` (forced to `0`); `paid_explicit` requires `primaryGoal: conversion`, non-empty `whyPaid`, and `payType > 0`. Use existing taxonomy names when IDs are unknown (close matches are suggestions only); set `coverBlank: true` when no cover is needed. See the field reference table below for all fields and defaults.
 
    Front matter field reference:
 
@@ -131,14 +127,13 @@ If web search or article-list access is unavailable, record that limitation in `
    | `paymentPluginKey` | No | — | Payment plugin key (e.g. `afdian`) |
    | `paymentConfigFile` | No | — | Payment config JSON path |
    | `_brief` | No | — | Inline strategy brief (see Workflow step 2) |
-6. Write the Markdown file locally, then run `python {baseDir}/scripts/poetize_cli.py publish --markdown-file <file>`; inline `_brief` removes the need for `--brief-file`.
+6. Write the Markdown file locally, then run `poetize-blog publish --markdown-file <file>`; inline `_brief` removes the need for `--brief-file`.
    `_brief.publishIntent` determines visibility; `--draft` and `--publish` are optional consistency checks and must agree with it.
    For draft-first creation, start with `taskType: create_article` and `publishIntent: draft`, run with `--draft --wait`, and verify the returned ID. To promote, change the same file to `taskType: refresh_article` and `publishIntent: public`, then rerun with `--article-id <id> --publish --wait`.
    Runtime authentication requires `POETIZE_BASE_URL` and `POETIZE_API_KEY` from the configured credential source. Referenced local Markdown and HTML images are uploaded automatically.
    Paid publishing checks `/api/api/payment/plugin/status` and fails closed if the selected plugin is not ready; it never silently publishes the requested paid article as free.
 7. Use `manage <subcommand>` for existing content, comments, themes, analytics, and SEO.
-   - Article deletion is unsupported; use `hide-article` with a matching ops brief.
-   - Use `update-section` for localized source edits, `save-translation` for a manual translation correction, `regenerate-translation` only when all translations are stale, and `publish --article-id` for full rewrites.
+   - Use `update-section` for localized source edits, `save-translation` for a manual translation correction, `regenerate-translation` only when all translations are stale, and `publish --article-id` for full rewrites. Article deletion is unsupported; use `hide-article` (see Guardrails).
    - Comment writes are opt-in: run them only when the user requests comment work or accepts a specific proposal. Use `--as-ai` for the configured AI persona; omit it for the Blog Owner.
    - Comment, translation, and section commands require backend `v5.0.1` or later. On an explicit version-mismatch error, ask the user to upgrade; other commands remain available.
 8. Return the final result. For async commands (`publish`, `hide-article`, `update-article`, `update-section` without `--skip-ai-translation`, `regenerate-translation`), prefer running **without** `--wait` so the CLI returns the task id immediately; then poll the status yourself (`manage task-status --task-id <id>` for article tasks, `manage list-translation-languages --article-id <id>` for translation tasks) with a sleep between checks. Reserve `--wait` for simple one-shot waits where you have nothing else to do.
@@ -148,9 +143,9 @@ If web search or article-list access is unavailable, record that limitation in `
 - Free content is the default; never introduce a paywall without an explicit monetization request. New articles default to draft when visibility is unspecified.
 - The strategy-validated commands listed in Workflow step 1 require a matching, non-contradictory brief. Other writes still require explicit user intent but no fabricated brief.
 - Never invent taxonomy IDs or silently accept fuzzy matches. Use names when IDs are unknown, and create taxonomy only after confirmation through an `--allow-create-*` flag.
-- Preserve unspecified fields on updates except `submitToSearchEngine`: article creation, full publish updates, and `manage update-article` default it to `true`; set it explicitly to `false` while frequent edits should not trigger search submission. Draft and hide flows force it to `false`.
+- Preserve unspecified fields on updates. The only exception is `submitToSearchEngine` (see front matter table for defaults); hide flows force it to `false`.
 - Article deletion is unsupported. Use `hide-article`; do not emulate deletion through unrelated fields.
-- A requested paid publish must fail rather than silently become free when payment is unavailable. A separate free publish requires fresh user intent and a `free_default` brief.
+- A requested paid publish fails closed when payment is unavailable (see Monetization). A separate free publish requires fresh user intent and a `free_default` brief.
 - Prefer `coverBlank: true` over a fabricated cover. Stop on a missing local image rather than dropping or guessing it.
 - Comment writes remain opt-in; publishing alone is not permission to inspect or create comments.
 - With `list-comments --floor-comment-id <id>`, `"root_comment_missing": true` means the root fell outside the newest 50 top-level comments. Fetch additional top-level pages before replying when root context matters.
@@ -174,19 +169,13 @@ Paid publishing is allowed only after the user explicitly requests it. The blog 
 Save credentials once for all future commands (recommended for all frameworks, especially those without env persistence):
 
 ```bash
-python {baseDir}/scripts/poetize_cli.py auth login --base-url "$POETIZE_BASE_URL" --api-key "$POETIZE_API_KEY"
-python {baseDir}/scripts/poetize_cli.py auth show   # verify without printing the API key
+poetize-blog auth login --base-url "$POETIZE_BASE_URL" --api-key "$POETIZE_API_KEY"
+poetize-blog auth show   # verify without printing the API key
 ```
 
 After `auth login`, subsequent commands (`publish`, `manage`, `smoke-test`, etc.) no longer need `--base-url` or `--api-key`.
 
-Generate framework config: `poetize_cli.py config --output <file> --format env|openclaw`. Use `--format env` for IDE agents (source into shell), `--format openclaw` for OpenClaw.
-Run a read-only smoke test before first publish: `poetize_cli.py smoke-test`.
-
-Start from the bundled strategy templates:
-
-Create `article-brief.json` from `{baseDir}/assets/article-brief.template.json`.
-Create `ops-brief.json` from `{baseDir}/assets/ops-brief.template.json`.
+Start from the bundled strategy templates: `article-brief.json` from `{baseDir}/assets/article-brief.template.json`, `ops-brief.json` from `{baseDir}/assets/ops-brief.template.json`.
 
 Front matter example with inline `_brief` (recommended for Agent workflows):
 
@@ -244,27 +233,13 @@ The script rejects incomplete briefs, reports all missing fields together, and r
 Upload an image first when an explicit URL is preferable to publish-time upload:
 
 ```bash
-python {baseDir}/scripts/poetize_cli.py upload-image --file ./assets/flow.png --type articleImage
-```
-
-List articles for operational filtering:
-
-```bash
-python {baseDir}/scripts/poetize_cli.py manage list-articles --search-key "AI" --sort-name "AI实践" --label-name "自动化" --current 1 --size 10
-```
-
-If an exact category or tag name does not match, the management script returns close candidates. Surface those for confirmation instead of guessing.
-
-Fetch an existing article (use any one of `--article-id`, `--article-slug`, `--article-title-exact`):
-
-```bash
-python {baseDir}/scripts/poetize_cli.py manage get-article --article-id 123
+poetize-blog upload-image --file ./assets/flow.png --type articleImage
 ```
 
 Hide an existing article (`--stdin-brief` via heredoc — no Python wrapper needed):
 
 ```bash
-python {baseDir}/scripts/poetize_cli.py manage hide-article --article-id 123 --stdin-brief --wait <<'BRIEF'
+poetize-blog manage hide-article --article-id 123 --stdin-brief --wait <<'BRIEF'
 {"taskType":"hide_article","primaryGoal":"asset_maintenance","reasoning":"user requested hiding","expectedOutcome":"article is no longer public but remains recoverable"}
 BRIEF
 ```
@@ -272,15 +247,12 @@ BRIEF
 List and reply to comments (the "cold start" engagement loop — see Guardrails for the `root_comment_missing` caveat):
 
 ```bash
-# Inspect the latest top-level comments for an article
-python {baseDir}/scripts/poetize_cli.py manage list-comments --article-id 123 --size 10
-
-# Reply to a specific comment as the AI persona. --floor-comment-id is not needed here —
+poetize-blog manage list-comments --article-id 123 --size 10
+# Reply as the AI persona. --floor-comment-id is not needed for save-comment:
 # the backend derives it from --parent-comment-id server-side (see note below the manage table).
-python {baseDir}/scripts/poetize_cli.py manage save-comment --article-id 123 --content "感谢分享，这个思路我们后续会展开讲！" --parent-comment-id 456 --parent-user-id 78 --as-ai
-
+poetize-blog manage save-comment --article-id 123 --content "感谢分享，这个思路我们后续会展开讲！" --parent-comment-id 456 --parent-user-id 78 --as-ai
 # No comments yet: post a top-level welcome/question to bootstrap discussion
-python {baseDir}/scripts/poetize_cli.py manage save-comment --article-id 123 --content "欢迎留言交流～"
+poetize-blog manage save-comment --article-id 123 --content "欢迎留言交流～"
 ```
 
 ### Manage subcommands reference
@@ -315,25 +287,13 @@ For `update-article`, do not combine `--stdin-payload` with `--stdin-brief`: bot
 
 > `--floor-comment-id` behaves differently across the two commands above. In `list-comments` it is a real query filter that selects which floor's replies to page through. In `save-comment` it is a no-op: the backend always recomputes `floorCommentId` from `parentCommentId` server-side and only logs a warning if the client value disagrees. Omit it when replying — just pass `--parent-comment-id` and `--parent-user-id`.
 
-Switch the global article theme:
-
-```bash
-python {baseDir}/scripts/poetize_cli.py manage activate-theme --plugin-key academic
-```
-
-Update controlled SEO config:
-
-```bash
-python {baseDir}/scripts/poetize_cli.py manage seo-set-config --config-file seo.json
-```
-
 ## Publish & Update Articles
 
 Write the Markdown file first, then publish through the unified CLI. Inline `_brief` means no `--brief-file` is needed.
 
 ```bash
 # article.md contains front matter with publishIntent: draft
-python {baseDir}/scripts/poetize_cli.py publish --markdown-file article.md --draft --wait
+poetize-blog publish --markdown-file article.md --draft --wait
 ```
 
 ### Publish flags reference
@@ -356,21 +316,13 @@ python {baseDir}/scripts/poetize_cli.py publish --markdown-file article.md --dra
 | `--stdin-brief` | Read article brief JSON from stdin | Only with actual piped/heredoc JSON |
 | `--print-payload` | Print payload without sending | Local debugging; payload may contain sensitive fields |
 
-> **`--wait` — optional convenience flag for async commands.** When added, the CLI blocks and polls the task-status endpoint (or `list-translation-languages` for translation commands) until completion or `--timeout` (default 900s). Use `--poll-interval` (default 2.0s) to adjust the poll cadence.
->
-> **Default recommendation: do NOT add `--wait`.** Let the CLI return the task id immediately, then poll yourself. This keeps you in control: you can interleave other work, cancel mid-flight, and avoid a long-blocking CLI process. Poll with `manage task-status --task-id <id>` for `publish` / `hide-article` / `update-article` tasks, and `manage list-translation-languages --article-id <id>` for `update-section` (without `--skip-ai-translation`) / `regenerate-translation` tasks.
->
-> **When `--wait` is appropriate:** one-shot waits where you have nothing else to do (e.g. publish a draft and immediately verify the id), human terminal use, or shell scripts.
->
-> **Commands where `--wait` has no effect (do not add):** all read-only `manage` commands (`list-articles`, `get-article`, `list-comments`, `get-translation`, `list-translation-languages`, analytics/SEO/theme/taxonomy reads), `config`, `smoke-test`, `eval`, `upload-image`, and `update-section --skip-ai-translation`. These return synchronously; the parser accepts `--wait` but ignores it.
->
-> **True global flags** (every command): `--base-url`, `--api-key`.
+> **`--wait` (optional, async commands only).** Default: do NOT add it — let the CLI return the task id, then poll yourself (`manage task-status --task-id <id>` for article tasks; `manage list-translation-languages --article-id <id>` for translation tasks). When added, the CLI blocks until completion or `--timeout` (default 900s); `--poll-interval` defaults to 2.0s. `--wait` has no effect on read-only `manage` commands, `config`, `smoke-test`, `eval`, `upload-image`, or `update-section --skip-ai-translation`. True global flags (every command): `--base-url`, `--api-key`.
 
 For an existing article, fetch it first and rebuild `updated.md` from the returned title/content. Set `_brief.taskType: refresh_article` and set `publishIntent` to the current visibility unless the user requested a change:
 
 ```bash
-python {baseDir}/scripts/poetize_cli.py manage get-article --article-id 123
-python {baseDir}/scripts/poetize_cli.py publish --markdown-file updated.md --article-id 123 --wait
+poetize-blog manage get-article --article-id 123
+poetize-blog publish --markdown-file updated.md --article-id 123 --wait
 ```
 
 ## Section-Level Editing & Translation Management
@@ -396,7 +348,7 @@ Edit a single section by heading instead of rewriting the whole Markdown file. T
 | `append` | omitted | required | Append content at article end |
 
 ```bash
-python {baseDir}/scripts/poetize_cli.py manage update-section --article-id 123 \
+poetize-blog manage update-section --article-id 123 \
   --heading "Installation" --action replace --content-file section.md \
   --brief-file update-section-brief.json
 ```
@@ -408,18 +360,9 @@ Use an ops brief with `taskType: update_section`. `--skip-ai-translation` skips 
 For AI-translated articles, you can inspect, edit, delete, or regenerate translations without touching the original article content:
 
 ```bash
-# Read-only inspection
-python {baseDir}/scripts/poetize_cli.py manage list-translation-languages --article-id 123
-python {baseDir}/scripts/poetize_cli.py manage get-translation --article-id 123 --language en
-
-# Each mutation uses an ops brief whose taskType matches the command
-python {baseDir}/scripts/poetize_cli.py manage save-translation --article-id 123 \
+poetize-blog manage save-translation --article-id 123 \
   --language en --title "My Article" --content-file translated.md \
   --brief-file update-translation-brief.json
-python {baseDir}/scripts/poetize_cli.py manage delete-translation --article-id 123 \
-  --language en --brief-file delete-translation-brief.json
-python {baseDir}/scripts/poetize_cli.py manage regenerate-translation --article-id 123 \
-  --brief-file regenerate-translation-brief.json
 ```
 
 **When to use which editing path:**
@@ -432,9 +375,7 @@ python {baseDir}/scripts/poetize_cli.py manage regenerate-translation --article-
 | All translations are stale after major edits | `manage regenerate-translation` |
 | Metadata-only update (viewStatus, password, tips, etc.) | `manage update-article` |
 
-> Mutating translation and section commands (`save-translation`, `delete-translation`, `regenerate-translation`, `update-section`) require `--stdin-brief` (or `--brief-file`) with the matching `taskType`: `update_translation`, `delete_translation`, `regenerate_translation`, or `update_section`. Read-only commands (`get-translation`, `list-translation-languages`) do not need a brief.
->
-> All commands in this section require `awesome-poetize-open` backend `v5.0.1` or later. On older backends the CLI returns an explicit version-mismatch error instead of a raw HTTP 404/500.
+> Mutating translation and section commands (`save-translation`, `delete-translation`, `regenerate-translation`, `update-section`) require `--stdin-brief` (or `--brief-file`) with the matching `taskType`: `update_translation`, `delete_translation`, `regenerate_translation`, or `update_section`. Read-only commands (`get-translation`, `list-translation-languages`) do not need a brief. All commands in this section require backend `v5.0.1` or later; on older backends the CLI returns an explicit version-mismatch error instead of a raw HTTP 404/500.
 
 ## Failure Recovery & Safe Retry
 
