@@ -156,7 +156,7 @@ def _cli_die(message: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# v5.0.1+ endpoints: version-gap guard
+# v5.1.0+ endpoints: version-gap guard
 # ---------------------------------------------------------------------------
 
 # /api/api/comment/*, /api/api/translation/*, and /api/api/article/updateSection
@@ -165,7 +165,7 @@ def _cli_die(message: str) -> None:
 # yet — that failure looks identical to a real bug from the CLI's perspective,
 # so we translate it into an explicit version-mismatch message instead of
 # surfacing a raw HTTP error.
-V5_ENDPOINTS_MIN_BACKEND_VERSION = "v5.0.1"
+V5_ENDPOINTS_MIN_BACKEND_VERSION = "v5.1.0"
 
 
 def request_json_v5_endpoint(
@@ -177,7 +177,7 @@ def request_json_v5_endpoint(
     feature_name: str,
     commands: str,
 ) -> dict[str, Any]:
-    """Wrap request_json for routes that require backend v5.0.1+.
+    """Wrap request_json for routes that require backend v5.1.0+.
 
     On HTTP 404/500 (endpoint not registered on older backends), re-raise
     with a version-mismatch explanation instead of the raw server error.

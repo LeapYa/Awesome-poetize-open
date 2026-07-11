@@ -135,7 +135,7 @@ If web search or article-list access is unavailable, record that limitation in `
 7. Use `manage <subcommand>` for existing content, comments, themes, analytics, and SEO.
    - Use `update-section` for localized source edits, `save-translation` for a manual translation correction, `regenerate-translation` only when all translations are stale, and `publish --article-id` for full rewrites. Article deletion is unsupported; use `hide-article` (see Guardrails).
    - Comment writes are opt-in: run them only when the user requests comment work or accepts a specific proposal. Use `--as-ai` for the configured AI persona; omit it for the Blog Owner.
-   - Comment, translation, and section commands require backend `v5.0.1` or later. On an explicit version-mismatch error, ask the user to upgrade; other commands remain available.
+   - Comment, translation, and section commands require backend `v5.1.0` or later. On an explicit version-mismatch error, ask the user to upgrade; other commands remain available.
 8. Return the final result. For async commands (`publish`, `hide-article`, `update-article`, `update-section` without `--skip-ai-translation`, `regenerate-translation`), prefer running **without** `--wait` so the CLI returns the task id immediately; then poll the status yourself (`manage task-status --task-id <id>` for article tasks, `manage list-translation-languages --article-id <id>` for translation tasks) with a sleep between checks. Reserve `--wait` for simple one-shot waits where you have nothing else to do.
 
 ## Guardrails
@@ -274,14 +274,14 @@ poetize-blog manage save-comment --article-id 123 --content "欢迎留言交流�
 | `seo-set-config` | Update SEO config | `--config-file <path>` (required) |
 | `sitemap-update` | Refresh sitemap | none |
 | `task-status` | Get asynchronous task status | `--task-id <id>` (required) |
-| `list-comments` | List comments of an article (requires backend `v5.0.1`+) | `--article-id <id>`, `--floor-comment-id <id>` (required to page a specific floor's replies), `--current`, `--size` |
-| `save-comment` | Post or reply to a comment (requires backend `v5.0.1`+) | `--article-id <id>`, `--content <text>`, `--parent-comment-id <id>`, `--parent-user-id <id>`, `--floor-comment-id <id>` (optional, ignored — see note below), `--as-ai` |
-| `get-translation` | Fetch an article's translation for a specific language (requires backend `v5.0.1`+) | `--article-id <id>`, `--language <code>` (default: `en`) |
-| `list-translation-languages` | List available translation languages for an article (requires backend `v5.0.1`+) | `--article-id <id>` |
-| `save-translation` | Save/overwrite a manual translation (requires backend `v5.0.1`+) | article/language/title/content, `--brief-file` / `--stdin-brief` |
-| `delete-translation` | Delete one translation (requires backend `v5.0.1`+) | article/language, `--brief-file` / `--stdin-brief` |
-| `regenerate-translation` | Delete all translations and re-run AI translation (requires backend `v5.0.1`+) | article, `--brief-file` / `--stdin-brief`, `--wait` / `--poll-interval` / `--timeout` |
-| `update-section` | Edit one section (requires backend `v5.0.1`+) | article/action, optional heading/content/`--new-heading-level`/`--skip-ai-translation`, brief, `--wait` / `--poll-interval` / `--timeout` |
+| `list-comments` | List comments of an article (requires backend `v5.1.0`+) | `--article-id <id>`, `--floor-comment-id <id>` (required to page a specific floor's replies), `--current`, `--size` |
+| `save-comment` | Post or reply to a comment (requires backend `v5.1.0`+) | `--article-id <id>`, `--content <text>`, `--parent-comment-id <id>`, `--parent-user-id <id>`, `--floor-comment-id <id>` (optional, ignored — see note below), `--as-ai` |
+| `get-translation` | Fetch an article's translation for a specific language (requires backend `v5.1.0`+) | `--article-id <id>`, `--language <code>` (default: `en`) |
+| `list-translation-languages` | List available translation languages for an article (requires backend `v5.1.0`+) | `--article-id <id>` |
+| `save-translation` | Save/overwrite a manual translation (requires backend `v5.1.0`+) | article/language/title/content, `--brief-file` / `--stdin-brief` |
+| `delete-translation` | Delete one translation (requires backend `v5.1.0`+) | article/language, `--brief-file` / `--stdin-brief` |
+| `regenerate-translation` | Delete all translations and re-run AI translation (requires backend `v5.1.0`+) | article, `--brief-file` / `--stdin-brief`, `--wait` / `--poll-interval` / `--timeout` |
+| `update-section` | Edit one section (requires backend `v5.1.0`+) | article/action, optional heading/content/`--new-heading-level`/`--skip-ai-translation`, brief, `--wait` / `--poll-interval` / `--timeout` |
 
 For `update-article`, do not combine `--stdin-payload` with `--stdin-brief`: both read the same stream sequentially. Put at least one JSON object in a file.
 
@@ -375,7 +375,7 @@ poetize-blog manage save-translation --article-id 123 \
 | All translations are stale after major edits | `manage regenerate-translation` |
 | Metadata-only update (viewStatus, password, tips, etc.) | `manage update-article` |
 
-> Mutating translation and section commands (`save-translation`, `delete-translation`, `regenerate-translation`, `update-section`) require `--stdin-brief` (or `--brief-file`) with the matching `taskType`: `update_translation`, `delete_translation`, `regenerate_translation`, or `update_section`. Read-only commands (`get-translation`, `list-translation-languages`) do not need a brief. All commands in this section require backend `v5.0.1` or later; on older backends the CLI returns an explicit version-mismatch error instead of a raw HTTP 404/500.
+> Mutating translation and section commands (`save-translation`, `delete-translation`, `regenerate-translation`, `update-section`) require `--stdin-brief` (or `--brief-file`) with the matching `taskType`: `update_translation`, `delete_translation`, `regenerate_translation`, or `update_section`. Read-only commands (`get-translation`, `list-translation-languages`) do not need a brief. All commands in this section require backend `v5.1.0` or later; on older backends the CLI returns an explicit version-mismatch error instead of a raw HTTP 404/500.
 
 ## Failure Recovery & Safe Retry
 
