@@ -171,10 +171,11 @@ def parse_publish_flags_doc(skill_md: str) -> list[str]:
     for row in data:
         if not row:
             continue
-        tokens = BACKTICK_RE.findall(row[0])
-        if tokens:
-            # Cell like `--markdown-file <path>` -> take the first whitespace token.
-            flags.append(tokens[0].split()[0])
+        # A cell may list multiple aliases, e.g. `--publish` / `--draft`.
+        # Capture every backtick token and take its first whitespace-delimited
+        # part as the flag name (handles `--markdown-file <path>`).
+        for token in BACKTICK_RE.findall(row[0]):
+            flags.append(token.split()[0])
     return flags
 
 
@@ -187,9 +188,9 @@ def parse_manage_subcommands_doc(skill_md: str) -> list[str]:
     for row in data:
         if not row:
             continue
-        tokens = BACKTICK_RE.findall(row[0])
-        if tokens:
-            subs.append(tokens[0])
+        # A cell may list multiple related subcommands, e.g.
+        # `theme-status` / `activate-theme`. Capture all of them.
+        subs.extend(BACKTICK_RE.findall(row[0]))
     return subs
 
 

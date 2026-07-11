@@ -509,6 +509,8 @@ def add_manage_subparsers(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--content-file", help="New section Markdown (required except delete); database body headings must be H2-H6.")
     p.add_argument("--new-heading-level", type=int, choices=range(2, 7), metavar="2..6", help="Explicit new level for the replacement heading; replace only. Omit to preserve the current level.")
     p.add_argument("--skip-ai-translation", action="store_true", help="Skip automatic AI translation re-generation.")
+    p.add_argument("--heading-index", type=int, metavar="N", help="1-based index to disambiguate when multiple headings match (get from error message).")
+    p.add_argument("--dry-run", action="store_true", help="Preview the change without persisting; returns original/updated content for review.")
     p.add_argument("--brief-file", help="JSON brief file for strategy validation.")
     p.add_argument("--stdin-brief", action="store_true", help="Read brief JSON from stdin.")
 
@@ -1094,6 +1096,16 @@ def cmd_manage(args: argparse.Namespace) -> None:
                     _cli_die(f"Content file does not exist: {args.content_file}")
                 except OSError as exc:
                     _cli_die(f"Failed to read content file: {exc}")
+                # Front matter guard: section content must be pure Markdown body
+                stripped = content.lstrip()
+                if stripped.startswith("---") and (
+                    len(stripped) == 3 or stripped[3] in ("\n", "\r")
+                ):
+                    _cli_die(
+                        "Content file appears to start with YAML front matter (---). "
+                        "Section content must be pure Markdown body without front matter. "
+                        "Front matter is only valid in publish --markdown-file."
+                    )
 
             payload = {
                 "articleId": args.article_id,
@@ -1104,6 +1116,10 @@ def cmd_manage(args: argparse.Namespace) -> None:
                 payload["heading"] = args.heading
             if args.new_heading_level is not None:
                 payload["newHeadingLevel"] = args.new_heading_level
+            if args.heading_index is not None:
+                payload["headingIndex"] = args.heading_index
+            if args.dry_run:
+                payload["dryRun"] = True
             if args.skip_ai_translation:
                 payload["skipAiTranslation"] = True
             payload = apply_ops_strategy(brief, payload, expected_task_type="update_section")
@@ -1111,6 +1127,22 @@ def cmd_manage(args: argparse.Namespace) -> None:
             if response.get("code") == 200:
                 data = response.get("data", {})
                 changed = data.get("changed", False) if isinstance(data, dict) else False
+                is_dry_run = isinstance(data, dict) and data.get("dryRun", False)
+                warning = data.get("warning") if isinstance(data, dict) else None
+
+                if is_dry_run:
+                    response["agent_guide"] = {
+                        "message": "Dry-run preview: no changes persisted. Review originalContent vs updatedContent before rerunning without --dry-run.",
+                        "next_steps": [
+                            f"Apply for real: python poetize_cli.py manage update-section --article-id {args.article_id} --heading \"{args.heading or ''}\" --action {args.action} --content-file <file>",
+                            "If rollback is needed after applying: use the originalSectionContent from this response to replace back.",
+                        ],
+                    }
+                    if warning:
+                        print(f"⚠ WARNING: {warning}", file=sys.stderr)
+                    print(json.dumps(response, ensure_ascii=False, indent=2))
+                    return
+
                 skip_msg = (
                     "Translation was skipped."
                     if args.skip_ai_translation
@@ -1126,12 +1158,17 @@ def cmd_manage(args: argparse.Namespace) -> None:
                         print(json.dumps(response, ensure_ascii=False, indent=2))
                         _output_error(wait_result.get("message", "Translation wait failed."))
                         return
+                agent_message = f"Section update {'applied' if changed else 'resulted in no changes'}. {skip_msg}"
+                if warning:
+                    agent_message = f"⚠ {warning} {agent_message}"
                 response["agent_guide"] = {
-                    "message": f"Section update {'applied' if changed else 'resulted in no changes'}. {skip_msg}",
+                    "message": agent_message,
                     "next_steps": [
                         f"Verify updated content: python poetize_cli.py manage get-article --article-id {args.article_id}",
                     ],
                 }
+                if warning:
+                    print(f"⚠ WARNING: {warning}", file=sys.stderr)
             print(json.dumps(response, ensure_ascii=False, indent=2))
             return
 

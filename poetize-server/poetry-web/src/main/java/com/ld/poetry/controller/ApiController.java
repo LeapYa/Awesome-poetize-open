@@ -2157,7 +2157,9 @@ public class ApiController {
             String action = stringValue(body.get("action"));
             String content = stringValue(body.get("content"));
             Integer newHeadingLevel = parseInteger(body.get("newHeadingLevel"));
+            Integer headingIndex = parseInteger(body.get("headingIndex"));
             boolean skipAiTranslation = Boolean.TRUE.equals(body.get("skipAiTranslation"));
+            boolean dryRun = Boolean.TRUE.equals(body.get("dryRun"));
 
             if (articleId == null || articleId <= 0) {
                 return PoetryResult.fail("articleId 不能为空");
@@ -2191,11 +2193,16 @@ public class ApiController {
             }
 
             String updatedContent;
+            String originalSectionContent = null;
+            String warning = null;
             try {
-                updatedContent = MarkdownSectionEditor.apply(
+                MarkdownSectionEditor.SectionEditResult editResult = MarkdownSectionEditor.apply(
                         originalContent,
                         new MarkdownSectionEditor.SectionUpdate(
-                                heading, action, content, newHeadingLevel));
+                                heading, headingIndex, action, content, newHeadingLevel));
+                updatedContent = editResult.updatedContent();
+                originalSectionContent = editResult.originalSectionContent();
+                warning = editResult.warning();
             } catch (IllegalArgumentException e) {
                 return PoetryResult.fail(e.getMessage());
             }
@@ -2205,6 +2212,28 @@ public class ApiController {
                 data.put("articleId", articleId);
                 data.put("message", "内容未发生变化");
                 data.put("changed", false);
+                return PoetryResult.success(data);
+            }
+
+            // Dry-run 路径：只返回预览结果，不执行任何持久化或副作用
+            if (dryRun) {
+                log.info("章节更新 dry-run 预览请求，文章ID: {}", articleId);
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("articleId", articleId);
+                data.put("dryRun", true);
+                data.put("changed", true);
+                data.put("action", action);
+                data.put("heading", heading);
+                if (newHeadingLevel != null) {
+                    data.put("newHeadingLevel", newHeadingLevel);
+                }
+                data.put("originalContent", originalContent);
+                data.put("updatedContent", updatedContent);
+                data.put("originalSectionContent", originalSectionContent);
+                if (warning != null) {
+                    data.put("warning", warning);
+                }
+                data.put("message", "Dry-run 预览：内容未持久化，未触发翻译/摘要/事件");
                 return PoetryResult.success(data);
             }
 
@@ -2261,6 +2290,10 @@ public class ApiController {
                 data.put("newHeadingLevel", newHeadingLevel);
             }
             data.put("skipAiTranslation", skipAiTranslation);
+            data.put("originalSectionContent", originalSectionContent);
+            if (warning != null) {
+                data.put("warning", warning);
+            }
             data.put("message", "章节内容更新成功");
             data.put("agent_guide", Map.of(
                     "next_steps", List.of(

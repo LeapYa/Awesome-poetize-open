@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -159,6 +161,81 @@ class MarkdownSectionEditorTest {
                 () -> MarkdownSectionEditor.validateArticleBody("<h1>Title</h1>\n\nBody"));
     }
 
+    @Test
+    void headingIndexSelectsNthMatch() {
+        String original = "## Section\n\nBody1\n## Section\n\nBody2\n";
+        MarkdownSectionEditor.SectionEditResult result = MarkdownSectionEditor.apply(
+                original,
+                new MarkdownSectionEditor.SectionUpdate("Section", 2, "delete", null, null));
+        assertFalse(result.updatedContent().contains("Body2"));
+        assertTrue(result.updatedContent().contains("Body1"));
+    }
+
+    @Test
+    void headingIndexOutOfBoundsThrows() {
+        String original = "## Section\n\nBody1\n## Section\n\nBody2\n";
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> MarkdownSectionEditor.apply(
+                        original,
+                        new MarkdownSectionEditor.SectionUpdate("Section", 3, "delete", null, null)));
+        assertTrue(error.getMessage().contains("headingIndex 超出范围"));
+        assertTrue(error.getMessage().contains("1-2"));
+    }
+
+    @Test
+    void ambiguousErrorListsHeadingIndices() {
+        String original = "## Section\n\nBody1\n## Section\n\nBody2\n";
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> MarkdownSectionEditor.apply(
+                        original,
+                        new MarkdownSectionEditor.SectionUpdate("Section", null, "delete", null, null)));
+        assertTrue(error.getMessage().contains("匹配到 2 个章节"));
+        assertTrue(error.getMessage().contains("--heading-index"));
+        assertTrue(error.getMessage().contains("#1"));
+        assertTrue(error.getMessage().contains("#2"));
+    }
+
+    @Test
+    void levelJumpWarningReturned() {
+        String original = "## Parent\n\nBody\n## Sibling\n\nKeep\n";
+        MarkdownSectionEditor.SectionEditResult result = MarkdownSectionEditor.apply(
+                original,
+                new MarkdownSectionEditor.SectionUpdate("Parent", null, "replace", "#### Parent\n\nBody", 4));
+        assertNotNull(result.warning());
+        assertTrue(result.warning().contains("层级跳跃"));
+        assertTrue(result.warning().contains("H2"));
+        assertTrue(result.warning().contains("H4"));
+    }
+
+    @Test
+    void noWarningForSingleLevelChange() {
+        String original = "## Parent\n\nBody\n## Sibling\n\nKeep\n";
+        MarkdownSectionEditor.SectionEditResult result = MarkdownSectionEditor.apply(
+                original,
+                new MarkdownSectionEditor.SectionUpdate("Parent", null, "replace", "### Parent\n\nBody", 3));
+        assertNull(result.warning());
+    }
+
+    @Test
+    void originalSectionContentReturnedForReplace() {
+        String original = "## First\n\nOldBody\n## Second\n\nKeep\n";
+        MarkdownSectionEditor.SectionEditResult result = MarkdownSectionEditor.apply(
+                original,
+                new MarkdownSectionEditor.SectionUpdate("First", null, "replace", "## First\n\nNewBody", null));
+        assertEquals("## First\n\nOldBody\n", result.originalSectionContent());
+    }
+
+    @Test
+    void originalSectionContentNullForInsertAfter() {
+        String original = "## First\n\nBody1\n## Second\n\nBody2\n";
+        MarkdownSectionEditor.SectionEditResult result = MarkdownSectionEditor.apply(
+                original,
+                new MarkdownSectionEditor.SectionUpdate("First", null, "insert_after", "## Inserted\n\nNew\n", null));
+        assertNull(result.originalSectionContent());
+    }
+
     private String update(
             String original,
             String heading,
@@ -168,6 +245,6 @@ class MarkdownSectionEditorTest {
         return MarkdownSectionEditor.apply(
                 original,
                 new MarkdownSectionEditor.SectionUpdate(
-                        heading, action, content, newHeadingLevel));
+                        heading, action, content, newHeadingLevel)).updatedContent();
     }
 }

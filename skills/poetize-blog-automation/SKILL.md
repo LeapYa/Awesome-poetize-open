@@ -32,25 +32,22 @@ disable-model-invocation: false
 ## Security Warnings
 
 - `POETIZE_API_KEY` is a high-privilege credential. Store via `auth login` (0600), framework secure storage, or protected env. Never commit to source control or paste in chat.
-- Public publishing, hiding, comment writes, theme changes, and SEO changes can take effect immediately. To preview a new article, set `_brief.publishIntent: draft` and use `--draft`.
-- Local images in Markdown are auto-uploaded to your blog server at publish time. Only reference images you intend to publish.
-- Payment config files contain gateway credentials. Only use when intentionally configuring monetization; keep free articles as default.
-- The bundled CLI only calls documented blog-management APIs and reads/writes explicitly supplied content, config, and credential files. It does not run arbitrary commands or access unrelated local files.
+- Public publishing, hiding, comment writes, theme/SEO changes take effect immediately. To preview, set `_brief.publishIntent: draft` and use `--draft`.
+- Local images in Markdown are auto-uploaded at publish time. Payment config files contain gateway credentials — only use when intentionally configuring monetization.
+- The bundled CLI only calls documented blog-management APIs and reads/writes explicitly supplied content/config/credential files. It does not run arbitrary commands or access unrelated local files.
 
 ## Agent-First Execution Rules
 
-- This skill is for `awesome-poetize-open` only. Do not use it with the closed-source POETIZE or a fork whose API compatibility has not been verified.
-- Use `{baseDir}` for paths inside this skill folder. Run all operations through the `poetize-blog` wrapper. The wrapper auto-detects its own directory, so you never pass baseDir to it — just reach the wrapper file:
+- This skill is for `awesome-poetize-open` only. Do not use it with the closed-source POETIZE or an unverified fork.
+- Run all operations through the `poetize-blog` wrapper. The wrapper auto-detects its own directory, so you never pass baseDir to it:
   - macOS / Linux: `{baseDir}/poetize-blog` (bash)
   - Windows (cmd or PowerShell): `{baseDir}\poetize-blog.cmd`
-  - Or put `{baseDir}` on `PATH` and call `poetize-blog` directly (on Windows the `.cmd` extension is implied).
-  Python 3 is still required at runtime (declared in `requires.anyBins`); the wrapper auto-selects `py` / `python3` / `python`.
+  - Or put `{baseDir}` on `PATH` and call `poetize-blog` directly. Python 3 is still required at runtime (declared in `requires.anyBins`); the wrapper auto-selects `py` / `python3` / `python`.
 - Invoke this skill only for explicit POETIZE tasks, not generic writing or SEO requests.
-- Generate framework config with `poetize-blog config`: use `--format openclaw` for OpenClaw and `--format env` for IDE agents or shell environments.
-- Use native credential persistence when the framework provides it. Otherwise use global `auth login`; in ephemeral sandboxes use `auth login --local` or CLI args/env.
-- Credential resolution priority: CLI args > env vars > global config (`~/.config/poetize/credentials.json`) > local skill config (`{baseDir}/credentials.json`) > CWD config (`./credentials.json`).
-- Run `poetize-blog smoke-test` before the first real write action in a new Agent environment.
-- Set `POETIZE_BASE_URL` to the public domain origin without a trailing `/api`; requests resolve under `${POETIZE_BASE_URL}/api/api/...`.
+- Generate framework config with `poetize-blog config`: `--format openclaw` for OpenClaw, `--format env` for IDE agents or shell.
+- Credential resolution priority: CLI args > env vars > global config (`~/.config/poetize/credentials.json`) > local skill config (`{baseDir}/credentials.json`) > CWD config (`./credentials.json`). Use native credential persistence when available; otherwise use global `auth login`; in ephemeral sandboxes use `auth login --local` or CLI args/env.
+- Run `poetize-blog smoke-test` before the first real write action in a new environment.
+- Set `POETIZE_BASE_URL` to the public domain origin without trailing `/api`; requests resolve under `${POETIZE_BASE_URL}/api/api/...`.
 - For `publish`, prefer an inline `_brief`; use `--stdin-brief` (with actual piped/heredoc JSON) or `--brief-file` when a separate audit trail is needed. Never pass `--stdin-brief` without stdin data, and do not create a Python wrapper merely to pipe it.
 
 Read [references/strategy-playbook.md](references/strategy-playbook.md) before deciding whether to create, refresh, or hide content.
@@ -76,106 +73,86 @@ If web search or article-list access is unavailable, record that limitation in `
 
 - For search-oriented content, put the core query and scope in the first paragraph.
 - Use comparison tables when they clarify choices, tradeoffs, version differences, or troubleshooting paths. Comment code only where intent is non-obvious.
-- Keep H1 out of article bodies: set the title in front matter, use `##` for top-level sections, and do not skip heading levels.
-- For section edits, preserve the stored heading level by default and keep descendant levels relative to it.
+- Keep H1 out of article bodies: set the title in front matter, use `##` for top-level sections, and do not skip heading levels. For section edits, preserve the stored heading level by default and keep descendant levels relative to it.
 - Use blockquotes (`>`) for tips, notes, and quotations; add relevant legal, security, or compatibility disclaimers.
 
 ## Workflow
 
 1. Classify intent and safety posture.
-   Determine the target operation, article, taxonomy, visibility, and monetization. Monetization defaults to free. Honor explicit visibility intent. When visibility is absent, stage a new article as a draft for review before applying the final posture from the decision matrix; preserve current visibility for updates.
-   Run Pre-Writing Topic Validation only when applicable.
+   Determine the target operation, article, taxonomy, visibility, and monetization (defaults to free). Honor explicit visibility intent; when absent, stage a new article as a draft for review. Run Pre-Writing Topic Validation only when applicable.
    A strategy brief is required for `publish` and these `manage` mutations: `update-article`, `hide-article`, `update-section`, `save-translation`, `delete-translation`, and `regenerate-translation`. Other commands do not consume a brief.
 2. Create the matching brief.
-   Use `{baseDir}/assets/article-brief.template.json` for `publish` and `{baseDir}/assets/ops-brief.template.json` for the strategy-validated `manage` commands. See Agent-First rules for inline `_brief` / `--stdin-brief` / `--brief-file` usage.
-   Article briefs require `taskType`, `primaryGoal`, `targetAudience`, `publishIntent`, `reasoning`, `selectedAngle`, and `alternativesConsidered`; `monetizationIntent` defaults to `free_default`. Ops briefs require `taskType`, `primaryGoal`, `reasoning`, and `expectedOutcome`.
-   Infer strategy fields from the user's goal and explain them in `reasoning`. Ask only when missing information would materially change the target, public visibility, monetization, or taxonomy.
+   Use `{baseDir}/assets/article-brief.template.json` for `publish` and `{baseDir}/assets/ops-brief.template.json` for strategy-validated `manage` commands. Article briefs require `taskType`, `primaryGoal`, `targetAudience`, `publishIntent`, `reasoning`, `selectedAngle`, and `alternativesConsidered`; `monetizationIntent` defaults to `free_default`. Ops briefs require `taskType`, `primaryGoal`, `reasoning`, and `expectedOutcome`. Infer strategy fields from the user's goal and explain them in `reasoning`. Ask only when missing information would materially change the target, visibility, monetization, or taxonomy.
 3. Diverge, then converge.
    Consider 2-4 plausible directions, choose one as `selectedAngle`, and record 1-3 rejected directions in `alternativesConsidered`. Even when one direction is strongly preferred, include at least one plausible rejected alternative.
 4. Write the article in Markdown following Content Layout Rules and Writing Voice.
-   For images: either reference local files (CLI auto-uploads at publish time) or upload first via `poetize-blog upload-image` and embed the URL.
-   When the task is maintenance, prefer revising existing articles over creating duplicates.
+   For images: either reference local files (CLI auto-uploads at publish time) or upload first via `poetize-blog upload-image` and embed the URL. When the task is maintenance, prefer revising existing articles over creating duplicates.
 5. Add front matter for the article title, routing, and publishing metadata.
-   New articles require `title`, `sort`/`sortId`, and `label`/`labelId`; content updates require `title` and may omit unchanged taxonomy. With inline `_brief`, omit `viewStatus` (derived from `publishIntent`) and omit `payType` for `free_default` (forced to `0`); `paid_explicit` requires `primaryGoal: conversion`, non-empty `whyPaid`, and `payType > 0`. Use existing taxonomy names when IDs are unknown (close matches are suggestions only); set `coverBlank: true` when no cover is needed. See the field reference table below for all fields and defaults.
+   New articles require `title`, `sort`/`sortId`, and `label`/`labelId`; content updates require `title` and may omit unchanged taxonomy. With inline `_brief`, omit `viewStatus` (derived from `publishIntent`) and omit `payType` for `free_default` (forced to `0`); `paid_explicit` requires `primaryGoal: conversion`, non-empty `whyPaid`, and `payType > 0`. Use existing taxonomy names when IDs are unknown (close matches are suggestions only); set `coverBlank: true` when no cover is needed.
 
    Front matter field reference:
 
    | Field | Required | Default | Notes |
    |---|---|---|---|
-   | `title` | Yes | — | Article title; do not repeat it as an H1 in Markdown content |
+   | `title` | Yes | — | Article title; do not repeat it as H1 in body |
    | `sort` / `sortName` / `sortId` | Yes for new | — | Category name or ID |
    | `label` / `labelName` / `labelId` | Yes for new | — | Tag name or ID |
    | `articleSlug` / `slug` | No | auto | SEO-friendly URL slug |
    | `commentStatus` | No | new: `true`; update: unchanged | Enable comments |
    | `recommendStatus` | No | new: `false`; update: unchanged | Feature in recommendations |
-   | `submitToSearchEngine` | No | public create/update: `true`; draft: `false` | Public articles may explicitly set `false` during frequent edits |
+   | `submitToSearchEngine` | No | public create/update: `true`; draft: `false` | May set `false` during frequent edits |
    | `viewStatus` | No | from `_brief.publishIntent` | Omit when using inline `_brief` |
-   | `cover` | No | platform default | Cover image URL |
-   | `coverBlank` | No | `false` | Set `true` to skip cover |
-   | `coverFile` | No | — | Local cover file path (uploaded at publish time) |
+   | `cover` / `coverFile` / `coverBlank` | No | platform default | Cover image URL, local path, or `coverBlank: true` to skip |
    | `coverStoreType` / `storeType` | No | — | Override cover storage type |
    | `video` | No | — | Video URL |
-   | `password` | No | auto for drafts | Password for private articles |
-   | `tips` | No | auto for drafts | Preview tip for private articles |
-   | `payType` | No | free: `0`; paid: explicit `> 0` | Omit for `free_default`; required for `paid_explicit` |
-   | `payAmount` | No | — | Price for paid articles |
-   | `freePercent` | No | — | Free preview percentage |
+   | `password` / `tips` | No | auto for drafts | Password and preview tip for private articles |
+   | `payType` | No | free: `0`; paid: `> 0` | Omit for `free_default`; required for `paid_explicit` |
+   | `payAmount` / `freePercent` | No | — | Price and free preview percentage for paid articles |
    | `skipAiTranslation` | No | `false` | Skip AI translation |
-   | `pendingTranslationLanguage` | No | — | Target translation language |
-   | `pendingTranslationTitle` | No | — | Translated title |
-   | `pendingTranslationContent` | No | — | Translated content |
-   | `paymentPluginKey` | No | — | Payment plugin key (e.g. `afdian`) |
-   | `paymentConfigFile` | No | — | Payment config JSON path |
+   | `pendingTranslationLanguage` / `pendingTranslationTitle` / `pendingTranslationContent` | No | — | Pre-supplied translation |
+   | `paymentPluginKey` / `paymentConfigFile` | No | — | Payment plugin key and sensitive config JSON path |
    | `_brief` | No | — | Inline strategy brief (see Workflow step 2) |
 6. Write the Markdown file locally, then run `poetize-blog publish --markdown-file <file>`; inline `_brief` removes the need for `--brief-file`.
-   `_brief.publishIntent` determines visibility; `--draft` and `--publish` are optional consistency checks and must agree with it.
-   For draft-first creation, start with `taskType: create_article` and `publishIntent: draft`, run with `--draft --wait`, and verify the returned ID. To promote, change the same file to `taskType: refresh_article` and `publishIntent: public`, then rerun with `--article-id <id> --publish --wait`.
-   Runtime authentication requires `POETIZE_BASE_URL` and `POETIZE_API_KEY` from the configured credential source. Referenced local Markdown and HTML images are uploaded automatically.
-   Paid publishing checks `/api/api/payment/plugin/status` and fails closed if the selected plugin is not ready; it never silently publishes the requested paid article as free.
+   `_brief.publishIntent` determines visibility; `--draft` and `--publish` are optional consistency checks and must agree with it. For draft-first creation, start with `taskType: create_article` and `publishIntent: draft`, run with `--draft --wait`, and verify the returned ID. To promote, change the same file to `taskType: refresh_article` and `publishIntent: public`, then rerun with `--article-id <id> --publish --wait`.
+   Runtime auth requires `POETIZE_BASE_URL` and `POETIZE_API_KEY`. Referenced local images are uploaded automatically. Paid publishing checks `/api/api/payment/plugin/status` and fails closed if the plugin is not ready; it never silently publishes as free.
 7. Use `manage <subcommand>` for existing content, comments, themes, analytics, and SEO.
-   - Use `update-section` for localized source edits, `save-translation` for a manual translation correction, `regenerate-translation` only when all translations are stale, and `publish --article-id` for full rewrites. Article deletion is unsupported; use `hide-article` (see Guardrails).
+   - Use `update-section` for localized source edits, `save-translation` for a manual translation correction, `regenerate-translation` only when all translations are stale, and `publish --article-id` for full rewrites. Article deletion is unsupported; use `hide-article`.
    - Comment writes are opt-in: run them only when the user requests comment work or accepts a specific proposal. Use `--as-ai` for the configured AI persona; omit it for the Blog Owner.
-   - Comment, translation, and section commands require backend `v5.1.0` or later. On an explicit version-mismatch error, ask the user to upgrade; other commands remain available.
-8. Return the final result. For async commands (`publish`, `hide-article`, `update-article`, `update-section` without `--skip-ai-translation`, `regenerate-translation`), prefer running **without** `--wait` so the CLI returns the task id immediately; then poll the status yourself (`manage task-status --task-id <id>` for article tasks, `manage list-translation-languages --article-id <id>` for translation tasks) with a sleep between checks. Reserve `--wait` for simple one-shot waits where you have nothing else to do.
+   - Comment, translation, and section commands require backend `v5.1.0`+. On a version-mismatch error, ask the user to upgrade; other commands remain available.
+8. Return the final result. For async commands, prefer running **without** `--wait` so the CLI returns the task id immediately; then poll status yourself (`manage task-status --task-id <id>` for article tasks, `manage list-translation-languages --article-id <id>` for translation tasks) with a sleep between checks. Reserve `--wait` for simple one-shot waits.
 
 ## Guardrails
 
 - Free content is the default; never introduce a paywall without an explicit monetization request. New articles default to draft when visibility is unspecified.
-- The strategy-validated commands listed in Workflow step 1 require a matching, non-contradictory brief. Other writes still require explicit user intent but no fabricated brief.
-- Never invent taxonomy IDs or silently accept fuzzy matches. Use names when IDs are unknown, and create taxonomy only after confirmation through an `--allow-create-*` flag.
-- Preserve unspecified fields on updates. The only exception is `submitToSearchEngine` (see front matter table for defaults); hide flows force it to `false`.
-- Article deletion is unsupported. Use `hide-article`; do not emulate deletion through unrelated fields.
-- A requested paid publish fails closed when payment is unavailable (see Monetization). A separate free publish requires fresh user intent and a `free_default` brief.
+- Strategy-validated commands require a matching, non-contradictory brief. Other writes require explicit user intent but no fabricated brief.
+- Never invent taxonomy IDs or silently accept fuzzy matches. Use names when IDs are unknown; create taxonomy only after confirmation via `--allow-create-*`.
+- Preserve unspecified fields on updates. The only exception is `submitToSearchEngine` (see front matter table); hide flows force it to `false`.
+- Every article brief **must** include `alternativesConsidered` — a non-empty list of 1–3 rejected angles. Never submit a `publish` brief without it, even when one angle is clearly preferred.
+- Article deletion is unsupported — use `hide-article`. A requested paid publish fails closed when payment is unavailable; a separate free publish requires fresh user intent and a `free_default` brief.
 - Prefer `coverBlank: true` over a fabricated cover. Stop on a missing local image rather than dropping or guessing it.
 - Comment writes remain opt-in; publishing alone is not permission to inspect or create comments.
-- With `list-comments --floor-comment-id <id>`, `"root_comment_missing": true` means the root fell outside the newest 50 top-level comments. Fetch additional top-level pages before replying when root context matters.
+- With `list-comments --floor-comment-id <id>`, `"root_comment_missing": true` means the root fell outside the newest 50 top-level comments. Fetch additional pages before replying when root context matters.
 
 ## Image Upload Boundaries
 
-When uploading or embedding local images:
-1. **Size Limit**: Keep files under **10MB** to avoid HTTP 413 (Request Entity Too Large) errors from default Nginx/OpenResty limits.
-2. **Formats**: SVG is strictly forbidden (XSS risk). Use standard formats: JPEG, PNG, GIF, BMP, WEBP, TIFF, ICO.
-3. **Filenames**: No character encoding restrictions (Chinese names are fully supported). The server automatically renames files to UUIDs, preventing path/encoding issues.
+1. **Size Limit**: Keep files under **10MB** to avoid HTTP 413 errors from default Nginx/OpenResty limits.
+2. **Formats**: SVG is strictly forbidden (XSS risk). Use JPEG, PNG, GIF, BMP, WEBP, TIFF, ICO.
+3. **Filenames**: No encoding restrictions (Chinese names fully supported). Server auto-renames to UUIDs.
 
 ## Monetization & Payment Settings
 
-Paid publishing is allowed only after the user explicitly requests it. The blog owner must configure the Afdian or Epay gateway, either in the admin panel or by intentionally supplying an approved payment config file.
-- Set `primaryGoal: conversion`, `monetizationIntent: paid_explicit`, non-empty `whyPaid`, and front-matter `payType > 0` plus the required price fields.
-- The CLI verifies the selected plugin and connection before publishing. If readiness checks fail, publishing stops; it does not silently remove the paywall.
-- Never invent, request in chat, expose, or reuse gateway credentials without explicit user direction. Treat any supplied config file as sensitive.
+Paid publishing requires an explicit user request. The blog owner must configure the Afdian or Epay gateway, either in the admin panel or by supplying an approved payment config file. Set `primaryGoal: conversion`, `monetizationIntent: paid_explicit`, non-empty `whyPaid`, and `payType > 0` plus the required price fields. The CLI verifies the plugin and connection before publishing; if checks fail, publishing stops without silently removing the paywall. Never invent, request in chat, expose, or reuse gateway credentials without explicit user direction.
 
 ## Script Usage
 
-Save credentials once for all future commands (recommended for all frameworks, especially those without env persistence):
+Save credentials once for all future commands:
 
 ```bash
 poetize-blog auth login --base-url "$POETIZE_BASE_URL" --api-key "$POETIZE_API_KEY"
 poetize-blog auth show   # verify without printing the API key
 ```
 
-After `auth login`, subsequent commands (`publish`, `manage`, `smoke-test`, etc.) no longer need `--base-url` or `--api-key`.
-
-Start from the bundled strategy templates: `article-brief.json` from `{baseDir}/assets/article-brief.template.json`, `ops-brief.json` from `{baseDir}/assets/ops-brief.template.json`.
+After `auth login`, subsequent commands no longer need `--base-url` or `--api-key`. Start from the bundled templates: `article-brief.json` from `{baseDir}/assets/article-brief.template.json`, `ops-brief.json` from `{baseDir}/assets/ops-brief.template.json`.
 
 Front matter example with inline `_brief` (recommended for Agent workflows):
 
@@ -206,9 +183,7 @@ _brief:
 正文...
 ```
 
-Note: `viewStatus` is omitted because `_brief.publishIntent` derives it. `payType` is omitted because `monetizationIntent: free_default` forces `payType: 0`.
-
-The script rejects incomplete briefs, reports all missing fields together, and requires `alternativesConsidered` to contain 1-3 rejected angles that do not duplicate `selectedAngle`.
+`viewStatus` is omitted because `_brief.publishIntent` derives it. `payType` is omitted because `monetizationIntent: free_default` forces `payType: 0`. The script rejects incomplete briefs, reports all missing fields together, and requires `alternativesConsidered` to contain 1-3 rejected angles that do not duplicate `selectedAngle`. This field is required for every `publish` brief (draft, public, and updates) — never omit it.
 
 **Article brief** — used only by `publish`:
 
@@ -220,9 +195,11 @@ The script rejects incomplete briefs, reports all missing fields together, and r
 | `monetizationIntent` | optional: `free_default` (default), `paid_explicit` |
 | `whyPaid` | required non-empty string only for `paid_explicit` |
 | `targetAudience`, `reasoning`, `selectedAngle` | non-empty strings |
-| `alternativesConsidered` | required list of 1-3 rejected angles |
+| `alternativesConsidered` | **REQUIRED** non-empty list of 1-3 rejected angles — include for every `publish` brief (draft, public, and `--article-id` updates); never omit |
 
-**Ops brief** — used by strategy-validated `manage` mutations; it has no article-only fields:
+> All 7 fields above are required for **every** `publish` brief, including updates via `--article-id`. `alternativesConsidered` must list 1-3 rejected angles even when the chosen direction is obviously best.
+
+**Ops brief** — used by strategy-validated `manage` mutations:
 
 | Field | Valid values |
 |---|---|
@@ -249,7 +226,7 @@ List and reply to comments (the "cold start" engagement loop — see Guardrails 
 ```bash
 poetize-blog manage list-comments --article-id 123 --size 10
 # Reply as the AI persona. --floor-comment-id is not needed for save-comment:
-# the backend derives it from --parent-comment-id server-side (see note below the manage table).
+# the backend derives it from --parent-comment-id server-side.
 poetize-blog manage save-comment --article-id 123 --content "感谢分享，这个思路我们后续会展开讲！" --parent-comment-id 456 --parent-user-id 78 --as-ai
 # No comments yet: post a top-level welcome/question to bootstrap discussion
 poetize-blog manage save-comment --article-id 123 --content "欢迎留言交流～"
@@ -267,29 +244,27 @@ poetize-blog manage save-comment --article-id 123 --content "欢迎留言交流�
 | `hide-article` | Set `viewStatus=false` | `--brief-file` / `--stdin-brief`, `--password`, `--tips`, `--wait` |
 | `article-analytics` | Get article stats | article target only |
 | `site-visits` | Site visit trends | `--days 7` or `--days 30` |
-| `theme-status` | Current theme info | none |
-| `activate-theme` | Switch theme | `--plugin-key <key>` (required) |
-| `seo-status` | SEO status | none |
-| `seo-get-config` | Read SEO config | none |
-| `seo-set-config` | Update SEO config | `--config-file <path>` (required) |
+| `theme-status` / `activate-theme` | Theme info / switch | `--plugin-key <key>` (required for activate) |
+| `seo-status` / `seo-get-config` / `seo-set-config` | SEO status / read / update config | `--config-file <path>` (required for set) |
 | `sitemap-update` | Refresh sitemap | none |
-| `task-status` | Get asynchronous task status | `--task-id <id>` (required) |
-| `list-comments` | List comments of an article (requires backend `v5.1.0`+) | `--article-id <id>`, `--floor-comment-id <id>` (required to page a specific floor's replies), `--current`, `--size` |
-| `save-comment` | Post or reply to a comment (requires backend `v5.1.0`+) | `--article-id <id>`, `--content <text>`, `--parent-comment-id <id>`, `--parent-user-id <id>`, `--floor-comment-id <id>` (optional, ignored — see note below), `--as-ai` |
-| `get-translation` | Fetch an article's translation for a specific language (requires backend `v5.1.0`+) | `--article-id <id>`, `--language <code>` (default: `en`) |
-| `list-translation-languages` | List available translation languages for an article (requires backend `v5.1.0`+) | `--article-id <id>` |
-| `save-translation` | Save/overwrite a manual translation (requires backend `v5.1.0`+) | article/language/title/content, `--brief-file` / `--stdin-brief` |
-| `delete-translation` | Delete one translation (requires backend `v5.1.0`+) | article/language, `--brief-file` / `--stdin-brief` |
-| `regenerate-translation` | Delete all translations and re-run AI translation (requires backend `v5.1.0`+) | article, `--brief-file` / `--stdin-brief`, `--wait` / `--poll-interval` / `--timeout` |
-| `update-section` | Edit one section (requires backend `v5.1.0`+) | article/action, optional heading/content/`--new-heading-level`/`--skip-ai-translation`, brief, `--wait` / `--poll-interval` / `--timeout` |
+| `task-status` | Get async task status | `--task-id <id>` (required) |
+| `list-comments` | List comments (v5.1.0+) | `--article-id <id>`, `--floor-comment-id <id>` (required to page a floor's replies), `--current`, `--size` |
+| `save-comment` | Post or reply to a comment (v5.1.0+) | `--article-id <id>`, `--content <text>`, `--parent-comment-id <id>`, `--parent-user-id <id>`, `--floor-comment-id` (ignored — see note), `--as-ai` |
+| `get-translation` / `list-translation-languages` | Fetch translation / list languages (v5.1.0+) | `--article-id <id>`, `--language <code>` (default: `en`, get only) |
+| `save-translation` | Save/overwrite a manual translation (v5.1.0+) | article/language/title/content, `--brief-file` / `--stdin-brief` |
+| `delete-translation` | Delete one translation (v5.1.0+) | article/language, `--brief-file` / `--stdin-brief` |
+| `regenerate-translation` | Delete all translations and re-run AI (v5.1.0+) | article, `--brief-file` / `--stdin-brief`, `--wait` / `--poll-interval` / `--timeout` |
+| `update-section` | Edit one section (v5.1.0+) | article/action, optional heading/content/`--new-heading-level`/`--skip-ai-translation`/`--heading-index`/`--dry-run`, brief, `--wait` / `--poll-interval` / `--timeout` |
 
 For `update-article`, do not combine `--stdin-payload` with `--stdin-brief`: both read the same stream sequentially. Put at least one JSON object in a file.
 
-> `--floor-comment-id` behaves differently across the two commands above. In `list-comments` it is a real query filter that selects which floor's replies to page through. In `save-comment` it is a no-op: the backend always recomputes `floorCommentId` from `parentCommentId` server-side and only logs a warning if the client value disagrees. Omit it when replying — just pass `--parent-comment-id` and `--parent-user-id`.
+> `--floor-comment-id` behaves differently across commands. In `list-comments` it is a real query filter that selects which floor's replies to page through. In `save-comment` it is a no-op: the backend always recomputes `floorCommentId` from `parentCommentId` server-side and only logs a warning if the client value disagrees. Omit it when replying — just pass `--parent-comment-id` and `--parent-user-id`.
 
 ## Publish & Update Articles
 
 Write the Markdown file first, then publish through the unified CLI. Inline `_brief` means no `--brief-file` is needed.
+
+> **Brief self-check (required before running any `publish`):** confirm the brief contains ALL of `taskType`, `primaryGoal`, `targetAudience`, `publishIntent`, `reasoning`, `selectedAngle`, **and `alternativesConsidered`**. The last one is a **non-empty list of 1–3 rejected angles** — omitting it fails validation. Include at least one rejected alternative even when the chosen direction is obviously best.
 
 ```bash
 # article.md contains front matter with publishIntent: draft
@@ -301,20 +276,15 @@ poetize-blog publish --markdown-file article.md --draft --wait
 | Flag | Purpose | When to use |
 |---|---|---|
 | `--markdown-file <path>` | **(required)** Path to the Markdown file | Always |
-| `--publish` | Assert public visibility | Only with `_brief.publishIntent: public` |
-| `--draft` | Assert draft/private visibility | Only with `_brief.publishIntent: draft` |
+| `--publish` / `--draft` | Assert public / draft visibility | Must match `_brief.publishIntent` |
 | `--article-id <id>` | Update an existing article | Requires `_brief.taskType: refresh_article` |
-| `--force` | Bypass only the required-H2 check | Intentionally sectionless body; H1 remains invalid |
-| `--allow-create-taxonomy` | Auto-create missing category and tag | Explicitly confirmed taxonomy creation |
-| `--allow-create-sort` | Auto-create missing category only | Explicitly confirmed category creation |
-| `--allow-create-label` | Auto-create missing tag only | Explicitly confirmed tag creation |
+| `--force` | Bypass only the required-H2 check | Intentionally sectionless body; H1 still invalid |
+| `--allow-create-taxonomy` / `--allow-create-sort` / `--allow-create-label` | Auto-create missing category and/or tag | Explicitly confirmed taxonomy creation |
 | `--cover-file <path>` | Local cover image path | Custom cover |
-| `--payment-plugin-key <key>` | Select payment plugin | Paid articles only |
-| `--payment-config-file <path>` | Configure payment plugin from sensitive JSON | Explicitly authorized paid setup only |
+| `--payment-plugin-key <key>` / `--payment-config-file <path>` | Select/configure payment plugin | Paid articles only |
 | `--require-paid` | Compatibility flag for strict paid mode | Paid checks already fail closed |
-| `--brief-file <path>` | External article brief JSON | Separate strategy audit trail |
-| `--stdin-brief` | Read article brief JSON from stdin | Only with actual piped/heredoc JSON |
-| `--print-payload` | Print payload without sending | Local debugging; payload may contain sensitive fields |
+| `--brief-file <path>` / `--stdin-brief` | External article brief JSON | Separate strategy audit trail / piped heredoc JSON |
+| `--print-payload` | Print payload without sending | Local debugging; may contain sensitive fields |
 
 > **`--wait` (optional, async commands only).** Default: do NOT add it — let the CLI return the task id, then poll yourself (`manage task-status --task-id <id>` for article tasks; `manage list-translation-languages --article-id <id>` for translation tasks). When added, the CLI blocks until completion or `--timeout` (default 900s); `--poll-interval` defaults to 2.0s. `--wait` has no effect on read-only `manage` commands, `config`, `smoke-test`, `eval`, `upload-image`, or `update-section --skip-ai-translation`. True global flags (every command): `--base-url`, `--api-key`.
 
@@ -336,9 +306,9 @@ Edit a single section by heading instead of rewriting the whole Markdown file. T
 **Heading workflow:**
 
 1. Run `manage get-article` immediately before editing and treat returned `articleContent` as authoritative.
-2. Article bodies must use H2-H6 only. For `replace`, start the content file with the stored heading level; use `--new-heading-level 2..6` only when the user explicitly requests a hierarchy change.
+2. Article bodies must use H2-H6 only. For `replace`, start the content file with the stored heading level; use `--new-heading-level 2..6` only when the user explicitly requests a hierarchy change. A level jump of more than 1 (e.g. H2→H4) triggers a warning but is not blocked.
 3. For inserted/appended content, choose a level consistent with its intended position; new top-level sections use H2. H1 is always rejected.
-4. If a heading matches multiple sections, use a more specific heading from the stored content.
+4. If a heading matches multiple sections, the error lists each match with a 1-based index (e.g. `#1: 第3行 (H2), #2: 第15行 (H2)`). Re-run with `--heading-index N` to select the Nth match. Section content files must not contain YAML front matter (`---`); front matter is only valid in `publish --markdown-file`.
 
 | Action | `--heading` | `--content-file` | Result |
 |---|---|---|---|
@@ -354,6 +324,20 @@ poetize-blog manage update-section --article-id 123 \
 ```
 
 Use an ops brief with `taskType: update_section`. `--skip-ai-translation` skips translation regeneration only; the summary still updates.
+
+### Section editing safety nets
+
+- **Dry-run (`--dry-run`):** Returns `originalContent`, `updatedContent`, `originalSectionContent`, and optional `warning` without persisting or triggering side effects. Always use it on the first edit of a session or when the heading is ambiguous.
+- **Heading disambiguation (`--heading-index N`):** When multiple headings share the same text, the error response lists each match with a 1-based index. Out-of-range values return an error with the valid range.
+- **Concurrency protection (CAS):** The backend uses optimistic locking — it only writes if `articleContent` is still the value it read. On conflict ("文章内容可能已被其他请求修改，请重试"), re-fetch with `get-article` and retry.
+- **Code fence safety:** Headings inside fenced code blocks (`` ``` `` or `~~~`) are never matched or counted as sections.
+- **Response fields:** `replace`/`delete` responses include `originalSectionContent` (the removed content). A `warning` field is included if `newHeadingLevel` jumps more than 1 level. Both are omitted for `insert`/`append`.
+
+### Section edit recovery
+
+1. **CAS conflict**: Re-run `manage get-article` to get the latest content, then retry the section edit.
+2. **Wrong section edited**: The `replace`/`delete` response includes `originalSectionContent`. To undo, write that content to a file and re-run `update-section --action replace --content-file <original> --heading "<same heading>"`. This is a manual rollback — verify before re-applying.
+3. **Preview before applying**: Always use `--dry-run` first; it returns the full diff (`originalContent` vs `updatedContent`) without side effects.
 
 ### Translation management
 
@@ -375,12 +359,12 @@ poetize-blog manage save-translation --article-id 123 \
 | All translations are stale after major edits | `manage regenerate-translation` |
 | Metadata-only update (viewStatus, password, tips, etc.) | `manage update-article` |
 
-> Mutating translation and section commands (`save-translation`, `delete-translation`, `regenerate-translation`, `update-section`) require `--stdin-brief` (or `--brief-file`) with the matching `taskType`: `update_translation`, `delete_translation`, `regenerate_translation`, or `update_section`. Read-only commands (`get-translation`, `list-translation-languages`) do not need a brief. All commands in this section require backend `v5.1.0` or later; on older backends the CLI returns an explicit version-mismatch error instead of a raw HTTP 404/500.
+> Mutating translation and section commands require `--stdin-brief` (or `--brief-file`) with the matching `taskType`. Read-only commands (`get-translation`, `list-translation-languages`) do not need a brief. All commands in this section require backend `v5.1.0`+; on older backends the CLI returns an explicit version-mismatch error instead of a raw HTTP 404/500.
 
 ## Failure Recovery & Safe Retry
 
 For an asynchronous timeout or failure, avoid duplicate articles:
-1. Query `manage task-status --task-id <taskId>`. If the task is pending/running, keep polling; do not submit another create.
-2. If the response contains `articleId`, fetch that article before any write. Recover with `publish --article-id <id>` and an article brief using `taskType: refresh_article`; never retry as a new create.
+1. Query `manage task-status --task-id <taskId>`. If pending/running, keep polling; do not submit another create.
+2. If the response contains `articleId`, fetch that article before any write. Recover with `publish --article-id <id>` using `taskType: refresh_article`; never retry as a new create.
 3. Retry creation only after the task is terminally failed and `articleId` is absent, using the original create brief after correcting the cause.
-4. If the created article must be taken down, use `hide-article` with an ops brief using `taskType: hide_article`.
+4. If the created article must be taken down, use `hide-article` with `taskType: hide_article`.

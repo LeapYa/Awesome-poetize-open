@@ -117,6 +117,7 @@ MANAGE_UPDATE_SECTION_FLAGS = {
     "--base-url", "--api-key",
     "--article-id", "--heading", "--action", "--content-file",
     "--new-heading-level", "--skip-ai-translation",
+    "--heading-index", "--dry-run",
     "--brief-file", "--stdin-brief",
     "--wait", "--poll-interval", "--timeout",
 }

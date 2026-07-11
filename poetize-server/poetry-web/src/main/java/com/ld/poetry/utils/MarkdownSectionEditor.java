@@ -15,12 +15,24 @@ public final class MarkdownSectionEditor {
 
     public record SectionUpdate(
             String heading,
+            Integer headingIndex,
             String action,
             String content,
             Integer newHeadingLevel) {
+        /** 向后兼容的便捷构造器：不指定 headingIndex。 */
+        public SectionUpdate(String heading, String action, String content, Integer newHeadingLevel) {
+            this(heading, null, action, content, newHeadingLevel);
+        }
     }
 
-    public static String apply(String articleContent, SectionUpdate update) {
+    /** 章节编辑的完整结果，包含更新后内容、被替换的原始内容、以及可能的警告信息。 */
+    public record SectionEditResult(
+            String updatedContent,
+            String originalSectionContent,
+            String warning) {
+    }
+
+    public static SectionEditResult apply(String articleContent, SectionUpdate update) {
         if (!hasText(articleContent)) {
             throw new IllegalArgumentException("文章内容为空，无法执行章节更新");
         }
@@ -38,6 +50,8 @@ public final class MarkdownSectionEditor {
         String lineSeparator = detectPrimaryLineSeparator(articleContent);
         String normalizedNewContent = normalizeLineSeparators(update.content(), lineSeparator);
         String updatedContent;
+        String originalSectionContent = null;
+        String warning = null;
 
         if ("append".equals(action)) {
             validateInsertedContent(action, null, normalizedNewContent, update.newHeadingLevel());
@@ -47,8 +61,13 @@ public final class MarkdownSectionEditor {
             if (!hasText(update.heading())) {
                 throw new IllegalArgumentException("非 append 操作必须指定 heading");
             }
-            SectionInfo target = findSection(articleContent, update.heading());
+            SectionInfo target = findSection(articleContent, update.heading(), update.headingIndex());
             validateInsertedContent(action, target, normalizedNewContent, update.newHeadingLevel());
+            // 只对 replace/delete 捕获被移除的原始内容，供回滚使用；insert 操作不移除内容
+            if ("replace".equals(action) || "delete".equals(action)) {
+                originalSectionContent = articleContent.substring(target.startOffset, target.endOffset);
+            }
+            warning = detectLevelJumpWarning(action, target, update.newHeadingLevel());
             updatedContent = switch (action) {
                 case "replace" -> spliceContent(
                         articleContent, target.startOffset, target.endOffset, normalizedNewContent, lineSeparator);
@@ -63,7 +82,7 @@ public final class MarkdownSectionEditor {
         }
 
         validateArticleBody(updatedContent);
-        return updatedContent;
+        return new SectionEditResult(updatedContent, originalSectionContent, warning);
     }
 
     /** 数据库正文只允许 H2-H6；页面唯一 H1 由独立文章标题生成。 */
@@ -145,7 +164,7 @@ public final class MarkdownSectionEditor {
         }
     }
 
-    private static SectionInfo findSection(String content, String headingText) {
+    private static SectionInfo findSection(String content, String headingText, Integer headingIndex) {
         List<SectionInfo> sections = parseSections(content);
         String normalizedTarget = headingText.trim();
         List<SectionInfo> matches = sections.stream()
@@ -160,14 +179,29 @@ public final class MarkdownSectionEditor {
             throw new IllegalArgumentException(
                     "未找到匹配的标题: \"" + headingText + "\"。可用标题: " + availableHeadings);
         }
+
+        if (headingIndex != null) {
+            if (headingIndex < 1 || headingIndex > matches.size()) {
+                throw new IllegalArgumentException(
+                        "headingIndex 超出范围：共匹配到 " + matches.size()
+                                + " 个章节，有效范围为 1-" + matches.size()
+                                + "，传入值为 " + headingIndex);
+            }
+            return matches.get(headingIndex - 1);
+        }
+
         if (matches.size() > 1) {
-            String locations = matches.stream()
-                    .map(section -> "第" + (section.startLine + 1) + "行 (H" + section.level + ")")
-                    .reduce((left, right) -> left + ", " + right)
-                    .orElse("");
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < matches.size(); i++) {
+                SectionInfo m = matches.get(i);
+                if (i > 0) sb.append(", ");
+                sb.append("#").append(i + 1)
+                        .append(": 第").append(m.startLine + 1)
+                        .append("行 (H").append(m.level).append(")");
+            }
             throw new IllegalArgumentException(
                     "标题 \"" + headingText + "\" 匹配到 " + matches.size()
-                            + " 个章节，请使用更具体的标题。匹配位置: " + locations);
+                            + " 个章节。使用 --heading-index 指定目标（1-based）: " + sb);
         }
         return matches.get(0);
     }
@@ -209,6 +243,18 @@ public final class MarkdownSectionEditor {
                             + "，新内容为 H" + replacement.level
                             + "，期望 H" + expectedLevel + "。" + guidance);
         }
+    }
+
+    /** 当 replace 操作显式改变层级且跨度超过 1 级时，返回警告信息（不阻止操作）。 */
+    private static String detectLevelJumpWarning(String action, SectionInfo target, Integer newHeadingLevel) {
+        if (!"replace".equals(action) || newHeadingLevel == null) {
+            return null;
+        }
+        if (Math.abs(newHeadingLevel - target.level) > 1) {
+            return "层级跳跃较大：从 H" + target.level + " 变为 H" + newHeadingLevel
+                    + "，可能破坏大纲结构，请确认是否合理。";
+        }
+        return null;
     }
 
     private static String spliceContent(
