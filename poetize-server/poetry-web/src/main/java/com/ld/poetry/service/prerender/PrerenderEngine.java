@@ -510,8 +510,8 @@ public class PrerenderEngine {
     private String buildCriticalCss() {
         return "  <style>\n"
                 + "      /* 防止FOUC的关键样式 */\n"
-                + "      html.prerender #app { visibility: visible; opacity: 1; }\n"
-                + "      html:not(.loaded) #app { visibility: hidden; }\n"
+                + "      html.loaded #prerender-container { display: none; }\n"
+                + "      html:not(.loaded) #app { position: absolute; opacity: 0; pointer-events: none; top: 0; left: 0; width: 100%; }\n"
                 + "      html.loaded #app { visibility: visible; opacity: 1; transition: opacity 0.3s ease-in-out; }\n"
                 + "      .article-detail, .home-prerender, .favorite-prerender, .favorites-prerender, .sort-prerender, .sort-list-prerender {\n"
                 + "        min-height: 200px; position: relative; opacity: 1; transform: translateY(0); animation: fadeIn 0.5s ease-in-out;\n"
@@ -573,9 +573,12 @@ public class PrerenderEngine {
         } else {
             wrappedContent = "<main>" + content + "</main>";
         }
+        
         String appClass = "article".equals(pageType) ? " class=\"article-detail\"" : "";
+        
+        String prerenderHtml = "<div id=\"prerender-container\"" + appClass + ">" + wrappedContent + "</div>\n<div id=\"app\"></div>";
         return APP_PATTERN.matcher(html).replaceFirst(
-                Matcher.quoteReplacement("<div id=\"app\"" + appClass + ">" + wrappedContent + "</div>"));
+                Matcher.quoteReplacement(prerenderHtml));
     }
 
     private String buildLoadingScript() {

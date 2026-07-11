@@ -129,17 +129,6 @@ if (disposeAntiDebug) {
 router.isReady().then(() => {
     app.mount('#app')
 
-    // 清理预渲染注入到挂载点的残留 class
-    // 预渲染文章页时 #app 被加上 class="article-detail"，而运行时 CSS 给
-    // .article-detail 设置了 transform: translateZ(0)，会使 #app 成为
-    // position:fixed 后代的包含块，导致 AI 助手按钮等 fixed 元素相对网页
-    // 而非视口定位，并引发横向滚动条。Vue 客户端挂载不会清理挂载点的 class，
-    // 需在此显式移除。
-    const prerenderAppEl = document.getElementById('app')
-    if (prerenderAppEl) {
-        prerenderAppEl.classList.remove('article-detail')
-    }
-
     function deferNonCriticalTask(task) {
         if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
             window.requestIdleCallback(() => task(), { timeout: 2000 })

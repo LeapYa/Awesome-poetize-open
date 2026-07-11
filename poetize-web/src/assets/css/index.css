@@ -6,6 +6,7 @@ html, body {
   padding: 0;
   width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 body {
@@ -101,8 +102,8 @@ body {
 }
 
 html.loaded .article-detail::before,
-#app.loaded.article-detail::before,
-#app.vue-mounted.article-detail::before {
+#prerender-container.loaded::before,
+#prerender-container.vue-mounted::before {
     opacity: 0 !important;
     animation: none !important;
     background: none !important;
