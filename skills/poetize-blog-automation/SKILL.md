@@ -1,6 +1,10 @@
 ---
+slug: awesome-poetize-open-blog-automation
+displayName: POETIZE 博客自动化
 name: poetize-blog-automation
-description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、评论区管理、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。开源仓库：https://github.com/LeapYa/awesome-poetize-open
+description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO、处理付费文章支付配置；含认证持久化、配置生成、测试等辅助能力。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。开源仓库：https://github.com/LeapYa/awesome-poetize-open
+summary: POETIZE 博客运营助手：写文章、发布、管理分类标签、切换主题、查看数据、配置 SEO、处理付费文章支付配置。
+license: MIT
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/skills/poetize-blog-automation
 version: 2.1.0
 primaryEnv: POETIZE_API_KEY
@@ -18,6 +22,18 @@ install:
     bins:
       - python3
     label: "Install Python 3 (brew)"
+permissions:
+  filesystem:
+    - skill folder read/write
+    - user-provided markdown/config/credential files
+    - ~/.config/poetize/credentials.json for persisted auth
+  environment:
+    - POETIZE_BASE_URL
+    - POETIZE_API_KEY
+  network:
+    - POETIZE_BASE_URL
+  shell:
+    - python/python3 to run bundled CLI scripts only
 metadata:
   openclaw:
     skillKey: poetize-blog-automation
@@ -31,29 +47,30 @@ disable-model-invocation: false
 
 ## Security Warnings
 
-- `POETIZE_API_KEY` is a high-privilege credential. Store via `auth login` (0600), framework secure storage, or protected env. Never commit to source control or paste in chat.
-- Public publishing, hiding, comment writes, theme/SEO changes take effect immediately. To preview, set `_brief.publishIntent: draft` and use `--draft`.
-- Local images in Markdown are auto-uploaded at publish time. Payment config files contain gateway credentials — only use when intentionally configuring monetization.
-- The bundled CLI only calls documented blog-management APIs and reads/writes explicitly supplied content/config/credential files. It does not run arbitrary commands or access unrelated local files.
+- `POETIZE_API_KEY` is a high-privilege credential that can administer the blog. Store via `auth login` (0600), framework secure storage, or protected env. Never commit to source control or paste in chat. Env files and generated config files also embed credentials when present; protect them.
+- Publishing, hiding, comment writes, theme/SEO changes, sitemap updates, image uploads, and paid-article payment-plugin configuration modify live blog state immediately. To preview, set `_brief.publishIntent: draft` and use `--draft`.
+- Local images referenced in Markdown or HTML are automatically read from disk and uploaded to the remote blog before publishing. Verify all image paths before running publish.
+- Paid publishing inspects the payment plugin status and, when a `paymentConfigFile` is supplied, sends its contents to the server to configure and activate the plugin. Only use this on a server you own and when intentionally setting up monetization.
+- The bundled CLI calls documented blog-management APIs, reads/writes explicitly supplied content/config/credential files, and persists auth to ~/.config/poetize/credentials.json. It does not run arbitrary commands or access unrelated local files.
 
 ## Agent-First Execution Rules
 
 - This skill is for `awesome-poetize-open` only. Do not use it with the closed-source POETIZE or an unverified fork.
-- Run all operations through the `poetize-blog` wrapper. The wrapper auto-detects its own directory, so you never pass baseDir to it:
-  - macOS / Linux: `{baseDir}/poetize-blog` (bash)
-  - Windows (cmd or PowerShell): `{baseDir}\poetize-blog.cmd`
-  - Or put `{baseDir}` on `PATH` and call `poetize-blog` directly. Python 3 is still required at runtime (declared in `requires.anyBins`); the wrapper auto-selects `py` / `python3` / `python`.
+- Run all operations through the `poetize-blog.sh` wrapper. The wrapper auto-detects its own directory, so you never pass baseDir to it:
+  - macOS / Linux: `{baseDir}/poetize-blog.sh` (bash)
+  - Windows: `python {baseDir}\scripts\poetize_cli.py` (cmd or PowerShell)
+  - Or put `{baseDir}` on `PATH` and call `poetize-blog.sh` directly. Python 3 is still required at runtime (declared in `requires.anyBins`); the wrapper auto-selects `py` / `python3` / `python`.
 - Invoke this skill only for explicit POETIZE tasks, not generic writing or SEO requests.
-- Generate framework config with `poetize-blog config`: `--format openclaw` for OpenClaw, `--format env` for IDE agents or shell.
+- Generate framework config with `poetize-blog.sh config`: `--format openclaw` for OpenClaw, `--format env` for IDE agents or shell.
 - Credential resolution priority: CLI args > env vars > global config (`~/.config/poetize/credentials.json`) > local skill config (`{baseDir}/credentials.json`) > CWD config (`./credentials.json`). Use native credential persistence when available; otherwise use global `auth login`; in ephemeral sandboxes use `auth login --local` or CLI args/env.
-- Run `poetize-blog smoke-test` before the first real write action in a new environment.
+- Run `poetize-blog.sh smoke-test` before the first real write action in a new environment.
 - Set `POETIZE_BASE_URL` to the public domain origin without trailing `/api`; requests resolve under `${POETIZE_BASE_URL}/api/api/...`.
 - For `publish`, prefer an inline `_brief`; use `--stdin-brief` (with actual piped/heredoc JSON) or `--brief-file` when a separate audit trail is needed. Never pass `--stdin-brief` without stdin data, and do not create a Python wrapper merely to pipe it.
 
 Read [references/strategy-playbook.md](references/strategy-playbook.md) before deciding whether to create, refresh, or hide content.
 Read [references/decision-matrix.md](references/decision-matrix.md) before setting publish posture, search posture, or paywall posture.
 Read [references/creativity-workflow.md](references/creativity-workflow.md) before drafting article copy.
-Run `poetize-blog eval` to verify the local strategy layer before shipping skill changes.
+Run `poetize-blog.sh eval` to verify the local strategy layer before shipping skill changes.
 
 ## Writing Voice
 
@@ -86,7 +103,7 @@ If web search or article-list access is unavailable, record that limitation in `
 3. Diverge, then converge.
    Consider 2-4 plausible directions, choose one as `selectedAngle`, and record 1-3 rejected directions in `alternativesConsidered`. Even when one direction is strongly preferred, include at least one plausible rejected alternative.
 4. Write the article in Markdown following Content Layout Rules and Writing Voice.
-   For images: either reference local files (CLI auto-uploads at publish time) or upload first via `poetize-blog upload-image` and embed the URL. When the task is maintenance, prefer revising existing articles over creating duplicates.
+   For images: either reference local files (CLI auto-uploads at publish time) or upload first via `poetize-blog.sh upload-image` and embed the URL. When the task is maintenance, prefer revising existing articles over creating duplicates.
 5. Add front matter for the article title, routing, and publishing metadata.
    New articles require `title`, `sort`/`sortId`, and `label`/`labelId`; content updates require `title` and may omit unchanged taxonomy. With inline `_brief`, omit `viewStatus` (derived from `publishIntent`) and omit `payType` for `free_default` (forced to `0`); `paid_explicit` requires `primaryGoal: conversion`, non-empty `whyPaid`, and `payType > 0`. Use existing taxonomy names when IDs are unknown (close matches are suggestions only); set `coverBlank: true` when no cover is needed.
 
@@ -112,7 +129,7 @@ If web search or article-list access is unavailable, record that limitation in `
    | `pendingTranslationLanguage` / `pendingTranslationTitle` / `pendingTranslationContent` | No | — | Pre-supplied translation |
    | `paymentPluginKey` / `paymentConfigFile` | No | — | Payment plugin key and sensitive config JSON path |
    | `_brief` | No | — | Inline strategy brief (see Workflow step 2) |
-6. Write the Markdown file locally, then run `poetize-blog publish --markdown-file <file>`; inline `_brief` removes the need for `--brief-file`.
+6. Write the Markdown file locally, then run `poetize-blog.sh publish --markdown-file <file>`; inline `_brief` removes the need for `--brief-file`.
    `_brief.publishIntent` determines visibility; `--draft` and `--publish` are optional consistency checks and must agree with it. For draft-first creation, start with `taskType: create_article` and `publishIntent: draft`, run with `--draft --wait`, and verify the returned ID. To promote, change the same file to `taskType: refresh_article` and `publishIntent: public`, then rerun with `--article-id <id> --publish --wait`.
    Runtime auth requires `POETIZE_BASE_URL` and `POETIZE_API_KEY`. Referenced local images are uploaded automatically. Paid publishing checks `/api/api/payment/plugin/status` and fails closed if the plugin is not ready; it never silently publishes as free.
 7. Use `manage <subcommand>` for existing content, comments, themes, analytics, and SEO.
@@ -148,8 +165,8 @@ Paid publishing requires an explicit user request. The blog owner must configure
 Save credentials once for all future commands:
 
 ```bash
-poetize-blog auth login --base-url "$POETIZE_BASE_URL" --api-key "$POETIZE_API_KEY"
-poetize-blog auth show   # verify without printing the API key
+poetize-blog.sh auth login --base-url "$POETIZE_BASE_URL" --api-key "$POETIZE_API_KEY"
+poetize-blog.sh auth show   # verify without printing the API key
 ```
 
 After `auth login`, subsequent commands no longer need `--base-url` or `--api-key`. Start from the bundled templates: `article-brief.json` from `{baseDir}/assets/article-brief.template.json`, `ops-brief.json` from `{baseDir}/assets/ops-brief.template.json`.
@@ -210,13 +227,13 @@ _brief:
 Upload an image first when an explicit URL is preferable to publish-time upload:
 
 ```bash
-poetize-blog upload-image --file ./assets/flow.png --type articleImage
+poetize-blog.sh upload-image --file ./assets/flow.png --type articleImage
 ```
 
 Hide an existing article (`--stdin-brief` via heredoc — no Python wrapper needed):
 
 ```bash
-poetize-blog manage hide-article --article-id 123 --stdin-brief --wait <<'BRIEF'
+poetize-blog.sh manage hide-article --article-id 123 --stdin-brief --wait <<'BRIEF'
 {"taskType":"hide_article","primaryGoal":"asset_maintenance","reasoning":"user requested hiding","expectedOutcome":"article is no longer public but remains recoverable"}
 BRIEF
 ```
@@ -224,12 +241,12 @@ BRIEF
 List and reply to comments (the "cold start" engagement loop — see Guardrails for the `root_comment_missing` caveat):
 
 ```bash
-poetize-blog manage list-comments --article-id 123 --size 10
+poetize-blog.sh manage list-comments --article-id 123 --size 10
 # Reply as the AI persona. --floor-comment-id is not needed for save-comment:
 # the backend derives it from --parent-comment-id server-side.
-poetize-blog manage save-comment --article-id 123 --content "感谢分享，这个思路我们后续会展开讲！" --parent-comment-id 456 --parent-user-id 78 --as-ai
+poetize-blog.sh manage save-comment --article-id 123 --content "感谢分享，这个思路我们后续会展开讲！" --parent-comment-id 456 --parent-user-id 78 --as-ai
 # No comments yet: post a top-level welcome/question to bootstrap discussion
-poetize-blog manage save-comment --article-id 123 --content "欢迎留言交流～"
+poetize-blog.sh manage save-comment --article-id 123 --content "欢迎留言交流～"
 ```
 
 ### Manage subcommands reference
@@ -268,7 +285,7 @@ Write the Markdown file first, then publish through the unified CLI. Inline `_br
 
 ```bash
 # article.md contains front matter with publishIntent: draft
-poetize-blog publish --markdown-file article.md --draft --wait
+poetize-blog.sh publish --markdown-file article.md --draft --wait
 ```
 
 ### Publish flags reference
@@ -291,8 +308,8 @@ poetize-blog publish --markdown-file article.md --draft --wait
 For an existing article, fetch it first and rebuild `updated.md` from the returned title/content. Set `_brief.taskType: refresh_article` and set `publishIntent` to the current visibility unless the user requested a change:
 
 ```bash
-poetize-blog manage get-article --article-id 123
-poetize-blog publish --markdown-file updated.md --article-id 123 --wait
+poetize-blog.sh manage get-article --article-id 123
+poetize-blog.sh publish --markdown-file updated.md --article-id 123 --wait
 ```
 
 ## Section-Level Editing & Translation Management
@@ -318,7 +335,7 @@ Edit a single section by heading instead of rewriting the whole Markdown file. T
 | `append` | omitted | required | Append content at article end |
 
 ```bash
-poetize-blog manage update-section --article-id 123 \
+poetize-blog.sh manage update-section --article-id 123 \
   --heading "Installation" --action replace --content-file section.md \
   --brief-file update-section-brief.json
 ```
@@ -344,7 +361,7 @@ Use an ops brief with `taskType: update_section`. `--skip-ai-translation` skips 
 For AI-translated articles, you can inspect, edit, delete, or regenerate translations without touching the original article content:
 
 ```bash
-poetize-blog manage save-translation --article-id 123 \
+poetize-blog.sh manage save-translation --article-id 123 \
   --language en --title "My Article" --content-file translated.md \
   --brief-file update-translation-brief.json
 ```

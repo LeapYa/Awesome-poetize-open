@@ -468,13 +468,9 @@ bash <(curl -sL install.leapya.com)
 如果你希望直接通过对话让智能体（如 OpenClaw、Hermes、Trae 等）帮你处理安装，可以把下面这段提示词发给智能体。
 
 ```text
-请先检查是否已安装 ClawHub CLI。
+请根据 https://skillhub.cn/install/skillhub.md，安装 awesome-poetize-open-blog-automation。
 
-若未安装，请根据官方 ClawHub 文档先安装 ClawHub CLI，然后尝试安装技能 `awesome-poetize-open-blog-automation`。
-
-若已安装，则直接尝试安装技能 `awesome-poetize-open-blog-automation`。
-
-如果该技能尚未发布、在 ClawHub 中搜索不到，或者遇到 ClawHub 限流，请改为克隆项目 `https://github.com/LeapYa/awesome-poetize-open.git`，然后按手动安装方式把 `skills/poetize-blog-automation` 复制到智能体对应的 `skills/` 目录中完成安装。
+如果 SkillHub 中搜索不到或安装失败，请改为克隆项目 `https://github.com/LeapYa/awesome-poetize-open.git`，然后按手动安装方式把 `skills/poetize-blog-automation` 复制到智能体对应的 `skills/` 目录中完成安装。
 
 安装目标默认使用智能体的 `skills/` 目录，配置默认写入智能体对应的配置文件（具体路径因框架而异，请参考对应框架的文档）。
 
@@ -484,16 +480,15 @@ bash <(curl -sL install.leapya.com)
 收到完整配置后，请帮我写入配置文件。
 ```
 
-### 安装方式二：手动通过 ClawHub CLI 安装
+### 安装方式二：手动通过 SkillHub CLI 安装
 
 在智能体的工作目录下执行：
 
 ```bash
-cd ~/.openclaw/workspace
-clawhub install awesome-poetize-open-blog-automation
+skillhub install awesome-poetize-open-blog-automation
 ```
 
-安装完成后，默认在 `~/.openclaw/openclaw.json` 中加入：
+安装完成后，根据你使用的智能体框架，在对应配置文件中（如 OpenClaw 的 `~/.openclaw/openclaw.json`）加入：
 
 ```json
 {
@@ -572,8 +567,8 @@ skills/poetize-blog-automation/
 ```text
 请帮我升级技能 `awesome-poetize-open-blog-automation`。
 
-请直接执行 `clawhub update awesome-poetize-open-blog-automation`。
-如果因为网络受限或在 ClawHub 找不到对应版本，请回退到克隆仓库的手动方式覆盖更新，目录在智能体对应的 `skills/poetize-blog-automation/` 目录下。
+请直接执行 `skillhub update awesome-poetize-open-blog-automation`。
+如果因为网络受限或在 SkillHub 找不到对应版本，请回退到克隆仓库的手动方式覆盖更新，目录在智能体对应的 `skills/poetize-blog-automation/` 目录下。
 
 升级完成后，请主动向我确认是否需要更新以前的配置。如果要更新，请向我索要 `POETIZE_BASE_URL`（不带`/api`）与 `POETIZE_API_KEY`（在后台管理->导航与接口->API 配置中获取），并写入智能体对应的配置文件（如 `~/.openclaw/openclaw.json`）。
 ```
@@ -581,15 +576,13 @@ skills/poetize-blog-automation/
 **或者你也可以选择自己手动在命令行执行更新：**
 
 ```bash
-cd ~/.openclaw/workspace
-clawhub update awesome-poetize-open-blog-automation
+skillhub update awesome-poetize-open-blog-automation
 ```
 
 **如果本地 skill 被手工改过，导致无法匹配已发布版本，可以强制覆盖：**
 
 ```bash
-cd ~/.openclaw/workspace
-clawhub update awesome-poetize-open-blog-automation --force
+skillhub update awesome-poetize-open-blog-automation --force
 ```
 
 #### 手动安装的用户如何更新
