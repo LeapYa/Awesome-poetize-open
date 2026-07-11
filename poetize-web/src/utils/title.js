@@ -7,9 +7,10 @@ let enableDynamicTitle = true // 默认开启动态标题
 try {
   const cachedWebInfo = JSON.parse(localStorage.getItem('webInfo'))
   if (cachedWebInfo && cachedWebInfo.data) {
-    // 更新网站标题
-    if (cachedWebInfo.data.webTitle) {
-      window.OriginTitile = cachedWebInfo.data.webTitle
+    // 更新网站标题（优先使用 homeTitle，回退到 webTitle）
+    var homeTitle = cachedWebInfo.data.homeTitle || cachedWebInfo.data.webTitle
+    if (homeTitle) {
+      window.OriginTitile = homeTitle
       document.title = window.OriginTitile
     }
     // 检查是否启用动态标题 - 优先使用缓存中的配置

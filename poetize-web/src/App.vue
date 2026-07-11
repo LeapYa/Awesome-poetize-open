@@ -70,10 +70,12 @@ export default {
       // 部分页面自行管理标题（如分类页、文章页），跳过全局覆盖
       const selfManagedTitlePaths = ['/sort', '/article']
       const isSelfManaged = selfManagedTitlePaths.some(p => newPath === p || newPath.startsWith(p + '/'))
-      if (!isSelfManaged && this.mainStore?.webInfo?.webTitle) {
-        const webTitle = this.mainStore.webInfo.webTitle
-        document.title = webTitle
-        window.OriginTitile = webTitle
+      if (!isSelfManaged) {
+        const homePageTitle = this.mainStore.homePageTitle
+        if (homePageTitle) {
+          document.title = homePageTitle
+          window.OriginTitile = homePageTitle
+        }
       }
     },
   },
@@ -91,11 +93,11 @@ export default {
       }
     }
 
-    // 初始化时设置网站标题
-    if (this.mainStore.webInfo && this.mainStore.webInfo.webTitle) {
-      // 直接使用webTitle字符串
-      document.title = this.mainStore.webInfo.webTitle
-      window.OriginTitile = this.mainStore.webInfo.webTitle
+    // 初始化时设置网站标题（优先 homeTitle，回退 webTitle）
+    const homePageTitle = this.mainStore.homePageTitle
+    if (homePageTitle) {
+      document.title = homePageTitle
+      window.OriginTitile = homePageTitle
     }
 
     // 确保导航栏初始状态正确（修复首次访问时导航栏不显示的问题）

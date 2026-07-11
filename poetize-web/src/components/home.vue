@@ -967,7 +967,7 @@ export default {
           const sortInfo = data.sortInfo
 
           if (!this.$common.isEmpty(webInfo)) {
-            const originalWebTitle = webInfo.webTitle
+            const originalWebTitle = webInfo.homeTitle || webInfo.webTitle
             this.mainStore.loadWebInfo(webInfo)
 
             if (originalWebTitle) {
@@ -1001,8 +1001,8 @@ export default {
         .get(this.$constant.baseURL + '/webInfo/getWebInfo')
         .then((res) => {
           if (!this.$common.isEmpty(res.data)) {
-            // 保存原始的webTitle字符串用于设置页面标题
-            const originalWebTitle = res.data.webTitle
+            // 优先 homeTitle，回退 webTitle
+            const originalWebTitle = res.data.homeTitle || res.data.webTitle
 
             // 处理网站信息
             this.mainStore.loadWebInfo(res.data)

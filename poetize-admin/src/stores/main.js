@@ -66,6 +66,7 @@ export const useMainStore = defineStore('main', {
     webInfo: getFromLocalStorage('webInfo', {
       webName: '',
       webTitle: '',
+      homeTitle: '',
       notices: [],
       randomCover: [],
       footer: '',

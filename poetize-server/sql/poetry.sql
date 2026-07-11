@@ -159,6 +159,7 @@ CREATE TABLE `poetize`.`web_info` (
   `id` int NOT NULL AUTO_INCREMENT COMMENT 'id',
   `web_name` varchar(16) NOT NULL COMMENT '网站名称',
   `web_title` varchar(512) NOT NULL COMMENT '网站信息',
+  `home_title` varchar(255) DEFAULT NULL COMMENT '首页标题（为空时回退到 web_title，常用于 ICP 备案名展示）',
   `site_address` varchar(255) DEFAULT NULL COMMENT '网站地址（完整URL）',
   `notices` varchar(512) DEFAULT NULL COMMENT '公告',
   `footer` varchar(256) NOT NULL COMMENT '页脚',

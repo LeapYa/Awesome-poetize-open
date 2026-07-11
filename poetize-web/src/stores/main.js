@@ -72,6 +72,7 @@ export const useMainStore = defineStore('main', {
     webInfo: getFromLocalStorage('webInfo', {
       webName: '',
       webTitle: '',
+      homeTitle: '',
       notices: [],
       randomCover: [],
       footer: '',
@@ -106,6 +107,12 @@ export const useMainStore = defineStore('main', {
   }),
 
   getters: {
+    /**
+     * 首页标题：优先 homeTitle，回退 webTitle
+     */
+    homePageTitle: (state) => {
+      return state.webInfo.homeTitle || state.webInfo.webTitle
+    },
     /**
      * 文章总数
      */

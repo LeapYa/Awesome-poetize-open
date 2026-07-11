@@ -126,6 +126,11 @@ public class WebInfoController {
             Integer id = (Integer) params.get("id");
             String webName = (String) params.get("webName");
             String webTitle = (String) params.get("webTitle");
+            String homeTitle = (String) params.get("homeTitle");
+            // 空白字符串归一化为 null，保证清空时数据库写入 NULL（与"为空回退 webTitle"语义一致）
+            if (homeTitle != null && homeTitle.trim().isEmpty()) {
+                homeTitle = null;
+            }
             String siteAddress = (String) params.get("siteAddress");
             String footer = (String) params.get("footer");
             String backgroundImage = (String) params.get("backgroundImage");
@@ -161,7 +166,7 @@ public class WebInfoController {
                     apiIpWhitelist,
                     navConfig, footerBackgroundImage, footerBackgroundConfig, email, minimalFooter,
                     enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode, enableDynamicTitle,
-                    mouseClickEffectConfig, mobileDrawerConfig);
+                    mouseClickEffectConfig, mobileDrawerConfig, homeTitle);
 
             log.info("网站基本信息数据库更新结果: {} 行受影响, ID: {}", updateResult, id);
 

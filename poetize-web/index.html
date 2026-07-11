@@ -120,9 +120,12 @@
         var cachedWebInfo = localStorage.getItem('webInfo');
         if (cachedWebInfo) {
           var webInfoData = JSON.parse(cachedWebInfo);
-          if (webInfoData && webInfoData.data && webInfoData.data.webTitle) {
-            document.title = webInfoData.data.webTitle;
-            window.OriginTitile = webInfoData.data.webTitle;
+          if (webInfoData && webInfoData.data) {
+            var homeTitle = webInfoData.data.homeTitle || webInfoData.data.webTitle;
+            if (homeTitle) {
+              document.title = homeTitle;
+              window.OriginTitile = homeTitle;
+            }
           }
         }
       } catch (e) {}

@@ -22,6 +22,10 @@
           <el-input v-model="webInfo.webTitle"></el-input>
         </el-form-item>
 
+        <el-form-item id="field-home-title" label="首页标题" prop="homeTitle">
+          <el-input v-model="webInfo.homeTitle" placeholder="为空时与网站标题一致；常用于 ICP 备案名展示，因网站首页标题须完整包含备案系统填报的网站名称"></el-input>
+        </el-form-item>
+
         <el-form-item id="field-site-address" label="网站地址" prop="siteAddress">
           <div class="site-address-container">
             <el-input 
@@ -300,6 +304,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
           id: null,
           webName: "",
           webTitle: "",
+          homeTitle: "",
           siteAddress: "",
           footer: "",
           backgroundImage: "/assets/backgroundPicture.jpg",
@@ -530,6 +535,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
               this.webInfo.id = res.data.id;
               this.webInfo.webName = res.data.webName;
               this.webInfo.webTitle = res.data.webTitle;
+              this.webInfo.homeTitle = res.data.homeTitle;
               this.webInfo.siteAddress = res.data.siteAddress || "";
               this.webInfo.footer = res.data.footer;
               this.webInfo.backgroundImage = res.data.backgroundImage;
@@ -578,6 +584,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
               id: this.webInfo.id,
               webName: this.webInfo.webName,
               webTitle: this.webInfo.webTitle,
+              homeTitle: this.webInfo.homeTitle,
               siteAddress: this.webInfo.siteAddress,
               footer: this.webInfo.footer,
               backgroundImage: this.webInfo.backgroundImage,

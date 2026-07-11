@@ -45,7 +45,8 @@ public interface WebInfoMapper extends BaseMapper<WebInfo> {
                          @Param("enableGrayMode") Boolean enableGrayMode,
                          @Param("enableDynamicTitle") Boolean enableDynamicTitle,
                          @Param("mouseClickEffectConfig") String mouseClickEffectConfig,
-                         @Param("mobileDrawerConfig") String mobileDrawerConfig);
+                         @Param("mobileDrawerConfig") String mobileDrawerConfig,
+                         @Param("homeTitle") String homeTitle);
 
     /**
      * 只更新公告

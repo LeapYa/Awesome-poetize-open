@@ -168,6 +168,16 @@ export const adminConfigSearchIndex = [
     aliases: ['webTitle', 'title']
   },
   {
+    id: 'field-home-title',
+    type: 'field',
+    route: '/webEdit',
+    pageTitle: '基础设置',
+    sectionTitle: '基础信息',
+    fieldLabel: '首页标题',
+    keywords: ['首页标题', '主页标题', 'ICP备案名', '备案名'],
+    aliases: ['homeTitle']
+  },
+  {
     id: 'field-web-name',
     type: 'field',
     route: '/webEdit',

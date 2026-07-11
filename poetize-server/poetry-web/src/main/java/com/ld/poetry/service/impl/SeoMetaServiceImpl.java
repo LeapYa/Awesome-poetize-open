@@ -177,7 +177,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             }
 
             // 基础站点信息
-            meta.put("title", getSiteTitle());
+            meta.put("title", getHomeTitle());
             meta.put("description", seoConfig.get("site_description"));
             meta.put("keywords", seoConfig.get("site_keywords"));
             meta.put("author", seoConfig.get("default_author"));
@@ -186,9 +186,9 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             // 网站图标
             addIconMeta(meta, seoConfig);
 
-            // OpenGraph和Twitter Card
+            // OpenGraph和Twitter Card（首页 og:title/twitter:title 与 <title> 一致，使用 getHomeTitle）
             addSocialMediaMeta(meta, seoConfig,
-                    getSiteTitle(),
+                    getHomeTitle(),
                     seoConfig.get("site_description").toString());
 
             // Canonical URL (规范链接)
@@ -831,5 +831,21 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             log.warn("获取webInfo失败", e);
         }
         return "POETIZE";
+    }
+
+    /**
+     * 获取首页标题，优先使用 webInfo.homeTitle，为空时回退到 getSiteTitle()（即 webTitle/webName/POETIZE）
+     * 用于首页 SEO meta title，使 ICP 备案名能展示在首页标题中
+     */
+    private String getHomeTitle() {
+        try {
+            var webInfo = cacheService.getCachedWebInfo();
+            if (webInfo != null && StringUtils.hasText(webInfo.getHomeTitle())) {
+                return webInfo.getHomeTitle();
+            }
+        } catch (Exception e) {
+            log.warn("获取webInfo失败(homeTitle)", e);
+        }
+        return getSiteTitle();
     }
 }

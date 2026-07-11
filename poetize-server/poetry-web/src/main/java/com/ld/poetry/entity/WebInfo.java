@@ -43,6 +43,12 @@ public class WebInfo implements Serializable {
     private String webTitle;
 
     /**
+     * 首页标题（为空时回退到 webTitle，常用于 ICP 备案名展示）
+     */
+    @TableField(value = "home_title", exist = true)
+    private String homeTitle;
+
+    /**
      * 网站地址（完整URL）
      */
     @TableField(value = "site_address", exist = true)
