@@ -21,7 +21,8 @@ public final class VisitRegionNormalizer {
             "0", "-", "unknown", "reserved", "null", "undefined", "未知", "内网IP", "内网ip"
     );
     private static final Set<String> CHINA_NAMES = Set.of(
-            "中国", "china", "cn", "chn", "prc", "people s republic of china", "people's republic of china"
+            "中国", "中华人民共和国", "china", "cn", "chn", "prc",
+            "people s republic of china", "people's republic of china"
     );
     private static final Map<String, String> COUNTRY_NAMES = buildCountryNames();
     private static final Map<String, String> REGION_COUNTRY_ALIASES = buildRegionCountryAliases();

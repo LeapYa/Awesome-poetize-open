@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2026-07-12
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.13.1
+## 版本: 1.13.2
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.13.1"
+POETIZE_VERSION="1.13.2"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -10733,8 +10733,14 @@ patch_dockerfile_mirror() {
   fi
 
   if [ -f "docker/java/Dockerfile" ] && [ -f "docker/nginx/Dockerfile" ]; then
-    patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 3
-    patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 139
+    # nginx 是多阶段构建，动态查找每个 FROM openresty 行并在其后插入 apk 镜像源，
+    # 避免因 Dockerfile 行数变动而需要手动维护行号。
+    # 从后往前插入（行号倒序），这样前面的插入不会影响后面待处理行的行号。
+    local nginx_from_lines
+    nginx_from_lines=$(grep -n '^FROM openresty' docker/nginx/Dockerfile | cut -d: -f1 | sort -rn)
+    for nginx_from_line in $nginx_from_lines; do
+      patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" "$((nginx_from_line + 1))"
+    done
     patch_dockerfile_alpine_mirror "docker/translation-model/Dockerfile" 5
     patch_dockerfile_alpine_mirror "docker/java/Dockerfile" 16
     patch_dockerfile_alpine_mirror "docker/prerender/Dockerfile" 5

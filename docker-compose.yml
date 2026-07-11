@@ -29,6 +29,8 @@ services:
       - web-root:/usr/share/nginx/html
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      # 共享 Java 自动更新的 xdb 文件，只读挂载（ban_check.lua 直接查 xdb 做地区封禁）
+      - ip2region_data:/data/ip2region:ro
     ports:
       - "${HTTP_PORT:-80}:80/tcp"
       - "${HTTPS_PORT:-443}:443/tcp"
@@ -168,6 +170,8 @@ services:
       - poetize_web_dist:/app/web-dist
       - poetize_admin_dist:/app/admin-dist
       - poetize_nginx_logs:/app/nginx-logs:ro
+      # xdb 文件共享卷：Java 读写（自动更新 + classpath 初始化），Nginx 只读挂载
+      - ip2region_data:/data/ip2region
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
@@ -189,6 +193,8 @@ services:
       - PRERENDER_OUTPUT_ROOT=/app/web-dist/prerender
       - PRERENDER_ADMIN_TEMPLATE_PATH=/app/admin-dist/index.html
       - PRERENDER_ADMIN_OUTPUT_ROOT=/app/admin-dist/prerender
+      # xdb 文件目录：Java 自动更新 ip2region xdb 到此目录，Nginx 通过共享卷读取
+      - IP2REGION_DATA_DIR=/data/ip2region
       - RESOURCE_AVAILABILITY_STATICROOTS=/app/web-dist/static
       - SITE_URL=${SITE_URL:-http://localhost}
       # 容器网络网段，用于判断请求是否为内网服务的请求
@@ -326,3 +332,4 @@ volumes:
   poetize_uploads:
   poetize_nginx_logs:
   ollama_data:
+  ip2region_data:

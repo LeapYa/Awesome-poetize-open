@@ -24,6 +24,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -40,9 +41,12 @@ import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 缓存服务类
@@ -64,7 +68,12 @@ public class CacheService {
     
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
-    
+
+    // 供 Nginx Lua 读取的 key（ban_rules_snapshot）必须用 StringRedisTemplate，
+    // 绕开主 RedisTemplate 的 defaultTyping，否则 Lua red:get() 拿到的是 Jackson 双重编码的字符串。
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
     @Autowired
     private HistoryInfoMapper historyInfoMapper;
 
@@ -1166,7 +1175,15 @@ public class CacheService {
             }
 
             String prefix = CacheConstants.IP_BLACKLIST_PREFIX;
+            // 过滤掉扩展封禁规则的键（:ua:/:cidr:/:region:），避免误当作 IP 返回
+            String uaSubPrefix = CacheConstants.UA_BLACKLIST_PREFIX;
+            String cidrSubPrefix = CacheConstants.CIDR_BLACKLIST_PREFIX;
+            String regionSubPrefix = CacheConstants.REGION_BLACKLIST_PREFIX;
             for (String key : keys) {
+                if (key.startsWith(uaSubPrefix) || key.startsWith(cidrSubPrefix)
+                        || key.startsWith(regionSubPrefix)) {
+                    continue;
+                }
                 String ip = key.startsWith(prefix) ? key.substring(prefix.length()) : key;
                 Object value = redisUtil.get(key);
                 long ttl = redisUtil.getExpire(key);
@@ -1181,8 +1198,8 @@ public class CacheService {
 
             // 排序：永久优先 → 剩余时间长的优先 → ip 字典序
             result.sort((a, b) -> {
-                long ta = ((Number) a.get("ttl")).longValue();
-                long tb = ((Number) b.get("ttl")).longValue();
+                long ta = a.get("ttl") instanceof Number ? ((Number) a.get("ttl")).longValue() : -2L;
+                long tb = b.get("ttl") instanceof Number ? ((Number) b.get("ttl")).longValue() : -2L;
                 if (ta == tb) {
                     return String.valueOf(a.get("ip")).compareTo(String.valueOf(b.get("ip")));
                 }
@@ -1195,6 +1212,412 @@ public class CacheService {
         } catch (Exception e) {
             log.error("列出IP黑名单失败", e);
             return result;
+        }
+    }
+
+    // ================================ 扩展封禁规则（UA/CIDR/Region） ================================
+
+    /**
+     * 根据 type 获取对应的黑名单键前缀。
+     * @param type ua/cidr/region
+     * @return 前缀，type 非法返回 null
+     */
+    private String getBanRulePrefix(String type) {
+        if (type == null) return null;
+        switch (type.toLowerCase(Locale.ROOT)) {
+            case "ua": return CacheConstants.UA_BLACKLIST_PREFIX;
+            case "cidr": return CacheConstants.CIDR_BLACKLIST_PREFIX;
+            case "region": return CacheConstants.REGION_BLACKLIST_PREFIX;
+            default: return null;
+        }
+    }
+
+    /**
+     * 添加扩展封禁规则（UA/CIDR/Region）。
+     * <p>durationSeconds 语义与 {@link #blacklistIP} 一致：
+     * <ul>
+     *     <li>&lt; 0：永久（无 TTL）</li>
+     *     <li>== 0：默认 24h（{@link CacheConstants#IP_BLACKLIST_EXPIRE_TIME}）</li>
+     *     <li>&gt; 0：指定秒数</li>
+     * </ul>
+     * 若同类型下已存在相同 value（及 matchMode/regionType）的规则，则刷新其 TTL 并返回 existed=true。
+     *
+     * @param type            ua/cidr/region
+     * @param value           规则值（UA 文本/CIDR/地区名）
+     * @param matchMode       ua 用：contains/equals，其余传 null
+     * @param regionType      region 用：country/province，其余传 null
+     * @param reason          封禁原因
+     * @param durationSeconds 封禁时长（秒）
+     * @return 含 id/existed/permanent/durationSeconds/durationLabel 的 Map；异常返回 null
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> addBanRule(String type, String value, String matchMode,
+                                          String regionType, String reason, long durationSeconds) {
+        try {
+            if (type == null || value == null || value.trim().isEmpty()) {
+                return null;
+            }
+            String normalizedType = type.trim().toLowerCase(Locale.ROOT);
+            String normalizedValue = value.trim();
+            String prefix = getBanRulePrefix(normalizedType);
+            if (prefix == null) {
+                return null;
+            }
+
+            String normalizedMatchMode = null;
+            if ("ua".equals(normalizedType)) {
+                normalizedMatchMode = (matchMode == null || matchMode.trim().isEmpty())
+                        ? "contains" : matchMode.trim().toLowerCase(Locale.ROOT);
+            }
+            String normalizedRegionType = null;
+            if ("region".equals(normalizedType)) {
+                normalizedRegionType = (regionType == null || regionType.trim().isEmpty())
+                        ? null : regionType.trim().toLowerCase(Locale.ROOT);
+            }
+
+            // 扫描同类型规则，检查是否已存在相同规则
+            String existingId = null;
+            String existingCreatedAt = null;
+            try {
+                Set<String> keys = new HashSet<>();
+                ScanOptions options = ScanOptions.scanOptions()
+                        .match(prefix + "*")
+                        .count(200)
+                        .build();
+                try (Cursor<String> cursor = redisTemplate.scan(options)) {
+                    while (cursor.hasNext()) {
+                        keys.add(cursor.next());
+                    }
+                }
+
+                for (String key : keys) {
+                    Object raw = redisUtil.get(key);
+                    if (raw == null) continue;
+                    Map<String, Object> rule;
+                    try {
+                        rule = JsonUtils.parseObject(String.valueOf(raw), Map.class);
+                    } catch (Exception parseEx) {
+                        continue;
+                    }
+                    if (rule == null) continue;
+                    Object ev = rule.get("value");
+                    if (ev == null || !normalizedValue.equals(String.valueOf(ev).trim())) {
+                        continue;
+                    }
+                    if ("ua".equals(normalizedType)) {
+                        Object existMm = rule.get("matchMode");
+                        String existMmStr = existMm == null ? "contains"
+                                : String.valueOf(existMm).trim().toLowerCase(Locale.ROOT);
+                        if (!normalizedMatchMode.equals(existMmStr)) {
+                            continue;
+                        }
+                    } else if ("region".equals(normalizedType)) {
+                        Object existRt = rule.get("regionType");
+                        String existRtStr = existRt == null ? null
+                                : String.valueOf(existRt).trim().toLowerCase(Locale.ROOT);
+                        if (!Objects.equals(normalizedRegionType, existRtStr)) {
+                            continue;
+                        }
+                    }
+                    Object idObj = rule.get("id");
+                    existingId = idObj == null ? null : String.valueOf(idObj);
+                    Object createdAtObj = rule.get("createdAt");
+                    existingCreatedAt = createdAtObj == null ? null : String.valueOf(createdAtObj);
+                    break;
+                }
+            } catch (Exception scanEx) {
+                log.warn("扫描已存在封禁规则失败: type={}", normalizedType, scanEx);
+            }
+
+            boolean existed = existingId != null;
+            String id = existed ? existingId : UUID.randomUUID().toString().replace("-", "");
+            String key = prefix + id;
+
+            // 构造规则 JSON value
+            // 刷新已存在规则时保留原 createdAt，避免管理员误判为新规则
+            Map<String, Object> ruleValue = new HashMap<>();
+            ruleValue.put("id", id);
+            ruleValue.put("type", normalizedType);
+            ruleValue.put("value", normalizedValue);
+            ruleValue.put("matchMode", "ua".equals(normalizedType) ? normalizedMatchMode : null);
+            ruleValue.put("regionType", "region".equals(normalizedType) ? normalizedRegionType : null);
+            ruleValue.put("reason", reason == null ? "" : reason);
+            ruleValue.put("createdAt", existed && existingCreatedAt != null
+                    ? existingCreatedAt : Instant.now().toString());
+            String jsonValue = JsonUtils.toJsonString(ruleValue);
+
+            boolean permanent = durationSeconds < 0;
+            long effectiveDuration;
+            boolean setOk;
+            if (permanent) {
+                setOk = redisUtil.set(key, jsonValue); // 无 TTL，永久
+                effectiveDuration = -1L;
+            } else if (durationSeconds == 0) {
+                effectiveDuration = CacheConstants.IP_BLACKLIST_EXPIRE_TIME;
+                setOk = redisUtil.set(key, jsonValue, effectiveDuration);
+            } else {
+                effectiveDuration = durationSeconds;
+                setOk = redisUtil.set(key, jsonValue, effectiveDuration);
+            }
+            if (!setOk) {
+                log.error("添加封禁规则失败: Redis 写入失败 key={}", key);
+                return null;
+            }
+
+            String durationLabel;
+            if (permanent) {
+                durationLabel = "永久";
+            } else if (durationSeconds == 0) {
+                durationLabel = effectiveDuration + "秒（默认24小时）";
+            } else {
+                durationLabel = durationSeconds + "秒";
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("id", id);
+            result.put("existed", existed);
+            result.put("permanent", permanent);
+            result.put("durationSeconds", effectiveDuration);
+            result.put("durationLabel", durationLabel);
+
+            log.warn("添加封禁规则: type={}, value={}, id={}, existed={}, permanent={}, duration={}s",
+                    normalizedType, normalizedValue, id, existed, permanent, effectiveDuration);
+            // 刷新封禁规则快照到 Redis，供 Nginx Lua 读取
+            refreshBanRulesSnapshot();
+            return result;
+        } catch (Exception e) {
+            log.error("添加封禁规则失败: type={}, value={}", type, value, e);
+            return null;
+        }
+    }
+
+    /**
+     * 列出指定类型的所有封禁规则。
+     * @param type ua/cidr/region
+     * @return 规则列表（每条含规则字段 + ttl + permanent），异常返回空列表
+     */
+    public List<Map<String, Object>> listBanRules(String type) {
+        return listBanRules(type, false);
+    }
+
+    /**
+     * 列出指定类型的所有封禁规则，可选择是否追加内置 AI 爬虫硬名单。
+     * <p>内置硬名单仅用于「展示」（供管理端封禁列表显示与删除），
+     * 不会进入 {@link #loadAllBanRules()} / 快照，因此不改变 SecurityFilter / Nginx 的实际匹配语义
+     * （硬名单匹配仍由各自的 token 边界匹配逻辑独立处理）。
+     *
+     * @param type           ua/cidr/region
+     * @param includeBuiltin 为 true 且 type=ua 时，追加未被禁用的内置硬名单（id 形如 builtin:&lt;ua&gt;）
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listBanRules(String type, boolean includeBuiltin) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        try {
+            String prefix = getBanRulePrefix(type);
+            if (prefix == null) {
+                return result;
+            }
+
+            Set<String> keys = new HashSet<>();
+            ScanOptions options = ScanOptions.scanOptions()
+                    .match(prefix + "*")
+                    .count(200)
+                    .build();
+            try (Cursor<String> cursor = redisTemplate.scan(options)) {
+                while (cursor.hasNext()) {
+                    keys.add(cursor.next());
+                }
+            }
+
+            for (String key : keys) {
+                Object raw = redisUtil.get(key);
+                if (raw == null) continue;
+                Map<String, Object> rule;
+                try {
+                    rule = JsonUtils.parseObject(String.valueOf(raw), Map.class);
+                } catch (Exception parseEx) {
+                    log.warn("解析封禁规则失败: key={}", key);
+                    continue;
+                }
+                if (rule == null) continue;
+                Map<String, Object> item = new HashMap<>(rule);
+                long ttl = redisUtil.getExpire(key);
+                item.put("ttl", ttl);
+                item.put("permanent", ttl == -1);
+                result.add(item);
+            }
+
+            // 排序：永久优先，再按剩余秒数降序，最后按 id 字典序
+            result.sort((a, b) -> {
+                long ta = a.get("ttl") instanceof Number ? ((Number) a.get("ttl")).longValue() : -2L;
+                long tb = b.get("ttl") instanceof Number ? ((Number) b.get("ttl")).longValue() : -2L;
+                if (ta == tb) {
+                    return String.valueOf(a.getOrDefault("id", ""))
+                            .compareTo(String.valueOf(b.getOrDefault("id", "")));
+                }
+                long va = ta < 0 ? (ta == -1 ? Long.MAX_VALUE : Long.MIN_VALUE) : ta;
+                long vb = tb < 0 ? (tb == -1 ? Long.MAX_VALUE : Long.MIN_VALUE) : tb;
+                return Long.compare(vb, va);
+            });
+
+            // 追加内置 AI 爬虫硬名单（仅展示用，排在自定义规则之后；已被禁用的不再显示）
+            if (includeBuiltin && "ua".equalsIgnoreCase(type)) {
+                Set<String> disabled = loadDisabledAiCrawlerUa();
+                for (String ua : CacheConstants.BUILTIN_AI_CRAWLER_UA) {
+                    if (disabled.contains(ua.toLowerCase(Locale.ROOT))) {
+                        continue;
+                    }
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", "builtin:" + ua);
+                    item.put("type", "ua");
+                    item.put("value", ua);
+                    // 硬名单实际使用 token 边界匹配，此处标注 contains 仅用于前端展示口径
+                    item.put("matchMode", "contains");
+                    item.put("regionType", null);
+                    item.put("reason", "内置 AI 爬虫硬名单（阻断训练数据采集，可删除）");
+                    item.put("createdAt", null);
+                    item.put("ttl", -1L);
+                    item.put("permanent", true);
+                    item.put("builtin", true);
+                    result.add(item);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("列出封禁规则失败: type={}", type, e);
+            return result;
+        }
+    }
+
+    /**
+     * 删除指定类型的某条封禁规则。
+     * @param type ua/cidr/region
+     * @param id   规则ID
+     * @return true 删除成功；id 为空或 type 非法返回 false
+     */
+    public boolean removeBanRule(String type, String id) {
+        if (type == null || id == null || id.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String normalizedType = type.trim().toLowerCase(Locale.ROOT);
+
+            // 内置 AI 爬虫硬名单：id 形如 builtin:<ua>，删除=写入禁用集合（匹配时跳过 + 列表隐藏），
+            // 而非删除某个 Redis 规则 key。解决"内置 UA 弃用后无法删除"的问题。
+            if ("ua".equals(normalizedType) && id.startsWith("builtin:")) {
+                String ua = id.substring("builtin:".length()).trim().toLowerCase(Locale.ROOT);
+                if (ua.isEmpty()) {
+                    return false;
+                }
+                Set<String> disabled = loadDisabledAiCrawlerUa();
+                disabled.add(ua);
+                saveDisabledAiCrawlerUa(disabled);
+                log.warn("禁用内置AI爬虫硬名单: {}", ua);
+                // 刷新快照，让 Nginx Lua 同步禁用集合
+                refreshBanRulesSnapshot();
+                return true;
+            }
+
+            String key;
+            switch (normalizedType) {
+                case "ua": key = CacheConstants.buildUaBlacklistKey(id); break;
+                case "cidr": key = CacheConstants.buildCidrBlacklistKey(id); break;
+                case "region": key = CacheConstants.buildRegionBlacklistKey(id); break;
+                default: return false;
+            }
+            redisUtil.del(key);
+            log.info("删除封禁规则: type={}, id={}", normalizedType, id);
+            // 刷新封禁规则快照到 Redis，供 Nginx Lua 读取
+            refreshBanRulesSnapshot();
+            return true;
+        } catch (Exception e) {
+            log.error("删除封禁规则失败: type={}, id={}", type, id, e);
+            return false;
+        }
+    }
+
+    /**
+     * 读取已被管理员禁用的内置 AI 爬虫硬名单集合（小写）。
+     * <p>存储为 JSON 字符串数组，异常或不存在时返回空集合。
+     */
+    @SuppressWarnings("unchecked")
+    public Set<String> loadDisabledAiCrawlerUa() {
+        Set<String> set = new HashSet<>();
+        try {
+            String raw = stringRedisTemplate.opsForValue().get(CacheConstants.DISABLED_AI_CRAWLER_UA_KEY);
+            if (raw != null && !raw.isEmpty()) {
+                List<Object> list = JsonUtils.parseObject(raw, List.class);
+                if (list != null) {
+                    for (Object o : list) {
+                        if (o != null) {
+                            set.add(String.valueOf(o).trim().toLowerCase(Locale.ROOT));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取禁用内置AI爬虫硬名单失败", e);
+        }
+        return set;
+    }
+
+    /**
+     * 持久化已被管理员禁用的内置 AI 爬虫硬名单集合（永久有效）。
+     */
+    private void saveDisabledAiCrawlerUa(Set<String> disabled) {
+        try {
+            String json = JsonUtils.toJsonString(new ArrayList<>(disabled == null ? Set.of() : disabled));
+            stringRedisTemplate.opsForValue().set(CacheConstants.DISABLED_AI_CRAWLER_UA_KEY, json);
+        } catch (Exception e) {
+            log.error("保存禁用内置AI爬虫硬名单失败", e);
+        }
+    }
+
+    /**
+     * 加载全部三类封禁规则到内存缓存（供 SecurityFilter 定期刷新调用）。
+     * @return Map 含 "ua"/"cidr"/"region" 三个 key 对应列表，任一类型异常时对应列表为空
+     */
+    public Map<String, List<Map<String, Object>>> loadAllBanRules() {
+        Map<String, List<Map<String, Object>>> result = new HashMap<>();
+        result.put("ua", new ArrayList<>());
+        result.put("cidr", new ArrayList<>());
+        result.put("region", new ArrayList<>());
+        try {
+            result.put("ua", listBanRules("ua"));
+        } catch (Exception e) {
+            log.warn("加载UA封禁规则失败", e);
+        }
+        try {
+            result.put("cidr", listBanRules("cidr"));
+        } catch (Exception e) {
+            log.warn("加载CIDR封禁规则失败", e);
+        }
+        try {
+            result.put("region", listBanRules("region"));
+        } catch (Exception e) {
+            log.warn("加载地区封禁规则失败", e);
+        }
+        return result;
+    }
+
+    /**
+     * 刷新封禁规则快照到 Redis（供 Nginx Lua 读取）。
+     * <p>将当前所有 UA/CIDR/Region 规则序列化为 JSON 写入快照 key，永久有效。
+     * 异常仅记录日志，不影响主流程。
+     */
+    public void refreshBanRulesSnapshot() {
+        try {
+            Map<String, List<Map<String, Object>>> all = loadAllBanRules();
+            // 快照结构：{ua:[], cidr:[], region:[], disabled_ai_ua:[]}
+            // disabled_ai_ua 为被管理员禁用的内置 AI 爬虫硬名单，供 Nginx Lua 匹配时跳过。
+            Map<String, Object> snapshot = new HashMap<>(all);
+            snapshot.put("disabled_ai_ua", new ArrayList<>(loadDisabledAiCrawlerUa()));
+            String json = JsonUtils.toJsonString(snapshot);
+            // 必须用 StringRedisTemplate 写原始 JSON 字符串，避免主 RedisTemplate 的
+            // defaultTyping 把 String 再包一层 JSON 引号转义，导致 Lua cjson.decode 拿到 string 而非 table。
+            stringRedisTemplate.opsForValue().set(CacheConstants.BAN_RULES_SNAPSHOT_KEY, json);
+        } catch (Exception e) {
+            log.error("刷新封禁规则快照失败", e);
         }
     }
 

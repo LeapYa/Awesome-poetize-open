@@ -156,9 +156,9 @@
       </span>
     </el-dialog>
 
-    <!-- 拉黑 IP 弹窗：选择封禁时长 -->
+    <!-- 拉黑/封禁弹窗：支持 IP/UA/CIDR/省份/国家 多类型 -->
     <el-dialog
-      :title="`拉黑 IP - ${blockDialog.ip || ''}`"
+      :title="blockDialogTitle"
       :visible.sync="blockDialog.visible"
       width="520px"
       custom-class="centered-dialog"
@@ -167,11 +167,49 @@
       @closed="resetBlockDialog">
       <div class="block-form">
         <div class="block-row">
+          <span class="block-label">封禁类型</span>
+          <el-radio-group v-model="blockDialog.type" class="block-input" @change="handleBlockTypeChange">
+            <el-radio-button label="ip">IP</el-radio-button>
+            <el-radio-button label="ua">UA</el-radio-button>
+            <el-radio-button label="cidr">IP网段</el-radio-button>
+            <el-radio-button label="province">省份</el-radio-button>
+            <el-radio-button label="country">国家</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="block-row" v-if="blockDialog.type === 'ip'">
           <span class="block-label">目标 IP</span>
           <el-input
             v-model="blockDialog.ip"
             :disabled="!blockDialog.editable"
             :placeholder="blockDialog.editable ? '请输入 IP 地址' : ''"
+            class="block-input"></el-input>
+        </div>
+        <div class="block-row" v-if="blockDialog.type === 'ua'">
+          <span class="block-label">UA 文本</span>
+          <el-input
+            v-model="blockDialog.value"
+            placeholder="请输入 User-Agent 关键词"
+            class="block-input"></el-input>
+        </div>
+        <div class="block-row" v-if="blockDialog.type === 'ua'">
+          <span class="block-label">匹配模式</span>
+          <el-select v-model="blockDialog.matchMode" class="block-input">
+            <el-option label="包含" value="contains"></el-option>
+            <el-option label="完全相等" value="equals"></el-option>
+          </el-select>
+        </div>
+        <div class="block-row" v-if="blockDialog.type === 'cidr'">
+          <span class="block-label">网段</span>
+          <el-input
+            v-model="blockDialog.value"
+            placeholder="如 192.168.1.0/24"
+            class="block-input"></el-input>
+        </div>
+        <div class="block-row" v-if="blockDialog.type === 'province' || blockDialog.type === 'country'">
+          <span class="block-label">{{ blockDialog.type === 'country' ? '国家' : '省份' }}</span>
+          <el-input
+            v-model="blockDialog.value"
+            :placeholder="blockDialog.type === 'country' ? '如 美国 / US / United States / 中华人民共和国' : '如 江苏省 / 江苏 / California'"
             class="block-input"></el-input>
         </div>
         <div class="block-row">
@@ -197,7 +235,7 @@
         </div>
         <div class="block-tip">
           <i class="el-icon-warning-outline"></i>
-          封禁后，该 IP 访问站点会被 Nginx 直接拦截并返回 403，连 HTML 源码也拿不到（爬虫/不执行 JS 的客户端均无效）。
+          {{ blockTipText }}
         </div>
       </div>
       <span slot="footer" class="dialog-footer">
@@ -211,7 +249,7 @@
 
     <!-- 封禁列表弹窗 -->
     <el-dialog
-      title="IP 封禁列表"
+      title="封禁列表"
       :visible.sync="blacklistDialog.visible"
       width="820px"
       custom-class="centered-dialog"
@@ -220,16 +258,24 @@
         <el-tabs v-model="blacklistDialog.activeTab" @tab-click="handleBlacklistTabClick">
           <!-- 安全黑名单（全局拦截，403） -->
           <el-tab-pane label="安全黑名单" name="security">
-            <div v-loading="blacklistDialog.loading" class="blacklist-tab-body">
+            <div v-loading="blacklistDialog.loading || blacklistDialog.ruleLoading" class="blacklist-tab-body">
               <div class="blacklist-toolbar">
                 <el-input
                   v-model="blacklistDialog.search"
-                  placeholder="按 IP / 原因搜索"
+                  placeholder="按内容 / 原因搜索"
                   clearable
                   prefix-icon="el-icon-search"
                   class="blacklist-search"></el-input>
+                <el-select v-model="blacklistDialog.ruleType" @change="handleRuleTypeChange" size="small" style="width: 120px;" placeholder="类型">
+                  <el-option label="全部" value="all"></el-option>
+                  <el-option label="IP" value="ip"></el-option>
+                  <el-option label="UA" value="ua"></el-option>
+                  <el-option label="IP网段" value="cidr"></el-option>
+                  <el-option label="省份" value="province"></el-option>
+                  <el-option label="国家" value="country"></el-option>
+                </el-select>
                 <el-button type="danger" icon="el-icon-plus" @click="openAddBlockIp">添加封禁</el-button>
-                <el-button type="primary" icon="el-icon-refresh" @click="loadBlacklist">刷新</el-button>
+                <el-button type="primary" icon="el-icon-refresh" @click="loadRulesByCurrentType">刷新</el-button>
                 <span class="blacklist-count">共 {{ blacklistFiltered.length }} 条</span>
               </div>
               <el-table
@@ -238,11 +284,32 @@
                 max-height="420"
                 empty-text="暂无封禁记录"
                 class="blacklist-table">
-                <el-table-column prop="ip" label="IP" min-width="140"></el-table-column>
-                <el-table-column label="类型" width="92" align="center">
+                <el-table-column label="类型" width="90" align="center">
                   <template slot-scope="scope">
-                    <el-tag :type="scope.row.permanent ? 'danger' : 'warning'" size="mini" disable-transitions>
-                      {{ scope.row.permanent ? '永久' : '定时' }}
+                    <el-tag :type="getRuleTypeTagType(scope.row.ruleType)" size="mini" disable-transitions>
+                      {{ getRuleTypeLabel(scope.row) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column :label="valueColumnLabel" min-width="180" show-overflow-tooltip>
+                  <template slot-scope="scope">
+                    <span>{{ scope.row.value }}</span>
+                    <el-tag
+                      v-if="scope.row.ruleType === 'ua' && scope.row.matchMode && !scope.row.builtin"
+                      size="mini"
+                      type="info"
+                      disable-transitions
+                      style="margin-left: 6px;">
+                      {{ scope.row.matchMode === 'equals' ? '完全相等' : '包含' }}
+                    </el-tag>
+                    <el-tag
+                      v-if="scope.row.builtin"
+                      size="mini"
+                      type="danger"
+                      disable-transitions
+                      style="margin-left: 6px;"
+                      title="内置 AI 爬虫硬名单，可删除">
+                      内置
                     </el-tag>
                   </template>
                 </el-table-column>
@@ -258,14 +325,14 @@
                       type="text"
                       icon="el-icon-unlock"
                       class="unblock-btn"
-                      :loading="blacklistDialog.unblockLoading === scope.row.ip"
-                      @click="confirmUnblock(scope.row)">解除</el-button>
+                      :loading="getUnblockLoading(scope.row)"
+                      @click="handleUnblock(scope.row)">解除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
               <div class="blacklist-hint">
                 <i class="el-icon-info"></i>
-                安全黑名单由 SecurityFilter 在请求入口直接拦截（返回 403），来源：管理员手动拉黑 / 攻击阈值自动拉黑。默认 24 小时，可设永久。
+                安全黑名单由 SecurityFilter 在请求入口直接拦截（返回 403），来源：管理员手动拉黑 / 攻击阈值自动拉黑。默认 24 小时，可设永久。支持 IP / UA / IP 网段 / 省份 / 国家 多类型规则。带「内置」标签的为 AI 爬虫硬名单（永久生效），如对应 UA 弃用可直接删除。
               </div>
             </div>
           </el-tab-pane>
@@ -354,18 +421,27 @@ export default {
       blockDialog: {
         visible: false,
         ip: '',
+        value: '',
         reason: '',
         durationKey: '24h',
         loading: false,
         sourceRow: null,
-        editable: false
+        editable: false,
+        type: 'ip',
+        matchMode: 'contains',
+        regionType: ''
       },
       blacklistDialog: {
         visible: false,
         loading: false,
+        ruleLoading: false,
         unblockLoading: '',
         search: '',
         list: [],
+        uaList: [],
+        cidrList: [],
+        regionList: [],
+        ruleType: 'all',
         activeTab: 'security',
         captchaList: [],
         captchaLoading: false,
@@ -498,16 +574,90 @@ export default {
     window.removeEventListener('resize', this.handleResize);
   },
   computed: {
+    // 当前筛选类型对应的统一规则列表，每行带 ruleType(ip/ua/cidr/region)、value、ruleId 字段
+    currentRuleList() {
+      const ruleType = this.blacklistDialog.ruleType;
+      const normalizeIp = (item) => Object.assign({}, item, { ruleType: 'ip', value: item.ip, ruleId: '' });
+      const normalizeRule = (item, type) => Object.assign({}, item, { ruleType: type, value: item.value, ruleId: item.id });
+      if (ruleType === 'all') {
+        const ipList = (this.blacklistDialog.list || []).map(i => normalizeIp(i));
+        const uaList = (this.blacklistDialog.uaList || []).map(i => normalizeRule(i, 'ua'));
+        const cidrList = (this.blacklistDialog.cidrList || []).map(i => normalizeRule(i, 'cidr'));
+        const regionList = (this.blacklistDialog.regionList || []).map(i => normalizeRule(i, 'region'));
+        return ipList.concat(uaList, cidrList, regionList);
+      }
+      if (ruleType === 'ip') {
+        return (this.blacklistDialog.list || []).map(i => normalizeIp(i));
+      }
+      if (ruleType === 'ua') {
+        return (this.blacklistDialog.uaList || []).map(i => normalizeRule(i, 'ua'));
+      }
+      if (ruleType === 'cidr') {
+        return (this.blacklistDialog.cidrList || []).map(i => normalizeRule(i, 'cidr'));
+      }
+      if (ruleType === 'province' || ruleType === 'country') {
+        return (this.blacklistDialog.regionList || [])
+          .filter(i => i.regionType === ruleType)
+          .map(i => normalizeRule(i, 'region'));
+      }
+      return [];
+    },
     blacklistFiltered() {
       const kw = (this.blacklistDialog.search || '').trim().toLowerCase();
+      const list = this.currentRuleList;
       if (!kw) {
-        return this.blacklistDialog.list;
+        return list;
       }
-      return this.blacklistDialog.list.filter(item => {
-        const ip = (item.ip || '').toLowerCase();
+      return list.filter(item => {
+        const value = (item.value || '').toLowerCase();
         const reason = (item.reason || '').toLowerCase();
-        return ip.indexOf(kw) >= 0 || reason.indexOf(kw) >= 0;
+        return value.indexOf(kw) >= 0 || reason.indexOf(kw) >= 0;
       });
+    },
+    // 值列表头：根据当前筛选类型动态变化
+    valueColumnLabel() {
+      const ruleType = this.blacklistDialog.ruleType;
+      if (ruleType === 'ip') return 'IP地址';
+      if (ruleType === 'ua') return 'UA规则';
+      if (ruleType === 'cidr') return '网段';
+      if (ruleType === 'province') return '省份';
+      if (ruleType === 'country') return '国家';
+      return '值/规则';
+    },
+    // 添加封禁弹窗标题：根据类型变化
+    blockDialogTitle() {
+      const type = this.blockDialog.type;
+      if (type === 'ip') {
+        return '拉黑 IP - ' + (this.blockDialog.ip || '');
+      }
+      const labels = {
+        ua: '添加 UA 封禁',
+        cidr: '添加 IP 网段封禁',
+        province: '添加省份封禁',
+        country: '添加国家封禁'
+      };
+      return labels[type] || '添加封禁规则';
+    },
+    // 添加封禁弹窗提示：根据类型变化
+    blockTipText() {
+      const type = this.blockDialog.type;
+      const nginxTip = '封禁后，Nginx access 阶段直接查 Redis 拦截并返回 403，请求不会到达 Java 后端，连 HTML 源码也拿不到。';
+      if (type === 'ip') {
+        return nginxTip;
+      }
+      if (type === 'ua') {
+        return nginxTip + '（UA 匹配大小写不敏感；内置 claudebot/gptbot 等 AI 爬虫硬名单已在列表中显示，可单独删除）';
+      }
+      if (type === 'cidr') {
+        return nginxTip + '（支持 IPv4/IPv6 CIDR）';
+      }
+      if (type === 'country') {
+        return nginxTip + '（国家名自动校准：支持中文"美国"、ISO 代码"US"、英文"United States"、别名"中华人民共和国"，输入无效时提示可选值）';
+      }
+      if (type === 'province') {
+        return nginxTip + '（省份自动去后缀："江苏省"→"江苏"、"广西壮族自治区"→"广西"，国外省份请填 xdb 原始名如 California）';
+      }
+      return nginxTip;
     },
     captchaFiltered() {
       const kw = (this.blacklistDialog.captchaSearch || '').trim().toLowerCase();
@@ -791,28 +941,89 @@ export default {
       }
       const defaultReason = `来自系统日志: ${this.getActionLabel(row.action) || row.logType || ''} - ${(row.summary || '').slice(0, 60)}`;
       this.blockDialog.ip = ip;
+      this.blockDialog.value = '';
       this.blockDialog.reason = defaultReason;
       this.blockDialog.durationKey = '24h';
       this.blockDialog.sourceRow = row;
       this.blockDialog.loading = false;
+      this.blockDialog.type = 'ip';
+      this.blockDialog.matchMode = 'contains';
+      this.blockDialog.regionType = '';
       this.blockDialog.visible = true;
     },
     openAddBlockIp() {
       this.blockDialog.ip = '';
+      this.blockDialog.value = '';
       this.blockDialog.reason = '';
       this.blockDialog.durationKey = '24h';
       this.blockDialog.sourceRow = null;
       this.blockDialog.editable = true;
       this.blockDialog.loading = false;
+      // 默认类型跟随当前筛选（全部时默认 IP）
+      const rt = this.blacklistDialog.ruleType;
+      this.blockDialog.type = (rt === 'all') ? 'ip' : rt;
+      this.blockDialog.matchMode = 'contains';
+      this.blockDialog.regionType = (rt === 'province' || rt === 'country') ? rt : '';
       this.blockDialog.visible = true;
     },
     resetBlockDialog() {
       this.blockDialog.ip = '';
+      this.blockDialog.value = '';
       this.blockDialog.reason = '';
       this.blockDialog.durationKey = '24h';
       this.blockDialog.sourceRow = null;
       this.blockDialog.loading = false;
       this.blockDialog.editable = false;
+      this.blockDialog.type = 'ip';
+      this.blockDialog.matchMode = 'contains';
+      this.blockDialog.regionType = '';
+    },
+    // 切换封禁类型时重置非通用字段，并联动 regionType
+    handleBlockTypeChange(val) {
+      this.blockDialog.value = '';
+      if (val === 'province' || val === 'country') {
+        this.blockDialog.regionType = val;
+      } else {
+        this.blockDialog.regionType = '';
+      }
+    },
+    // 获取封禁类型中文标签（前端 type：ip/ua/cidr/province/country）
+    getBlockTypeLabel(type) {
+      if (type === 'ip') return 'IP';
+      if (type === 'ua') return 'UA';
+      if (type === 'cidr') return 'IP网段';
+      if (type === 'province') return '省份';
+      if (type === 'country') return '国家';
+      return '';
+    },
+    // 表格行类型标签（ruleType：ip/ua/cidr/region）
+    getRuleTypeLabel(row) {
+      if (!row) return '-';
+      if (row.ruleType === 'region') {
+        return row.regionType === 'country' ? '国家' : '省份';
+      }
+      return this.getBlockTypeLabel(row.ruleType);
+    },
+    getRuleTypeTagType(ruleType) {
+      if (ruleType === 'ip') return 'danger';
+      if (ruleType === 'ua') return 'warning';
+      if (ruleType === 'cidr') return 'primary';
+      if (ruleType === 'region') return 'success';
+      return 'info';
+    },
+    getUnblockLoading(row) {
+      if (row.ruleType === 'ip') {
+        return this.blacklistDialog.unblockLoading === row.ip;
+      }
+      return this.blacklistDialog.unblockLoading === row.ruleId;
+    },
+    // 解除按钮统一入口：根据规则类型分发
+    handleUnblock(row) {
+      if (row.ruleType === 'ip') {
+        this.confirmUnblock(row);
+      } else {
+        this.confirmUnblockRule(row);
+      }
     },
     durationKeyToSeconds(key) {
       return Object.prototype.hasOwnProperty.call(this.durationKeyMap, key)
@@ -830,6 +1041,11 @@ export default {
       return labels[key] || '24 小时';
     },
     confirmBlockIp() {
+      // 非 IP 类型走统一规则接口
+      if (this.blockDialog.type !== 'ip') {
+        this.confirmBlockRule();
+        return;
+      }
       const ip = (this.blockDialog.ip || '').trim();
       if (!ip) {
         this.$message.warning('IP 不能为空');
@@ -855,7 +1071,7 @@ export default {
         this.getLogs();
         // 封禁列表弹窗打开时同步刷新
         if (this.blacklistDialog.visible) {
-          this.loadBlacklist();
+          this.loadRulesByCurrentType();
         }
       }).catch((error) => {
         this.$message({
@@ -867,9 +1083,67 @@ export default {
         this.blockDialog.loading = false;
       });
     },
+    // 添加 UA/CIDR/Region 封禁规则（走 /blockRule 接口）
+    confirmBlockRule() {
+      const value = (this.blockDialog.value || '').trim();
+      if (!value) {
+        this.$message.warning('规则值不能为空');
+        return;
+      }
+      const reason = (this.blockDialog.reason || '').trim();
+      const durationSeconds = this.durationKeyToSeconds(this.blockDialog.durationKey);
+      // 映射前端 type 到后端 type（province/country → region + regionType）
+      let apiType = this.blockDialog.type;
+      let regionType = '';
+      if (this.blockDialog.type === 'province' || this.blockDialog.type === 'country') {
+        apiType = 'region';
+        regionType = this.blockDialog.type;
+      }
+      const body = { type: apiType, value, reason, durationSeconds };
+      if (apiType === 'ua') {
+        body.matchMode = this.blockDialog.matchMode || 'contains';
+      }
+      if (apiType === 'region') {
+        body.regionType = regionType;
+      }
+      this.blockDialog.loading = true;
+      this.$http.post(
+        this.$constant.baseURL + '/admin/security/blockRule',
+        body,
+        true
+      ).then((res) => {
+        const data = (res && res.data) || {};
+        const typeLabel = this.getBlockTypeLabel(this.blockDialog.type);
+        const tip = data.existed
+          ? `${typeLabel}规则已存在，已刷新为 ${this.durationLabel(this.blockDialog.durationKey)}`
+          : `已添加${typeLabel}封禁规则，时长：${this.durationLabel(this.blockDialog.durationKey)}`;
+        this.$message({ message: tip, type: 'success' });
+        this.blockDialog.visible = false;
+        this.loadRulesByCurrentType();
+      }).catch((error) => {
+        const errMsg = error && error.message ? error.message : '未知错误';
+        // 地区校准失败时后端返回可选值列表（消息较长），用通知卡片展示更清晰
+        if (errMsg.indexOf('可选值参考') >= 0) {
+          this.$notify({
+            title: '添加封禁规则失败',
+            message: errMsg,
+            type: 'error',
+            duration: 10000,
+            customClass: 'ban-error-notify'
+          });
+        } else {
+          this.$message({
+            message: '添加封禁规则失败: ' + errMsg,
+            type: 'error'
+          });
+        }
+      }).finally(() => {
+        this.blockDialog.loading = false;
+      });
+    },
     openBlacklistDialog() {
       this.blacklistDialog.visible = true;
-      this.loadBlacklist();
+      this.loadRulesByCurrentType();
       // 验证码 tab 懒加载：仅在已访问过时刷新
       if (this.blacklistDialog.captchaLoaded) {
         this.loadCaptchaBlockList();
@@ -896,6 +1170,97 @@ export default {
         .finally(() => {
           this.blacklistDialog.loading = false;
         });
+    },
+    // 类型筛选切换：加载当前类型对应数据
+    handleRuleTypeChange() {
+      this.loadRulesByCurrentType();
+    },
+    // 加载 UA/CIDR/Region 规则列表（ua/cidr/region）
+    loadRulesByType(type) {
+      return this.$http.get(this.$constant.baseURL + '/admin/security/rules', { type }, true)
+        .then(res => (res && res.data) || [])
+        .catch(() => []);
+    },
+    // 按当前筛选类型加载对应数据（IP 走 loadBlacklist，其余走 loadRulesByType）
+    loadRulesByCurrentType() {
+      const ruleType = this.blacklistDialog.ruleType;
+      if (ruleType === 'ip') {
+        this.loadBlacklist();
+        return;
+      }
+      if (ruleType === 'all') {
+        // 全部：IP 列表 + 三类规则列表
+        this.loadBlacklist();
+      }
+      this.blacklistDialog.ruleLoading = true;
+      const tasks = [];
+      if (ruleType === 'ua' || ruleType === 'all') {
+        tasks.push(this.loadRulesByType('ua').then(list => { this.blacklistDialog.uaList = list; }));
+      }
+      if (ruleType === 'cidr' || ruleType === 'all') {
+        tasks.push(this.loadRulesByType('cidr').then(list => { this.blacklistDialog.cidrList = list; }));
+      }
+      if (ruleType === 'province' || ruleType === 'country' || ruleType === 'all') {
+        tasks.push(this.loadRulesByType('region').then(list => { this.blacklistDialog.regionList = list; }));
+      }
+      if (tasks.length) {
+        Promise.all(tasks).finally(() => {
+          this.blacklistDialog.ruleLoading = false;
+        });
+      } else {
+        this.blacklistDialog.ruleLoading = false;
+      }
+    },
+    // 解除非 IP 规则（UA/CIDR/Region）走 /unblockRule 接口
+    confirmUnblockRule(row) {
+      const id = row.ruleId;
+      if (!id) {
+        this.$message.warning('规则 ID 不存在');
+        return;
+      }
+      const typeLabel = this.getRuleTypeLabel(row);
+      const confirmMsg = row.builtin
+        ? `「${row.value}」是内置 AI 爬虫硬名单，删除后 Nginx 与后端将不再自动拦截该爬虫（最多约 15 秒后生效）。确定删除？`
+        : `确定要解除该${typeLabel}封禁规则吗？规则值：${row.value}`;
+      this.$confirm(
+        confirmMsg,
+        row.builtin ? '删除内置硬名单' : '解除封禁',
+        {
+          confirmButtonText: row.builtin ? '确定删除' : '确定解除',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      ).then(() => {
+        this.blacklistDialog.unblockLoading = id;
+        this.$http.post(
+          this.$constant.baseURL + '/admin/security/unblockRule',
+          { type: row.ruleType, id },
+          true
+        ).then((res) => {
+          const data = (res && res.data) || {};
+          if (data.success) {
+            this.$message({
+              message: row.builtin ? '已删除内置硬名单' : `已解除${typeLabel}封禁规则`,
+              type: 'success'
+            });
+            this.loadRulesByCurrentType();
+          } else {
+            this.$message({
+              message: '解除失败，请重试',
+              type: 'error'
+            });
+          }
+        }).catch((error) => {
+          this.$message({
+            message: '解除封禁规则失败: ' + (error && error.message ? error.message : '未知错误'),
+            type: 'error'
+          });
+        }).finally(() => {
+          this.blacklistDialog.unblockLoading = '';
+        });
+      }).catch(() => {
+        // 取消
+      });
     },
     loadCaptchaBlockList() {
       this.blacklistDialog.captchaLoading = true;
@@ -1329,5 +1694,35 @@ body.dark-mode .block-tip {
   background: #3a2f1a !important;
   border-left-color: #e6a23c !important;
   color: #e6a23c !important;
+}
+
+/* ===== 暗色模式：封禁列表类型筛选 / 弹窗内 select ===== */
+body.dark-mode .blacklist-page ::v-deep .el-select .el-input__inner {
+  background-color: #2d2d2d !important;
+  border-color: #4a4a4a !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .blacklist-page ::v-deep .el-select .el-input__inner::placeholder {
+  color: #8a8a8a !important;
+}
+
+body.dark-mode .block-form ::v-deep .el-select .el-input__inner {
+  background-color: #2d2d2d !important;
+  border-color: #4a4a4a !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .blacklist-hint {
+  background: #2a2a2a !important;
+  border-left-color: #409eff !important;
+  color: #b0b0b0 !important;
+}
+
+/* ===== 地区校准失败通知卡片：可选值列表换行展示 ===== */
+.ban-error-notify {
+  white-space: normal !important;
+  word-break: break-all !important;
+  line-height: 1.6 !important;
 }
 </style>

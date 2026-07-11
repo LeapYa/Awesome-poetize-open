@@ -1,5 +1,5 @@
 FROM openresty/openresty:1.29.2.5-alpine AS builder
-# 国内镜像会根据行号来添加镜像加速，第3行和第139行会添加镜像加速，如果这里修改了，记得修改国内镜像的行号
+# 国内镜像会在每个 "FROM openresty" 行后自动插入 apk 镜像加速（由 poetize 脚本 patch_dockerfile_mirror 动态查找 FROM 行完成），无需再手动维护行号
 
 RUN apk update
 
@@ -75,6 +75,40 @@ RUN set -e; \
         echo "⏭️ ngx_brotli未正确下载"; \
         exit 1; \
     fi
+
+# 下载 ip2region 源码（用于编译 lua_c 扩展 + 提供 fallback xdb 数据文件）
+# lua_c 是官方 C 扩展，支持 Lua 5.1（LuaJIT 兼容），无需自己写 xdb 解析逻辑
+WORKDIR /usr/src
+RUN set -e; \
+    echo "🔧 尝试下载 ip2region 源码..."; \
+    # 首先尝试GitHub官方
+    if timeout -s TERM 240 \
+        git clone --depth=1 https://github.com/lionsoul2014/ip2region.git; then \
+        echo "✅ 从GitHub下载ip2region成功"; \
+    # 如果GitHub失败，尝试作者维护的Gitee官方镜像
+    elif timeout -s TERM 240 \
+        rm -rf ip2region && \
+        git clone --depth=1 https://gitee.com/lionsoul/ip2region.git; then \
+        echo "🔄 从Gitee下载ip2region成功"; \
+    # 如果都失败，尝试AtomGit国内镜像
+    elif timeout -s TERM 240 \
+        rm -rf ip2region && \
+        git clone --depth=1 https://atomgit.com/gh_mirrors/ip/ip2region.git; then \
+        echo "🔄 从AtomGit下载ip2region成功"; \
+    else \
+        echo "❌ ip2region下载失败，请检查网络连接"; \
+        exit 1; \
+    fi
+
+# 编译 lua_c 扩展（用 OpenResty LuaJIT 头文件，兼容 Lua 5.1 C API）
+# Makefile 默认 -I/usr/include/lua5.1，这里改用 LuaJIT 头文件路径
+WORKDIR /usr/src/ip2region/binding/lua_c
+RUN gcc -std=c99 -Wall -O2 \
+    -I../c/ \
+    -I/usr/local/openresty/luajit/include/luajit-2.1/ \
+    ../c/xdb_util.c ../c/xdb_searcher.c xdb_searcher.c \
+    -fPIC -shared -o xdb_searcher.so \
+    && echo "✅ lua_c xdb_searcher.so 编译完成"
 
 # ===== 已停用：Lua 运行库安装留档 =====
 # 当前 Nginx/SEO 链路已经迁移到后端预渲染 + Nginx 原生 try_files，不再执行 Lua 脚本。
@@ -162,8 +196,13 @@ RUN mkdir -p /var/log/nginx /var/cache/nginx /var/run /tmp && \
 
 # 从builder中复制Brotli模块
 COPY --from=builder /usr/local/openresty/nginx/modules/ /usr/local/openresty/nginx/modules/
-# 已停用：Lua 运行库不再进入最终镜像，原复制命令留档。
-# COPY --from=builder /usr/local/openresty/lualib/ /usr/local/openresty/lualib/
+
+# 复制 lua_c xdb_searcher 扩展（ban_check.lua 通过 require("xdb_searcher") 直接查 xdb 做地区封禁）
+COPY --from=builder /usr/src/ip2region/binding/lua_c/xdb_searcher.so /usr/local/openresty/lualib/xdb_searcher.so
+
+# 复制 fallback xdb 数据文件（运行时优先用共享卷里 Java 更新的版本，共享卷不存在时用此 fallback）
+COPY --from=builder /usr/src/ip2region/data/ip2region_v4.xdb /usr/local/openresty/xdb/ip2region_v4.xdb
+COPY --from=builder /usr/src/ip2region/data/ip2region_v6.xdb /usr/local/openresty/xdb/ip2region_v6.xdb
 
 # 创建配置目录和 Lua 脚本目录
 RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d /usr/local/openresty/nginx/conf/security /usr/local/openresty/nginx/lua
@@ -197,7 +236,7 @@ RUN mkdir -p /etc/nginx/ssl && \
 # chmod 755 /etc/nginx/lua && \
 
 # 设置nginx相关目录的权限
-RUN chown -R nginx:nginx /usr/local/openresty/nginx/ && \
+RUN chown -R nginx:nginx /usr/local/openresty/nginx/ /usr/local/openresty/xdb/ && \
     chmod -R 755 /usr/local/openresty/nginx/conf/ && \
     # 给nginx用户配置目录的写权限
     chmod 775 /usr/local/openresty/nginx/conf/conf.d/ && \

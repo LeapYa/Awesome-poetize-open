@@ -27,6 +27,7 @@ import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.WebInfoService;
 import com.ld.poetry.config.PoetryApplicationRunner;
 import java.util.HashMap;
+import java.util.Locale;
 
 /**
  * <p>
@@ -73,6 +74,9 @@ public class AdminController {
 
     @Autowired
     private com.ld.poetry.service.RobotsService robotsService;
+
+    @Autowired
+    private com.ld.poetry.utils.BanRegionNormalizer banRegionNormalizer;
 
     /**
      * 获取网站信息
@@ -242,6 +246,9 @@ public class AdminController {
             String reason = request.get("reason") == null
                     ? null
                     : String.valueOf(request.get("reason")).trim();
+            if (reason != null && reason.length() > 200) {
+                return PoetryResult.fail("reason不能超过200字符");
+            }
 
             long durationSeconds = 0L;
             Object durationObj = request.get("durationSeconds");
@@ -250,7 +257,8 @@ public class AdminController {
             } else if (durationObj != null) {
                 try {
                     durationSeconds = Long.parseLong(String.valueOf(durationObj));
-                } catch (NumberFormatException ignored) {
+                } catch (NumberFormatException e) {
+                    return PoetryResult.fail("durationSeconds格式不正确");
                 }
             }
 
@@ -281,7 +289,7 @@ public class AdminController {
             result.put("durationSeconds", effectiveDuration);
             result.put("durationLabel", durationLabel);
 
-            log.warn("管理员拉黑IP成功: ip={}, reason={}, permanent={}, durationSeconds={}, alreadyBlocked={}",
+            log.info("管理员拉黑IP成功: ip={}, reason={}, permanent={}, durationSeconds={}, alreadyBlocked={}",
                     ip, reason, permanent, effectiveDuration, alreadyBlocked);
             return PoetryResult.success(result);
         } catch (Exception e) {
@@ -341,6 +349,176 @@ public class AdminController {
             }
         } catch (Exception e) {
             log.error("解除IP拉黑失败", e);
+            return PoetryResult.fail("解除封禁失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 添加扩展封禁规则（UA/CIDR/Region，管理员权限）。
+     * <p>请求体字段：
+     * <ul>
+     *     <li>type - 必填，ua/cidr/region</li>
+     *     <li>value - 必填，UA 文本/CIDR/地区名</li>
+     *     <li>matchMode - ua 可选，contains/equals（默认 contains）</li>
+     *     <li>regionType - region 必填，country/province</li>
+     *     <li>reason - 选填，封禁原因</li>
+     *     <li>durationSeconds - 选填，封禁时长（秒）：&gt;0 指定秒数，==0 默认 24h，&lt;0 永久</li>
+     * </ul>
+     */
+    @PostMapping("/security/blockRule")
+    @LoginCheck(0)
+    public PoetryResult<Map<String, Object>> blockRule(@RequestBody Map<String, Object> request) {
+        try {
+            Object typeObj = request.get("type");
+            if (typeObj == null) {
+                return PoetryResult.fail("type不能为空");
+            }
+            String type = String.valueOf(typeObj).trim().toLowerCase(Locale.ROOT);
+            if (!type.equals("ua") && !type.equals("cidr") && !type.equals("region")) {
+                return PoetryResult.fail("type必须为 ua/cidr/region");
+            }
+
+            Object valueObj = request.get("value");
+            if (valueObj == null) {
+                return PoetryResult.fail("value不能为空");
+            }
+            String value = String.valueOf(valueObj).trim();
+            if (value.isEmpty()) {
+                return PoetryResult.fail("value不能为空");
+            }
+
+            // CIDR 格式校验（复用 IpUtil）
+            if (type.equals("cidr") && !IpUtil.isValidIpWhitelistEntry(value)) {
+                return PoetryResult.fail("CIDR格式不正确");
+            }
+
+            String matchMode = null;
+            if (type.equals("ua")) {
+                Object mm = request.get("matchMode");
+                matchMode = mm == null ? "contains" : String.valueOf(mm).trim().toLowerCase(Locale.ROOT);
+                if (matchMode.isEmpty()) {
+                    matchMode = "contains";
+                }
+                if (!matchMode.equals("contains") && !matchMode.equals("equals")) {
+                    return PoetryResult.fail("matchMode必须为 contains 或 equals");
+                }
+            }
+
+            String regionType = null;
+            if (type.equals("region")) {
+                Object rt = request.get("regionType");
+                if (rt == null) {
+                    return PoetryResult.fail("regionType不能为空");
+                }
+                regionType = String.valueOf(rt).trim().toLowerCase(Locale.ROOT);
+                if (!regionType.equals("country") && !regionType.equals("province")) {
+                    return PoetryResult.fail("regionType必须为 country 或 province");
+                }
+                // 标准化地区名：把用户输入（"美国"/"US"/"中华人民共和国"/"江苏省"）
+                // 校准为 xdb 实际返回值，与 Nginx 端 ban_check.lua 精确匹配口径对齐
+                com.ld.poetry.utils.BanRegionNormalizer.NormalizeResult nr =
+                        banRegionNormalizer.normalize(value, regionType);
+                if (!nr.isSuccess()) {
+                    String msg = nr.getErrorMessage();
+                    List<String> suggestions = nr.getSuggestions();
+                    if (!suggestions.isEmpty()) {
+                        msg += "。可选值参考: " + String.join(", ", suggestions);
+                    }
+                    return PoetryResult.fail(msg);
+                }
+                value = nr.getNormalizedValue();
+            }
+
+            String reason = request.get("reason") == null
+                    ? null
+                    : String.valueOf(request.get("reason")).trim();
+            if (reason != null && reason.length() > 200) {
+                return PoetryResult.fail("reason不能超过200字符");
+            }
+
+            long durationSeconds = 0L;
+            Object durationObj = request.get("durationSeconds");
+            if (durationObj instanceof Number) {
+                durationSeconds = ((Number) durationObj).longValue();
+            } else if (durationObj != null) {
+                try {
+                    durationSeconds = Long.parseLong(String.valueOf(durationObj));
+                } catch (NumberFormatException e) {
+                    return PoetryResult.fail("durationSeconds格式不正确");
+                }
+            }
+
+            Map<String, Object> result = cacheService.addBanRule(type, value, matchMode, regionType, reason, durationSeconds);
+            if (result == null) {
+                return PoetryResult.fail("添加封禁规则失败，请检查日志");
+            }
+
+            log.info("管理员添加封禁规则: type={}, value={}, matchMode={}, regionType={}, reason={}, result={}",
+                    type, value, matchMode, regionType, reason, result);
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("添加封禁规则失败", e);
+            return PoetryResult.fail("添加封禁规则失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查询扩展封禁规则列表（管理员权限）。
+     * @param type ua/cidr/region
+     */
+    @GetMapping("/security/rules")
+    @LoginCheck(0)
+    public PoetryResult<List<Map<String, Object>>> listRules(@RequestParam("type") String type) {
+        try {
+            if (type == null || type.trim().isEmpty()) {
+                return PoetryResult.fail("type不能为空");
+            }
+            String normalizedType = type.trim().toLowerCase(Locale.ROOT);
+            if (!normalizedType.equals("ua") && !normalizedType.equals("cidr") && !normalizedType.equals("region")) {
+                return PoetryResult.fail("type必须为 ua/cidr/region");
+            }
+            // includeBuiltin=true：UA 列表追加内置 AI 爬虫硬名单（供管理端展示与删除）
+            List<Map<String, Object>> list = cacheService.listBanRules(normalizedType, true);
+            return PoetryResult.success(list);
+        } catch (Exception e) {
+            log.error("查询封禁规则列表失败", e);
+            return PoetryResult.fail("查询封禁规则失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 解除扩展封禁规则（管理员权限）。
+     * <p>请求体字段：type（ua/cidr/region）、id（规则ID）
+     */
+    @PostMapping("/security/unblockRule")
+    @LoginCheck(0)
+    public PoetryResult<Map<String, Object>> unblockRule(@RequestBody Map<String, Object> request) {
+        try {
+            Object typeObj = request.get("type");
+            Object idObj = request.get("id");
+            if (typeObj == null || idObj == null) {
+                return PoetryResult.fail("type和id不能为空");
+            }
+            String type = String.valueOf(typeObj).trim();
+            String id = String.valueOf(idObj).trim();
+            if (type.isEmpty() || id.isEmpty()) {
+                return PoetryResult.fail("type和id不能为空");
+            }
+
+            boolean ok = cacheService.removeBanRule(type, id);
+            Map<String, Object> result = new HashMap<>();
+            result.put("type", type);
+            result.put("id", id);
+            result.put("success", ok);
+
+            if (ok) {
+                log.info("管理员解除封禁规则: type={}, id={}", type, id);
+                return PoetryResult.success(result);
+            } else {
+                return PoetryResult.fail("解除失败，请检查日志");
+            }
+        } catch (Exception e) {
+            log.error("解除封禁规则失败", e);
             return PoetryResult.fail("解除封禁失败: " + e.getMessage());
         }
     }

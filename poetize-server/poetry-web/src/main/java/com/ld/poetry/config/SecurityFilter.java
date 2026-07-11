@@ -1,6 +1,8 @@
 package com.ld.poetry.config;
 
 import com.ld.poetry.constants.CacheConstants;
+import com.ld.poetry.service.CacheService;
+import com.ld.poetry.service.provider.Ip2RegionProvider;
 import com.ld.poetry.utils.IpUtil;
 import com.ld.poetry.utils.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +19,9 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -30,6 +34,12 @@ public class SecurityFilter extends OncePerRequestFilter {
 
     @Autowired
     private RedisUtil redisUtil;
+
+    @Autowired
+    private CacheService cacheService;
+
+    @Autowired
+    private Ip2RegionProvider ip2RegionProvider;
 
     // 攻击次数阈值 - 超过此次数将被拉黑
     private static final int ATTACK_THRESHOLD = 3;
@@ -76,11 +86,19 @@ public class SecurityFilter extends OncePerRequestFilter {
             "/blog/wp-", "/cms/", "/old/", "/new/", "/backup/", "/bak/",
             "/beta/", "/temp/", "/dev/");
 
-    // 拦截的 AI 爬虫 UA 关键词（小写匹配）
+    // 拦截的 AI 爬虫 UA 关键词（小写匹配），单一数据源见 CacheConstants.BUILTIN_AI_CRAWLER_UA
     // 只拦截训练数据采集爬虫，保留搜索索引和用户实时引用爬虫
-    private static final Set<String> BLOCKED_AI_CRAWLER_UA = Set.of(
-            "claudebot", "claude-web", "anthropic-ai",
-            "gptbot");
+    private static final Set<String> BLOCKED_AI_CRAWLER_UA = Set.copyOf(CacheConstants.BUILTIN_AI_CRAWLER_UA);
+
+    // ================================ 扩展封禁规则内存缓存 ================================
+    // volatile 保证多线程可见性；定期从 Redis 刷新，避免每请求扫描 Redis
+    private volatile List<Map<String, Object>> uaRules = List.of();
+    private volatile List<Map<String, Object>> cidrRules = List.of();
+    private volatile List<Map<String, Object>> regionRules = List.of();
+    // 被管理员禁用的内置 AI 爬虫硬名单（小写），命中则在 isBlockedAiCrawler 中跳过
+    private volatile Set<String> disabledAiCrawlerUa = Set.of();
+    private volatile long lastRefreshAt = 0;
+    private static final long REFRESH_INTERVAL_MS = 15000;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -114,12 +132,45 @@ public class SecurityFilter extends OncePerRequestFilter {
             return;
         }
 
+        // CIDR/UA/Region 规则定期刷新（Nginx 与 Java 共用同一份 Redis 规则快照）
+        refreshBanRulesIfStale();
+
+        // 解析 IP 地区供 Java 层兜底拦截使用。
+        // Nginx ban_check.lua 已改用 lua_c xdb_searcher 直接查 xdb 文件做地区封禁，不再依赖 Redis 缓存。
+        // Java 层作为 Nginx 之后的第二道拦截，仍需解析地区做兜底。
+        String[] resolvedRegion = null;
+        if (!regionRules.isEmpty()) {
+            resolvedRegion = resolveIpRegion(clientIP);
+        }
+
         // 拦截指定 AI 爬虫（基于 UA 关键词，不依赖探针上报）
         String userAgent = request.getHeader("User-Agent");
         if (isBlockedAiCrawler(userAgent)) {
             log.info("拦截 AI 爬虫: {} from IP: {}", userAgent, clientIP);
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.getWriter().write("403 Forbidden - AI Crawler Blocked");
+            return;
+        }
+
+        // CIDR/UA/Region 封禁（始终启用，作为 Nginx 之后的第二道拦截）
+        // 生产环境 Nginx ban_check.lua 在 access 阶段拦截，请求正常不会到达此处；
+        // 本地开发（无 Nginx）或 Nginx 规则刷新延迟内，Java 层兜底。
+        if (!cidrRules.isEmpty() && isCidrBanned(clientIP)) {
+            log.warn("拒绝CIDR网段封禁访问: {} from IP: {}", requestURI, clientIP);
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("403 Forbidden - CIDR Blacklisted");
+            return;
+        }
+        if (!uaRules.isEmpty() && isUaBannedByAdmin(userAgent)) {
+            log.warn("拒绝管理员UA封禁访问: {} from IP: {}", requestURI, clientIP);
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("403 Forbidden - UA Blacklisted");
+            return;
+        }
+        if (resolvedRegion != null && isRegionBannedByRules(resolvedRegion)) {
+            log.warn("拒绝地区封禁访问: {} from IP: {}", requestURI, clientIP);
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("403 Forbidden - Region Blacklisted");
             return;
         }
 
@@ -323,7 +374,12 @@ public class SecurityFilter extends OncePerRequestFilter {
             return false;
         }
         String lower = userAgent.toLowerCase(Locale.ROOT);
+        Set<String> disabled = disabledAiCrawlerUa;
         for (String pattern : BLOCKED_AI_CRAWLER_UA) {
+            // 管理员已禁用（删除）的内置硬名单跳过，实现"内置 UA 弃用后可删除"
+            if (disabled != null && disabled.contains(pattern)) {
+                continue;
+            }
             int idx = lower.indexOf(pattern);
             while (idx != -1) {
                 int end = idx + pattern.length();
@@ -337,6 +393,166 @@ public class SecurityFilter extends OncePerRequestFilter {
                     return true;
                 }
                 idx = lower.indexOf(pattern, end);
+            }
+        }
+        return false;
+    }
+
+    // ================================ 扩展封禁规则缓存与匹配 ================================
+
+    /**
+     * 定期从 Redis 刷新 UA/CIDR/Region 封禁规则到内存缓存。
+     * <p>距上次刷新不足 {@link #REFRESH_INTERVAL_MS} 则直接返回；加载失败时保留旧缓存且不更新刷新时间，
+     * 下次请求仍会重试。
+     */
+    private void refreshBanRulesIfStale() {
+        if (System.currentTimeMillis() - lastRefreshAt < REFRESH_INTERVAL_MS) {
+            return;
+        }
+        synchronized (this) {
+            // double-checked：进入同步块后再次确认，避免多线程同时通过首次检查
+            if (System.currentTimeMillis() - lastRefreshAt < REFRESH_INTERVAL_MS) {
+                return;
+            }
+            try {
+                Map<String, List<Map<String, Object>>> all = cacheService.loadAllBanRules();
+                if (all != null) {
+                    uaRules = all.getOrDefault("ua", List.of());
+                    cidrRules = all.getOrDefault("cidr", List.of());
+                    regionRules = all.getOrDefault("region", List.of());
+                }
+                Set<String> disabled = cacheService.loadDisabledAiCrawlerUa();
+                disabledAiCrawlerUa = disabled != null ? disabled : Set.of();
+                lastRefreshAt = System.currentTimeMillis();
+            } catch (Exception e) {
+                log.error("加载封禁规则缓存失败，保留旧缓存", e);
+            }
+        }
+    }
+
+    /**
+     * 客户端 IP 是否命中任一 CIDR 网段封禁规则。
+     */
+    private boolean isCidrBanned(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return false;
+        }
+        List<Map<String, Object>> rules = cidrRules;
+        for (Map<String, Object> rule : rules) {
+            try {
+                Object cidrObj = rule.get("value");
+                if (cidrObj == null) continue;
+                String cidr = String.valueOf(cidrObj);
+                if (IpUtil.isIpInCidr(ip, cidr)) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+                // 单条规则异常容错，继续检查下一条
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 解析 IP 地区，供 Java 层兜底地区封禁使用。
+     * Nginx ban_check.lua 已改用 lua_c xdb_searcher 直接查 xdb 文件，不再依赖 Redis 地区缓存。
+     *
+     * @return {nation, province} 或 null（解析失败时）
+     */
+    private String[] resolveIpRegion(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return null;
+        }
+        try {
+            String[] location = ip2RegionProvider.resolveLocationDetail(ip);
+            if (location == null || location.length < 1) {
+                return null;
+            }
+            String nation = location.length >= 1 ? location[0] : null;
+            String province = location.length >= 2 ? location[1] : null;
+            if (nation == null && province == null) {
+                return null;
+            }
+            return new String[]{nation, province};
+        } catch (Exception e) {
+            log.warn("IP 地区解析失败: ip={}", ip, e);
+            return null;
+        }
+    }
+
+    /**
+     * 检查已解析的地区是否命中封禁规则（Java 兜底用，生产环境由 Nginx 拦截）。
+     */
+    private boolean isRegionBannedByRules(String[] location) {
+        if (location == null || location.length < 1) {
+            return false;
+        }
+        String nation = location.length >= 1 ? location[0] : null;
+        String province = location.length >= 2 ? location[1] : null;
+        List<Map<String, Object>> rules = regionRules;
+        for (Map<String, Object> rule : rules) {
+            try {
+                Object rtObj = rule.get("regionType");
+                Object valObj = rule.get("value");
+                if (rtObj == null || valObj == null) continue;
+                String regionType = String.valueOf(rtObj).toLowerCase(Locale.ROOT);
+                String ruleValue = String.valueOf(valObj).toLowerCase(Locale.ROOT);
+                if (ruleValue.isEmpty()) continue;
+
+                if ("country".equals(regionType)) {
+                    if (nation != null) {
+                        String n = nation.toLowerCase(Locale.ROOT);
+                        if (n.equals(ruleValue) || n.startsWith(ruleValue)) {
+                            return true;
+                        }
+                    }
+                } else if ("province".equals(regionType)) {
+                    if (province != null) {
+                        String p = province.toLowerCase(Locale.ROOT);
+                        if (p.equals(ruleValue) || p.startsWith(ruleValue)) {
+                            return true;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                // 单条规则异常容错
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 请求 User-Agent 是否命中管理员配置的 UA 封禁规则（大小写不敏感）。
+     */
+    private boolean isUaBannedByAdmin(String userAgent) {
+        if (userAgent == null || userAgent.isEmpty()) {
+            return false;
+        }
+        String lowerUa = userAgent.toLowerCase(Locale.ROOT);
+        List<Map<String, Object>> rules = uaRules;
+        for (Map<String, Object> rule : rules) {
+            try {
+                Object valObj = rule.get("value");
+                if (valObj == null) continue;
+                String value = String.valueOf(valObj);
+                if (value.isEmpty()) continue;
+                String lowerValue = value.toLowerCase(Locale.ROOT);
+
+                Object mmObj = rule.get("matchMode");
+                String matchMode = mmObj == null ? "contains"
+                        : String.valueOf(mmObj).toLowerCase(Locale.ROOT);
+
+                if ("equals".equals(matchMode)) {
+                    if (lowerUa.equals(lowerValue)) {
+                        return true;
+                    }
+                } else {
+                    if (lowerUa.contains(lowerValue)) {
+                        return true;
+                    }
+                }
+            } catch (Exception ignored) {
+                // 单条规则异常容错
             }
         }
         return false;

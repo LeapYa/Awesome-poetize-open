@@ -108,13 +108,13 @@ public class Ip2RegionTest {
             String searchResult = searcher.search("61.135.185.32");
             assertNotNull(searchResult, "搜索结果不应为空");
 
-            // IP2Region格式: 国家|区域|省份|城市|ISP
+            // IP2Region格式: 国家|区域|城市|ISP|国家代码
             String[] regions = searchResult.split("\\|");
             assertTrue(regions.length >= 4, "解析结果应该包含至少4个部分");
 
             System.out.println("解析结果详情:");
             for (int i = 0; i < regions.length; i++) {
-                String[] labels = { "国家", "区域", "省份", "城市", "ISP" };
+                String[] labels = { "国家", "区域", "城市", "ISP", "国家代码" };
                 String label = i < labels.length ? labels[i] : "字段" + i;
                 System.out.println(label + ": " + regions[i]);
             }

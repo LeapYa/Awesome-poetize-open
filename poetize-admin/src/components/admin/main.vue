@@ -22,9 +22,9 @@
             <el-button type="text"
                        class="history-action-button block-ip-entry"
                        @click="goToBlacklist"
-                       title="封禁恶意IP，跳转到系统日志的封禁列表">
+                       title="封禁恶意IP / UA / 省份 / 国家，跳转到系统日志的封禁列表">
               <i class="el-icon-lock"></i>
-              封禁IP
+              封禁IP/UA/省份/国家
             </el-button>
             <el-button type="text"
                        class="history-action-button"
@@ -537,8 +537,8 @@ export default {
   methods: {
     goToBlacklist() {
       this.$confirm(
-        '将跳转到「系统日志」页面的 IP 封禁列表（含安全黑名单与验证码自动封禁），是否继续？',
-        '封禁IP',
+        '将跳转到「系统日志」页面的封禁列表（含安全黑名单与验证码自动封禁），支持封禁 IP / UA / IP网段 / 省份 / 国家，是否继续？',
+        '封禁IP/UA/省份/国家',
         {
           confirmButtonText: '前往查看',
           cancelButtonText: '取消',

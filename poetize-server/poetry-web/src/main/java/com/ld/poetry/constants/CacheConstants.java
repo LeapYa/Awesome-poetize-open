@@ -1,5 +1,7 @@
 package com.ld.poetry.constants;
 
+import java.util.List;
+
 /**
  * 缓存键常量类
  * 统一管理Redis缓存键的命名规范
@@ -8,6 +10,24 @@ package com.ld.poetry.constants;
  * @since 2025-07-20
  */
 public class CacheConstants {
+
+    /**
+     * 内置 AI 爬虫硬名单（阻断训练数据采集爬虫，保留搜索/用户引用爬虫）。
+     * <p>作为唯一数据源被 {@link com.ld.poetry.config.SecurityFilter} 引用；
+     * Nginx 端 {@code docker/nginx/lua/ban_check.lua} 保留一份等价常量，需手动同步。
+     * <p>这些规则会以内置规则形式展示在封禁列表中（id 形如 {@code builtin:<ua>}），
+     * 管理员可单独删除（删除即写入 {@link #DISABLED_AI_CRAWLER_UA_KEY} 禁用集合，匹配时跳过）。
+     */
+    public static final List<String> BUILTIN_AI_CRAWLER_UA = List.of(
+            "claudebot", "claude-web", "anthropic-ai", "gptbot");
+
+    /**
+     * 已被管理员禁用的内置 AI 爬虫硬名单集合缓存键（存 JSON 字符串数组，永久有效）。
+     * <p>命中该集合的内置硬名单在 Java / Nginx 匹配时跳过，并从封禁列表中隐藏，
+     * 用于解决"内置 UA 弃用后无法删除"的问题。
+     * 格式: poetize:security:disabled_ai_crawler_ua
+     */
+    public static final String DISABLED_AI_CRAWLER_UA_KEY = "poetize:security:disabled_ai_crawler_ua";
 
     /**
      * 缓存键前缀
@@ -151,6 +171,24 @@ public class CacheConstants {
     public static final String IP_BLACKLIST_PREFIX = CACHE_PREFIX + "security:blacklist:";
 
     /**
+     * UA黑名单缓存键前缀
+     * 格式: poetize:security:blacklist:ua:{id}
+     */
+    public static final String UA_BLACKLIST_PREFIX = CACHE_PREFIX + "security:blacklist:ua:";
+
+    /**
+     * CIDR网段黑名单缓存键前缀
+     * 格式: poetize:security:blacklist:cidr:{id}
+     */
+    public static final String CIDR_BLACKLIST_PREFIX = CACHE_PREFIX + "security:blacklist:cidr:";
+
+    /**
+     * 地区黑名单缓存键前缀
+     * 格式: poetize:security:blacklist:region:{id}
+     */
+    public static final String REGION_BLACKLIST_PREFIX = CACHE_PREFIX + "security:blacklist:region:";
+
+    /**
      * 自动化浏览器拦截缓存键前缀
      * <p>
      * 探针上报判定为高置信度自动化（score &gt;= 70）时写入，
@@ -158,7 +196,13 @@ public class CacheConstants {
      * 格式: poetize:security:automation_block:{ip}
      */
     public static final String AUTOMATION_BLOCK_PREFIX = CACHE_PREFIX + "security:automation_block:";
-    
+
+    /**
+     * 封禁规则快照缓存键（字符串，不是前缀）
+     * 说明：存放全部 UA/CIDR/Region 封禁规则的 JSON 快照，供 Nginx Lua 读取，永久有效
+     */
+    public static final String BAN_RULES_SNAPSHOT_KEY = CACHE_PREFIX + "security:ban_rules_snapshot";
+
     /**
      * 验证码缓存键前缀
      * 格式: poetize:captcha:{sessionId}
@@ -521,6 +565,33 @@ public class CacheConstants {
     }
 
     /**
+     * 构建UA黑名单缓存键
+     * @param id 规则ID
+     * @return 缓存键
+     */
+    public static String buildUaBlacklistKey(String id) {
+        return UA_BLACKLIST_PREFIX + id;
+    }
+
+    /**
+     * 构建CIDR网段黑名单缓存键
+     * @param id 规则ID
+     * @return 缓存键
+     */
+    public static String buildCidrBlacklistKey(String id) {
+        return CIDR_BLACKLIST_PREFIX + id;
+    }
+
+    /**
+     * 构建地区黑名单缓存键
+     * @param id 规则ID
+     * @return 缓存键
+     */
+    public static String buildRegionBlacklistKey(String id) {
+        return REGION_BLACKLIST_PREFIX + id;
+    }
+
+    /**
      * 构建自动化浏览器拦截缓存键
      * @param ip IP地址
      * @return 缓存键
@@ -528,7 +599,7 @@ public class CacheConstants {
     public static String buildAutomationBlockKey(String ip) {
         return AUTOMATION_BLOCK_PREFIX + ip;
     }
-    
+
     /**
      * 构建系统配置缓存键
      * @param configKey 配置键

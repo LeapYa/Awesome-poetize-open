@@ -134,13 +134,17 @@ public class Ip2RegionProvider implements IpLocationProvider {
         try {
             ClassPathResource resource = new ClassPathResource(classpathLocation);
             if (resource.exists()) {
+                LongByteArray content;
                 try (InputStream is = resource.getInputStream()) {
-                    LongByteArray content = Searcher.loadContentFromInputStream(is);
-                    if (content.length() > 1024 * 1024) {
-                        log.info("IP2Region 数据库从 classpath 加载成功: {} ({}MB)", classpathLocation,
-                                String.format("%.2f", content.length() / 1024.0 / 1024.0));
-                        return content;
-                    }
+                    content = Searcher.loadContentFromInputStream(is);
+                }
+                if (content != null && content.length() > 1024 * 1024) {
+                    log.info("IP2Region 数据库从 classpath 加载成功: {} ({}MB)", classpathLocation,
+                            String.format("%.2f", content.length() / 1024.0 / 1024.0));
+                    // 磁盘上没有该文件时，复制 classpath xdb 到磁盘
+                    // 生产环境共享卷初始为空，Java 写入 xdb 后 Nginx 可通过共享卷读取做地区封禁
+                    copyClasspathToDiskIfMissing(resource, fileName);
+                    return content;
                 }
             }
         } catch (Exception e) {
@@ -148,6 +152,35 @@ public class Ip2RegionProvider implements IpLocationProvider {
         }
 
         return null;
+    }
+
+    /**
+     * 磁盘上没有 xdb 文件时，将 classpath 的 xdb 复制到磁盘
+     * 生产环境共享卷初始为空，Java 需要写入 xdb 供 Nginx 通过共享卷读取
+     * 使用临时文件 + 原子 rename 避免写入中途被读到不完整文件
+     */
+    private void copyClasspathToDiskIfMissing(ClassPathResource resource, String fileName) {
+        File destFile = dataDir.resolve(fileName).toFile();
+        if (destFile.exists() && destFile.length() > 1024 * 1024) {
+            return;  // 磁盘已有有效文件，无需复制
+        }
+        try {
+            File tempFile = dataDir.resolve(fileName + ".copying").toFile();
+            try (InputStream is = resource.getInputStream();
+                    FileOutputStream fos = new FileOutputStream(tempFile)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = is.read(buffer)) != -1) {
+                    fos.write(buffer, 0, bytesRead);
+                }
+            }
+            Files.move(tempFile.toPath(), destFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+            log.info("IP2Region classpath xdb 已复制到磁盘（供 Nginx 共享卷读取）: {}", destFile);
+        } catch (Exception e) {
+            log.warn("复制 classpath xdb 到磁盘失败（不影响 Java 查询，但 Nginx 地区封禁可能无法工作）: {}", e.getMessage());
+        }
     }
 
     /**
@@ -512,8 +545,8 @@ public class Ip2RegionProvider implements IpLocationProvider {
             if (!StringUtils.hasText(country)) {
                 country = normalizeRegionValue(regions[0]);
             }
-            String province = normalizeRegionValue(regions[2]);
-            String city = normalizeRegionValue(regions[3]);
+            String province = normalizeRegionValue(regions[1]);
+            String city = normalizeRegionValue(regions[2]);
 
             // 国家
             if (StringUtils.hasText(country)) {
@@ -693,7 +726,7 @@ public class Ip2RegionProvider implements IpLocationProvider {
                 if (!StringUtils.hasText(country)) {
                     country = normalizeRegionValue(regions[0]);
                 }
-                String province = normalizeRegionValue(regions[2]);
+                String province = normalizeRegionValue(regions[1]);
 
                 // 如果不是中国，直接返回国家名
                 if (StringUtils.hasText(country) && !"中国".equals(country)) {
@@ -752,5 +785,114 @@ public class Ip2RegionProvider implements IpLocationProvider {
      */
     public Path getDataDir() {
         return dataDir;
+    }
+
+    /**
+     * 遍历 xdb 提取所有不重复的 {国家代码 → xdb 国家名} 映射。
+     * <p>
+     * 用于 BanRegionNormalizer 在 Java 输入端校准地区封禁规则，把用户输入
+     * （"美国"/"US"/"中华人民共和国" 等）统一映射为 xdb 实际返回的国家名
+     * （如 "United States"/"中国"），与 Nginx 端 ban_check.lua 的精确匹配口径一致。
+     * <p>
+     * 实现方式：遍历 xdb vectorIndex 的所有 entry，收集不重复的 region 字符串，
+     * 按 `|` 分割第 1 字段（国家名）和第 5 字段（国家代码）。
+     * 启动时调用一次，结果缓存到 BanRegionNormalizer，不影响运行时性能。
+     * <p>
+     * 仅遍历 IPv4 xdb 即可覆盖所有国家（v4 和 v6 数据同源，国家名一致）。
+     *
+     * @return {国家代码 → xdb 国家名} 映射，例如 {"US" → "United States", "CN" → "中国"}；
+     *         xdb 不可用时返回空 Map
+     */
+    public java.util.Map<String, String> extractCountryCodeToNameMap() {
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+        java.util.Set<String> seenRegions = new java.util.HashSet<>();
+
+        // 加载 xdb 内容（磁盘优先，回退 classpath）
+        org.lionsoul.ip2region.xdb.LongByteArray cBuff = loadXdbContent("ip2region_v4.xdb", IPV4_CLASSPATH);
+        if (cBuff == null) {
+            log.warn("提取国家映射失败：IPv4 xdb 不可用，地区封禁规则校准将无法严格校验");
+            return result;
+        }
+
+        // IPv4 segment index: start_ip(4) + end_ip(4) + data_len(2) + data_ptr(4) = 14 字节
+        int segmentIndexSize = Version.IPv4.segmentIndexSize;  // 14
+        int dBytes = Version.IPv4.bytes << 1;                   // 8（data_len 在 segBuff 中的偏移）
+        byte[] segBuff = new byte[segmentIndexSize];
+
+        // 遍历 vectorIndex（256*256 个 entry，每个 8 字节：sPtr + ePtr）
+        java.util.Set<Long> visitedRanges = new java.util.HashSet<>();
+        for (int il0 = 0; il0 < 256; il0++) {
+            for (int il1 = 0; il1 < 256; il1++) {
+                int idx = il0 * 256 * 8 + il1 * 8;
+                long sPtr = cBuff.getUint32(Searcher.HeaderInfoLength + idx);
+                long ePtr = cBuff.getUint32(Searcher.HeaderInfoLength + idx + 4);
+                if (sPtr == 0 && ePtr == 0) continue;
+
+                // 去重 range（vectorIndex 多个 entry 可能指向相同 segment 范围）
+                long rangeKey = sPtr << 32 | ePtr;
+                if (!visitedRanges.add(rangeKey)) continue;
+
+                // 遍历 range 内的所有 segment
+                int count = (int) ((ePtr - sPtr) / segmentIndexSize) + 1;
+                for (int i = 0; i < count; i++) {
+                    long p = sPtr + i * segmentIndexSize;
+                    try {
+                        cBuff.copy(p, segBuff, 0, segmentIndexSize);
+                        int dataLen = org.lionsoul.ip2region.xdb.LittleEndian.getUint16(segBuff, dBytes);
+                        long dataPtr = org.lionsoul.ip2region.xdb.LittleEndian.getUint32(segBuff, dBytes + 2);
+                        if (dataLen == 0) continue;
+
+                        byte[] regionBytes = cBuff.slice(dataPtr, dataLen);
+                        String region = new String(regionBytes, java.nio.charset.StandardCharsets.UTF_8);
+                        if (!seenRegions.add(region)) continue;
+
+                        // xdb 格式：国家|区域|城市|ISP|国家代码
+                        String[] parts = region.split("\\|");
+                        if (parts.length >= 5) {
+                            String countryName = parts[0].trim();
+                            String countryCode = parts[4].trim();
+                            if (!countryCode.isEmpty() && !"0".equals(countryCode)
+                                    && !countryName.isEmpty() && !"0".equals(countryName)) {
+                                result.putIfAbsent(countryCode, countryName);
+                            }
+                        }
+                    } catch (Exception ignored) {
+                        // 单条 segment 解析失败跳过，不影响整体
+                    }
+                }
+            }
+        }
+
+        log.info("提取 xdb 国家映射完成：{} 个国家", result.size());
+        return result;
+    }
+
+    /**
+     * 加载 xdb 内容（磁盘优先 → classpath 回退），供 extractCountryCodeToNameMap 使用。
+     * 不复用 ipv4Searcher 的 buffer，因为 Searcher 没有暴露 contentBuff getter，
+     * 且这里只需启动时一次性读取，重新加载 22MB 的开销可接受。
+     */
+    private org.lionsoul.ip2region.xdb.LongByteArray loadXdbContent(String fileName, String classpath) {
+        // 1. 磁盘优先
+        File diskFile = dataDir.resolve(fileName).toFile();
+        if (diskFile.exists() && diskFile.length() > 1024 * 1024) {
+            try {
+                return Searcher.loadContentFromFile(diskFile.getAbsolutePath());
+            } catch (Exception e) {
+                log.debug("从磁盘加载 {} 失败，回退 classpath: {}", fileName, e.getMessage());
+            }
+        }
+        // 2. classpath 回退
+        try {
+            ClassPathResource resource = new ClassPathResource(classpath);
+            if (resource.exists()) {
+                try (InputStream is = resource.getInputStream()) {
+                    return Searcher.loadContentFromInputStream(is);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("从 classpath 加载 {} 失败: {}", classpath, e.getMessage());
+        }
+        return null;
     }
 }
