@@ -566,8 +566,17 @@ CLI_INVOCATION_RE = re.compile(r"(poetize_cli\.py|poetize-blog(?![-\w]))")
 
 
 def _cli_subcommand_re(subcommand: str) -> re.Pattern[str]:
-    """Regex matching the CLI token immediately followed by a subcommand."""
-    return re.compile(rf"(?:poetize_cli\.py|poetize-blog(?![-\w]))\s+{subcommand}\b")
+    """Regex matching the CLI invocation immediately followed by a subcommand.
+
+    Accepts the documented ``poetize-blog`` wrapper as well as the
+    ``poetize-blog.sh`` / ``poetize-blog.py`` shell-script forms that some LLMs
+    emit, plus the legacy ``poetize_cli.py`` form. The optional script extension
+    is consumed before the negative lookahead so ``poetize-blogosphere`` or other
+    ``poetize-blog*`` tails are still NOT matched.
+    """
+    return re.compile(
+        rf"(?:poetize_cli\.py|poetize-blog(?:\.sh|\.py|\.exe)?(?![-\w]))\s+{subcommand}\b"
+    )
 
 
 def parse_command_flags(command: str) -> list[str]:

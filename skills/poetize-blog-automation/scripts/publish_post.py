@@ -146,39 +146,63 @@ def _parse_nested_brief(lines: list[str], start: int, base_indent: int) -> tuple
             else:
                 result[key] = parse_scalar(raw_value)
         else:
-            # Empty value: try to read nested children (only one more level)
-            sub: dict[str, Any] = {}
+            # Empty value: read the indented block that follows. It may be a
+            # nested dict (``key: value`` lines) or a YAML block list
+            # (``- item`` lines). Both forms are common in LLM-emitted briefs.
+            block_lines: list[str] = []
             sub_index = index + 1
             while sub_index < len(lines):
                 sub_line = lines[sub_index]
                 if sub_line.strip() == "---":
                     break
-                sub_stripped = sub_line.strip()
-                if not sub_stripped or sub_stripped.startswith("#"):
+                sub_indent = len(sub_line) - len(sub_line.lstrip(" "))
+                if not sub_line.strip() or sub_line.strip().startswith("#"):
+                    block_lines.append(sub_line)
                     sub_index += 1
                     continue
-                sub_indent = len(sub_line) - len(sub_line.lstrip(" "))
                 if sub_indent <= indent:
                     break
-                if ":" not in sub_stripped:
-                    sub_index += 1
-                    continue
-                sub_key, sub_raw = sub_stripped.split(":", 1)
-                sub_key = sub_key.strip()
-                sub_raw = sub_raw.strip()
-                if sub_raw:
-                    arr2 = _parse_inline_array(sub_raw)
-                    if arr2 is not None:
-                        sub[sub_key] = arr2
-                    else:
-                        sub[sub_key] = parse_scalar(sub_raw)
-                else:
-                    sub[sub_key] = ""
+                block_lines.append(sub_line)
                 sub_index += 1
-            if sub:
-                result[key] = sub
-                index = sub_index
-                continue
+
+            if block_lines:
+                # A YAML block list: any non-empty line begins with '-'.
+                looks_like_list = any(
+                    ln.strip().startswith("-") for ln in block_lines if ln.strip()
+                )
+                if looks_like_list:
+                    items: list[Any] = []
+                    for ln in block_lines:
+                        s = ln.strip()
+                        if s.startswith("-"):
+                            item = s[1:].strip()
+                            if item:
+                                arr = _parse_inline_array(item)
+                                items.append(arr if arr is not None else parse_scalar(item))
+                    if items:
+                        result[key] = items
+                        index = sub_index
+                        continue
+                # Otherwise parse the block as a nested dict (one more level).
+                sub: dict[str, Any] = {}
+                for ln in block_lines:
+                    sub_stripped = ln.strip()
+                    if not sub_stripped or sub_stripped.startswith("#"):
+                        continue
+                    if ":" not in sub_stripped:
+                        continue
+                    sub_key, sub_raw = sub_stripped.split(":", 1)
+                    sub_key = sub_key.strip()
+                    sub_raw = sub_raw.strip()
+                    if sub_raw:
+                        arr2 = _parse_inline_array(sub_raw)
+                        sub[sub_key] = arr2 if arr2 is not None else parse_scalar(sub_raw)
+                    else:
+                        sub[sub_key] = ""
+                if sub:
+                    result[key] = sub
+                    index = sub_index
+                    continue
         index += 1
     return result, index
 

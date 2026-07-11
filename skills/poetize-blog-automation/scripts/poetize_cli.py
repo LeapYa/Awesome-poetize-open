@@ -6,7 +6,7 @@ Usage:
     poetize-blog manage list-articles --search-key "AI"
     poetize-blog config --output openclaw.json --api-key KEY
     poetize-blog smoke-test --base-url URL --api-key KEY
-    poetize-blog eval
+    poetize-blog run-strategy-tests
 
 (Equivalent: `python scripts/poetize_cli.py ...` via the wrapper at the skill root.)
 

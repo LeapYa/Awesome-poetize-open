@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-06-07
+## 修改时间: 2026-07-12
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.13.0
+## 版本: 1.13.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.13.0"
+POETIZE_VERSION="1.13.1"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -5937,6 +5937,26 @@ check_and_fix_network_conflict() {
     fi
   done < <(ip -o -f inet addr show 2>/dev/null || true)
   
+  # 检测已存在的 docker 网络子网冲突（多实例部署场景下，先前实例的 poetize 网络会占用同一网段）
+  # 原逻辑只检测主机网卡，会漏掉 docker bridge 网络之间的子网冲突
+  if [ "$conflict_detected" = false ]; then
+    while IFS= read -r net_name; do
+      [ -n "$net_name" ] || continue
+      local docker_subnet
+      docker_subnet=$(sudo docker network inspect "$net_name" \
+        --format '{{range .IPAM.Config}}{{.Subnet}}{{"\n"}}{{end}}' 2>/dev/null | grep -v '^$' || true)
+      while IFS= read -r ds; do
+        [ -n "$ds" ] || continue
+        if ipcalc -c "$ds" "$TARGET_SUBNET" 2>/dev/null | grep -q "overlap"; then
+          warning "检测到 Docker 网络冲突: $net_name ($ds) 与 $TARGET_SUBNET 重叠"
+          conflict_detected=true
+          break
+        fi
+      done <<< "$docker_subnet"
+      [ "$conflict_detected" = true ] && break
+    done < <(sudo docker network ls --format '{{.Name}}' 2>/dev/null || true)
+  fi
+  
   if [ "$conflict_detected" = true ]; then
     warning "检测到网络冲突，正在自动生成新的网段..."
     
@@ -9108,22 +9128,199 @@ modify_docker_compose_for_multi_instance() {
   if project_requires_python_backend; then
     sed_i "s/PYTHON_BACKEND_HOST=poetize-python/PYTHON_BACKEND_HOST=poetize-python$suffix/g" docker-compose.yml
   fi
-  
-  # 修改nginx配置
-  sed_i "s/poetize-java/poetize-java$suffix/g" docker/nginx/default.conf
-  if project_requires_python_backend; then
-    sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/default.conf
-  fi
-  sed_i "s/poetize-java/poetize-java$suffix/g" docker/nginx/default.http.conf
-  if project_requires_python_backend; then
-    sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/default.http.conf
-  fi
-  sed_i "s/poetize-java/poetize-java$suffix/g" docker/nginx/default.https.conf
-  if project_requires_python_backend; then
-    sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/default.https.conf
-  fi
-  
+
+  # 记录多实例后缀到全局变量，供主安装流程在"从模板恢复 nginx 配置"之后
+  # 对 .conf 文件做实例化定制（改 upstream 主机名）。
+  # 注意：nginx conf 的后缀替换不能在这里做，因为主流程的 cp .template -> .conf
+  # 会覆盖掉这里的修改。正确顺序是：先 cp 恢复纯净模板，再在 .conf 上做定制。
+  MULTI_INSTANCE_SUFFIX="$suffix"
+  export MULTI_INSTANCE_SUFFIX
+  info "已设置多实例后缀: $suffix（将在 nginx 配置恢复后应用）"
+
+  # 为多实例分配不冲突的 Docker 网段，避免与已存在的 poetize 网络冲突
+  assign_non_conflict_subnet_for_multi_instance "$instance_num"
+
   success "docker-compose.yml多实例配置完成"
+}
+
+# 对 nginx .conf 文件应用多实例后缀
+# 在主流程 "cp .template -> .conf" 之后调用，确保 .template 保持纯净，
+# 只对实际生效的 .conf 做实例化定制（改 upstream 主机名 poetize-java -> poetize-java-blogN）。
+# 依赖全局变量 MULTI_INSTANCE_SUFFIX（由 modify_docker_compose_for_multi_instance 设置）。
+apply_multi_instance_suffix_to_nginx_conf() {
+  # 非多实例部署时直接跳过
+  [ -n "${MULTI_INSTANCE_SUFFIX:-}" ] || return 0
+
+  local suffix="$MULTI_INSTANCE_SUFFIX"
+  info "为 nginx 配置应用多实例后缀: $suffix ..."
+
+  local _nginx_conf_files=(
+    "docker/nginx/default.conf"
+    "docker/nginx/default.http.conf"
+    "docker/nginx/default.https.conf"
+  )
+  for _conf_file in "${_nginx_conf_files[@]}"; do
+    [ -f "$_conf_file" ] || continue
+    sed_i "s/poetize-java/poetize-java$suffix/g" "$_conf_file"
+    if project_requires_python_backend; then
+      sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" "$_conf_file"
+    fi
+  done
+
+  success "nginx 配置已应用多实例后缀: $suffix"
+}
+
+# 为多实例部署分配不冲突的 Docker 网段
+# 检测已存在的 docker 网络子网和主机网卡，生成不冲突的 /28 子网，
+# 并写入 .env.example（和 .env 如果存在），确保 init_env_config 创建 .env 时生效。
+assign_non_conflict_subnet_for_multi_instance() {
+  local instance_num="$1"
+  local default_subnet="172.28.147.0/28"
+  local default_base="172.28.147"
+
+  info "为多实例 blog$instance_num 检测并分配不冲突的 Docker 网段..."
+
+  # 收集所有已占用的子网（docker 网络的 IPAM Config + 主机网卡）
+  local occupied_subnets=()
+
+  # 1. 已存在的 docker 网络子网
+  if sudo docker network ls --format '{{.Name}}' 2>/dev/null | grep -q .; then
+    while IFS= read -r net_name; do
+      [ -n "$net_name" ] || continue
+      local subnet
+      subnet=$(sudo docker network inspect "$net_name" \
+        --format '{{range .IPAM.Config}}{{.Subnet}}{{"\n"}}{{end}}' 2>/dev/null | grep -v '^$' || true)
+      while IFS= read -r s; do
+        [ -n "$s" ] && occupied_subnets+=("$s")
+      done <<< "$subnet"
+    done < <(sudo docker network ls --format '{{.Name}}' 2>/dev/null)
+  fi
+
+  # 2. 主机网卡子网
+  if command -v ip >/dev/null 2>&1; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      local addr
+      addr=$(echo "$line" | awk '{print $4}')
+      if [ -n "$addr" ] && [[ "$addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
+        occupied_subnets+=("$addr")
+      fi
+    done < <(ip -o -f inet addr show 2>/dev/null || true)
+  fi
+
+  # 子网冲突检测函数（需要 ipcalc）
+  _subnet_overlaps() {
+    local a="$1" b="$2"
+    if command -v ipcalc >/dev/null 2>&1; then
+      ipcalc -c "$a" "$b" 2>/dev/null | grep -q "overlap" && return 0 || return 1
+    else
+      # 退化为比较网络前缀（base IP 的前三段）
+      local a_base b_base
+      a_base=$(echo "$a" | awk -F. '{print $1"."$2"."$3}')
+      b_base=$(echo "$b" | awk -F. '{print $1"."$2"."$3}')
+      [ "$a_base" = "$b_base" ] && return 0 || return 1
+    fi
+  }
+
+  # 检查默认网段是否已冲突
+  local default_conflict=false
+  for occ in "${occupied_subnets[@]}"; do
+    if _subnet_overlaps "$default_subnet" "$occ"; then
+      default_conflict=true
+      break
+    fi
+  done
+
+  # 默认网段不冲突时，直接使用默认值（保留 .env.example 原始配置即可）
+  if [ "$default_conflict" = false ]; then
+    success "默认网段 $default_subnet 无冲突，多实例将使用默认网段"
+    return 0
+  fi
+
+  # 默认网段冲突，生成新的不冲突网段
+  warning "默认网段 $default_subnet 已被占用，正在为 blog$instance_num 生成新网段..."
+
+  # 尝试安装 ipcalc 以获得精确的冲突检测
+  if ! command -v ipcalc >/dev/null 2>&1; then
+    if type check_and_install_ipcalc >/dev/null 2>&1; then
+      check_and_install_ipcalc || true
+    fi
+  fi
+
+  local new_subnet=""
+  local new_base=""
+  local attempts=0
+  local max_attempts=50
+
+  while [ $attempts -lt $max_attempts ]; do
+    attempts=$((attempts + 1))
+    # 生成 172.x.y.0/28 格式的随机网段，避开常见保留段
+    local second_octet=$((RANDOM % 32 + 16))  # 16-47
+    local third_octet=$((RANDOM % 256))
+    local candidate="172.$second_octet.$third_octet.0/28"
+    local candidate_base="172.$second_octet.$third_octet"
+
+    # 跳过与默认网段相同的
+    [ "$candidate_base" = "$default_base" ] && continue
+
+    local conflict=false
+    for occ in "${occupied_subnets[@]}"; do
+      if _subnet_overlaps "$candidate" "$occ"; then
+        conflict=true
+        break
+      fi
+    done
+
+    if [ "$conflict" = false ]; then
+      new_subnet="$candidate"
+      new_base="$candidate_base"
+      break
+    fi
+  done
+
+  if [ -z "$new_subnet" ]; then
+    error "无法为 blog$instance_num 找到不冲突的网段，请手动修改 .env 中的 DOCKER_SUBNET 等网络配置"
+    return 1
+  fi
+
+  local new_gateway="$new_base.1"
+  info "为 blog$instance_num 分配新网段: $new_subnet (网关 $new_gateway)"
+
+  # 写入 .env.example（init_env_config 会从此文件创建 .env）
+  if [ -f ".env.example" ]; then
+    sed_i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=$new_subnet|" .env.example
+    sed_i "s|^DOCKER_GATEWAY=.*|DOCKER_GATEWAY=$new_gateway|" .env.example
+    sed_i "s|^IP_NGINX=.*|IP_NGINX=$new_base.2|" .env.example
+    sed_i "s|^IP_WEB=.*|IP_WEB=$new_base.3|" .env.example
+    sed_i "s|^IP_CERTBOT=.*|IP_CERTBOT=$new_base.5|" .env.example
+    sed_i "s|^IP_PYTHON=.*|IP_PYTHON=$new_base.6|" .env.example
+    sed_i "s|^IP_JAVA=.*|IP_JAVA=$new_base.7|" .env.example
+    sed_i "s|^IP_MYSQL=.*|IP_MYSQL=$new_base.8|" .env.example
+    sed_i "s|^IP_PRERENDER=.*|IP_PRERENDER=$new_base.9|" .env.example
+    sed_i "s|^IP_REDIS=.*|IP_REDIS=$new_base.10|" .env.example
+    sed_i "s|^IP_MODEL=.*|IP_MODEL=$new_base.11|" .env.example
+    sed_i "s|^IP_ADMIN=.*|IP_ADMIN=$new_base.12|" .env.example
+    success "已更新 .env.example 中的网段配置"
+  fi
+
+  # 如果 .env 已存在，同步更新（init_env_config 可能已经创建过）
+  if [ -f ".env" ]; then
+    sed_i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=$new_subnet|" .env
+    sed_i "s|^DOCKER_GATEWAY=.*|DOCKER_GATEWAY=$new_gateway|" .env
+    sed_i "s|^IP_NGINX=.*|IP_NGINX=$new_base.2|" .env
+    sed_i "s|^IP_WEB=.*|IP_WEB=$new_base.3|" .env
+    sed_i "s|^IP_CERTBOT=.*|IP_CERTBOT=$new_base.5|" .env
+    sed_i "s|^IP_PYTHON=.*|IP_PYTHON=$new_base.6|" .env
+    sed_i "s|^IP_JAVA=.*|IP_JAVA=$new_base.7|" .env
+    sed_i "s|^IP_MYSQL=.*|IP_MYSQL=$new_base.8|" .env
+    sed_i "s|^IP_PRERENDER=.*|IP_PRERENDER=$new_base.9|" .env
+    sed_i "s|^IP_REDIS=.*|IP_REDIS=$new_base.10|" .env
+    sed_i "s|^IP_MODEL=.*|IP_MODEL=$new_base.11|" .env
+    sed_i "s|^IP_ADMIN=.*|IP_ADMIN=$new_base.12|" .env
+    success "已更新 .env 中的网段配置"
+  fi
+
+  return 0
 }
 
 # 修复GitHub访问问题
@@ -11129,6 +11326,12 @@ main() {
     cp "docker/nginx/default.https.conf.template" "docker/nginx/default.https.conf"
     info "已从模板恢复 default.https.conf"
   fi
+
+  # 多实例部署时，对恢复后的 .conf 应用实例后缀（改 upstream 主机名）。
+  # 必须在 "cp .template -> .conf" 之后执行，确保 .template 保持纯净，
+  # 只对实际生效的 .conf 做实例化定制。
+  # 非多实例部署时 MULTI_INSTANCE_SUFFIX 为空，函数内部会直接跳过。
+  apply_multi_instance_suffix_to_nginx_conf
 
   # 更新Nginx卷挂载
   update_nginx_volumes

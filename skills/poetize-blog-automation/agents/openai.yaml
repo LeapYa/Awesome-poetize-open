@@ -1,20 +1,29 @@
 interface:
   display_name: "POETIZE 博客自动化"
   short_description: "让 AI 帮你运营 POETIZE 博客：写文章、发布、管理分类标签、切换主题、查看数据、配置 SEO、处理付费文章支付配置；含认证持久化、配置生成、测试等辅助能力。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。开源仓库：https://github.com/LeapYa/awesome-poetize-open"
-  default_prompt: "使用 $poetize-blog-automation 通过 POETIZE API 完成博客日常运营：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO、处理付费文章支付配置；含认证持久化、配置生成、测试等辅助能力。定位是个人博客运营助手。发文默认策略：免费优先、维护优先、质量优先。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。"
+  default_prompt: "使用 $poetize-blog-automation 通过 POETIZE API 完成博客日常运营。仅当用户明确要求操作 POETIZE / 本博客时才激活；不主动对泛化的“写博客”“SEO 建议”等请求触发。发文默认策略：免费优先、维护优先、质量优先。所有发布、隐藏、主题切换、付费配置、SEO 等会改动线上状态的操作，必须先向用户展示目标并获明确确认后再执行。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。"
 
 permissions:
   filesystem:
     - skill folder read/write
-    - user-provided markdown/config/credential files
-    - ~/.config/poetize/credentials.json for persisted auth
+    - user-provided markdown/config files
+    - ~/.config/poetize/credentials.json for persisted auth (0600)
   environment:
     - POETIZE_BASE_URL
     - POETIZE_API_KEY
   network:
-    - POETIZE_BASE_URL
+    - POETIZE_BASE_URL (blog API, user-configured)
+    - LLM endpoint only for opt-in `eval` dry-run, user-supplied
   shell:
     - python/python3 to run bundled CLI scripts only
 
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false
+  require_explicit_user_intent: true
+  require_confirmation_before_state_changing: true
+  trigger_intents:
+    - publish / update / hide POETIZE posts
+    - manage categories, tags, themes, comments, SEO, analytics
+    - configure paid-article payment plugin
+    - auth login / config generation
+    - local `eval` dry-run test (opt-in, never publishes)

@@ -2,11 +2,11 @@
 slug: awesome-poetize-open-blog-automation
 displayName: POETIZE 博客自动化
 name: poetize-blog-automation
-description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、切换博客主题、查看访问数据和趋势、配置 SEO、处理付费文章支付配置；含认证持久化、配置生成、测试等辅助能力。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。开源仓库：https://github.com/LeapYa/awesome-poetize-open
-summary: POETIZE 博客运营助手：写文章、发布、管理分类标签、切换主题、查看数据、配置 SEO、处理付费文章支付配置。
+description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更新或隐藏已有文章、管理分类和标签、管理评论、上传图片、翻译管理、切换博客主题、查看访问数据和趋势、配置 SEO、处理付费文章支付配置；含认证持久化、配置生成、测试等辅助能力。仅支持 awesome-poetize-open（POETIZE 的开源 fork），不适用于闭源版 POETIZE 或其他博客系统，也不用于与 POETIZE 无关的通用写作或 SEO 咨询。开源仓库：https://github.com/LeapYa/awesome-poetize-open
+summary: POETIZE 博客运营助手：写文章、发布、管理分类标签与评论、上传图片、翻译管理、切换主题、查看数据、配置 SEO、处理付费文章支付配置。
 license: MIT
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/skills/poetize-blog-automation
-version: 2.1.0
+version: 2.1.6
 primaryEnv: POETIZE_API_KEY
 requires:
   anyBins:
@@ -15,6 +15,9 @@ requires:
   env:
     - POETIZE_BASE_URL
     - POETIZE_API_KEY
+network:
+  - POETIZE_BASE_URL (blog API, required)
+  - LLM endpoint only for opt-in `eval` dry-run (user-supplied)
 install:
   - id: brew-python
     kind: brew
@@ -47,22 +50,26 @@ disable-model-invocation: false
 
 ## Security Warnings
 
-- `POETIZE_API_KEY` is a high-privilege credential that can administer the blog. Store via `auth login` (0600), framework secure storage, or protected env. Never commit to source control or paste in chat. Env files and generated config files also embed credentials when present; protect them.
-- Publishing, hiding, comment writes, theme/SEO changes, sitemap updates, image uploads, and paid-article payment-plugin configuration modify live blog state immediately. To preview, set `_brief.publishIntent: draft` and use `--draft`.
-- Local images referenced in Markdown or HTML are automatically read from disk and uploaded to the remote blog before publishing. Verify all image paths before running publish.
-- Paid publishing inspects the payment plugin status and, when a `paymentConfigFile` is supplied, sends its contents to the server to configure and activate the plugin. Only use this on a server you own and when intentionally setting up monetization.
-- The bundled CLI calls documented blog-management APIs, reads/writes explicitly supplied content/config/credential files, and persists auth to ~/.config/poetize/credentials.json. It does not run arbitrary commands or access unrelated local files.
+- **Credential sensitivity.** `POETIZE_API_KEY` is a high-privilege blog-admin credential. Prefer a least-privilege / revocable key. Never commit it, paste it in chat, or drop it in a repo/CWD. Store via framework secure storage, protected env, or `auth login` (writes `0600`). `poetize-blog config` emits `POETIZE_API_KEY` in plaintext into its output file — protect that path and do not commit it.
+- **Live state changes need explicit confirmation.** Publishing, hiding, comments, theme/SEO changes, sitemap updates, image uploads, and paid-article payment-plugin config mutate the live blog immediately. These are live operations: before executing, surface the concrete target/action to the user and obtain explicit confirmation; do not rely on implicit intent. Preview safely with `_brief.publishIntent: draft` + `--draft`. The agent manifest disables implicit invocation (`allow_implicit_invocation: false`) and requires confirmation before state-changing actions.
+- **Local image auto-upload.** Markdown/HTML image references are read from disk and uploaded to the configured blog on publish by default. Verify every local image path before running publish.
+- **Paid publishing.** Inspects the payment-plugin status and, when `paymentConfigFile` is given, sends its contents to the server to configure/activate the plugin. Only on a server you own and when intentionally monetizing.
+- **Optional external LLM transmission (dry-run only).** `poetize-blog eval` (and `ai_dry_run_test.py`) reads the *full* SKILL.md and sends it, with a test intent, to a user-supplied OpenAI-compatible endpoint to validate AI understanding. It is a local read-only test that never publishes, requires an explicit LLM key/URL and opt-in, and no other command contacts any third party.
+- **eval never leaks secrets.** The optional `eval` dry-run transmits only the SKILL.md text and a test scenario to the user-supplied LLM endpoint. It never reads `credentials.json`, API keys, or any local secret, and requires explicit opt-in plus a confirmation that names the destination host before sending. Credential handling and the external dry-run are hard-separated.
+- **Network egress is scoped.** All network calls go only to (1) the user-configured `POETIZE_BASE_URL` blog API, or (2) the user-supplied LLM endpoint for the optional dry-run. No telemetry, beaconing, or other exfiltration.
+- **No arbitrary execution.** The CLI is a fixed argparse program with no `eval`/`exec`/`compile`/`subprocess`/`os.system`. The `eval` subcommand is a local strategy-test runner, not code execution. It reads/writes only explicitly supplied content/config files and never touches unrelated files.
 
 ## Agent-First Execution Rules
 
 - This skill is for `awesome-poetize-open` only. Do not use it with the closed-source POETIZE or an unverified fork.
+- **Trigger scope (explicit intent only).** Activate only on an explicit user request that names this blog / POETIZE or a concrete operation below — writing or publishing articles, managing categories/tags/themes/comments/analytics/SEO, setting up paid articles, or running the local `eval` dry-run. Do NOT auto-activate for generic "write a blog post", SEO advice, or marketing copy unrelated to an `awesome-poetize-open` instance you are configured to manage. State-changing operations additionally require a concrete target/intent per Guardrails.
 - Run all operations through the `poetize-blog.sh` wrapper. The wrapper auto-detects its own directory, so you never pass baseDir to it:
   - macOS / Linux: `{baseDir}/poetize-blog.sh` (bash)
   - Windows: `python {baseDir}\scripts\poetize_cli.py` (cmd or PowerShell)
   - Or put `{baseDir}` on `PATH` and call `poetize-blog.sh` directly. Python 3 is still required at runtime (declared in `requires.anyBins`); the wrapper auto-selects `py` / `python3` / `python`.
 - Invoke this skill only for explicit POETIZE tasks, not generic writing or SEO requests.
 - Generate framework config with `poetize-blog.sh config`: `--format openclaw` for OpenClaw, `--format env` for IDE agents or shell.
-- Credential resolution priority: CLI args > env vars > global config (`~/.config/poetize/credentials.json`) > local skill config (`{baseDir}/credentials.json`) > CWD config (`./credentials.json`). Use native credential persistence when available; otherwise use global `auth login`; in ephemeral sandboxes use `auth login --local` or CLI args/env.
+- Credential resolution priority: CLI args > saved credential files (global `~/.config/poetize/credentials.json`, then local `{baseDir}/credentials.json`, then CWD `./credentials.json`) > env vars (`POETIZE_BASE_URL` / `POETIZE_API_KEY`). The file fallback widens the trust boundary, so prefer CLI args or env and never place `credentials.json` in a project or working directory.
 - Run `poetize-blog.sh smoke-test` before the first real write action in a new environment.
 - Set `POETIZE_BASE_URL` to the public domain origin without trailing `/api`; requests resolve under `${POETIZE_BASE_URL}/api/api/...`.
 - For `publish`, prefer an inline `_brief`; use `--stdin-brief` (with actual piped/heredoc JSON) or `--brief-file` when a separate audit trail is needed. Never pass `--stdin-brief` without stdin data, and do not create a Python wrapper merely to pipe it.
