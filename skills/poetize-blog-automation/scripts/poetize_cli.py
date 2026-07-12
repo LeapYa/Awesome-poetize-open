@@ -52,7 +52,7 @@ from render_openclaw_config import build_config, infer_base_url
 
 
 # ---------------------------------------------------------------------------
-# Credentials storage (~/.config/poetize/credentials.json, local/CWD fallback)
+# Credentials storage (~/.config/poetize/credentials.json, local fallback)
 # ---------------------------------------------------------------------------
 
 try:
@@ -61,7 +61,6 @@ except Exception:
     CREDENTIALS_PATH = None
 
 LOCAL_CREDENTIALS_PATH = Path(__file__).resolve().parent.parent / "credentials.json"
-CWD_CREDENTIALS_PATH = Path.cwd() / "credentials.json"
 
 
 def load_credentials() -> dict[str, str]:
@@ -69,12 +68,16 @@ def load_credentials() -> dict[str, str]:
     Checks:
     1. Global: ~/.config/poetize/credentials.json
     2. Local: {baseDir}/credentials.json
-    3. CWD: ./credentials.json
+
+    CWD credential discovery (./credentials.json) was removed for security:
+    a planted file in the working directory could otherwise hijack the
+    resolved base_url and exfiltrate article content. Env vars and explicit
+    CLI args are the trusted sources; files are a convenience fallback only.
     """
     paths_to_check = []
     if CREDENTIALS_PATH:
         paths_to_check.append(CREDENTIALS_PATH)
-    paths_to_check.extend([LOCAL_CREDENTIALS_PATH, CWD_CREDENTIALS_PATH])
+    paths_to_check.append(LOCAL_CREDENTIALS_PATH)
 
     for path in paths_to_check:
         if path.exists():
@@ -119,15 +122,23 @@ def clear_credentials(local: bool = False) -> tuple[bool, Path]:
 
 
 def resolve_credentials(args: argparse.Namespace) -> None:
-    """Fill args.base_url and args.api_key from: CLI > env > credentials files (global, local, CWD).
+    """Fill args.base_url and args.api_key from: CLI > env > credentials files (global, local).
 
+    Env vars are explicit per-session intent and take precedence over
+    persisted credential files, which are a convenience fallback. This avoids
+    a stale or planted credentials.json shadowing the user's environment.
     Called once in main() after argparse, before dispatching to cmd_*.
     """
-    creds = load_credentials()
     if not getattr(args, "base_url", None):
-        args.base_url = creds.get("base_url") or os.getenv("POETIZE_BASE_URL")
+        args.base_url = os.getenv("POETIZE_BASE_URL")
     if not getattr(args, "api_key", None):
-        args.api_key = creds.get("api_key") or os.getenv("POETIZE_API_KEY")
+        args.api_key = os.getenv("POETIZE_API_KEY")
+    if not getattr(args, "base_url", None) or not getattr(args, "api_key", None):
+        creds = load_credentials()
+        if not getattr(args, "base_url", None):
+            args.base_url = creds.get("base_url")
+        if not getattr(args, "api_key", None):
+            args.api_key = creds.get("api_key")
 
 
 # ---------------------------------------------------------------------------
@@ -1469,6 +1480,15 @@ def cmd_auth(args: argparse.Namespace) -> None:
         env_key = os.getenv("POETIZE_API_KEY")
         cli_url = getattr(args, "base_url", None)
         cli_key = getattr(args, "api_key", None)
+        # Effective resolution: CLI > env > global file > local file
+        active_url = cli_url or env_url or creds.get("base_url")
+        active_key = cli_key or env_key or creds.get("api_key")
+        active_source = (
+            "cli" if cli_url or cli_key
+            else "env" if env_url or env_key
+            else "file" if creds.get("base_url")
+            else None
+        )
         result = {
             "global_file": {
                 "path": str(CREDENTIALS_PATH) if CREDENTIALS_PATH else None,
@@ -1478,13 +1498,10 @@ def cmd_auth(args: argparse.Namespace) -> None:
                 "path": str(LOCAL_CREDENTIALS_PATH),
                 "exists": LOCAL_CREDENTIALS_PATH.exists(),
             },
-            "cwd_file": {
-                "path": str(CWD_CREDENTIALS_PATH),
-                "exists": CWD_CREDENTIALS_PATH.exists(),
-            },
             "active_credentials": {
-                "base_url": creds.get("base_url"),
-                "api_key": "***" if creds.get("api_key") else None,
+                "base_url": active_url,
+                "api_key": "***" if active_key else None,
+                "source": active_source,
             },
             "env": {
                 "POETIZE_BASE_URL": env_url,
@@ -1494,7 +1511,7 @@ def cmd_auth(args: argparse.Namespace) -> None:
                 "base_url": cli_url,
                 "api_key": "***" if cli_key else None,
             },
-            "resolution_order": "CLI > env > ~/.config/poetize/credentials.json > {baseDir}/credentials.json > ./credentials.json",
+            "resolution_order": "CLI > env > ~/.config/poetize/credentials.json > {baseDir}/credentials.json",
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.auth_command == "clear":

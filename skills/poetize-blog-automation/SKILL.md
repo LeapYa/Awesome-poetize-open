@@ -6,7 +6,7 @@ description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更
 summary: POETIZE 博客运营助手：写文章、发布、管理分类标签与评论、上传图片、翻译管理、切换主题、查看数据、配置 SEO、处理付费文章支付配置。
 license: MIT
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/skills/poetize-blog-automation
-version: 2.1.6
+version: 2.1.7
 primaryEnv: POETIZE_API_KEY
 requires:
   anyBins:
@@ -69,7 +69,8 @@ disable-model-invocation: false
   - Or put `{baseDir}` on `PATH` and call `poetize-blog.sh` directly. Python 3 is still required at runtime (declared in `requires.anyBins`); the wrapper auto-selects `py` / `python3` / `python`.
 - Invoke this skill only for explicit POETIZE tasks, not generic writing or SEO requests.
 - Generate framework config with `poetize-blog.sh config`: `--format openclaw` for OpenClaw, `--format env` for IDE agents or shell.
-- Credential resolution priority: CLI args > saved credential files (global `~/.config/poetize/credentials.json`, then local `{baseDir}/credentials.json`, then CWD `./credentials.json`) > env vars (`POETIZE_BASE_URL` / `POETIZE_API_KEY`). The file fallback widens the trust boundary, so prefer CLI args or env and never place `credentials.json` in a project or working directory.
+- Credential persistence — choose by what survives a restart in your runtime, not by product name (WorkBuddy/Trae Work/Cursor/Qoder each span local+cloud): (1) framework injects `POETIZE_*` env (OpenClaw, Hermes, QwenPaw) → no action; (2) home dir persists (Trae/Cursor/CodeBuddy desktop, VS Code) → `auth login` global; (3) only skill folder persists (ima copilot, Doubao, cloud agents) → `auth login --local` (`{baseDir}/credentials.json`).
+- Credential resolution priority: CLI args > env vars (`POETIZE_BASE_URL` / `POETIZE_API_KEY`) > global file (`~/.config/poetize/credentials.json`) > local file (`{baseDir}/credentials.json`). CWD discovery was removed; never place `credentials.json` in a working directory.
 - Run `poetize-blog.sh smoke-test` before the first real write action in a new environment.
 - Set `POETIZE_BASE_URL` to the public domain origin without trailing `/api`; requests resolve under `${POETIZE_BASE_URL}/api/api/...`.
 - For `publish`, prefer an inline `_brief`; use `--stdin-brief` (with actual piped/heredoc JSON) or `--brief-file` when a separate audit trail is needed. Never pass `--stdin-brief` without stdin data, and do not create a Python wrapper merely to pipe it.
@@ -131,7 +132,7 @@ If web search or article-list access is unavailable, record that limitation in `
    | `video` | No | — | Video URL |
    | `password` / `tips` | No | auto for drafts | Password and preview tip for private articles |
    | `payType` | No | free: `0`; paid: `> 0` | Omit for `free_default`; required for `paid_explicit` |
-   | `payAmount` / `freePercent` | No | — | Price and free preview percentage for paid articles |
+   | `payAmount` / `freePercent` | No | — | Price and free preview percentage (default 30) for paid articles; ignored when a `<!--paywall-->` marker is present in the body — see [Paywall cutoff marker](#paywall-cutoff-marker) |
    | `skipAiTranslation` | No | `false` | Skip AI translation |
    | `pendingTranslationLanguage` / `pendingTranslationTitle` / `pendingTranslationContent` | No | — | Pre-supplied translation |
    | `paymentPluginKey` / `paymentConfigFile` | No | — | Payment plugin key and sensitive config JSON path |
@@ -159,13 +160,18 @@ If web search or article-list access is unavailable, record that limitation in `
 
 ## Image Upload Boundaries
 
-1. **Size Limit**: Keep files under **10MB** to avoid HTTP 413 errors from default Nginx/OpenResty limits.
+1. **Size Limit**: Nginx/OpenResty allows up to **100MB** per request (aligned with Spring Boot `max-file-size`). Normal user-facing image uploads (comments, love wall) are limited to **5MB** by the frontend; admin uploads (fonts, resources) can use the full 100MB.
 2. **Formats**: SVG is strictly forbidden (XSS risk). Use JPEG, PNG, GIF, BMP, WEBP, TIFF, ICO.
 3. **Filenames**: No encoding restrictions (Chinese names fully supported). Server auto-renames to UUIDs.
 
 ## Monetization & Payment Settings
 
 Paid publishing requires an explicit user request. The blog owner must configure the Afdian or Epay gateway, either in the admin panel or by supplying an approved payment config file. Set `primaryGoal: conversion`, `monetizationIntent: paid_explicit`, non-empty `whyPaid`, and `payType > 0` plus the required price fields. The CLI verifies the plugin and connection before publishing; if checks fail, publishing stops without silently removing the paywall. Never invent, request in chat, expose, or reuse gateway credentials without explicit user direction.
+
+### Paywall cutoff marker
+
+1. **`<!--paywall-->` marker (preferred).** HTML comment on its own line, surrounded by blank lines. Content before it is free; content after is hidden until the reader pays (or is the author, admin, member for `payType: 2`, or has already paid). Only the first match is used, and it overrides `freePercent`. Place it after a natural hook — never mid-sentence or inside a code fence/table/list (it becomes literal text and the cut is disabled). Aim for at least one complete section before it, since search engines and the summary generator see the cut body. State a user-specified cutoff in `reasoning`.
+2. **`freePercent` fallback.** With no marker, the backend cuts at a paragraph boundary (`\n\n`, then `\n`) nearest to that share of the body (default `30`).
 
 ## Script Usage
 
