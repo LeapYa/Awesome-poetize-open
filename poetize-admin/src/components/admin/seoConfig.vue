@@ -142,12 +142,11 @@
                             :src="seoConfig.og_image"
                             fit="cover"></el-image>
                 </div>
-                <uploadPicture 
-                  :isAdmin="true" 
-                  :prefix="'seoOgImage'" 
+                <uploadPicture
+                  :isAdmin="true"
+                  :prefix="'seoOgImage'"
                   @addPicture="addOgImage"
-                  :maxSize="2" 
-                  :maxNumber="1" 
+                  :maxNumber="1"
                   class="upload-btn">
                 </uploadPicture>
               </div>
@@ -165,12 +164,11 @@
                             :src="seoConfig.site_logo"
                             fit="cover"></el-image>
                 </div>
-                <uploadPicture 
-                  :isAdmin="true" 
-                  :prefix="'seoSiteLogo'" 
+                <uploadPicture
+                  :isAdmin="true"
+                  :prefix="'seoSiteLogo'"
                   @addPicture="addSiteLogo"
-                  :maxSize="2" 
-                  :maxNumber="1" 
+                  :maxNumber="1"
                   class="upload-btn">
                 </uploadPicture>
               </div>
@@ -274,12 +272,11 @@
                             :src="seoConfig.site_icon_512"
                             fit="cover"></el-image>
                 </div>
-                <uploadPicture 
-                  :isAdmin="true" 
-                  :prefix="'seoSiteIcon512'" 
+                <uploadPicture
+                  :isAdmin="true"
+                  :prefix="'seoSiteIcon512'"
                   @addPicture="addSiteIcon512"
-                  :maxSize="2" 
-                  :maxNumber="1" 
+                  :maxNumber="1"
                   class="upload-btn">
                 </uploadPicture>
               </div>

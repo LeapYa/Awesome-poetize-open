@@ -438,7 +438,7 @@ server {
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.jsdelivr.net cdn.jsdelivr.net *.cloudflare.com cdnjs.cloudflare.com *.unpkg.com unpkg.com; style-src 'self' 'unsafe-inline' *.jsdelivr.net *.cloudflare.com cdnjs.cloudflare.com fonts.googleapis.com *.unpkg.com unpkg.com; img-src 'self' data: blob: *; font-src 'self' data: *; connect-src 'self' *;" always;
 
     # 限制请求大小，防止DoS攻击
-    client_max_body_size 10M;
+    client_max_body_size 100M;
 
     # 启用Brotli压缩 - 比GZIP更高效的压缩算法
     brotli on;

@@ -102,7 +102,6 @@
           </el-input>
           <el-button v-else class="button-new-tag" size="small" @click="showRandomCoverInput">+ 随机封面</el-button>
           <uploadPicture :isAdmin="true" :prefix="'randomCover'" style="margin: 10px" @addPicture="addRandomCover"
-                         :maxSize="2"
                          :maxNumber="5"></uploadPicture>
           <div class="myCenter" style="margin-bottom: 40px">
             <el-button type="primary" @click="saveRandomCover()" :loading="loadingCover">保存随机封面</el-button>

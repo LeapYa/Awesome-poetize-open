@@ -45,7 +45,6 @@
             <uploadPicture
               :isAdmin="true"
               :prefix="'aiBotAvatar'"
-              :maxSize="2"
               :maxNumber="1"
               @addPicture="addBotAvatar"
             ></uploadPicture>

@@ -358,7 +358,7 @@
       <el-dialog class="chat-picture-dialog" v-model="showPictureDialog" width="30%" :show-close="true" :append-to-body="true" :close-on-click-modal="true" align-center>
         <div style="padding: 40px;background: var(--background);border-radius: 5px;">
           <div style="margin: 0 0 25px;text-align: center;font-size: 18px;font-weight: bold;color: var(--fontColor)">上传图片</div>
-          <uploadPicture :prefix="picturePrefix" @addPicture="addPicture" :maxSize="2"
+          <uploadPicture :prefix="picturePrefix" @addPicture="addPicture" :maxSize="5"
                          :maxNumber="1"></uploadPicture>
         </div>
       </el-dialog>

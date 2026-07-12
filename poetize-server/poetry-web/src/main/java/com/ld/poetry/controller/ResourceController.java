@@ -116,6 +116,9 @@ public class ResourceController {
             "createTime", "create_time"
     );
 
+    /** 普通用户（非管理员）单文件上传大小上限：5MB */
+    private static final long MAX_USER_UPLOAD_SIZE = 5 * 1024 * 1024;
+
     @Autowired
     private ResourceService resourceService;
 
@@ -214,6 +217,9 @@ public class ResourceController {
         }
         if (isResourceFilterType(fileVO.getType())) {
             return PoetryResult.fail(resourceFilterTypeName(fileVO.getType()) + "是筛选视图，不能作为资源类型上传！");
+        }
+        if (!PoetryUtil.isStaff() && file.getSize() > MAX_USER_UPLOAD_SIZE) {
+            return PoetryResult.fail("文件大小超过5MB限制");
         }
 
         try {
@@ -400,6 +406,9 @@ public class ResourceController {
         }
         if (isResourceFilterType(fileVO.getType())) {
             return PoetryResult.fail(resourceFilterTypeName(fileVO.getType()) + "是筛选视图，不能作为资源类型上传！");
+        }
+        if (!PoetryUtil.isStaff() && file.getSize() > MAX_USER_UPLOAD_SIZE) {
+            return PoetryResult.fail("文件大小超过5MB限制");
         }
 
         try {
@@ -695,6 +704,11 @@ public class ResourceController {
                     }
                     Files.copy(chunkPath, outputStream);
                 }
+            }
+
+            long mergedFileSize = Files.size(mergedFile);
+            if (!PoetryUtil.isStaff() && mergedFileSize > MAX_USER_UPLOAD_SIZE) {
+                return PoetryResult.fail("文件大小超过5MB限制");
             }
 
             MultipartFile mergedMultipartFile = new PathMultipartFile(

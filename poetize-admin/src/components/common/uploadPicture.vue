@@ -31,12 +31,12 @@
       </div>
       <template v-if="listType === 'picture'">
         <div slot="tip" class="el-upload__tip">
-          一次最多上传{{maxNumber}}张图片，且每张图片不超过{{maxSize}}M！
+          一次最多上传{{maxNumber}}张图片，且每张图片不超过100M！
         </div>
       </template>
       <template v-else>
         <div slot="tip" class="el-upload__tip">
-          一次最多上传{{maxNumber}}个文件，且每个文件不超过{{maxSize}}M！
+          一次最多上传{{maxNumber}}个文件，且每个文件不超过100M！
         </div>
       </template>
 
@@ -514,16 +514,7 @@ import upload from '../../utils/ajaxUpload';
         return true;
       },
       validateSelectedFile(file, showMessage = true) {
-        const rawFile = this.getRawFile(file) || {};
         const fileName = this.getFileName(file);
-        const fileSize = rawFile.size || 0;
-
-        if (fileSize > this.maxSize * 1024 * 1024) {
-          if (showMessage) {
-            this.showValidationMessage((this.isPictureUpload ? "图片" : "文件") + "最大为" + this.maxSize + "M！", "warning");
-          }
-          return false;
-        }
 
         if (fileName.lastIndexOf('.') === -1) {
           if (showMessage) {

@@ -115,7 +115,6 @@
                       fit="cover"></el-image>
           </div>
           <uploadPicture :isAdmin="true" :prefix="'webAvatar'" style="margin-top: 15px" @addPicture="addAvatar"
-                         :maxSize="2"
                          :maxNumber="1"></uploadPicture>
         </el-form-item>
         

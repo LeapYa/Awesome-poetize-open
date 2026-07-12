@@ -96,7 +96,7 @@
         <uploadPicture
           :prefix="'commentPicture'"
           @addPicture="addPicture"
-          :maxSize="2"
+          :maxSize="5"
           :maxNumber="1"
         ></uploadPicture>
       </div>

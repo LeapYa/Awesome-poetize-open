@@ -32,10 +32,10 @@
       </div>
       <template #tip>
         <div class="el-upload__tip" v-if="listType === 'picture'">
-          一次最多上传{{ maxNumber }}张图片，且每张图片不超过{{ maxSize }}M！
+          一次最多上传{{ maxNumber }}张图片，且每张图片不超过{{ effectiveMaxSize }}M！
         </div>
         <div class="el-upload__tip" v-else>
-          一次最多上传{{ maxNumber }}个文件，且每个文件不超过{{ maxSize }}M！
+          一次最多上传{{ maxNumber }}个文件，且每个文件不超过{{ effectiveMaxSize }}M！
         </div>
       </template>
     </el-upload>
@@ -94,6 +94,13 @@ export default {
   computed: {
     mainStore() {
       return useMainStore()
+    },
+    isBossUser() {
+      const userType = this.mainStore.currentUser && this.mainStore.currentUser.userType
+      return userType === 0 || userType === 1
+    },
+    effectiveMaxSize() {
+      return this.isBossUser ? 100 : this.maxSize
     },
     // 计算属性：获取当前存储类型
     currentStoreType() {
@@ -425,9 +432,9 @@ export default {
     handleChange(file, fileList) {
       let flag = false
 
-      if (file.size > this.maxSize * 1024 * 1024) {
+      if (file.size > this.effectiveMaxSize * 1024 * 1024) {
         this.$message({
-          message: '图片最大为' + this.maxSize + 'M！',
+          message: '图片最大为' + this.effectiveMaxSize + 'M！',
           type: 'warning',
         })
         flag = true

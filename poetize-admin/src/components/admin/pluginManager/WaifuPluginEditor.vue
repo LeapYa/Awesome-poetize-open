@@ -34,7 +34,7 @@
     </el-form-item>
 
     <el-dialog title="上传/选择图片" :visible.sync="uploadPictureDialog" width="45%" append-to-body>
-      <upload-picture :maxNumber="1" :maxSize="2" :isAdmin="true" @addPicture="handleThumbnailSuccess"></upload-picture>
+      <upload-picture :maxNumber="1" :isAdmin="true" @addPicture="handleThumbnailSuccess"></upload-picture>
     </el-dialog>
 
     <el-divider content-position="left">对话配置</el-divider>

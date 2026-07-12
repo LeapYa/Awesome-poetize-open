@@ -254,6 +254,16 @@ public class PoetryUtil {
         return currentUser.getUserType() != null && currentUser.getUserType() == 0; // 0 = 管理员
     }
 
+    /** 站长(0)或管理员(1) */
+    public static boolean isStaff() {
+        User currentUser = getCurrentUser();
+        if (currentUser == null) {
+            return false;
+        }
+        Integer userType = currentUser.getUserType();
+        return userType != null && userType <= 1;
+    }
+
     public static Integer getUserId() {
         return RetryUtil.executeWithRetry(() -> {
             try {

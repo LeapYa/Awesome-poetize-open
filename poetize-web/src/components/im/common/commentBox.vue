@@ -71,7 +71,7 @@
       <el-dialog class="comment-picture-dialog" v-model="showPicture" width="30%" :show-close="true" :append-to-body="true" :close-on-click-modal="true" align-center>
         <div class="comment-picture">
           <div style="margin: 0 0 25px;text-align: center;font-size: 18px;font-weight: bold;color: var(--fontColor)">上传图片</div>
-          <uploadPicture :prefix="'commentPicture'" @addPicture="addPicture" :maxSize="2"
+          <uploadPicture :prefix="'commentPicture'" @addPicture="addPicture" :maxSize="5"
                          :maxNumber="1"></uploadPicture>
         </div>
       </el-dialog>
