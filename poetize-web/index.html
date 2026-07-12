@@ -121,10 +121,10 @@
         if (cachedWebInfo) {
           var webInfoData = JSON.parse(cachedWebInfo);
           if (webInfoData && webInfoData.data) {
-            var homeTitle = webInfoData.data.homeTitle || webInfoData.data.webTitle;
-            if (homeTitle) {
-              document.title = homeTitle;
-              window.OriginTitile = homeTitle;
+            var tabTitle = webInfoData.data.webTitle || webInfoData.data.webName;
+            if (tabTitle) {
+              document.title = tabTitle;
+              window.OriginTitile = tabTitle;
             }
           }
         }

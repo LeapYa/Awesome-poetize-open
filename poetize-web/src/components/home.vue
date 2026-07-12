@@ -967,7 +967,8 @@ export default {
           const sortInfo = data.sortInfo
 
           if (!this.$common.isEmpty(webInfo)) {
-            const originalWebTitle = webInfo.homeTitle || webInfo.webTitle
+            // 浏览器标签仅使用 webTitle（回退 webName）；homeTitle 是备案名，不显示在标签上
+            const originalWebTitle = webInfo.webTitle || webInfo.webName
             this.mainStore.loadWebInfo(webInfo)
 
             if (originalWebTitle) {
@@ -1001,13 +1002,13 @@ export default {
         .get(this.$constant.baseURL + '/webInfo/getWebInfo')
         .then((res) => {
           if (!this.$common.isEmpty(res.data)) {
-            // 优先 homeTitle，回退 webTitle
-            const originalWebTitle = res.data.homeTitle || res.data.webTitle
+            // 浏览器标签仅使用 webTitle（回退 webName）；homeTitle 是备案名，不显示在标签上
+            const originalWebTitle = res.data.webTitle || res.data.webName
 
             // 处理网站信息
             this.mainStore.loadWebInfo(res.data)
 
-            // 更新浏览器标签栏标题 - 使用原始的webTitle字符串
+            // 更新浏览器标签栏标题 - 使用 webTitle
             if (originalWebTitle) {
               document.title = originalWebTitle
               // 同时更新title.js中保存的原始标题

@@ -108,10 +108,12 @@ export const useMainStore = defineStore('main', {
 
   getters: {
     /**
-     * 首页标题：优先 homeTitle，回退 webTitle
+     * 浏览器标签标题：仅使用网站标题 webTitle（回退 webName）。
+     * 注意：homeTitle（首页标题）是专门用于 ICP 备案的，仅由服务端 SEO meta 注入到
+     * 首页 <title> 供备案/搜索引擎抓取，不应显示在浏览器标签页上，因此这里不使用它。
      */
     homePageTitle: (state) => {
-      return state.webInfo.homeTitle || state.webInfo.webTitle
+      return state.webInfo.webTitle || state.webInfo.webName
     },
     /**
      * 文章总数

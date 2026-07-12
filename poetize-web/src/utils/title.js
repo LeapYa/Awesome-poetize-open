@@ -7,10 +7,10 @@ let enableDynamicTitle = true // 默认开启动态标题
 try {
   const cachedWebInfo = JSON.parse(localStorage.getItem('webInfo'))
   if (cachedWebInfo && cachedWebInfo.data) {
-    // 更新网站标题（优先使用 homeTitle，回退到 webTitle）
-    var homeTitle = cachedWebInfo.data.homeTitle || cachedWebInfo.data.webTitle
-    if (homeTitle) {
-      window.OriginTitile = homeTitle
+    // 更新浏览器标签标题（仅使用 webTitle，回退 webName；homeTitle 仅用于 ICP 备案，不显示在标签上）
+    var tabTitle = cachedWebInfo.data.webTitle || cachedWebInfo.data.webName
+    if (tabTitle) {
+      window.OriginTitile = tabTitle
       document.title = window.OriginTitile
     }
     // 检查是否启用动态标题 - 优先使用缓存中的配置

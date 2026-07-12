@@ -93,7 +93,7 @@ export default {
       }
     }
 
-    // 初始化时设置网站标题（优先 homeTitle，回退 webTitle）
+    // 初始化时设置浏览器标签标题（仅使用 webTitle，回退 webName；homeTitle 是备案名，不显示在标签上）
     const homePageTitle = this.mainStore.homePageTitle
     if (homePageTitle) {
       document.title = homePageTitle
