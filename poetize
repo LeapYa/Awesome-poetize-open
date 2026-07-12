@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2026-07-12
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.13.2
+## 版本: 1.13.3
 
 # 定义颜色
 RED='\033[0;31m'
@@ -5906,6 +5906,37 @@ wait_for_services_ready() {
   fi
 }
 
+# 将 CIDR (a.b.c.d/prefix) 解析为网络地址与广播地址（32位整数），纯 bash 实现
+# 不依赖 ipcalc：Debian/Ubuntu 的 jodies ipcalc 把 -c 当作彩色输出、不支持双网段
+# overlap 比较，仅 RHEL/ipcalc-ng 支持，混用会导致子网冲突检测永远判定"不重叠"
+_cidr_to_range() {
+  local cidr="$1" ip prefix o1 o2 o3 o4 ip_int mask net bcast
+  IFS='/' read -r ip prefix <<< "$cidr"
+  prefix="${prefix:-32}"
+  IFS='.' read -r o1 o2 o3 o4 <<< "$ip"
+  o1="${o1:-0}"; o2="${o2:-0}"; o3="${o3:-0}"; o4="${o4:-0}"
+  ip_int=$(( (o1 << 24) | (o2 << 16) | (o3 << 8) | o4 ))
+  if [ "$prefix" -ge 32 ]; then
+    mask=0xFFFFFFFF
+  elif [ "$prefix" -le 0 ]; then
+    mask=0
+  else
+    mask=$(( (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF ))
+  fi
+  net=$(( ip_int & mask ))
+  bcast=$(( net | (0xFFFFFFFF ^ mask) ))
+  echo "$net $bcast"
+}
+
+# 判断两个 CIDR 子网是否重叠（纯 bash，不依赖 ipcalc）
+# 重叠条件：net_a <= bcast_b 且 net_b <= bcast_a
+_subnet_overlaps() {
+  local a="$1" b="$2" a_net a_bcast b_net b_bcast
+  read -r a_net a_bcast < <(_cidr_to_range "$a")
+  read -r b_net b_bcast < <(_cidr_to_range "$b")
+  [ "$a_net" -le "$b_bcast" ] && [ "$b_net" -le "$a_bcast" ]
+}
+
 # 检测网络冲突并自动修改配置
 check_and_fix_network_conflict() {
   local TARGET_SUBNET="172.28.147.0/28"
@@ -5913,22 +5944,14 @@ check_and_fix_network_conflict() {
   
   info "检测网络冲突: $TARGET_SUBNET"
   
-  # 检查是否安装了ipcalc工具，如果未安装则尝试安装
-  if ! command -v ipcalc >/dev/null 2>&1; then
-    warning "ipcalc工具未安装，尝试自动安装..."
-    if ! check_and_install_ipcalc; then
-      warning "无法安装ipcalc工具，跳过网络冲突检测"
-      return 0
-    fi
-  fi
   
   # 获取本机所有IP和子网
   while IFS= read -r line; do
     if [ -n "$line" ]; then
       local addr=$(echo "$line" | awk '{print $4}')
       if [ -n "$addr" ] && [[ "$addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
-        # 使用ipcalc检查网络重叠
-        if ipcalc -c "$addr" "$TARGET_SUBNET" 2>/dev/null | grep -q "overlap"; then
+        # 使用纯 bash 检查网络重叠
+        if _subnet_overlaps "$addr" "$TARGET_SUBNET"; then
           warning "检测到网络冲突: $addr 与 $TARGET_SUBNET 重叠"
           conflict_detected=true
           break
@@ -5947,7 +5970,7 @@ check_and_fix_network_conflict() {
         --format '{{range .IPAM.Config}}{{.Subnet}}{{"\n"}}{{end}}' 2>/dev/null | grep -v '^$' || true)
       while IFS= read -r ds; do
         [ -n "$ds" ] || continue
-        if ipcalc -c "$ds" "$TARGET_SUBNET" 2>/dev/null | grep -q "overlap"; then
+        if _subnet_overlaps "$ds" "$TARGET_SUBNET"; then
           warning "检测到 Docker 网络冲突: $net_name ($ds) 与 $TARGET_SUBNET 重叠"
           conflict_detected=true
           break
@@ -5977,7 +6000,7 @@ check_and_fix_network_conflict() {
         if [ -n "$line" ]; then
           local addr=$(echo "$line" | awk '{print $4}')
           if [ -n "$addr" ] && [[ "$addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
-            if ipcalc -c "$addr" "$new_subnet" 2>/dev/null | grep -q "overlap"; then
+            if _subnet_overlaps "$addr" "$new_subnet"; then
               new_conflict=true
               break
             fi
@@ -9208,19 +9231,6 @@ assign_non_conflict_subnet_for_multi_instance() {
     done < <(ip -o -f inet addr show 2>/dev/null || true)
   fi
 
-  # 子网冲突检测函数（需要 ipcalc）
-  _subnet_overlaps() {
-    local a="$1" b="$2"
-    if command -v ipcalc >/dev/null 2>&1; then
-      ipcalc -c "$a" "$b" 2>/dev/null | grep -q "overlap" && return 0 || return 1
-    else
-      # 退化为比较网络前缀（base IP 的前三段）
-      local a_base b_base
-      a_base=$(echo "$a" | awk -F. '{print $1"."$2"."$3}')
-      b_base=$(echo "$b" | awk -F. '{print $1"."$2"."$3}')
-      [ "$a_base" = "$b_base" ] && return 0 || return 1
-    fi
-  }
 
   # 检查默认网段是否已冲突
   local default_conflict=false
@@ -9240,12 +9250,6 @@ assign_non_conflict_subnet_for_multi_instance() {
   # 默认网段冲突，生成新的不冲突网段
   warning "默认网段 $default_subnet 已被占用，正在为 blog$instance_num 生成新网段..."
 
-  # 尝试安装 ipcalc 以获得精确的冲突检测
-  if ! command -v ipcalc >/dev/null 2>&1; then
-    if type check_and_install_ipcalc >/dev/null 2>&1; then
-      check_and_install_ipcalc || true
-    fi
-  fi
 
   local new_subnet=""
   local new_base=""
@@ -10923,8 +10927,7 @@ main() {
   # 检查并安装curl
   check_and_install_curl
 
-  # 检查并安装ipcalc（用于网络冲突检测）
-  check_and_install_ipcalc
+  # 子网冲突检测已改为纯 bash 实现（_subnet_overlaps），不再需要安装 ipcalc
 
   # 检查并安装sed
   install_sed
