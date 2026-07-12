@@ -1,14 +1,6 @@
 <template>
   <div class="index-page-container">
-    <loader :loading="loading">
-      <!-- 加载页面 -->
-      <template v-slot:loader>
-        <div>
-          <zombie></zombie>
-        </div>
-      </template>
-      <!-- 内容页面 -->
-      <template v-slot:body>
+
         <!-- 首页图片 -->
         <el-image
           :style="bannerStyle"
@@ -150,8 +142,7 @@
         <div v-if="deferredContentReady" style="background: var(--background)">
           <myFooter></myFooter>
         </div>
-      </template>
-    </loader>
+
 
     <el-dialog
       title="每日推荐"
@@ -244,8 +235,7 @@ import { pushNotification } from '@/utils/notification-utils'
 
 export default {
   components: {
-    loader: defineAsyncComponent(() => import('./common/loader')),
-    zombie: defineAsyncComponent(() => import('./common/zombie')),
+
     printer: defineAsyncComponent(() => import('./common/printer')),
     articleList: defineAsyncComponent(() => import('./articleList')),
     sortArticle: defineAsyncComponent(() => import('./common/sortArticle')),
