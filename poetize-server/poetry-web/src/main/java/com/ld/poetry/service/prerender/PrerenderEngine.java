@@ -512,7 +512,7 @@ public class PrerenderEngine {
                 + "      /* 防止FOUC的关键样式 */\n"
                 + "      html.loaded #prerender-container { display: none; }\n"
                 + "      html:not(.loaded) #prerender-container { position: absolute; top: 0; left: 0; width: 100%; z-index: 9999; }\n"
-                + "      html:not(.loaded) #app { opacity: 0; pointer-events: none; }\n"
+                + "      html:not(.loaded) #app { visibility: hidden; }\n"
                 + "      html.loaded #app { visibility: visible; opacity: 1; transition: opacity 0.3s ease-in-out; }\n"
                 + "      .article-detail, .home-prerender, .favorite-prerender, .favorites-prerender, .sort-prerender, .sort-list-prerender {\n"
                 + "        min-height: 200px; position: relative; opacity: 1; transform: translateY(0); animation: fadeIn 0.5s ease-in-out;\n"

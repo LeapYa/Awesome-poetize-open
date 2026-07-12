@@ -5,7 +5,6 @@
         <el-image
           :style="bannerStyle"
           class="background-image-index"
-          lazy
           :src="
             !$common.isEmpty(mainStore.webInfo.backgroundImage)
               ? mainStore.webInfo.backgroundImage
