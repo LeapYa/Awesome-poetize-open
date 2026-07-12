@@ -491,6 +491,42 @@ export default {
     });
   },
 
+  /**
+   * 二进制下载请求，使用项目统一的 axios 实例与拦截器。
+   * 错误响应体如果是 JSON，会尝试提取 message 字段覆盖默认错误提示。
+   */
+  download(url, params = {}, isAdmin = false) {
+    if (params === null || typeof params !== 'object') {
+      params = {};
+    }
+    return axios
+      .get(url, {
+        params,
+        isAdmin,
+        headers: {},
+        responseType: 'blob'
+      })
+      .then(res => res.data)
+      .catch(err => {
+        if (err.response && err.response.data instanceof Blob && err.response.data.size > 0) {
+          return err.response.data.text().then(text => {
+            try {
+              const json = JSON.parse(text);
+              if (json && json.message) {
+                err.message = json.message;
+              }
+            } catch (_) {
+              if (text) {
+                err.message = text;
+              }
+            }
+            throw err;
+          });
+        }
+        throw err;
+      });
+  },
+
   put(url, params = {}, isAdmin = false, json = true) {
     if (params === null || typeof params !== 'object') {
       params = {}

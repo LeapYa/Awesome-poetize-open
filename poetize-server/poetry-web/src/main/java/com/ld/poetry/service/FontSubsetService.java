@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 字体子集化服务。
@@ -190,6 +193,41 @@ public class FontSubsetService {
         } catch (IOException e) {
             log.error("清理字体子集文件失败", e);
             return false;
+        }
+    }
+
+    /**
+     * 将 font_chunks 目录打包为 ZIP 写入输出流。
+     * 包含 font.css 及全部 woff2 分片，用于下载后上传至 CDN。
+     *
+     * @param outputStream ZIP 数据写入目标
+     */
+    public void zipFontChunks(OutputStream outputStream) throws IOException {
+        Path outputDir = getDefaultOutputDir();
+        if (!Files.exists(outputDir)) {
+            throw new IOException("字体分片目录不存在，请先上传字体进行切片");
+        }
+
+        List<Path> files;
+        try (Stream<Path> stream = Files.walk(outputDir)) {
+            files = stream
+                    .filter(Files::isRegularFile)
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                    .toList();
+        }
+
+        if (files.isEmpty()) {
+            throw new IOException("字体分片目录为空，请先上传字体进行切片");
+        }
+
+        try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {
+            for (Path file : files) {
+                String entryName = outputDir.relativize(file).toString().replace('\\', '/');
+                ZipEntry entry = new ZipEntry(entryName);
+                zos.putNextEntry(entry);
+                Files.copy(file, zos);
+                zos.closeEntry();
+            }
         }
     }
 

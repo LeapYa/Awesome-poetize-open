@@ -1321,4 +1321,18 @@ body.dark-mode .preset-dialog .preset-btn:active {
   border-color: #409eff !important;
 }
 
+/* ========== 页面头部及说明暗色模式 ========== */
+body.dark-mode .page-header {
+  border-bottom-color: #4a4a4a !important;
+}
+
+body.dark-mode .page-header h3 {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .page-desc {
+  color: #8a8a8a !important;
+}
+
+
 

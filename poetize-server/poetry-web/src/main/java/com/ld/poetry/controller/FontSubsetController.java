@@ -5,11 +5,20 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.FontSubsetService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * 字体子集化管理 — REST API
@@ -88,6 +97,45 @@ public class FontSubsetController {
         } catch (Exception e) {
             log.error("清理字体子集失败", e);
             return PoetryResult.fail("清理失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 下载字体切割包（font.css + 全部 woff2 分片打包为 ZIP）
+     * <p>
+     * 用于将切好的字体分片下载后上传至 CDN，配合系统配置 font.cdn.base-url 实现外部 CDN 加载。
+     */
+    @GetMapping("/download")
+    @LoginCheck(0)
+    public ResponseEntity<?> downloadFontPackage() {
+        Path outputDir = fontSubsetService.getDefaultOutputDir();
+        if (!Files.exists(outputDir) || isDirEmpty(outputDir)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(PoetryResult.fail("字体分片目录为空，请先上传字体进行切片"));
+        }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"font_chunks.zip\"");
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body((StreamingResponseBody) outputStream -> {
+                    try {
+                        fontSubsetService.zipFontChunks(outputStream);
+                    } catch (IOException e) {
+                        log.error("流式打包字体切割包失败", e);
+                        throw new UncheckedIOException(e);
+                    }
+                });
+    }
+
+    private boolean isDirEmpty(Path dir) {
+        try (Stream<Path> entries = Files.list(dir)) {
+            return entries.findAny().isEmpty();
+        } catch (IOException e) {
+            log.warn("无法读取字体分片目录: {}", dir, e);
+            return true;
         }
     }
 }
