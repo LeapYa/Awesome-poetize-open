@@ -1,6 +1,7 @@
 package com.ld.poetry.service;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.CmapTable;
@@ -12,6 +13,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,6 +30,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
@@ -50,6 +56,12 @@ public class FontSubsetService {
     private static final int DEFAULT_CHUNK_SIZE = 48 * 1024;
 
     /**
+     * 文件 IO 缓冲区大小。字体分片通常 45~65KB，64KB 缓冲能让大部分分片一次 read 完成。
+     * 与 {@link #DEFAULT_CHUNK_SIZE}（控制切割分片大小）解耦，互不影响。
+     */
+    private static final int IO_BUFFER_SIZE = 64 * 1024;
+
+    /**
      * 用于给 font.css 中引用 woff2 的 url(...) 追加缓存失效参数 ?v= 的正则。
      * 仅匹配 .woff2 资源，避免误伤 svg / data: 等其它 url()。
      */
@@ -68,6 +80,24 @@ public class FontSubsetService {
 
     private Path runnerScriptPath;
 
+    /**
+     * 后台单线程预打包执行器：串行执行避免并发打包冲突，daemon 线程 JVM 退出时自动结束。
+     */
+    private final ExecutorService cacheBuilder = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "font-zip-cache-builder");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** 跟踪最近一次预打包任务，供清理/重新切割前同步等待 */
+    private volatile Future<?> pendingCacheBuild;
+
+    /**
+     * 串行化对同一字体输出目录的写操作（清理/切割/提交缓存），
+     * 避免并发上传时后台缓存任务读到已被清空的目录或半成品文件。
+     */
+    private final Object subsetLock = new Object();
+
     @PostConstruct
     public void init() {
         try {
@@ -78,6 +108,64 @@ public class FontSubsetService {
         }
     }
 
+    @PreDestroy
+    public void shutdown() {
+        cacheBuilder.shutdownNow();
+    }
+
+    /**
+     * 异步提交预打包任务，不阻塞上传响应。
+     */
+    private void submitCacheBuild(Path outputDir) {
+        pendingCacheBuild = cacheBuilder.submit(() -> {
+            try {
+                buildCachedZip(outputDir);
+            } catch (IOException e) {
+                log.warn("后台预打包字体切割包失败，下载时将回退到实时打包", e);
+            }
+        });
+    }
+
+    /**
+     * 等待上一次预打包完成（清理/重新切割前调用），避免打包到正在被清空的目录。
+     * 若超时仍未完成，则取消旧任务，防止其继续读写已被删除的文件。
+     */
+    private void awaitPendingCacheBuild() {
+        Future<?> f = pendingCacheBuild;
+        if (f != null && !f.isDone()) {
+            try {
+                f.get(60, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("等待上一次字体预打包完成超时，将取消旧任务", e);
+                f.cancel(true);
+            }
+        }
+    }
+
+    /**
+     * 等待后台预打包完成并返回缓存是否可用。
+     * <p>
+     * 用于下载接口：上传后立即点击下载时，缓存 ZIP 尚未生成（后台正在打包），
+     * 此时等待预打包完成再发缓存文件，比回退到慢速实时打包更优。
+     * 无进行中的任务时立即返回，零开销。
+     *
+     * @param outputDir       字体分片目录
+     * @param timeoutSeconds  最长等待秒数
+     * @return 缓存 ZIP 是否已就绪
+     */
+    public boolean awaitCacheReady(Path outputDir, long timeoutSeconds) {
+        Future<?> f = pendingCacheBuild;
+        if (f != null && !f.isDone()) {
+            try {
+                f.get(timeoutSeconds, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("等待字体预打包完成超时", e);
+            }
+        }
+        Path cachedZip = getCachedZipPath(outputDir);
+        return Files.exists(cachedZip) && Files.isRegularFile(cachedZip);
+    }
+
     /**
      * 执行字体子集化。
      *
@@ -86,63 +174,73 @@ public class FontSubsetService {
      * @return 处理结果摘要
      */
     public Map<String, Object> subsetFont(byte[] ttfData, Path outputDir) throws IOException {
-        long startTime = System.currentTimeMillis();
-        int totalChars = countFontChars(ttfData);
+        synchronized (subsetLock) {
+            long startTime = System.currentTimeMillis();
+            int totalChars = countFontChars(ttfData);
 
-        Files.createDirectories(outputDir);
-        cleanGeneratedFiles(outputDir);
+            Files.createDirectories(outputDir);
+            // 清理旧分片前，等待上一次预打包完成，避免打包到正在被清空的目录
+            awaitPendingCacheBuild();
+            cleanGeneratedFiles(outputDir);
+            // 删除旧缓存 ZIP：重新上传字体后旧包已失效，避免预打包完成前下载到旧包
+            deleteCachedZip(outputDir);
 
-        Path tempFontFile = Files.createTempFile("poetize-font-upload-", ".ttf");
-        Files.write(tempFontFile, ttfData);
+            Path tempFontFile = Files.createTempFile("poetize-font-upload-", ".ttf");
+            Files.write(tempFontFile, ttfData);
 
-        try {
-            executeCnFontSplit(tempFontFile, outputDir);
-        } finally {
-            Files.deleteIfExists(tempFontFile);
+            try {
+                executeCnFontSplit(tempFontFile, outputDir);
+            } finally {
+                Files.deleteIfExists(tempFontFile);
+            }
+
+            List<Path> chunkFiles = listChunkFiles(outputDir);
+            Path cssFile = outputDir.resolve(DEFAULT_CSS_FILE_NAME);
+            long cssFileSize = Files.exists(cssFile) ? Files.size(cssFile) : 0L;
+            long totalGeneratedSize = cssFileSize;
+            Map<String, Long> fileSizes = new LinkedHashMap<>();
+
+            if (Files.exists(cssFile)) {
+                fileSizes.put(DEFAULT_CSS_FILE_NAME, cssFileSize);
+            }
+
+            for (Path chunkFile : chunkFiles) {
+                long size = Files.size(chunkFile);
+                totalGeneratedSize += size;
+                fileSizes.put(chunkFile.getFileName().toString(), size);
+            }
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            log.info("cn-font-split 字体子集化完成, 分片 {} 个, 耗时 {} ms", chunkFiles.size(), elapsed);
+
+            // 生成资源版本号（时间戳），用于给字体静态文件追加缓存失效参数 ?v=，
+            // 解决「重新上传字体后浏览器仍使用旧缓存，必须 Ctrl+Shift+R 才能看到新字体」的问题。
+            String fontVersion = String.valueOf(System.currentTimeMillis());
+            try {
+                rewriteFontCssWithVersion(outputDir, fontVersion);
+            } catch (IOException e) {
+                log.warn("为 font.css 追加缓存失效参数失败，前台可能仍需硬刷新才能看到新字体: {}", outputDir, e);
+            }
+
+            // 异步预打包 ZIP 缓存：切割完成后后台打包，不阻塞上传响应（避免上传卡在 99%）。
+            // 下载接口可直接发送缓存文件（秒级零拷贝）。
+            submitCacheBuild(outputDir);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("engine", "cn-font-split");
+            result.put("elapsedMs", elapsed);
+            result.put("originalSize", ttfData.length);
+            result.put("totalChars", totalChars);
+            result.put("chunkCount", chunkFiles.size());
+            result.put("cssFile", DEFAULT_CSS_FILE_NAME);
+            result.put("cssFileSize", cssFileSize);
+            result.put("generatedSize", totalGeneratedSize);
+            result.put("fileSizes", fileSizes);
+            result.put("version", fontVersion);
+            result.put("outputDir", outputDir.toString());
+            return result;
         }
-
-        List<Path> chunkFiles = listChunkFiles(outputDir);
-        Path cssFile = outputDir.resolve(DEFAULT_CSS_FILE_NAME);
-        long cssFileSize = Files.exists(cssFile) ? Files.size(cssFile) : 0L;
-        long totalGeneratedSize = cssFileSize;
-        Map<String, Long> fileSizes = new LinkedHashMap<>();
-
-        if (Files.exists(cssFile)) {
-            fileSizes.put(DEFAULT_CSS_FILE_NAME, cssFileSize);
-        }
-
-        for (Path chunkFile : chunkFiles) {
-            long size = Files.size(chunkFile);
-            totalGeneratedSize += size;
-            fileSizes.put(chunkFile.getFileName().toString(), size);
-        }
-
-        long elapsed = System.currentTimeMillis() - startTime;
-        log.info("cn-font-split 字体子集化完成, 分片 {} 个, 耗时 {} ms", chunkFiles.size(), elapsed);
-
-        // 生成资源版本号（时间戳），用于给字体静态文件追加缓存失效参数 ?v=，
-        // 解决「重新上传字体后浏览器仍使用旧缓存，必须 Ctrl+Shift+R 才能看到新字体」的问题。
-        String fontVersion = String.valueOf(System.currentTimeMillis());
-        try {
-            rewriteFontCssWithVersion(outputDir, fontVersion);
-        } catch (IOException e) {
-            log.warn("为 font.css 追加缓存失效参数失败，前台可能仍需硬刷新才能看到新字体: {}", outputDir, e);
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", true);
-        result.put("engine", "cn-font-split");
-        result.put("elapsedMs", elapsed);
-        result.put("originalSize", ttfData.length);
-        result.put("totalChars", totalChars);
-        result.put("chunkCount", chunkFiles.size());
-        result.put("cssFile", DEFAULT_CSS_FILE_NAME);
-        result.put("cssFileSize", cssFileSize);
-        result.put("generatedSize", totalGeneratedSize);
-        result.put("fileSizes", fileSizes);
-        result.put("version", fontVersion);
-        result.put("outputDir", outputDir.toString());
-        return result;
     }
 
     /**
@@ -300,17 +398,73 @@ public class FontSubsetService {
      * 清理已生成的字体文件。
      */
     public boolean cleanSubsets() {
-        Path outputDir = getDefaultOutputDir();
-        if (!Files.exists(outputDir)) {
-            return true;
-        }
+        synchronized (subsetLock) {
+            awaitPendingCacheBuild();
+            Path outputDir = getDefaultOutputDir();
+            if (!Files.exists(outputDir)) {
+                deleteCachedZip(outputDir);
+                return true;
+            }
 
+            try {
+                cleanGeneratedFiles(outputDir);
+                deleteCachedZip(outputDir);
+                return true;
+            } catch (IOException e) {
+                log.error("清理字体子集文件失败", e);
+                return false;
+            }
+        }
+    }
+
+    /**
+     * 获取字体切割包缓存 ZIP 的路径。
+     * <p>
+     * 缓存统一放在上传卷（{@link #getDefaultOutputDir()} 的父目录），保证可写；
+     * 内置字体目录可能只读，其缓存同样落到上传卷并以不同文件名区分。
+     *
+     * @param outputDir 实际生效的 font_chunks 目录（自定义或内置）
+     * @return 缓存 ZIP 文件路径
+     */
+    public Path getCachedZipPath(Path outputDir) {
+        Path cacheBase = getDefaultOutputDir().getParent();
+        boolean isCustom = outputDir.equals(getDefaultOutputDir());
+        String name = isCustom ? "font_chunks.zip" : "font_chunks_builtin.zip";
+        return cacheBase.resolve(name);
+    }
+
+    /**
+     * 预打包字体切割包为 ZIP 缓存文件。
+     * <p>
+     * 在字体切割完成后由后台线程调用，将 font_chunks 目录打包为 ZIP 缓存到磁盘。
+     * 下载接口可直接发送该缓存文件（零拷贝），避免下载时实时打包导致耗时过长。
+     * 先写临时文件再原子替换，保证缓存完整性：打包中途失败/被中断不会留下损坏的 ZIP。
+     *
+     * @param outputDir font_chunks 目录
+     */
+    public void buildCachedZip(Path outputDir) throws IOException {
+        List<Path> files = collectFontChunkFiles(outputDir);
+        Path zipPath = getCachedZipPath(outputDir);
+        Files.createDirectories(zipPath.getParent());
+        Path tempPath = zipPath.resolveSibling(zipPath.getFileName() + ".tmp");
+        try (OutputStream os = Files.newOutputStream(tempPath)) {
+            writeZip(outputDir, files, os);
+        }
+        Files.move(tempPath, zipPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        log.info("字体切割包预打包完成: {}, 共 {} 个文件, 大小 {} bytes",
+                zipPath, files.size(), Files.size(zipPath));
+    }
+
+    /**
+     * 删除字体切割包缓存 ZIP 及残留临时文件（清理时调用）。
+     */
+    private void deleteCachedZip(Path outputDir) {
+        Path zipPath = getCachedZipPath(outputDir);
         try {
-            cleanGeneratedFiles(outputDir);
-            return true;
+            Files.deleteIfExists(zipPath);
+            Files.deleteIfExists(zipPath.resolveSibling(zipPath.getFileName() + ".tmp"));
         } catch (IOException e) {
-            log.error("清理字体子集文件失败", e);
-            return false;
+            log.warn("删除字体切割包缓存失败: {}", zipPath, e);
         }
     }
 
@@ -318,8 +472,11 @@ public class FontSubsetService {
      * 将 font_chunks 目录打包为 ZIP 写入输出流。
      * 包含 font.css 及全部 woff2 分片，用于下载后上传至 CDN。
      *
+     * @deprecated 请使用 {@link #buildCachedZip(Path)} + {@link #awaitCacheReady(Path, long)}
+     *             的缓存路径，以保持与 /fontSubset/download 一致的缓存优先行为。
      * @param outputStream ZIP 数据写入目标
      */
+    @Deprecated
     public void zipFontChunks(OutputStream outputStream) throws IOException {
         Path outputDir = getEffectiveOutputDir();
         List<Path> files = collectFontChunkFiles(outputDir);
@@ -360,22 +517,42 @@ public class FontSubsetService {
      * @param outputStream  ZIP 数据写入目标
      */
     public void writeZip(Path baseDir, List<Path> files, OutputStream outputStream) throws IOException {
-        ZipOutputStream zos = new ZipOutputStream(outputStream);
+        // 用缓冲流包装底层输出流：字体切割包通常包含数百个 woff2 分片，
+        // 若每次小写入都直达 Servlet 输出流会产生大量 syscall，拖慢打包导致前端超时。
+        BufferedOutputStream bos = new BufferedOutputStream(outputStream, IO_BUFFER_SIZE);
+        ZipOutputStream zos = new ZipOutputStream(bos);
+        // 显式的大缓冲区复制文件内容，替代 Files.copy 内部的 8KB 缓冲，进一步降低 IO 次数。
+        byte[] copyBuffer = new byte[IO_BUFFER_SIZE];
         IOException exception = null;
         try {
             for (Path file : files) {
                 String entryName = baseDir.relativize(file).toString().replace('\\', '/');
                 ZipEntry entry = new ZipEntry(entryName);
                 zos.putNextEntry(entry);
-                Files.copy(file, zos);
+                try (InputStream fis = Files.newInputStream(file)) {
+                    int n;
+                    while ((n = fis.read(copyBuffer)) != -1) {
+                        zos.write(copyBuffer, 0, n);
+                    }
+                }
                 zos.closeEntry();
             }
         } catch (IOException e) {
             exception = e;
         } finally {
-            // 只结束 ZIP 数据，不关闭底层 OutputStream；Servlet 容器/调用方负责关闭
+            // 只结束 ZIP 数据，不关闭底层 OutputStream；Servlet 容器/调用方负责关闭。
+            // finish 后需手动 flush 缓冲流，确保缓冲区内的数据真正写入底层输出流。
             try {
                 zos.finish();
+            } catch (IOException e) {
+                if (exception == null) {
+                    exception = e;
+                } else {
+                    exception.addSuppressed(e);
+                }
+            }
+            try {
+                bos.flush();
             } catch (IOException e) {
                 if (exception == null) {
                     exception = e;

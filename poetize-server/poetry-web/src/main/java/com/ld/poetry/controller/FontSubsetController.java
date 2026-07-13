@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -149,11 +150,38 @@ public class FontSubsetController {
                     keyType = RateLimit.KeyType.IP, message = "当前网络字体下载请求过多，请稍后再试")
     })
     public void downloadFontPackage(HttpServletResponse response) {
-        // 在提交响应之前完成目录校验与文件收集，确保只写出有效 ZIP
-        Path outputDir;
+        Path outputDir = fontSubsetService.getEffectiveOutputDir();
+
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"font_chunks.zip\"");
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache");
+        response.setDateHeader(HttpHeaders.EXPIRES, 0);
+
+        // 优先发送预打包的缓存 ZIP（秒级零拷贝），避免下载时实时打包数百个分片导致前端超时。
+        // 缓存由字体切割完成时预生成（buildCachedZip），清理时同步删除。
+        Path cachedZip = fontSubsetService.getCachedZipPath(outputDir);
+        // 若有后台预打包正在进行（上传后立即下载的常见场景），等待它完成再发缓存，
+        // 避免回退到慢速实时打包。无进行中的任务时立即返回，零开销。
+        fontSubsetService.awaitCacheReady(outputDir, 30);
+        try {
+            long zipSize = Files.size(cachedZip);
+            if (zipSize > 0) {
+                response.setContentLengthLong(zipSize);
+                Files.copy(cachedZip, response.getOutputStream());
+                response.getOutputStream().flush();
+                return;
+            }
+        } catch (IOException e) {
+            if (response.isCommitted()) {
+                log.error("发送缓存字体切割包失败（响应已提交）", e);
+                return;
+            }
+            log.warn("缓存字体切割包不可用或发送失败，回退到实时打包", e);
+        }
+
+        // 回退：缓存不存在时实时收集文件并打包（首次下载内置字体或预打包失败时走到这里）
         List<Path> files;
         try {
-            outputDir = fontSubsetService.getEffectiveOutputDir();
             files = fontSubsetService.collectFontChunkFiles(outputDir);
         } catch (IOException e) {
             writeJsonError(response, HttpStatus.BAD_REQUEST,
@@ -161,12 +189,6 @@ public class FontSubsetController {
             return;
         }
 
-        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
-        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"font_chunks.zip\"");
-        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache");
-        response.setDateHeader(HttpHeaders.EXPIRES, 0);
-
-        // 流式写入 ZIP：成功时 flush 提交响应；异常时若尚未提交则写回 JSON 错误
         OutputStream out = null;
         try {
             out = response.getOutputStream();

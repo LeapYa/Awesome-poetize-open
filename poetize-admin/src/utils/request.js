@@ -147,7 +147,10 @@ const TIMEOUT_CONFIG = {
   TRANSLATION: 120000,      // 翻译请求2分钟
   ARTICLE_SAVE: 300000,     // 文章保存最少5分钟
   LIVE2D_ASSET_INSTALL: 30000,  // Live2D模型包后台下载任务启动30秒
-  ARTICLE_BUFFER: 30        // 文章保存缓冲时间（秒）
+  ARTICLE_BUFFER: 30,       // 文章保存缓冲时间（秒）
+  // 字体切割包下载：后端同步打包大量 woff2 分片为 ZIP（中文字体常有数百个分片），
+  // 60秒默认超时会在打包完成前提前中断，导致"一直转圈后超时"。放宽到5分钟。
+  FONT_DOWNLOAD: 300000
 };
 
 // 设置请求基本配置
@@ -201,6 +204,16 @@ function configureTimeout(config) {
   if (url.includes('/webInfo/live2d/assets/install')) {
     if (isDefaultTimeout) {
       config.timeout = TIMEOUT_CONFIG.LIVE2D_ASSET_INSTALL;
+    }
+    return config;
+  }
+
+  // 字体切割包下载：后端同步打包 font_chunks 目录为 ZIP，分片数量多时耗时远超默认60秒，
+  // 需单独放宽超时，避免在打包完成前被 axios 提前中断。
+  const requestPath = getRequestPath(url);
+  if (requestPath.endsWith('/fontSubset/download')) {
+    if (isDefaultTimeout) {
+      config.timeout = TIMEOUT_CONFIG.FONT_DOWNLOAD;
     }
     return config;
   }
