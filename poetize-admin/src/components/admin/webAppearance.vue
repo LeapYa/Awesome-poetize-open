@@ -352,9 +352,11 @@
                 </div>
               </div>
 
-              <div v-if="fontStatus.ready" class="font-card__actions">
-                <el-button type="primary" size="mini" plain icon="el-icon-download" :loading="fontDownloading" @click="downloadFontPackage">下载切割包</el-button>
-                <el-popconfirm title="清理后将恢复内置分片字体，确定？" @confirm="cleanFontSubsets" confirm-button-type="danger">
+              <div class="font-card__actions">
+                <el-tooltip content="下载当前生效的字体切割包（自定义或内置默认），解压后整体上传至 CDN" placement="top">
+                  <el-button type="primary" size="mini" plain icon="el-icon-download" :loading="fontDownloading" @click="downloadFontPackage">下载切割包</el-button>
+                </el-tooltip>
+                <el-popconfirm v-if="fontStatus.ready" title="清理后将恢复内置分片字体，确定？" @confirm="cleanFontSubsets" confirm-button-type="danger">
                   <el-button slot="reference" type="text" size="mini" :loading="fontCleaning" style="color:#f56c6c;">清理</el-button>
                 </el-popconfirm>
               </div>
@@ -1169,10 +1171,27 @@ export default {
         homePagePullUpHeight: this.webInfo.homePagePullUpHeight
       };
 
+      // CDN 地址协议一致性校验：在全部保存之前完成，避免 updateWebInfo 已保存但 CDN 未保存
+      this.normalizeFontCdnUrl();
+      const cdnUrl = (this.fontCdnConfig.configValue || '').trim();
+      if (cdnUrl && cdnUrl.startsWith('http://') && window.location.protocol === 'https:') {
+        try {
+          await this.$confirm(
+            '当前网站通过 HTTPS 访问，但 CDN 地址使用了 HTTP 协议。' +
+            '浏览器会因混合内容策略阻断字体加载，导致前台回退到系统默认字体。' +
+            '\n\n建议使用 HTTPS 协议的 CDN 地址，或留空从本站 /static/assets/font_chunks/ 加载。' +
+            '\n\n确定仍要保存 HTTP 地址吗？',
+            'CDN 协议不一致',
+            { confirmButtonText: '仍要保存', cancelButtonText: '取消', type: 'warning' }
+          );
+        } catch (_) {
+          return false;
+        }
+      }
+
       try {
         await this.$http.post(this.$constant.baseURL + "/webInfo/updateWebInfo", updateData, true);
 
-        this.normalizeFontCdnUrl();
         await this.$http.post(this.$constant.baseURL + '/sysConfig/saveOrUpdateConfig', this.fontCdnConfig, true);
         const sysConfRes = await this.$http.get(this.$constant.baseURL + '/sysConfig/listSysConfig');
         if (sysConfRes && sysConfRes.data) {
@@ -1825,6 +1844,8 @@ export default {
         this.fontResult = response.data;
         this.$message.success('字体深度优化完成，前台加载性能已提升！');
         this.loadFontStatus();
+        // 上传后刷新系统配置（含字体资源版本号）并重载后台预览字体，确保立即生效
+        this.refreshFontConfig();
       } else {
         this.$message.error(response.message || '字体处理失败');
       }
@@ -1845,6 +1866,7 @@ export default {
             this.$message.success('自定义字体映射已移除，恢复系统字体');
             this.fontResult = null;
             this.loadFontStatus();
+            this.refreshFontConfig();
           }
         })
         .finally(() => {
@@ -1852,13 +1874,48 @@ export default {
         });
     },
     downloadFontPackage() {
-      if (!this.fontStatus || !this.fontStatus.ready) {
-        this.$message.warning('请先上传字体完成切片');
-        return;
-      }
       this.fontDownloading = true;
-      this.$http.download(this.$constant.baseURL + '/fontSubset/download', {}, true)
-        .then(blob => {
+      // dev 环境使用 Vite 代理的相对路径，避免跨域直连后端端口不一致导致 Network Error；
+      // 生产环境沿用 $http.download 走 /api 前缀由 Nginx 代理
+      const downloadUrl = import.meta.env.DEV
+        ? '/fontSubset/download'
+        : (this.$constant.baseURL + '/fontSubset/download');
+      const downloadReq = import.meta.env.DEV
+        ? fetch(downloadUrl, { credentials: 'include' }).then(async resp => {
+            if (!resp.ok) {
+              let msg = `下载失败 (HTTP ${resp.status})`;
+              try { const json = await resp.json(); if (json && json.message) msg = json.message; } catch (_) {}
+              throw new Error(msg);
+            }
+            return resp.blob();
+          })
+        : this.$http.download(this.$constant.baseURL + '/fontSubset/download', {}, true);
+      downloadReq
+        .then(async blob => {
+          if (!blob || !blob.size) {
+            throw new Error('下载失败，响应为空');
+          }
+          // 双重校验：优先 MIME/Content-Type，MIME 被代理改写或为空时以 ZIP PK 魔数兜底
+          let isZip = !!(blob.type && (blob.type.includes('octet-stream') || blob.type.includes('zip')));
+          if (!isZip) {
+            try {
+              const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+              isZip = header[0] === 0x50 && header[1] === 0x4B;
+            } catch (_) { /* 魔数读取失败，保持 false */ }
+          }
+          if (!isZip) {
+            return blob.text().then(text => {
+              let msg = '下载失败';
+              try {
+                const json = JSON.parse(text);
+                if (json && json.message) msg = json.message;
+              } catch (_) {
+                // 非标准 JSON 错误体：仅在内容较短时直接展示，避免把二进制当文本
+                if (text && text.length < 200) msg = text.trim() || msg;
+              }
+              throw new Error(msg);
+            });
+          }
           const downloadUrl = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = downloadUrl;
@@ -1887,6 +1944,24 @@ export default {
           }
         })
         .catch(() => {});
+    },
+    /**
+     * 上传/清理字体后，重新拉取系统配置（含字体资源版本号 font.asset.version），
+     * 更新到 store 后重载后台预览字体，使新字体无需硬刷新即可在前台/后台生效。
+     */
+    async refreshFontConfig() {
+      try {
+        const res = await this.$http.get(this.$constant.baseURL + '/sysConfig/listSysConfig');
+        if (res && res.data) {
+          this.mainStore.loadSysConfig(res.data);
+          this.$bus.$emit('sysConfigUpdated', res.data);
+          const { loadFonts } = await import('@/utils/font-loader');
+          await loadFonts(this.mainStore.sysConfig);
+        }
+      } catch (e) {
+        // 拉取失败不影响已完成的字体处理，下次进入前台页面会自动获取最新配置
+        console.warn('刷新字体配置失败', e);
+      }
     },
     normalizeFontCdnUrl() {
       let val = (this.fontCdnConfig.configValue || '').trim();

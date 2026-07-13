@@ -1,24 +1,29 @@
 package com.ld.poetry.controller;
 
+import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ld.poetry.aop.LoginCheck;
+import com.ld.poetry.aop.RateLimit;
+import com.ld.poetry.aop.RateLimits;
 import com.ld.poetry.config.PoetryResult;
+import com.ld.poetry.entity.SysConfig;
+import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.service.FontSubsetService;
+import com.ld.poetry.service.SysConfigService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
+import java.io.OutputStream;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 /**
  * 字体子集化管理 — REST API
@@ -33,6 +38,17 @@ public class FontSubsetController {
 
     @Autowired
     private FontSubsetService fontSubsetService;
+
+    @Autowired
+    private SysConfigService sysConfigService;
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * 字体资源版本号配置键：每次成功上传字体都会更新，
+     * 用于给字体静态文件追加缓存失效参数 ?v=，使重新上传后浏览器自动拉取新字体。
+     */
+    private static final String FONT_ASSET_VERSION_KEY = "font.asset.version";
 
     /**
      * 上传 TTF 字体文件并执行子集化
@@ -59,6 +75,16 @@ public class FontSubsetController {
                     filename, ttfData.length, outputDir);
 
             Map<String, Object> result = fontSubsetService.subsetFont(ttfData, outputDir);
+            // 将本次生成的资源版本号写入系统配置，前端据此给字体静态文件追加 ?v= 缓存失效参数。
+            // 版本号写入失败不应阻塞上传成功返回（此时字体文件已成功生成），仅记录日志。
+            Object versionObj = result.get("version");
+            if (versionObj != null) {
+                try {
+                    upsertPublicConfig(FONT_ASSET_VERSION_KEY, "字体资源版本号(缓存失效)", versionObj.toString());
+                } catch (Exception ex) {
+                    log.warn("写入字体资源版本号失败，前台可能需要硬刷新才能看到新字体", ex);
+                }
+            }
             return PoetryResult.success(result);
         } catch (Exception e) {
             log.error("字体子集化失败", e);
@@ -90,6 +116,12 @@ public class FontSubsetController {
         try {
             boolean success = fontSubsetService.cleanSubsets();
             if (success) {
+                // 清理后重置版本号，前端不再追加 ?v=，回退到默认内置分片
+                try {
+                    upsertPublicConfig(FONT_ASSET_VERSION_KEY, "字体资源版本号(缓存失效)", "");
+                } catch (Exception e) {
+                    log.warn("清理后重置字体资源版本号失败，但不影响清理结果", e);
+                }
                 return PoetryResult.success("字体子集文件已清理");
             } else {
                 return PoetryResult.fail("部分文件清理失败，请检查日志");
@@ -101,41 +133,89 @@ public class FontSubsetController {
     }
 
     /**
-     * 下载字体切割包（font.css + 全部 woff2 分片打包为 ZIP）
-     * <p>
-     * 用于将切好的字体分片下载后上传至 CDN，配合系统配置 font.cdn.base-url 实现外部 CDN 加载。
+     * 下载字体切割包为 ZIP（font.css + 全部 woff2 分片）。
+     *
+     * <p>流式写入 {@link HttpServletResponse} 输出流，绕过 HttpMessageConverter 路径。
+     * 配合 font.cdn.base-url 系统配置，将字体分片下载后上传至 CDN 加载。
      */
     @GetMapping("/download")
     @LoginCheck(0)
-    public ResponseEntity<?> downloadFontPackage() {
-        Path outputDir = fontSubsetService.getDefaultOutputDir();
-        if (!Files.exists(outputDir) || isDirEmpty(outputDir)) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(PoetryResult.fail("字体分片目录为空，请先上传字体进行切片"));
+    @RateLimits({
+            // 站长维度：单个账号每 5 分钟最多下载 10 次，防止 token 泄露后被反复触发打包
+            @RateLimit(name = "fontDownload:user", count = 10, time = 300,
+                    keyType = RateLimit.KeyType.USER, message = "字体下载请求过于频繁，请5分钟后再试"),
+            // IP 维度：单 IP 每分钟最多 30 次，作为洪水请求的兜底防护
+            @RateLimit(name = "fontDownload:ip", count = 30, time = 60,
+                    keyType = RateLimit.KeyType.IP, message = "当前网络字体下载请求过多，请稍后再试")
+    })
+    public void downloadFontPackage(HttpServletResponse response) {
+        // 在提交响应之前完成目录校验与文件收集，确保只写出有效 ZIP
+        Path outputDir;
+        List<Path> files;
+        try {
+            outputDir = fontSubsetService.getEffectiveOutputDir();
+            files = fontSubsetService.collectFontChunkFiles(outputDir);
+        } catch (IOException e) {
+            writeJsonError(response, HttpStatus.BAD_REQUEST,
+                    e.getMessage() != null ? e.getMessage() : "字体分片目录为空，请先上传字体进行切片");
+            return;
         }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"font_chunks.zip\"");
-        return ResponseEntity.ok()
-                .headers(headers)
-                .body((StreamingResponseBody) outputStream -> {
-                    try {
-                        fontSubsetService.zipFontChunks(outputStream);
-                    } catch (IOException e) {
-                        log.error("流式打包字体切割包失败", e);
-                        throw new UncheckedIOException(e);
-                    }
-                });
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"font_chunks.zip\"");
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache");
+        response.setDateHeader(HttpHeaders.EXPIRES, 0);
+
+        // 流式写入 ZIP：成功时 flush 提交响应；异常时若尚未提交则写回 JSON 错误
+        OutputStream out = null;
+        try {
+            out = response.getOutputStream();
+            fontSubsetService.writeZip(outputDir, files, out);
+            out.flush();
+        } catch (IOException e) {
+            if (!response.isCommitted()) {
+                log.warn("流式打包字体切割包失败，将返回错误响应", e);
+                writeJsonError(response, HttpStatus.INTERNAL_SERVER_ERROR, "字体切割包打包失败");
+            } else {
+                log.error("流式打包字体切割包失败（响应已提交）", e);
+            }
+        }
     }
 
-    private boolean isDirEmpty(Path dir) {
-        try (Stream<Path> entries = Files.list(dir)) {
-            return entries.findAny().isEmpty();
-        } catch (IOException e) {
-            log.warn("无法读取字体分片目录: {}", dir, e);
-            return true;
+    private void writeJsonError(HttpServletResponse response, HttpStatus status, String message) {
+        try {
+            if (response.isCommitted()) {
+                log.warn("响应已提交，无法返回下载错误 JSON: {}", message);
+                return;
+            }
+            // 重置已设置的下载头与缓冲字节，随后写入 JSON 错误响应
+            response.reset();
+            response.setStatus(status.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setCharacterEncoding("UTF-8");
+            // 以字节方式写入 JSON 响应体
+            OutputStream out = response.getOutputStream();
+            out.write(OBJECT_MAPPER.writeValueAsBytes(PoetryResult.fail(message)));
+            out.flush();
+        } catch (Exception e) {
+            log.error("写入字体下载错误信息失败: {}", message, e);
         }
+    }
+
+    /**
+     * 按 configKey 写入/更新一条「公开」系统配置（不存在则新增，存在则覆盖）。
+     */
+    private void upsertPublicConfig(String configKey, String configName, String configValue) {
+        LambdaQueryChainWrapper<SysConfig> wrapper = new LambdaQueryChainWrapper<>(sysConfigService.getBaseMapper());
+        SysConfig existing = wrapper
+                .eq(SysConfig::getConfigKey, configKey)
+                .eq(SysConfig::getConfigType, String.valueOf(PoetryEnum.SYS_CONFIG_PUBLIC.getCode()))
+                .one();
+        SysConfig config = existing != null ? existing : new SysConfig();
+        config.setConfigKey(configKey);
+        config.setConfigName(configName);
+        config.setConfigType(String.valueOf(PoetryEnum.SYS_CONFIG_PUBLIC.getCode()));
+        config.setConfigValue(configValue);
+        sysConfigService.saveOrUpdate(config);
     }
 }

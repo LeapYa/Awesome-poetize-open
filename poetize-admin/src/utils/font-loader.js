@@ -36,6 +36,16 @@ function appendToHead(node) {
   throw new Error('未找到可用的 head 节点');
 }
 
+/**
+ * 给字体静态资源 URL 追加缓存失效参数 ?v=版本号。
+ * 重新上传字体后版本号变化，浏览器会重新拉取新分片，无需手动清缓存或 Ctrl+Shift+R。
+ */
+function appendVersion(url, version) {
+  if (!version) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}v=${encodeURIComponent(version)}`;
+}
+
 function buildFontCssPath(fontCdnBaseUrl, sysConfig) {
   return sysConfig['font.css.path'] || `${fontCdnBaseUrl}font.css`;
 }
@@ -92,6 +102,9 @@ async function fetchJson(url) {
 export async function loadFonts(sysConfig) {
   const fontCdnBaseUrl = sysConfig['font.cdn.base-url'] || '/static/assets/font_chunks/';
   const fontCssPath = buildFontCssPath(fontCdnBaseUrl, sysConfig);
+  // 字体资源版本号：重新上传字体后变化，用于给字体静态文件追加 ?v= 缓存失效参数
+  const fontVersion = sysConfig['font.asset.version'] || '';
+  const versionedFontCssPath = appendVersion(fontCssPath, fontVersion);
   // 是否使用单一字体文件
   const useSingleFont = sysConfig['font.use.single'] === 'true';
   // 单一字体文件名
@@ -105,7 +118,7 @@ export async function loadFonts(sysConfig) {
 
   if (!useSingleFont) {
     try {
-      await loadFontCss(fontCssPath);
+      await loadFontCss(versionedFontCssPath);
       return;
     } catch (error) {
       console.warn('加载 cn-font-split 字体 CSS 失败，回退旧版分片方案', error);
@@ -164,7 +177,7 @@ export async function loadFonts(sysConfig) {
     css = `
       @font-face {
         font-family: 'MyAwesomeFont';
-        src: url('${fontCdnBaseUrl}${singleFontName}') format('woff2');
+        src: url('${appendVersion(fontCdnBaseUrl + singleFontName, fontVersion)}') format('woff2');
         font-weight: normal;
         font-style: normal;
         font-display: swap;
@@ -185,7 +198,7 @@ export async function loadFonts(sysConfig) {
         ({ file, range }) => `
       @font-face {
         font-family: 'MyAwesomeFont';
-        src: url('${fontCdnBaseUrl}${file}') format('woff2');
+        src: url('${appendVersion(fontCdnBaseUrl + file, fontVersion)}') format('woff2');
         font-weight: normal;
         font-style: normal;
         font-display: swap;${range ? `\n        unicode-range: ${range};` : ''}

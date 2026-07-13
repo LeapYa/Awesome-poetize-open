@@ -105,6 +105,11 @@ export default defineConfig({
                 target: 'http://localhost:8081', // Java后端
                 changeOrigin: true,
             },
+            // 字体子集管理相关接口（下载切割包等）
+            '/fontSubset': {
+                target: 'http://localhost:8081',
+                changeOrigin: true,
+            },
             // 代理主站静态资源（开发环境）
             '/static': {
                 target: 'http://localhost:5173', // 主站前端开发服务器

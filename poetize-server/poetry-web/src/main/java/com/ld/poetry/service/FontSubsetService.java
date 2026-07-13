@@ -10,6 +10,7 @@ import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,6 +19,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -46,8 +49,22 @@ public class FontSubsetService {
     private static final String GH_HOST_ENV = "CN_FONT_SPLIT_GH_HOST";
     private static final int DEFAULT_CHUNK_SIZE = 48 * 1024;
 
+    /**
+     * 用于给 font.css 中引用 woff2 的 url(...) 追加缓存失效参数 ?v= 的正则。
+     * 仅匹配 .woff2 资源，避免误伤 svg / data: 等其它 url()。
+     */
+    private static final Pattern FONT_URL_PATTERN =
+            Pattern.compile("url\\((['\"]?)([^)'\"\\s]+?\\.woff2)\\1\\)");
+
     @Value("${local.uploadUrl:/app/static/}")
     private String uploadUrl;
+
+    /**
+     * Docker compose 中 java-backend 容器的 RESOURCE_AVAILABILITY_STATICROOTS 环境变量值。
+     * 仅在自动发现失败时使用。
+     */
+    @Value("${resource.availability.staticRoots:${RESOURCE_AVAILABILITY_STATICROOTS:}}")
+    private String configuredStaticRoots;
 
     private Path runnerScriptPath;
 
@@ -103,6 +120,15 @@ public class FontSubsetService {
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("cn-font-split 字体子集化完成, 分片 {} 个, 耗时 {} ms", chunkFiles.size(), elapsed);
 
+        // 生成资源版本号（时间戳），用于给字体静态文件追加缓存失效参数 ?v=，
+        // 解决「重新上传字体后浏览器仍使用旧缓存，必须 Ctrl+Shift+R 才能看到新字体」的问题。
+        String fontVersion = String.valueOf(System.currentTimeMillis());
+        try {
+            rewriteFontCssWithVersion(outputDir, fontVersion);
+        } catch (IOException e) {
+            log.warn("为 font.css 追加缓存失效参数失败，前台可能仍需硬刷新才能看到新字体: {}", outputDir, e);
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", true);
         result.put("engine", "cn-font-split");
@@ -114,16 +140,92 @@ public class FontSubsetService {
         result.put("cssFileSize", cssFileSize);
         result.put("generatedSize", totalGeneratedSize);
         result.put("fileSizes", fileSizes);
+        result.put("version", fontVersion);
         result.put("outputDir", outputDir.toString());
         return result;
     }
 
     /**
-     * 获取默认的 font_chunks 输出目录。
+     * 获取默认的 font_chunks 输出目录（用户上传的自定义字体目录，位于上传卷）。
      */
     public Path getDefaultOutputDir() {
         String basePath = uploadUrl.endsWith("/") ? uploadUrl : uploadUrl + "/";
         return Path.of(basePath, "assets", "font_chunks");
+    }
+
+    /**
+     * 获取内置默认字体分片目录（前端构建产物里的 font_chunks）。
+     * 仅当用户未上传自定义字体、又想下载原始字体上传到 CDN 时使用。
+     */
+    public Path getBuiltinOutputDir() {
+        return resolveStaticRoot().resolve("assets").resolve("font_chunks");
+    }
+
+    /**
+     * 下载/打包时使用的实际目录：
+     * 优先用户上传的自定义字体目录；若为空则回退到内置默认字体分片目录。
+     */
+    public Path getEffectiveOutputDir() {
+        Path uploadDir = getDefaultOutputDir();
+        if (hasFontFiles(uploadDir)) {
+            return uploadDir;
+        }
+        return getBuiltinOutputDir();
+    }
+
+    private boolean hasFontFiles(Path dir) {
+        if (!Files.exists(dir)) {
+            return false;
+        }
+        // 必须存在 .woff2 才算有效字体分片目录（仅剩 font.css / metadata 的目录不应被判定为可用，
+        // 否则会下载到无字体数据的空包）；并使用 Files.walk 递归扫描，与 collectFontChunkFiles 保持一致
+        try (Stream<Path> stream = Files.walk(dir)) {
+            return stream.filter(Files::isRegularFile)
+                    .anyMatch(p -> p.getFileName().toString().toLowerCase().endsWith(".woff2"));
+        } catch (IOException e) {
+            log.warn("读取字体分片目录失败: {}", dir, e);
+            return false;
+        }
+    }
+
+    /**
+     * 解析前端构建产物的静态根目录，与 {@code ResourceAvailabilityService} /
+     * {@code ResourceReplaceService} 的发现逻辑保持一致：从 JVM 工作目录逐级向上遍历父目录，
+     * 在每一层尝试 web / admin 的 dist/static、public/static 等子路径。
+     */
+    private Path resolveStaticRoot() {
+        // 1) Docker compose / 显式配置的静态根目录（RESOURCE_AVAILABILITY_STATICROOTS）
+        if (StringUtils.hasText(configuredStaticRoots)) {
+            for (String root : configuredStaticRoots.split(",")) {
+                String trimmed = root.trim();
+                if (!trimmed.isEmpty()) {
+                    Path candidate = Paths.get(trimmed);
+                    if (Files.isDirectory(candidate)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        // 2) 从当前工作目录向上遍历，尝试常见前端构建产物子目录（对齐 ResourceAvailabilityService）
+        Path currentPath = Paths.get("").toAbsolutePath().normalize();
+        for (Path path = currentPath; path != null; path = path.getParent()) {
+            for (String variant : new String[]{
+                    "public/static", "public",
+                    "dist/static", "dist",
+                    "web-dist/static",
+                    "poetize-web/public/static", "poetize-web/public",
+                    "poetize-web/dist/static", "poetize-web/dist",
+                    "poetize-admin/public/static", "poetize-admin/public",
+                    "poetize-admin/dist/static", "poetize-admin/dist"
+            }) {
+                Path candidate = path.resolve(variant);
+                if (Files.isDirectory(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+        // 3) 最终回退：Docker 默认路径
+        return Paths.get("/app/web-dist/static");
     }
 
     /**
@@ -175,6 +277,22 @@ public class FontSubsetService {
         status.put("totalSize", totalSize);
         status.put("files", files);
         status.put("ready", cssReady || legacyReady);
+        // 与下载端点的内置字体回退逻辑保持一致：区分下载来源 custom / builtin / none，
+        // ready 仅表示是否存在「自定义」字体，downloadReady 表示能否下载（含内置默认）
+        String source;
+        boolean downloadReady;
+        if (cssReady || legacyReady) {
+            source = "custom";
+            downloadReady = true;
+        } else if (hasFontFiles(getBuiltinOutputDir())) {
+            source = "builtin";
+            downloadReady = true;
+        } else {
+            source = "none";
+            downloadReady = false;
+        }
+        status.put("source", source);
+        status.put("downloadReady", downloadReady);
         return status;
     }
 
@@ -203,31 +321,99 @@ public class FontSubsetService {
      * @param outputStream ZIP 数据写入目标
      */
     public void zipFontChunks(OutputStream outputStream) throws IOException {
-        Path outputDir = getDefaultOutputDir();
+        Path outputDir = getEffectiveOutputDir();
+        List<Path> files = collectFontChunkFiles(outputDir);
+        writeZip(outputDir, files, outputStream);
+    }
+
+    /**
+     * 预检并收集要打包的字体分片文件列表。
+     * <p>
+     * 该方法只做目录存在性/非空校验与文件遍历，不写任何响应字节，
+     * 供调用方在提交响应前完成校验：若失败可返回 JSON 错误而非写出损坏的 zip。
+     *
+     * @param outputDir font_chunks 目录
+     * @return 排序后的待打包文件列表
+     * @throws IOException 目录不存在或为空时抛出
+     */
+    public List<Path> collectFontChunkFiles(Path outputDir) throws IOException {
         if (!Files.exists(outputDir)) {
             throw new IOException("字体分片目录不存在，请先上传字体进行切片");
         }
-
-        List<Path> files;
         try (Stream<Path> stream = Files.walk(outputDir)) {
-            files = stream
+            List<Path> files = stream
                     .filter(Files::isRegularFile)
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     .toList();
+            if (files.isEmpty()) {
+                throw new IOException("字体分片目录为空，请先上传字体进行切片");
+            }
+            return files;
         }
+    }
 
-        if (files.isEmpty()) {
-            throw new IOException("字体分片目录为空，请先上传字体进行切片");
-        }
-
-        try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {
+    /**
+     * 将给定文件列表打包为 ZIP 写入输出流（不再做目录校验，调用前应先用 {@link #collectFontChunkFiles} 预检）。
+     *
+     * @param baseDir       用于生成 zip entry 相对路径的基准目录
+     * @param files         待打包文件列表
+     * @param outputStream  ZIP 数据写入目标
+     */
+    public void writeZip(Path baseDir, List<Path> files, OutputStream outputStream) throws IOException {
+        ZipOutputStream zos = new ZipOutputStream(outputStream);
+        IOException exception = null;
+        try {
             for (Path file : files) {
-                String entryName = outputDir.relativize(file).toString().replace('\\', '/');
+                String entryName = baseDir.relativize(file).toString().replace('\\', '/');
                 ZipEntry entry = new ZipEntry(entryName);
                 zos.putNextEntry(entry);
                 Files.copy(file, zos);
                 zos.closeEntry();
             }
+        } catch (IOException e) {
+            exception = e;
+        } finally {
+            // 只结束 ZIP 数据，不关闭底层 OutputStream；Servlet 容器/调用方负责关闭
+            try {
+                zos.finish();
+            } catch (IOException e) {
+                if (exception == null) {
+                    exception = e;
+                } else {
+                    exception.addSuppressed(e);
+                }
+            }
+        }
+        if (exception != null) {
+            throw exception;
+        }
+    }
+
+    /**
+     * 给 font.css 中引用 woff2 分片的 url(...) 追加缓存失效参数 ?v=版本号。
+     * 这样重新上传字体（同名文件）后，浏览器会因 URL 变化而重新拉取新分片，
+     * 无需手动清缓存或 Ctrl+Shift+R。版本号同时通过系统配置 font.asset.version 下发到前端，
+     * 用于给 font.css 本身的请求追加同样的 ?v= 参数。
+     *
+     * @param outputDir   font_chunks 目录
+     * @param version     资源版本号
+     */
+    private void rewriteFontCssWithVersion(Path outputDir, String version) throws IOException {
+        Path cssFile = outputDir.resolve(DEFAULT_CSS_FILE_NAME);
+        if (!Files.exists(cssFile)) {
+            return;
+        }
+        String css = Files.readString(cssFile, StandardCharsets.UTF_8);
+        String versioned = FONT_URL_PATTERN.matcher(css).replaceAll(mr -> {
+            String quote = mr.group(1);
+            String url = mr.group(2);
+            if (url.contains("?")) {
+                return mr.group(0);
+            }
+            return "url(" + quote + url + "?v=" + version + quote + ")";
+        });
+        if (!versioned.equals(css)) {
+            Files.writeString(cssFile, versioned, StandardCharsets.UTF_8);
         }
     }
 
