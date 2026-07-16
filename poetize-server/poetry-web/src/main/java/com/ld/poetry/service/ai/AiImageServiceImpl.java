@@ -1,6 +1,8 @@
 package com.ld.poetry.service.ai;
 
 import com.ld.poetry.entity.SysAiConfig;
+import com.ld.poetry.entity.User;
+import com.ld.poetry.service.ManagedResourceUploadService;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.SysAuditLogService;
 import com.ld.poetry.service.ai.image.CoverPromptTemplate;
@@ -10,8 +12,7 @@ import com.ld.poetry.service.ai.image.GeneratedImage;
 import com.ld.poetry.service.ai.image.ImageConfigDto;
 import com.ld.poetry.service.ai.image.OpenAiCompatibleImageClient;
 import com.ld.poetry.utils.ArticleSummaryTextUtil;
-import com.ld.poetry.utils.storage.FileStorageService;
-import com.ld.poetry.utils.storage.StoreService;
+import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.vo.FileVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -47,8 +48,8 @@ import java.util.UUID;
  *   </li>
  *   <li>按 provider 调度 {@link OpenAiCompatibleImageClient} / {@link DashScopeImageClient} / {@link GeminiImageClient}，
  *       prompt 已在前一步按 cover_template 构建完成，客户端不再额外拼接风格前缀</li>
- *   <li>对 URL 形态的结果下载为字节，统一通过 {@link FileStorageService} 落库</li>
- *   <li>返回可访问 URL</li>
+ *   <li>对 URL 形态的结果下载为字节，统一通过 {@link ManagedResourceUploadService} 保存为受管资源</li>
+ *   <li>返回稳定资源 URL</li>
  * </ol>
  */
 @Slf4j
@@ -79,7 +80,7 @@ public class AiImageServiceImpl implements AiImageService {
     private JsonMapper objectMapper;
 
     @Autowired
-    private FileStorageService fileStorageService;
+    private ManagedResourceUploadService managedResourceUploadService;
 
     @Autowired
     private OpenAiCompatibleImageClient openAiCompatibleImageClient;
@@ -588,7 +589,7 @@ public class AiImageServiceImpl implements AiImageService {
     }
 
     /**
-     * 将图片字节存入文件存储，返回可访问 URL。
+     * 将图片字节保存为受管资源，返回稳定 URL。
      */
     private String storeImage(byte[] bytes, String mimeType) throws IOException {
         String ext = guessExtension(mimeType);
@@ -602,9 +603,21 @@ public class AiImageServiceImpl implements AiImageService {
         fileVO.setRelativePath("ai_covers/" + fileName);
         fileVO.setOriginalName(fileName);
 
-        StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
-        FileVO saved = storeService.saveFile(fileVO);
-        return saved.getVisitPath();
+        ManagedResourceUploadService.ManagedUploadResult saved =
+                managedResourceUploadService.upload(fileVO, resolveResourceOwnerId());
+        return saved.stablePath();
+    }
+
+    private Integer resolveResourceOwnerId() {
+        Integer currentUserId = PoetryUtil.getUserId();
+        if (currentUserId != null) {
+            return currentUserId;
+        }
+        User admin = PoetryUtil.getAdminUser();
+        if (admin == null || admin.getId() == null) {
+            throw new IllegalStateException("无法确定AI生成资源的所有者");
+        }
+        return admin.getId();
     }
 
     private String guessMimeTypeFromUrl(String url) {

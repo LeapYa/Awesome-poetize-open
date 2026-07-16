@@ -571,18 +571,19 @@ export class CursorManager {
     
     if (pos.column >= lineText.length) return;
     
+    const wordCharRegex = /[\w\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
     const char = lineText[pos.column];
-    if (!/\w/.test(char)) return;
+    if (!wordCharRegex.test(char)) return;
     
     // 找单词边界
     let start = pos.column;
     let end = pos.column;
     
-    while (start > 0 && /\w/.test(lineText[start - 1])) {
+    while (start > 0 && wordCharRegex.test(lineText[start - 1])) {
       start--;
     }
     
-    while (end < lineText.length && /\w/.test(lineText[end])) {
+    while (end < lineText.length && wordCharRegex.test(lineText[end])) {
       end++;
     }
     

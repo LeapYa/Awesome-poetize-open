@@ -11,7 +11,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -48,6 +50,31 @@ public class FileStorageService implements ApplicationContextAware {
         }
 
         return storeServiceMap.get(storeType);
+    }
+
+    public List<StorageCapability> listCapabilities() {
+        return storeServiceMap.values().stream()
+                .map(StoreService::getCapability)
+                .sorted(Comparator.comparing(StorageCapability::storeType))
+                .toList();
+    }
+
+    public List<StoreService> listFileStorages() {
+        return storeServiceMap.values().stream()
+                .sorted(Comparator.comparing(StoreService::getStoreName))
+                .toList();
+    }
+
+    public List<StorageCapability> listMigrationTargets() {
+        return storeServiceMap.values().stream()
+                .filter(StoreService::supportsDeterministicWrite)
+                .map(StoreService::getCapability)
+                .filter(StorageCapability::enabled)
+                .filter(StorageCapability::uploadSupported)
+                .filter(StorageCapability::readSupported)
+                .filter(StorageCapability::verifySupported)
+                .sorted(Comparator.comparing(StorageCapability::storeType))
+                .toList();
     }
 
     /**

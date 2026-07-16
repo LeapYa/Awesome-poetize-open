@@ -215,22 +215,243 @@ DROP TABLE IF EXISTS `poetize`.`resource`;
 
 CREATE TABLE `poetize`.`resource` (
   `id` int NOT NULL AUTO_INCREMENT COMMENT 'id',
+  `public_id` varchar(32) DEFAULT NULL COMMENT '稳定资源公开ID',
   `user_id` int NOT NULL COMMENT '用户ID',
   `type` varchar(32) NOT NULL COMMENT '资源类型',
-  `path` varchar(256) NOT NULL COMMENT '资源路径',
+  `path` varchar(1024) NOT NULL COMMENT '资源访问路径',
+  `path_hash` char(64) GENERATED ALWAYS AS (SHA2(`path`, 256)) STORED COMMENT '资源路径SHA-256摘要',
   `size` int DEFAULT NULL COMMENT '资源内容的大小，单位：字节',
   `original_name` varchar(512) DEFAULT NULL COMMENT '文件名称',
   `mime_type` varchar(256) DEFAULT NULL COMMENT '资源的 MIME 类型',
   `resource_hash` varchar(64) DEFAULT NULL COMMENT '资源内容哈希（SHA-256）',
+  `hash_source` varchar(32) DEFAULT NULL COMMENT '内容哈希来源',
+  `hash_verified_at` datetime DEFAULT NULL COMMENT '内容哈希最近严格校验时间',
   `width` int DEFAULT NULL COMMENT '图片宽度（像素）',
   `height` int DEFAULT NULL COMMENT '图片高度（像素）',
   `status` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用[0:否，1:是]',
   `store_type` varchar(16) DEFAULT NULL COMMENT '存储平台',
+  `storage_key` varchar(512) DEFAULT NULL COMMENT '存储平台对象键，用于校验和删除远端文件',
+  `active_location_id` bigint DEFAULT NULL COMMENT '当前活动物理副本ID',
+  `location_version` int NOT NULL DEFAULT 0 COMMENT '活动副本乐观锁版本',
+  `content_state` varchar(32) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/REPLACEMENT_PENDING/DELETION_PENDING',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
 
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_path` (`path`)
+  UNIQUE KEY `uk_resource_path_hash` (`path_hash`),
+  UNIQUE KEY `uk_resource_public_id` (`public_id`),
+  KEY `idx_resource_active_location` (`active_location_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源信息';
+
+DROP TABLE IF EXISTS `poetize`.`resource_migration_task`;
+CREATE TABLE `poetize`.`resource_migration_task` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `task_id` varchar(64) NOT NULL COMMENT '任务ID',
+  `created_by` int NOT NULL COMMENT '创建人用户ID',
+  `source_store_type` varchar(16) NOT NULL DEFAULT 'local' COMMENT '源存储平台',
+  `target_store_type` varchar(16) NOT NULL COMMENT '目标存储平台',
+  `scope_type` varchar(16) NOT NULL COMMENT '范围类型 SELECTED/FILTER',
+  `resource_type` varchar(32) DEFAULT NULL COMMENT 'FILTER范围的资源类型',
+  `keep_source` tinyint(1) NOT NULL DEFAULT 1 COMMENT '迁移成功后是否保留源文件',
+  `status` varchar(32) NOT NULL COMMENT '任务状态',
+  `total_count` int NOT NULL DEFAULT 0 COMMENT '条目总数',
+  `processed_count` int NOT NULL DEFAULT 0 COMMENT '已完成条目数',
+  `success_count` int NOT NULL DEFAULT 0 COMMENT '成功数',
+  `skipped_count` int NOT NULL DEFAULT 0 COMMENT '跳过数',
+  `failed_count` int NOT NULL DEFAULT 0 COMMENT '失败数',
+  `error_message` varchar(1024) DEFAULT NULL COMMENT '任务级错误',
+  `started_at` datetime DEFAULT NULL COMMENT '开始时间',
+  `finished_at` datetime DEFAULT NULL COMMENT '结束时间',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_migration_task_id` (`task_id`),
+  KEY `idx_resource_migration_task_status` (`status`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源迁移任务';
+
+DROP TABLE IF EXISTS `poetize`.`resource_migration_item`;
+CREATE TABLE `poetize`.`resource_migration_item` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `task_id` varchar(64) NOT NULL COMMENT '任务ID',
+  `resource_id` int NOT NULL COMMENT '资源ID',
+  `source_location_id` bigint DEFAULT NULL COMMENT '源物理副本ID',
+  `target_location_id` bigint DEFAULT NULL COMMENT '目标物理副本ID',
+  `source_path` varchar(2048) NOT NULL COMMENT '迁移前物理访问地址',
+  `source_store_type` varchar(16) NOT NULL DEFAULT 'local' COMMENT '源存储平台',
+  `source_storage_key` varchar(512) DEFAULT NULL COMMENT '源存储对象键',
+  `source_hash` char(64) DEFAULT NULL COMMENT '源快照SHA-256',
+  `target_path` varchar(2048) DEFAULT NULL COMMENT '目标访问路径',
+  `target_store_type` varchar(16) NOT NULL COMMENT '目标存储平台',
+  `target_storage_key` varchar(512) DEFAULT NULL COMMENT '目标存储对象键',
+  `target_hash` char(64) DEFAULT NULL COMMENT '目标完整回读SHA-256',
+  `snapshot_size` bigint DEFAULT NULL COMMENT '源快照字节数',
+  `hash_baselined` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否由本任务建立历史哈希基准',
+  `target_created` tinyint(1) NOT NULL DEFAULT 0 COMMENT '目标副本是否由本任务新建',
+  `status` varchar(32) NOT NULL COMMENT '条目状态',
+  `retry_count` int NOT NULL DEFAULT 0 COMMENT '重试次数',
+  `source_deleted` tinyint(1) NOT NULL DEFAULT 0 COMMENT '源文件是否已清理',
+  `error_message` varchar(1024) DEFAULT NULL COMMENT '条目错误',
+  `started_at` datetime DEFAULT NULL COMMENT '开始时间',
+  `finished_at` datetime DEFAULT NULL COMMENT '结束时间',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_migration_item` (`task_id`, `resource_id`),
+  KEY `idx_resource_migration_item_status` (`task_id`, `status`),
+  KEY `idx_resource_migration_item_resource` (`resource_id`),
+  KEY `idx_resource_migration_item_locations` (`source_location_id`, `target_location_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源迁移条目';
+
+DROP TABLE IF EXISTS `poetize`.`resource_redirect`;
+CREATE TABLE `poetize`.`resource_redirect` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `resource_id` int NOT NULL COMMENT '当前资源ID',
+  `source_path` varchar(1024) NOT NULL COMMENT '旧访问路径',
+  `source_path_hash` char(64) GENERATED ALWAYS AS (SHA2(`source_path`, 256)) STORED COMMENT '旧路径SHA-256摘要',
+  `target_url` varchar(2048) NOT NULL COMMENT '当前目标URL',
+  `status` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_redirect_source_hash` (`source_path_hash`),
+  KEY `idx_resource_redirect_resource` (`resource_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='迁移资源旧路径重定向';
+
+DROP TABLE IF EXISTS `poetize`.`resource_location`;
+CREATE TABLE `poetize`.`resource_location` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '物理副本ID',
+  `resource_id` int NOT NULL COMMENT '逻辑资源ID',
+  `store_type` varchar(16) NOT NULL COMMENT '存储平台',
+  `storage_key` varchar(512) DEFAULT NULL COMMENT '存储平台对象键',
+  `access_path` varchar(2048) NOT NULL COMMENT '物理副本访问地址',
+  `access_path_hash` char(64) GENERATED ALWAYS AS (SHA2(`access_path`, 256)) STORED COMMENT '物理地址SHA-256摘要',
+  `content_hash` char(64) DEFAULT NULL COMMENT '副本内容SHA-256',
+  `size` bigint DEFAULT NULL COMMENT '副本字节数',
+  `mime_type` varchar(256) DEFAULT NULL COMMENT '副本MIME类型',
+  `status` varchar(32) NOT NULL DEFAULT 'STAGED' COMMENT 'STAGED/ACTIVE/RETAINED/STALE/DELETING/DELETED/MISSING/DETACHED',
+  `verified_at` datetime DEFAULT NULL COMMENT '最近完整回读校验时间',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_location_store_path` (`store_type`, `access_path_hash`),
+  KEY `idx_resource_location_resource_status` (`resource_id`, `status`),
+  KEY `idx_resource_location_hash` (`content_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源物理副本';
+
+DROP TABLE IF EXISTS `poetize`.`resource_content_replacement_target`;
+DROP TABLE IF EXISTS `poetize`.`resource_content_replacement`;
+CREATE TABLE `poetize`.`resource_content_replacement` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '替换事务ID',
+  `operation_id` varchar(64) NOT NULL COMMENT '公开操作ID',
+  `resource_id` int NOT NULL COMMENT '逻辑资源ID',
+  `active_location_id` bigint DEFAULT NULL COMMENT '声明时活动物理副本ID',
+  `expected_path` varchar(1024) NOT NULL COMMENT '声明时逻辑资源路径',
+  `original_location_version` int NOT NULL COMMENT '声明前资源版本',
+  `claimed_location_version` int NOT NULL COMMENT 'REPLACEMENT_PENDING版本',
+  `original_resource_hash` varchar(64) DEFAULT NULL COMMENT '声明前资源哈希原值',
+  `source_hash` char(64) NOT NULL COMMENT '替换前物理文件完整SHA-256',
+  `original_hash_source` varchar(32) DEFAULT NULL COMMENT '声明前哈希来源',
+  `original_hash_verified_at` datetime DEFAULT NULL COMMENT '声明前严格校验时间',
+  `source_location_store_type` varchar(16) DEFAULT NULL COMMENT '声明时活动副本存储类型',
+  `source_location_storage_key` varchar(512) DEFAULT NULL COMMENT '声明时活动副本对象键',
+  `source_location_access_path` varchar(2048) DEFAULT NULL COMMENT '声明时活动副本访问地址',
+  `source_location_hash` varchar(64) DEFAULT NULL COMMENT '声明时活动副本哈希原值',
+  `source_location_status` varchar(32) DEFAULT NULL COMMENT '声明时活动副本状态',
+  `new_hash` char(64) NOT NULL COMMENT '替换后文件完整SHA-256',
+  `new_size` int NOT NULL COMMENT '替换后文件字节数',
+  `new_original_name` varchar(512) DEFAULT NULL COMMENT '替换后文件名称',
+  `new_mime_type` varchar(256) DEFAULT NULL COMMENT '替换后MIME类型',
+  `new_width` int DEFAULT NULL COMMENT '替换后图片宽度',
+  `new_height` int DEFAULT NULL COMMENT '替换后图片高度',
+  `status` varchar(32) NOT NULL COMMENT 'PENDING/RECOVERY_REQUIRED/COMMITTED/ABORTED',
+  `open_resource_id` int GENERATED ALWAYS AS (
+    CASE WHEN `status` IN ('PENDING', 'RECOVERY_REQUIRED') THEN `resource_id` ELSE NULL END
+  ) STORED COMMENT '开放事务资源ID',
+  `error_message` varchar(1024) DEFAULT NULL COMMENT '恢复或失败说明',
+  `finished_at` datetime DEFAULT NULL COMMENT '事务决议时间',
+  `artifacts_cleaned_at` datetime DEFAULT NULL COMMENT '临时文件和备份文件清理完成时间',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_content_replacement_operation` (`operation_id`),
+  UNIQUE KEY `uk_resource_content_replacement_open` (`open_resource_id`),
+  KEY `idx_resource_content_replacement_resource` (`resource_id`, `status`),
+  KEY `idx_resource_content_replacement_status` (`status`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源内容替换事务';
+
+CREATE TABLE `poetize`.`resource_content_replacement_target` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '替换物理目标ID',
+  `replacement_id` bigint NOT NULL COMMENT '替换事务ID',
+  `target_path` varchar(2048) NOT NULL COMMENT '实际替换文件绝对路径',
+  `target_path_hash` char(64) GENERATED ALWAYS AS (SHA2(`target_path`, 256)) STORED COMMENT '目标路径SHA-256摘要',
+  `temp_path` varchar(2048) NOT NULL COMMENT '已完整校验的新文件临时路径',
+  `backup_path` varchar(2048) NOT NULL COMMENT '已完整校验的旧文件备份路径',
+  `source_hash` char(64) NOT NULL COMMENT '旧文件完整SHA-256',
+  `new_hash` char(64) NOT NULL COMMENT '新文件完整SHA-256',
+  `observed_hash` char(64) DEFAULT NULL COMMENT '最近完整回读的目标SHA-256',
+  `status` varchar(32) NOT NULL DEFAULT 'PLANNED' COMMENT 'PLANNED/NEW_VERIFIED/OLD_VERIFIED/UNKNOWN',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_content_replacement_target` (`replacement_id`, `target_path_hash`),
+  KEY `idx_resource_content_replacement_target_status` (`replacement_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源内容替换物理目标与恢复证据';
+
+DROP TABLE IF EXISTS `poetize`.`resource_alias`;
+CREATE TABLE `poetize`.`resource_alias` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '别名ID',
+  `resource_id` int NOT NULL COMMENT '逻辑资源ID',
+  `alias_url` varchar(2048) NOT NULL COMMENT '历史地址或旧物理URL',
+  `alias_hash` char(64) GENERATED ALWAYS AS (SHA2(`alias_url`, 256)) STORED COMMENT '别名SHA-256摘要',
+  `source_type` varchar(32) NOT NULL DEFAULT 'CURRENT_PATH' COMMENT 'CURRENT_PATH/REDIRECT_IMPORT/DISCOVERED_REFERENCE',
+  `status` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_alias_hash` (`alias_hash`),
+  KEY `idx_resource_alias_resource` (`resource_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源历史地址别名';
+
+DROP TABLE IF EXISTS `poetize`.`resource_adoption_task`;
+CREATE TABLE `poetize`.`resource_adoption_task` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `task_id` varchar(64) NOT NULL COMMENT '接管任务ID',
+  `created_by` int NOT NULL COMMENT '创建人用户ID',
+  `status` varchar(32) NOT NULL COMMENT '任务状态',
+  `total_count` int NOT NULL DEFAULT 0 COMMENT '候选总数',
+  `processed_count` int NOT NULL DEFAULT 0 COMMENT '已处理数',
+  `success_count` int NOT NULL DEFAULT 0 COMMENT '成功数',
+  `skipped_count` int NOT NULL DEFAULT 0 COMMENT '跳过数',
+  `failed_count` int NOT NULL DEFAULT 0 COMMENT '失败数',
+  `error_message` varchar(1024) DEFAULT NULL COMMENT '任务级错误',
+  `started_at` datetime DEFAULT NULL COMMENT '开始时间',
+  `finished_at` datetime DEFAULT NULL COMMENT '结束时间',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_adoption_task_id` (`task_id`),
+  KEY `idx_resource_adoption_task_status` (`status`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='历史资源接管任务';
+
+DROP TABLE IF EXISTS `poetize`.`resource_adoption_item`;
+CREATE TABLE `poetize`.`resource_adoption_item` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `task_id` varchar(64) NOT NULL COMMENT '接管任务ID',
+  `source_url` varchar(2048) NOT NULL COMMENT '发现的历史资源URL',
+  `source_url_hash` char(64) GENERATED ALWAYS AS (SHA2(`source_url`, 256)) STORED COMMENT '历史URL摘要',
+  `resource_id` int DEFAULT NULL COMMENT '接管后的逻辑资源ID',
+  `reference_count` int NOT NULL DEFAULT 0 COMMENT '发现的引用数量',
+  `source_hash` char(64) DEFAULT NULL COMMENT '安全读取后的内容SHA-256',
+  `snapshot_size` bigint DEFAULT NULL COMMENT '安全读取后的字节数',
+  `hash_baselined` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否由本任务建立哈希基准',
+  `status` varchar(32) NOT NULL COMMENT 'PENDING/ADOPTED/SKIPPED/FAILED',
+  `error_message` varchar(1024) DEFAULT NULL COMMENT '条目错误',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_resource_adoption_item_url` (`task_id`, `source_url_hash`),
+  KEY `idx_resource_adoption_item_status` (`task_id`, `status`),
+  KEY `idx_resource_adoption_item_resource` (`resource_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='历史资源接管条目';
 
 DROP TABLE IF EXISTS `poetize`.`history_info`;
 
@@ -953,6 +1174,9 @@ INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_v
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (33, '字体Unicode范围JSON文件路径', 'font.unicode.path', '/static/assets/font_chunks/unicode_ranges.json', '2');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (34, '腾讯位置服务Key', 'tencent.lbs.key', '', '1');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (35, '全局评论开关', 'enableComment', 'true', '2');
+INSERT INTO `poetize`.`sys_config` (`config_name`, `config_key`, `config_value`, `config_type`) VALUES ('兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1');
+INSERT INTO `poetize`.`sys_config` (`config_name`, `config_key`, `config_value`, `config_type`) VALUES ('简单图床-可信下载域名（多个用逗号分隔）', 'easyimage.download_hosts', '', '1');
+INSERT INTO `poetize`.`sys_config` (`config_name`, `config_key`, `config_value`, `config_type`) VALUES ('资源迁移是否允许访问私网图床', 'resource.migration.remote.allow-private-hosts', 'false', '1');
 
 -- 插入默认的看板娘模型插件（使用 INSERT IGNORE 避免重复插入）
 INSERT IGNORE INTO `sys_plugin` (`plugin_type`, `plugin_key`, `plugin_name`, `plugin_description`, `plugin_config`, `enabled`, `is_system`, `sort_order`) VALUES
@@ -1298,6 +1522,37 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_n
 (1, 'assets', '/static/assets/font_chunks/font.level1.woff2', 830860, 'font.level1.woff2', 'font/woff2', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/font_chunks/font.level2.woff2', 756328, 'font.level2.woff2', 'font/woff2', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/font_chunks/font.other.woff2', 198920, 'font.other.woff2', 'font/woff2', 1, 'local', NOW());
+
+-- 为初始资源建立稳定逻辑身份和当前物理副本；不改写现有访问路径。
+UPDATE `poetize`.`resource`
+SET `public_id` = LOWER(REPLACE(UUID(), '-', ''))
+WHERE `public_id` IS NULL OR `public_id` = '';
+
+UPDATE `poetize`.`resource`
+SET `hash_source` = 'LEGACY_EXISTING'
+WHERE `resource_hash` IS NOT NULL
+  AND `resource_hash` <> ''
+  AND (`hash_source` IS NULL OR `hash_source` = '');
+
+INSERT INTO `poetize`.`resource_location` (
+  `resource_id`, `store_type`, `storage_key`, `access_path`, `content_hash`, `size`, `mime_type`, `status`
+)
+SELECT
+  r.`id`, COALESCE(NULLIF(r.`store_type`, ''), 'local'), r.`storage_key`, r.`path`,
+  LOWER(r.`resource_hash`), r.`size`, r.`mime_type`, 'ACTIVE'
+FROM `poetize`.`resource` r;
+
+UPDATE `poetize`.`resource` r
+JOIN `poetize`.`resource_location` l
+  ON l.`resource_id` = r.`id`
+ AND l.`store_type` = COALESCE(NULLIF(r.`store_type`, ''), 'local')
+ AND l.`access_path_hash` = SHA2(r.`path`, 256)
+ AND l.`access_path` = r.`path`
+SET r.`active_location_id` = l.`id`;
+
+INSERT INTO `poetize`.`resource_alias` (`resource_id`, `alias_url`, `source_type`, `status`)
+SELECT r.`id`, r.`path`, 'CURRENT_PATH', 1
+FROM `poetize`.`resource` r;
 
 -- 优化 `article` 表
 -- 为用户ID添加索引，加速查询某个用户的所有文章

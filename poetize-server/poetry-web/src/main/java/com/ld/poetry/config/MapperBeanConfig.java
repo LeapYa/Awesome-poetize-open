@@ -11,8 +11,17 @@ import com.ld.poetry.dao.CommentMapper;
 import com.ld.poetry.dao.FamilyMapper;
 import com.ld.poetry.dao.HistoryInfoMapper;
 import com.ld.poetry.dao.LabelMapper;
+import com.ld.poetry.dao.ResourceAdoptionItemMapper;
+import com.ld.poetry.dao.ResourceAdoptionTaskMapper;
+import com.ld.poetry.dao.ResourceAliasMapper;
+import com.ld.poetry.dao.ResourceContentReplacementMapper;
+import com.ld.poetry.dao.ResourceContentReplacementTargetMapper;
+import com.ld.poetry.dao.ResourceLocationMapper;
 import com.ld.poetry.dao.ResourceMapper;
+import com.ld.poetry.dao.ResourceMigrationItemMapper;
+import com.ld.poetry.dao.ResourceMigrationTaskMapper;
 import com.ld.poetry.dao.ResourcePathMapper;
+import com.ld.poetry.dao.ResourceRedirectMapper;
 import com.ld.poetry.dao.SeoConfigMapper;
 import com.ld.poetry.dao.SeoNotificationConfigMapper;
 import com.ld.poetry.dao.SeoPwaConfigMapper;
@@ -73,6 +82,15 @@ public class MapperBeanConfig {
             SeoSearchEnginePushMapper.class,
             SeoSiteVerificationMapper.class,
             ResourcePathMapper.class,
+            ResourceMigrationTaskMapper.class,
+            ResourceMigrationItemMapper.class,
+            ResourceRedirectMapper.class,
+            ResourceLocationMapper.class,
+            ResourceAliasMapper.class,
+            ResourceContentReplacementMapper.class,
+            ResourceContentReplacementTargetMapper.class,
+            ResourceAdoptionTaskMapper.class,
+            ResourceAdoptionItemMapper.class,
             SeoConfigMapper.class,
             SeoNotificationConfigMapper.class,
             LabelMapper.class,
@@ -146,6 +164,24 @@ public class MapperBeanConfig {
     public SeoSiteVerificationMapper seoSiteVerificationMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, SeoSiteVerificationMapper.class); }
     @Bean
     public ResourcePathMapper resourcePathMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourcePathMapper.class); }
+    @Bean
+    public ResourceMigrationTaskMapper resourceMigrationTaskMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceMigrationTaskMapper.class); }
+    @Bean
+    public ResourceMigrationItemMapper resourceMigrationItemMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceMigrationItemMapper.class); }
+    @Bean
+    public ResourceRedirectMapper resourceRedirectMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceRedirectMapper.class); }
+    @Bean
+    public ResourceLocationMapper resourceLocationMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceLocationMapper.class); }
+    @Bean
+    public ResourceAliasMapper resourceAliasMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceAliasMapper.class); }
+    @Bean
+    public ResourceContentReplacementMapper resourceContentReplacementMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceContentReplacementMapper.class); }
+    @Bean
+    public ResourceContentReplacementTargetMapper resourceContentReplacementTargetMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceContentReplacementTargetMapper.class); }
+    @Bean
+    public ResourceAdoptionTaskMapper resourceAdoptionTaskMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceAdoptionTaskMapper.class); }
+    @Bean
+    public ResourceAdoptionItemMapper resourceAdoptionItemMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, ResourceAdoptionItemMapper.class); }
     @Bean
     public SeoConfigMapper seoConfigMapper(SqlSessionTemplate sqlSessionTemplate) { return mapper(sqlSessionTemplate, SeoConfigMapper.class); }
     @Bean

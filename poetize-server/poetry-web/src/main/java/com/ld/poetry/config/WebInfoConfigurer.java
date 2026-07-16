@@ -19,6 +19,7 @@ public class WebInfoConfigurer implements WebMvcConfigurer {
                     "/",
                     "/*.html",
                     "/static/**",
+                    "/media/**",
                     "/css/**",
                     "/js/**",
                     "/libs/**",

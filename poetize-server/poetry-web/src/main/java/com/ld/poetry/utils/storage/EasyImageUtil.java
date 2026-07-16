@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -32,9 +33,18 @@ public class EasyImageUtil implements StoreService {
     
     @Value("${easyimage.enable:false}")
     private Boolean easyImageEnable;
+
+    @Value("${easyimage.download_hosts:}")
+    private String easyImageDownloadHosts;
     
     @Autowired
     private RestTemplate restTemplate;
+
+    @Autowired
+    private RemoteStorageVerifier remoteStorageVerifier;
+
+    @Autowired
+    private TrustedRemoteStorageReader trustedRemoteStorageReader;
     
     @Override
     public FileVO saveFile(FileVO fileVO) {
@@ -75,9 +85,17 @@ public class EasyImageUtil implements StoreService {
                 throw new PoetryRuntimeException("简单图床上传失败: " + response.getResult());
             }
             
-            // 设置访问路径
             String imageUrl = response.getUrl().replace("\\", "");
+            String delUrl = response.getDel();
+            if (!StringUtils.hasText(delUrl)) {
+                throw new PoetryRuntimeException("简单图床未返回删除凭证，无法安全纳管该副本");
+            }
+            fileVO.setAbsolutePath(imageUrl);
             fileVO.setVisitPath(imageUrl);
+            fileVO.setStoreType(StoreEnum.EASYIMAGE.getCode());
+            // EasyImage 的 storageKey 存储删除凭证（del 链接），因为该图床无对象键 API，
+            // 读取靠 visitPath（url），删除靠 storageKey（del 链接 GET 请求）。
+            fileVO.setStorageKey(delUrl);
             log.info("简单图床上传成功: {}", imageUrl);
             
             return fileVO;
@@ -88,8 +106,97 @@ public class EasyImageUtil implements StoreService {
     }
 
     @Override
-    public void deleteFile(List<String> paths) {
-        log.warn("简单图床不支持服务端批量删除文件操作");
+    public List<StorageDeleteResult> deleteFiles(List<StorageResourceRef> resources) {
+        if (resources == null || resources.isEmpty()) {
+            return List.of();
+        }
+        return resources.stream().map(resource -> {
+            String delUrl = resource.storageKey();
+            if (!StringUtils.hasText(delUrl) || !delUrl.startsWith("http")) {
+                return StorageDeleteResult.failed(resource, "EasyImage 缺少删除凭证（del 链接）");
+            }
+            if (!trustedRemoteStorageReader.isTrustedPublicUrl(
+                    delUrl,
+                    trustedRemoteStorageReader.parseTrustedHosts(easyImageUrl, easyImageDownloadHosts)
+            )) {
+                return StorageDeleteResult.failed(resource, "EasyImage 删除凭证地址不在可信主机白名单内");
+            }
+            try {
+                // EasyImage 删除协议：GET 请求上传时返回的 del 链接
+                restTemplate.getForObject(delUrl, String.class);
+                return StorageDeleteResult.deleted(resource);
+            } catch (HttpClientErrorException.NotFound e) {
+                return StorageDeleteResult.missing(resource);
+            } catch (Exception e) {
+                log.error("EasyImage 文件删除异常：{}", resource.path(), e);
+                return StorageDeleteResult.failed(resource, e.getMessage());
+            }
+        }).toList();
+    }
+
+    @Override
+    public StorageReadHandle openRead(StorageResourceRef resource, long maxBytes) {
+        if (!Boolean.TRUE.equals(easyImageEnable)) {
+            throw new IllegalStateException("EasyImage 未启用");
+        }
+        return trustedRemoteStorageReader.open(
+                resource.path(),
+                trustedRemoteStorageReader.parseTrustedHosts(easyImageUrl, easyImageDownloadHosts),
+                maxBytes
+        );
+    }
+
+    @Override
+    public StorageRangeReadHandle openReadRange(StorageResourceRef resource,
+                                                long startInclusive,
+                                                long endInclusive) {
+        if (!Boolean.TRUE.equals(easyImageEnable)) {
+            throw new IllegalStateException("EasyImage 未启用");
+        }
+        return trustedRemoteStorageReader.openRange(
+                resource.path(),
+                trustedRemoteStorageReader.parseTrustedHosts(easyImageUrl, easyImageDownloadHosts),
+                startInclusive,
+                endInclusive
+        );
+    }
+
+    @Override
+    public StorageClientAccess resolveClientAccess(StorageResourceRef resource) {
+        if (!Boolean.TRUE.equals(easyImageEnable)
+                || !isPublicAccessPathTrusted(resource.path())) {
+            return null;
+        }
+        return new StorageClientAccess(resource.path(), 60, false);
+    }
+
+    @Override
+    public StorageVerificationResult verify(StorageResourceRef resource) {
+        return remoteStorageVerifier.verify(
+                resource,
+                trustedRemoteStorageReader.parseTrustedHosts(easyImageUrl, easyImageDownloadHosts)
+        );
+    }
+
+    @Override
+    public StorageCapability getCapability() {
+        boolean enabled = Boolean.TRUE.equals(easyImageEnable)
+                && StringUtils.hasText(easyImageUrl)
+                && StringUtils.hasText(easyImageToken);
+        boolean readable = enabled
+                && !trustedRemoteStorageReader.parseTrustedHosts(easyImageUrl, easyImageDownloadHosts).isEmpty();
+        return new StorageCapability(
+                StoreEnum.EASYIMAGE.getCode(), enabled, readable, true, true, true,
+                0, List.of("image/")
+        );
+    }
+
+    @Override
+    public boolean isPublicAccessPathTrusted(String accessPath) {
+        return trustedRemoteStorageReader.isTrustedPublicUrl(
+                accessPath,
+                trustedRemoteStorageReader.parseTrustedHosts(easyImageUrl, easyImageDownloadHosts)
+        );
     }
 
     @Override

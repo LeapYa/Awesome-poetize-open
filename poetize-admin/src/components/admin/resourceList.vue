@@ -6,7 +6,12 @@
         <el-button type="text" @click="clearGlobalSearchFilter">清除全局筛选</el-button>
       </div>
       <div class="handle-box">
-        <el-select clearable filterable v-model="pagination.resourceType" placeholder="资源类型" class="handle-select mrb10">
+        <el-select clearable
+                   filterable
+                   v-model="pagination.resourceType"
+                   placeholder="资源类型"
+                   class="handle-select mrb10"
+                   @change="handleResourceTypeChange">
           <el-option-group
             v-for="group in resourceTypeGroups"
             :key="group.label"
@@ -39,6 +44,27 @@
           </div>
         </el-tooltip>
       </div>
+      <ResourceMigrationDialog
+        ref="resourceMigrationDialog"
+        :selected-resources="selectedResources"
+        :resource-type="loadedResourceType"
+        :resource-type-label="loadedResourceType ? getResourceTypeLabel(loadedResourceType) : '全部资源'"
+        :filter-scope-available="migrationFilterScopeAvailable"
+        @task-created="handleMigrationTaskCreated"
+        @task-finished="handleMigrationTaskFinished">
+      </ResourceMigrationDialog>
+      <ResourceBatchToolbar
+        ref="resourceBatchToolbar"
+        :selected-resources="selectedResources"
+        :filter-scope-available="migrationFilterScopeAvailable"
+        @clear="clearSelectedResources"
+        @migrate="openMigrationDialog"
+        @deleted="handleBatchDeleted">
+      </ResourceBatchToolbar>
+      <ResourceDetailDialog
+        ref="resourceDetailDialog"
+        @changed="handleResourceDetailChanged">
+      </ResourceDetailDialog>
       <div v-if="scanTask.active"
            class="scan-progress-bar"
            :class="'scan-progress-bar--' + scanTask.status">
@@ -78,14 +104,24 @@
         <i class="el-icon-warning"></i>
         <span>注意甄别：孤儿资源仅通过数据库引用关系检测，可能误报被前端代码、JSON 配置、默认素材占用的文件，也可能包含重新生成图标/封面后遗留的旧版本文件，删除前请仔细核对。</span>
       </div>
-      <el-table :data="displayedResources"
+      <el-table ref="resourceTable"
+                :data="displayedResources"
+                row-key="id"
                 border
                 class="table"
                 header-cell-class-name="table-header"
                 v-loading="resourcesLoading"
                 element-loading-text="正在检测资源，请稍候..."
                 :default-sort="{ prop: pagination.order, order: pagination.desc ? 'descending' : 'ascending' }"
+                @selection-change="handleSelectionChange"
                 @sort-change="handleSortChange">
+        <el-table-column
+          type="selection"
+          width="46"
+          align="center"
+          :reserve-selection="true"
+          :selectable="canSelectResource">
+        </el-table-column>
         <el-table-column prop="id" label="ID" width="52" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
         <el-table-column prop="originalName" label="名称" min-width="116" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
         <el-table-column label="预览" width="82" align="center">
@@ -185,8 +221,12 @@
             {{ formatDateTime(scope.row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190" align="center">
+        <el-table-column label="操作" width="240" align="center">
           <template slot-scope="scope">
+            <el-button type="text" icon="el-icon-view"
+                       @click="openResourceDetail(scope.row)">
+              详情
+            </el-button>
             <el-tooltip :disabled="canReplaceResource(scope.row)"
                         :content="getReplaceDisabledReason(scope.row)"
                         placement="top">
@@ -421,6 +461,9 @@
 import { useMainStore } from '@/stores/main';
 
 const uploadPicture = () => import('../common/uploadPicture');
+const ResourceBatchToolbar = () => import('./ResourceBatchToolbar.vue');
+const ResourceMigrationDialog = () => import('./ResourceMigrationDialog.vue');
+const ResourceDetailDialog = () => import('./ResourceDetailDialog.vue');
 
 const RESOURCE_TYPE_GROUPS = [
   {
@@ -600,7 +643,10 @@ function readResourcePreviewEnabled() {
 
 export default {
   components: {
-    uploadPicture
+    uploadPicture,
+    ResourceBatchToolbar,
+    ResourceMigrationDialog,
+    ResourceDetailDialog
   },
   data() {
     return {
@@ -614,6 +660,12 @@ export default {
         desc: true
       },
       resources: [],
+      resourceRequestSequence: 0,
+      loadedResourceType: '',
+      resourceContextLoaded: false,
+      selectionContextKey: '',
+      selectedResourcesById: new Map(),
+      syncingTableSelection: false,
       resourceDialog: false,
       storeTypes: [
         { label: '服务器', value: 'local' },
@@ -663,6 +715,7 @@ export default {
         taskId: '',
         status: '',
         resourceType: '',
+        requestSequence: 0,
         total: 0,
         processed: 0,
         hitCount: 0,
@@ -691,6 +744,14 @@ export default {
     },
     displayedResources() {
       return this.routeSearchKeyword ? this.filteredResources : this.resources;
+    },
+    selectedResources() {
+      return Array.from(this.selectedResourcesById.values());
+    },
+    migrationFilterScopeAvailable() {
+      return this.resourceContextLoaded &&
+        !this.routeSearchKeyword &&
+        this.loadedResourceType === this.pagination.resourceType;
     },
     selectedResourceTypeDescription() {
       return this.getResourceTypeDescription(this.pagination.resourceType);
@@ -765,6 +826,132 @@ export default {
   },
 
   methods: {
+    getSelectionContextKey(resourceType, searchKeyword) {
+      return [resourceType || '', normalizeSearchText(searchKeyword)].join('::');
+    },
+    updateSelectionContext(options = {}) {
+      const nextKey = this.getSelectionContextKey(
+        this.pagination.resourceType,
+        this.routeSearchKeyword
+      );
+      if (!this.selectionContextKey) {
+        this.selectionContextKey = nextKey;
+        return;
+      }
+      if (this.selectionContextKey === nextKey) {
+        return;
+      }
+
+      const selectedCount = this.selectedResourcesById.size;
+      this.selectionContextKey = nextKey;
+      this.clearSelectedResources({ silent: true });
+      if (selectedCount > 0 && options.notify !== false) {
+        this.$message({
+          message: '筛选条件已变化，已清空之前选择的 ' + selectedCount + ' 个资源',
+          type: 'info'
+        });
+      }
+    },
+    handleResourceTypeChange() {
+      this.resourceRequestSequence += 1;
+      this.resourceContextLoaded = false;
+      this.resetScanTask();
+      this.updateSelectionContext();
+    },
+    canSelectResource() {
+      return this.resourceContextLoaded &&
+        this.loadedResourceType === this.pagination.resourceType &&
+        this.selectionContextKey === this.getSelectionContextKey(
+          this.pagination.resourceType,
+          this.routeSearchKeyword
+        );
+    },
+    handleSelectionChange(selection) {
+      if (this.syncingTableSelection) {
+        return;
+      }
+
+      const nextSelection = new Map(this.selectedResourcesById);
+      (this.displayedResources || []).forEach((resource) => {
+        if (resource && resource.id != null) {
+          nextSelection.delete(String(resource.id));
+        }
+      });
+      (selection || []).forEach((resource) => {
+        if (resource && resource.id != null) {
+          nextSelection.set(String(resource.id), resource);
+        }
+      });
+
+      if (nextSelection.size > 500) {
+        this.$message({
+          message: '单次最多选择 500 个资源，请先处理当前选择',
+          type: 'warning'
+        });
+        this.syncCurrentPageSelection();
+        return;
+      }
+      this.selectedResourcesById = nextSelection;
+    },
+    syncCurrentPageSelection() {
+      this.$nextTick(() => {
+        const table = this.$refs.resourceTable;
+        if (!table) {
+          return;
+        }
+        this.syncingTableSelection = true;
+        table.clearSelection();
+        (this.displayedResources || []).forEach((resource) => {
+          if (resource && this.selectedResourcesById.has(String(resource.id))) {
+            table.toggleRowSelection(resource, true);
+          }
+        });
+        this.$nextTick(() => {
+          this.syncingTableSelection = false;
+        });
+      });
+    },
+    clearSelectedResources(options = {}) {
+      const selectedCount = this.selectedResourcesById.size;
+      this.selectedResourcesById = new Map();
+      this.syncCurrentPageSelection();
+      if (selectedCount > 0 && options.silent !== true) {
+        this.$message({ message: '已清空选择', type: 'success' });
+      }
+    },
+    openMigrationDialog() {
+      if (this.$refs.resourceMigrationDialog) {
+        this.$refs.resourceMigrationDialog.open();
+      }
+    },
+    handleBatchDeleted(result) {
+      const deletedIds = new Set(
+        ((result && result.items) || [])
+          .filter((item) => item && item.recordDeleted)
+          .map((item) => String(item.resourceId))
+      );
+      if (deletedIds.size > 0) {
+        const nextSelection = new Map(this.selectedResourcesById);
+        deletedIds.forEach((id) => nextSelection.delete(id));
+        this.selectedResourcesById = nextSelection;
+      }
+      this.pagination.current = 1;
+      this.getResources();
+    },
+    handleMigrationTaskCreated(task) {
+      if (task && task.scopeType === 'SELECTED') {
+        this.clearSelectedResources({ silent: true });
+      }
+    },
+    handleMigrationTaskFinished(view) {
+      const task = view && view.task ? view.task : null;
+      if (!task) {
+        return;
+      }
+      if (Number(task.successCount) > 0) {
+        this.getResources();
+      }
+    },
     applyRouteQuery() {
       const query = this.$route.query || {};
       const newType = query.resourceType || '';
@@ -775,6 +962,8 @@ export default {
       this.pagination.resourceType = newType;
       this.pagination.searchKey = ((query.search || '') + '').trim();
       this.pagination.current = 1;
+      this.resourceContextLoaded = false;
+      this.updateSelectionContext();
     },
     handleResourcePreviewChange(value) {
       try {
@@ -1294,39 +1483,26 @@ export default {
         this.$set(this.replacePreviewCacheBusters, cacheKey, Date.now());
       }
     },
+    openResourceDetail(item) {
+      if (!item || item.id == null) {
+        this.$message({ message: '资源信息缺失，无法查看详情', type: 'warning' });
+        return;
+      }
+      if (this.$refs.resourceDetailDialog) {
+        this.$refs.resourceDetailDialog.open(item.id);
+      }
+    },
+    handleResourceDetailChanged() {
+      // 副本激活/删除/恢复后，列表中的活动存储、SHA-256 等元数据可能已变化，刷新当前页
+      this.getResources();
+    },
     handleDelete(item) {
-      const isOrphanView = this.pagination.resourceType === 'orphanResource';
-      const confirmMessage = isOrphanView
-        ? '孤儿资源仅通过数据库引用关系检测，可能误报被前端代码、JSON 配置、默认素材占用的文件，也可能包含重新生成图标/封面后遗留的旧版本文件。确认删除“' + (item.path || '') + '”？'
-        : '确认删除资源？';
-      this.$confirm(confirmMessage, isOrphanView ? '注意甄别：孤儿资源删除' : '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: isOrphanView ? 'warning' : 'success',
-        center: true,
-        customClass: 'mobile-responsive-confirm'
-      }).then(() => {
-        this.$http.post(this.$constant.baseURL + '/resource/deleteResource', { path: item.path }, true, false)
-          .then(() => {
-            this.pagination.current = 1;
-            this.getResources();
-            this.$message({
-              message: '删除成功！',
-              type: 'success'
-            });
-          })
-          .catch((error) => {
-            this.$message({
-              message: error.message,
-              type: 'error'
-            });
-          });
-      }).catch(() => {
-        this.$message({
-          type: 'success',
-          message: '已取消删除!'
-        });
-      });
+      const toolbar = this.$refs.resourceBatchToolbar;
+      if (!toolbar) {
+        this.$message({ message: '批量删除组件尚未就绪，请稍后重试', type: 'warning' });
+        return;
+      }
+      toolbar.openDelete([item]);
     },
     downloadResource(item) {
       const url = this.getResourceUrl(item);
@@ -1476,17 +1652,38 @@ export default {
       this.pagination.current = 1;
       this.getResources();
     },
+    applyLoadedResourcePage(records, total, resourceType, searchKeyword) {
+      this.resources = records || [];
+      this.pagination.total = total || 0;
+      this.loadedResourceType = resourceType || '';
+      this.resourceContextLoaded = true;
+      this.selectionContextKey = this.getSelectionContextKey(resourceType, searchKeyword);
+
+      const nextSelection = new Map(this.selectedResourcesById);
+      this.resources.forEach((resource) => {
+        const id = resource && resource.id != null ? String(resource.id) : '';
+        if (id && nextSelection.has(id)) {
+          nextSelection.set(id, resource);
+        }
+      });
+      this.selectedResourcesById = nextSelection;
+      this.syncCurrentPageSelection();
+    },
     getResources() {
+      const requestSequence = ++this.resourceRequestSequence;
+      const requestResourceType = this.pagination.resourceType;
+      const requestSearchKeyword = this.routeSearchKeyword;
+
       // 无效资源走异步检测任务流程，带进度提示
-      if (this.isInvalidResourceType && !this.routeSearchKeyword) {
-        this.startInvalidScan();
+      if (this.isInvalidResourceType && !requestSearchKeyword) {
+        this.startInvalidScan(requestSequence, requestResourceType);
         return;
       }
 
       const requestPagination = {
-        current: this.routeSearchKeyword ? 1 : this.pagination.current,
-        size: this.routeSearchKeyword ? 500 : this.pagination.size,
-        resourceType: this.pagination.resourceType,
+        current: requestSearchKeyword ? 1 : this.pagination.current,
+        size: requestSearchKeyword ? 500 : this.pagination.size,
+        resourceType: requestResourceType,
         searchKey: '',
         order: this.pagination.order,
         desc: this.pagination.desc
@@ -1495,41 +1692,51 @@ export default {
       this.resourcesLoading = true;
       this.$http.post(this.$constant.baseURL + '/resource/listResource', requestPagination, true)
         .then((res) => {
-          if (!this.$common.isEmpty(res.data)) {
-            const records = res.data.records || [];
-            this.resources = records;
-            this.pagination.total = this.routeSearchKeyword
-              ? this.filterResourcesByKeyword(records, this.routeSearchKeyword).length
-              : res.data.total;
+          if (requestSequence !== this.resourceRequestSequence || !res || !res.data) {
+            return;
           }
+          const records = res.data.records || [];
+          const total = requestSearchKeyword
+            ? this.filterResourcesByKeyword(records, requestSearchKeyword).length
+            : res.data.total;
+          this.applyLoadedResourcePage(records, total, requestResourceType, requestSearchKeyword);
         })
         .catch((error) => {
+          if (requestSequence !== this.resourceRequestSequence) {
+            return;
+          }
+          this.resourceContextLoaded = false;
           this.$message({
             message: error.message,
             type: 'error'
           });
         })
         .finally(() => {
-          this.resourcesLoading = false;
+          if (requestSequence === this.resourceRequestSequence) {
+            this.resourcesLoading = false;
+          }
         });
     },
-    startInvalidScan() {
+    startInvalidScan(requestSequence, requestResourceType) {
       // 清理上一次轮询
       this.stopScanPolling();
 
       const payload = {
         current: this.pagination.current,
         size: this.pagination.size,
-        resourceType: this.pagination.resourceType,
+        resourceType: requestResourceType,
         searchKey: '',
         order: this.pagination.order,
         desc: this.pagination.desc
       };
 
       this.resourcesLoading = true;
+      this.resourceContextLoaded = false;
       this.scanTask.active = true;
       this.scanTask.status = 'PENDING';
       this.scanTask.taskId = '';
+      this.scanTask.resourceType = requestResourceType;
+      this.scanTask.requestSequence = requestSequence;
       this.scanTask.total = 0;
       this.scanTask.processed = 0;
       this.scanTask.hitCount = 0;
@@ -1538,6 +1745,10 @@ export default {
 
       this.$http.post(this.$constant.baseURL + '/resource/startInvalidScan', payload, true)
         .then((res) => {
+          if (requestSequence !== this.resourceRequestSequence ||
+            requestSequence !== this.scanTask.requestSequence) {
+            return;
+          }
           if (res && res.data && res.data.taskId) {
             this.scanTask.taskId = res.data.taskId;
             this.scanTask.status = res.data.status || 'PENDING';
@@ -1547,7 +1758,10 @@ export default {
           }
         })
         .catch((error) => {
-          this.finishScanWithError(error.message || '启动检测任务失败');
+          if (requestSequence === this.resourceRequestSequence &&
+            requestSequence === this.scanTask.requestSequence) {
+            this.finishScanWithError(error.message || '启动检测任务失败');
+          }
         });
     },
     startScanPolling() {
@@ -1557,15 +1771,20 @@ export default {
       }, 1000);
     },
     pollScanStatus() {
-      if (!this.scanTask.taskId) {
+      const taskId = this.scanTask.taskId;
+      const requestSequence = this.scanTask.requestSequence;
+      if (!taskId || requestSequence !== this.resourceRequestSequence) {
         this.stopScanPolling();
         return;
       }
       this.$http.get(this.$constant.baseURL + '/resource/scanStatus', {
-        taskId: this.scanTask.taskId
+        taskId
       }, true)
         .then((res) => {
-          if (!res || !res.data) {
+          if (!res || !res.data ||
+            taskId !== this.scanTask.taskId ||
+            requestSequence !== this.resourceRequestSequence ||
+            requestSequence !== this.scanTask.requestSequence) {
             return;
           }
           const data = res.data;
@@ -1580,14 +1799,15 @@ export default {
             this.stopScanPolling();
             this.resourcesLoading = false;
             if (data.status === 'SUCCESS') {
-              // 检测完成，加载结果列表（命中缓存，秒开）
-              this.loadInvalidResourceList();
+              this.loadInvalidResourceList(requestSequence, this.scanTask.resourceType);
             } else if (data.status === 'FAILED') {
+              this.resourceContextLoaded = false;
               this.$message({
                 message: '检测失败：' + (data.errorMessage || '未知错误'),
                 type: 'error'
               });
             } else if (data.status === 'CANCELLED') {
+              this.resourceContextLoaded = false;
               this.$message({
                 message: '检测已取消',
                 type: 'info'
@@ -1599,11 +1819,11 @@ export default {
           // 轮询失败不中断，下次重试
         });
     },
-    loadInvalidResourceList() {
+    loadInvalidResourceList(requestSequence, requestResourceType) {
       const requestPagination = {
-        current: this.routeSearchKeyword ? 1 : this.pagination.current,
-        size: this.routeSearchKeyword ? 500 : this.pagination.size,
-        resourceType: this.pagination.resourceType,
+        current: this.pagination.current,
+        size: this.pagination.size,
+        resourceType: requestResourceType,
         searchKey: '',
         order: this.pagination.order,
         desc: this.pagination.desc
@@ -1611,15 +1831,17 @@ export default {
 
       this.$http.post(this.$constant.baseURL + '/resource/listResource', requestPagination, true)
         .then((res) => {
-          if (!this.$common.isEmpty(res.data)) {
-            const records = res.data.records || [];
-            this.resources = records;
-            this.pagination.total = this.routeSearchKeyword
-              ? this.filterResourcesByKeyword(records, this.routeSearchKeyword).length
-              : res.data.total;
+          if (requestSequence !== this.resourceRequestSequence || !res || !res.data) {
+            return;
           }
+          const records = res.data.records || [];
+          this.applyLoadedResourcePage(records, res.data.total, requestResourceType, '');
         })
         .catch((error) => {
+          if (requestSequence !== this.resourceRequestSequence) {
+            return;
+          }
+          this.resourceContextLoaded = false;
           this.$message({
             message: error.message,
             type: 'error'

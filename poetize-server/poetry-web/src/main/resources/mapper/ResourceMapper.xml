@@ -15,13 +15,14 @@
         <result column="width" property="width"/>
         <result column="height" property="height"/>
         <result column="store_type" property="storeType"/>
+        <result column="storage_key" property="storageKey"/>
         <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
     </resultMap>
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, user_id, type, size, mime_type, resource_hash, original_name, path, width, height, store_type, status, create_time
+        id, user_id, type, size, mime_type, resource_hash, original_name, path, width, height, store_type, storage_key, status, create_time
     </sql>
 
     <sql id="Reference_Column_Selects">
@@ -65,6 +66,47 @@
         UNION ALL SELECT chat_avatar FROM sys_ai_config
         UNION ALL SELECT config_value FROM sys_config
     </sql>
+
+    <select id="countResourceReferences" resultType="int">
+        SELECT COUNT(*)
+        FROM (
+            <include refid="Reference_Column_Selects"/>
+        ) refs
+        WHERE refs.ref_value IS NOT NULL
+          AND refs.ref_value != ''
+          AND (
+              LOCATE(#{path}, refs.ref_value) > 0
+              OR (
+                  LEFT(#{path}, 8) = '/static/'
+                  AND CHAR_LENGTH(#{path}) > 8
+                  AND LOCATE(SUBSTRING(#{path}, 8), refs.ref_value) > 0
+              )
+              OR (
+                  LEFT(#{path}, 8) = '/static/'
+                  AND CHAR_LENGTH(#{path}) > 8
+                  AND LOCATE(SUBSTRING(#{path}, 9), refs.ref_value) > 0
+              )
+              OR (
+                  LEFT(#{path}, 1) != '/'
+                  AND LEFT(#{path}, 2) != '//'
+                  AND LOCATE('://', LOWER(#{path})) = 0
+                  AND LEFT(LOWER(#{path}), 5) NOT IN ('data:', 'blob:')
+                  AND LOCATE(CONCAT('/', #{path}), refs.ref_value) > 0
+              )
+              OR (
+                  LEFT(LOWER(#{path}), 7) = 'http://'
+                  AND CHAR_LENGTH(#{path}) > 7
+                  AND LOCATE('/', SUBSTRING(#{path}, 8)) > 0
+                  AND LOCATE(SUBSTRING(SUBSTRING(#{path}, 8), LOCATE('/', SUBSTRING(#{path}, 8))), refs.ref_value) > 0
+              )
+              OR (
+                  LEFT(LOWER(#{path}), 8) = 'https://'
+                  AND CHAR_LENGTH(#{path}) > 8
+                  AND LOCATE('/', SUBSTRING(#{path}, 9)) > 0
+                  AND LOCATE(SUBSTRING(SUBSTRING(#{path}, 9), LOCATE('/', SUBSTRING(#{path}, 9))), refs.ref_value) > 0
+              )
+          )
+    </select>
 
     <select id="selectOrphanResources" resultMap="BaseResultMap">
         SELECT

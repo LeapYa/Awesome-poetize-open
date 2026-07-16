@@ -142,6 +142,7 @@
         @touchstart="handleTouchStart"
         @touchmove="handleTouchMove"
         @touchend="handleTouchEnd"
+        @touchcancel="handleTouchCancel"
         @selectstart="handleSelectStart"
       >
         <!-- 内容区域 - 行号与内容整合在同一行中 -->
@@ -483,6 +484,10 @@ export default {
     if (this.segmentRenderTimer) {
       clearTimeout(this.segmentRenderTimer);
       this.segmentRenderTimer = null;
+    }
+    if (this._touchLongPressTimer) {
+      clearTimeout(this._touchLongPressTimer);
+      this._touchLongPressTimer = null;
     }
     this.cleanupThemeObserver();
     if (this._onWindowResize) {
@@ -1666,6 +1671,19 @@ export default {
       this._touchMoved = false;
       // 标记当前正处于触摸交互中，用于 handleSelectStart / handleMouseDown 判断
       this._isTouching = true;
+      this._isLongPress = false;
+
+      // 清除之前的长按定时器
+      if (this._touchLongPressTimer) {
+        clearTimeout(this._touchLongPressTimer);
+        this._touchLongPressTimer = null;
+      }
+
+      // 启动长按定时器（600毫秒）
+      this._touchLongPressTimer = setTimeout(() => {
+        this._isLongPress = true;
+        this.handleLongPress(touch.clientX, touch.clientY);
+      }, 600);
     },
 
     /**
@@ -1682,6 +1700,12 @@ export default {
       const dy = touch.clientY - (this._touchStartY || 0);
       if (dx * dx + dy * dy > 64) { // 8px 阈值 (64 = 8²)
         this._touchMoved = true;
+        
+        // 发生位移，取消长按定时器
+        if (this._touchLongPressTimer) {
+          clearTimeout(this._touchLongPressTimer);
+          this._touchLongPressTimer = null;
+        }
       }
     },
 
@@ -1695,8 +1719,24 @@ export default {
      * 来自触摸，从而跳过重复处理。
      */
     handleTouchEnd(e) {
+      // 松开手指，清除长按定时器
+      if (this._touchLongPressTimer) {
+        clearTimeout(this._touchLongPressTimer);
+        this._touchLongPressTimer = null;
+      }
+
       if (this.readonly) {
         this._isTouching = false;
+        return;
+      }
+
+      // 如果已经是长按事件，则阻止轻触/点击的后续逻辑
+      if (this._isLongPress) {
+        this._isLongPress = false;
+        e.preventDefault();
+        setTimeout(() => {
+          this._isTouching = false;
+        }, 50);
         return;
       }
 
@@ -1732,6 +1772,36 @@ export default {
       setTimeout(() => {
         this._isTouching = false;
       }, 50);
+    },
+
+    /**
+     * 处理触摸取消（如电话接入、系统弹窗等中断）
+     */
+    handleTouchCancel(e) {
+      if (this._touchLongPressTimer) {
+        clearTimeout(this._touchLongPressTimer);
+        this._touchLongPressTimer = null;
+      }
+      this._isTouching = false;
+      this._isLongPress = false;
+    },
+
+    /**
+     * 处理移动端长按事件
+     */
+    handleLongPress(clientX, clientY) {
+      const pos = this.getPositionFromEvent({ clientX, clientY });
+      if (pos) {
+        this.focus();
+        this.cursor.setPosition(pos.line, pos.column);
+        
+        // 尝试选中当前单词
+        this.cursor.selectWord();
+        // 如果没有成功选中任何内容（如在空白处长按），则选中整行
+        if (!this.cursor.hasSelection()) {
+          this.cursor.selectLine();
+        }
+      }
     },
 
     /**

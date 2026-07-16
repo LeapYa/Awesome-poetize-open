@@ -47,13 +47,6 @@ public class SecurityFilter extends OncePerRequestFilter {
     // 拉黑时长（小时）
     private static final int BLACKLIST_DURATION_HOURS = 24;
 
-    // 内部服务标识
-    private static final Set<String> INTERNAL_SERVICES = Set.of(
-            "poetize-python",
-            "poetize-java",
-            "poetize-nginx",
-            "resource-availability");
-
     // 明确的恶意扫描路径黑名单
     private static final Set<String> MALICIOUS_PATHS = Set.of(
             "/.env", "/.env.local", "/.env.production",
@@ -106,12 +99,6 @@ public class SecurityFilter extends OncePerRequestFilter {
 
         String requestURI = request.getRequestURI();
         String clientIP = getClientIpAddress(request);
-
-        // 检查是否为内部服务请求，如果是则直接放行
-        if (isInternalServiceRequest(request)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
 
         // 清理过期的拉黑记录和攻击计数
         cleanupExpiredRecords();
@@ -306,25 +293,6 @@ public class SecurityFilter extends OncePerRequestFilter {
                 return true;
             }
         }
-        return false;
-    }
-
-    /**
-     * 检查是否为内部服务请求
-     */
-    private boolean isInternalServiceRequest(HttpServletRequest request) {
-        String internalService = request.getHeader("X-Internal-Service");
-
-        if (internalService != null) {
-            if (INTERNAL_SERVICES.contains(internalService)) {
-                return true;
-            } else {
-                // 记录未知的内部服务标识，可能是恶意伪造
-                log.warn("检测到未知的内部服务标识: {}, URI: {}, IP: {}",
-                        internalService, request.getRequestURI(), getClientIpAddress(request));
-            }
-        }
-
         return false;
     }
 

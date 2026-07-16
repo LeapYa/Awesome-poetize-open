@@ -7,10 +7,7 @@ import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.ai.AiImageService;
 import com.ld.poetry.service.ai.rag.RagSyncService;
-import com.ld.poetry.utils.DockerNetworkUtil;
-import com.ld.poetry.utils.PoetryUtil;
 import jakarta.validation.Valid;
-import jakarta.servlet.http.HttpServletRequest;
 // Swagger注解已禁用，改为普通注释
 // import io.swagger.v3.oas.annotations.Operation;
 // import io.swagger.v3.oas.annotations.Parameter;
@@ -67,49 +64,9 @@ public class SysAiConfigController {
     @GetMapping("/chat/getStreamingConfig")
     public PoetryResult<Map<String, Object>> getStreamingConfig(
             @RequestParam(defaultValue = "default") String configName) {
-        
+
         Map<String, Object> result = sysAiConfigService.getStreamingConfig(configName);
         return PoetryResult.success(result);
-    }
-
-    /**
-     * 获取AI聊天配置（内部服务用，API密钥完整未脱敏）
-     * 仅供Python等内部服务调用，不对外开放
-     * 安全验证：IP地址必须在Docker内部网络 + 请求头验证
-     */
-    @GetMapping("/chat/getInternal")
-    public PoetryResult<SysAiConfig> getAiChatConfigInternal(
-            @RequestParam(defaultValue = "default") String configName,
-            @RequestHeader(value = "X-Internal-Service", required = false) String internalService,
-            HttpServletRequest request) {
-        
-        // 双重安全检查
-        String clientIp = PoetryUtil.getIpAddr(request);
-        
-        // 1. 验证IP是否在允许范围（Docker内网 + 本地环回）
-        boolean isLocalhost = "127.0.0.1".equals(clientIp) || "localhost".equals(clientIp) || "::1".equals(clientIp);
-        boolean isInDockerNetwork = DockerNetworkUtil.isInDockerNetwork(clientIp);
-        
-        if (!isLocalhost && !isInDockerNetwork) {
-            log.warn("拒绝非内部网络的getInternal请求，IP: {}", clientIp);
-            return PoetryResult.fail("权限不足");
-        }
-        
-        // 2. 验证服务名是否受信任
-        if (!DockerNetworkUtil.isTrustedService(internalService)) {
-            log.warn("拒绝非受信任服务的getInternal请求，服务名: {}, IP: {}", internalService, clientIp);
-            return PoetryResult.fail("权限不足");
-        }
-        
-        log.info("内部服务请求验证通过: 服务={}, IP={}", internalService, clientIp);
-        
-        SysAiConfig config = sysAiConfigService.getAiChatConfigInternal(configName);
-        
-        if (config == null) {
-            return PoetryResult.fail("配置不存在");
-        }
-        
-        return PoetryResult.success(config);
     }
 
     /**
@@ -257,49 +214,6 @@ public class SysAiConfigController {
         }
         
         return PoetryResult.success(config);
-    }
-
-    /**
-     * 获取文章AI助手配置（内部服务用，API密钥完整未脱敏）
-     * 仅供Python等内部服务调用
-     * 安全验证：IP地址必须在Docker内部网络 + 请求头验证
-     */
-    @GetMapping("/articleAi/getInternal")
-    public PoetryResult<Map<String, Object>> getArticleAiConfigInternal(
-            @RequestParam(defaultValue = "default") String configName,
-            @RequestHeader(value = "X-Internal-Service", required = false) String internalService,
-            HttpServletRequest request) {
-        
-        // 双重安全检查
-        String clientIp = PoetryUtil.getIpAddr(request);
-        
-        // 1. 验证IP是否在允许范围（Docker内网 + 本地环回）
-        boolean isLocalhost = "127.0.0.1".equals(clientIp) || "localhost".equals(clientIp) || "::1".equals(clientIp);
-        boolean isInDockerNetwork = DockerNetworkUtil.isInDockerNetwork(clientIp);
-        
-        if (!isLocalhost && !isInDockerNetwork) {
-            log.warn("拒绝非内部网络的getInternal请求，IP: {}", clientIp);
-            return PoetryResult.fail("权限不足");
-        }
-        
-        // 2. 验证服务名是否受信任
-        if (!DockerNetworkUtil.isTrustedService(internalService)) {
-            log.warn("拒绝非受信任服务的getInternal请求，服务名: {}, IP: {}", internalService, clientIp);
-            return PoetryResult.fail("权限不足");
-        }
-        
-        log.info("内部服务请求验证通过: 服务={}, IP={}", internalService, clientIp);
-        
-        SysAiConfig config = sysAiConfigService.getArticleAiConfigInternal(configName);
-        
-        if (config == null) {
-            return PoetryResult.fail("配置不存在");
-        }
-        
-        // 将JSON字符串字段解析为对象，方便Python使用
-        Map<String, Object> result = sysAiConfigService.convertConfigToMap(config);
-        
-        return PoetryResult.success(result);
     }
 
     /**

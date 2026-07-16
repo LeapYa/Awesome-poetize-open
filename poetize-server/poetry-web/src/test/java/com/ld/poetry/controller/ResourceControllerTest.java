@@ -1,16 +1,21 @@
 package com.ld.poetry.controller;
 
+import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ld.poetry.config.AsyncUserContext;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourceMapper;
 import com.ld.poetry.entity.Resource;
+import com.ld.poetry.entity.User;
+import com.ld.poetry.service.ManagedResourceUploadService;
 import com.ld.poetry.service.ResourceAvailabilityService;
+import com.ld.poetry.service.ResourceLocationService;
 import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.utils.security.FileSecurityValidator;
-import com.ld.poetry.utils.storage.FileStorageService;
 import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.FileVO;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,7 +48,10 @@ class ResourceControllerTest {
     private ResourceAvailabilityService resourceAvailabilityService;
 
     @Mock
-    private FileStorageService fileStorageService;
+    private ManagedResourceUploadService managedResourceUploadService;
+
+    @Mock
+    private ResourceLocationService resourceLocationService;
 
     @Mock
     private FileSecurityValidator fileSecurityValidator;
@@ -56,8 +64,14 @@ class ResourceControllerTest {
         ReflectionTestUtils.setField(controller, "resourceService", resourceService);
         ReflectionTestUtils.setField(controller, "resourceMapper", resourceMapper);
         ReflectionTestUtils.setField(controller, "resourceAvailabilityService", resourceAvailabilityService);
-        ReflectionTestUtils.setField(controller, "fileStorageService", fileStorageService);
+        ReflectionTestUtils.setField(controller, "managedResourceUploadService", managedResourceUploadService);
+        ReflectionTestUtils.setField(controller, "resourceLocationService", resourceLocationService);
         ReflectionTestUtils.setField(controller, "fileSecurityValidator", fileSecurityValidator);
+    }
+
+    @AfterEach
+    void tearDown() {
+        AsyncUserContext.clear();
     }
 
     @Test
@@ -154,7 +168,7 @@ class ResourceControllerTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).contains("无效资源是筛选视图");
         verifyNoInteractions(fileSecurityValidator);
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(managedResourceUploadService);
     }
 
     @Test
@@ -169,7 +183,7 @@ class ResourceControllerTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).contains("无效资源是筛选视图");
         verifyNoInteractions(fileSecurityValidator);
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(managedResourceUploadService);
     }
 
     @Test
@@ -187,6 +201,89 @@ class ResourceControllerTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).contains("图片安全校验失败").contains("SVG");
         verify(fileSecurityValidator).validateFile(file, "preview.svg", "image/svg+xml");
-        verifyNoInteractions(fileStorageService);
+        verifyNoInteractions(managedResourceUploadService);
+    }
+
+    @Test
+    void saveResourceShouldOnlyUpdateLogicalMetadataForStablePath() {
+        User user = new User();
+        user.setId(7);
+        AsyncUserContext.setUser(user);
+
+        Resource resource = new Resource();
+        resource.setPath("/media/public-id");
+        resource.setType("articleCover");
+        resource.setOriginalName("cover.png");
+        resource.setResourceHash("untrusted-client-hash");
+        resource.setStoreType("untrusted-store");
+        resource.setStorageKey("untrusted-key");
+
+        PoetryResult<?> result = controller.saveResource(resource);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(resourceLocationService).updateStableMetadata(
+                "/media/public-id",
+                7,
+                "articleCover",
+                "cover.png"
+        );
+        verifyNoInteractions(resourceService);
+        verifyNoInteractions(managedResourceUploadService);
+    }
+
+    /**
+     * 处于 DELETION_PENDING 状态的资源禁止重新启用。
+     * 控制器通过 CAS 条件 (content_state != DELETION_PENDING) 实现：当资源正处于
+     * DELETION_PENDING 时，update 返回 false，控制器据此拒绝并返回"正在删除"提示。
+     */
+    @Test
+    void changeResourceStatusShouldRejectEnablingDeletionPendingResource() {
+        LambdaUpdateChainWrapper<Resource> chain = org.mockito.Mockito.mock(LambdaUpdateChainWrapper.class);
+        when(resourceService.lambdaUpdate()).thenReturn(chain);
+        when(chain.eq(any(), any())).thenReturn(chain);
+        when(chain.and(any())).thenReturn(chain);
+        when(chain.set(any(), any())).thenReturn(chain);
+        // CAS 条件不满足（content_state == DELETION_PENDING），update 命中 0 行返回 false
+        when(chain.update()).thenReturn(false);
+
+        PoetryResult<?> result = controller.changeResourceStatus(1, true);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("正在删除");
+    }
+
+    /**
+     * 非 DELETION_PENDING 资源允许重新启用：CAS 命中 1 行返回 true。
+     */
+    @Test
+    void changeResourceStatusShouldAllowEnablingActiveResource() {
+        LambdaUpdateChainWrapper<Resource> chain = org.mockito.Mockito.mock(LambdaUpdateChainWrapper.class);
+        when(resourceService.lambdaUpdate()).thenReturn(chain);
+        when(chain.eq(any(), any())).thenReturn(chain);
+        when(chain.and(any())).thenReturn(chain);
+        when(chain.set(any(), any())).thenReturn(chain);
+        when(chain.update()).thenReturn(true);
+
+        PoetryResult<?> result = controller.changeResourceStatus(1, true);
+
+        assertThat(result.isSuccess()).isTrue();
+    }
+
+    /**
+     * 禁用资源（flag=false）不检查 DELETION_PENDING，直接更新 status=false。
+     */
+    @Test
+    void changeResourceStatusShouldDisableWithoutCheckingContentState() {
+        LambdaUpdateChainWrapper<Resource> chain = org.mockito.Mockito.mock(LambdaUpdateChainWrapper.class);
+        when(resourceService.lambdaUpdate()).thenReturn(chain);
+        when(chain.eq(any(), any())).thenReturn(chain);
+        when(chain.set(any(), any())).thenReturn(chain);
+        when(chain.update()).thenReturn(true);
+
+        PoetryResult<?> result = controller.changeResourceStatus(1, false);
+
+        assertThat(result.isSuccess()).isTrue();
+        // 禁用路径不应调用 .and() 条件（只有启用才检查 DELETION_PENDING）
+        org.mockito.Mockito.verify(chain, org.mockito.Mockito.never()).and(any());
     }
 }

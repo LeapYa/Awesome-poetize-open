@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-07-12
+## 修改时间: 2026-07-14
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.13.3
+## 版本: 1.13.4
 
 # 定义颜色
 RED='\033[0;31m'
@@ -14680,11 +14680,10 @@ edit_nginx_config() {
         printf "${CYAN}────────────────────────────────────────────────────────────────${NC}\n"
         printf "  ${YELLOW}[1]${NC} /etc/nginx/conf.d/default.conf            (主站点虚拟主机配置)\n"
         printf "  ${YELLOW}[2]${NC} /etc/nginx/nginx.conf                     (Nginx 全局配置文件)\n"
-        printf "  ${YELLOW}[3]${NC} /etc/nginx/security/spoofed-ip-headers.conf(防伪造 IP 头配置)\n"
         printf "  ${YELLOW}[0]${NC} 返回上一级\n"
         printf "\n"
 
-        read -rp "请选择要编辑的容器内文件 [0-3]: " edit_choice
+        read -rp "请选择要编辑的容器内文件 [0-2]: " edit_choice
         local container_file=""
         local host_file=""
 
@@ -14696,10 +14695,6 @@ edit_nginx_config() {
             2)
                 container_file="/etc/nginx/nginx.conf"
                 host_file="docker/nginx/nginx.conf"
-                ;;
-            3)
-                container_file="/etc/nginx/security/spoofed-ip-headers.conf"
-                host_file="docker/nginx/spoofed-ip-headers.conf"
                 ;;
             0) return 0 ;;
             *)
@@ -17077,18 +17072,16 @@ edit_nginx_config() {
         printf "  ${YELLOW}[2]${NC} default.http.conf       (HTTP 配置模板)\n"
         printf "  ${YELLOW}[3]${NC} default.https.conf      (HTTPS 配置模板)\n"
         printf "  ${YELLOW}[4]${NC} nginx.conf              (Nginx 全局配置文件)\n"
-        printf "  ${YELLOW}[5]${NC} spoofed-ip-headers.conf (防伪造 IP 头配置)\n"
         printf "  ${YELLOW}[0]${NC} 返回上一级\n"
         printf "\n"
 
-        read -rp "请选择要编辑的文件 [0-5]: " edit_choice
+        read -rp "请选择要编辑的文件 [0-4]: " edit_choice
         local target_file=""
         case "$edit_choice" in
             1) target_file="$config_dir/default.conf" ;;
             2) target_file="$config_dir/default.http.conf" ;;
             3) target_file="$config_dir/default.https.conf" ;;
             4) target_file="$config_dir/nginx.conf" ;;
-            5) target_file="$config_dir/spoofed-ip-headers.conf" ;;
             0) return 0 ;;
             *)
                 warning "无效的编号，请重新选择"

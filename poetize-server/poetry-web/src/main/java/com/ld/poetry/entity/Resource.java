@@ -32,6 +32,12 @@ public class Resource implements Serializable {
     private Integer id;
 
     /**
+     * 稳定资源公开ID，物理存储迁移时保持不变
+     */
+    @TableField("public_id")
+    private String publicId;
+
+    /**
      * 用户ID
      */
     @TableField("user_id")
@@ -56,6 +62,24 @@ public class Resource implements Serializable {
     private String storeType;
 
     /**
+     * 存储平台对象键，用于校验和删除远端文件
+     */
+    @TableField("storage_key")
+    private String storageKey;
+
+    /**
+     * 当前活动物理副本ID
+     */
+    @TableField("active_location_id")
+    private Long activeLocationId;
+
+    /**
+     * 活动副本乐观锁版本
+     */
+    @TableField("location_version")
+    private Integer locationVersion;
+
+    /**
      * 资源路径
      */
     @TableField("path")
@@ -74,10 +98,28 @@ public class Resource implements Serializable {
     private String mimeType;
 
     /**
+     * 内容可用状态；待替换时禁止读取、迁移和活动副本切换
+     */
+    @TableField("content_state")
+    private String contentState;
+
+    /**
      * 资源内容哈希（SHA-256）
      */
     @TableField("resource_hash")
     private String resourceHash;
+
+    /**
+     * 内容哈希来源，例如 UPLOAD、LEGACY_ADOPTION、MIGRATION_VERIFY
+     */
+    @TableField("hash_source")
+    private String hashSource;
+
+    /**
+     * 内容哈希最近严格校验时间
+     */
+    @TableField("hash_verified_at")
+    private LocalDateTime hashVerifiedAt;
 
     /**
      * 文件名称

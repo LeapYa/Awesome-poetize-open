@@ -205,11 +205,10 @@ COPY --from=builder /usr/src/ip2region/data/ip2region_v4.xdb /usr/local/openrest
 COPY --from=builder /usr/src/ip2region/data/ip2region_v6.xdb /usr/local/openresty/xdb/ip2region_v6.xdb
 
 # 创建配置目录和 Lua 脚本目录
-RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d /usr/local/openresty/nginx/conf/security /usr/local/openresty/nginx/lua
+RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d /usr/local/openresty/nginx/lua
 
 # 复制自定义配置
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
-COPY spoofed-ip-headers.conf /usr/local/openresty/nginx/conf/security/spoofed-ip-headers.conf
 
 # 复制 Lua 脚本（IP 黑名单检查，依赖 OpenResty 自带的 lua-resty-redis）
 COPY lua/ /usr/local/openresty/nginx/lua/

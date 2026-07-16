@@ -1,13 +1,10 @@
 package com.ld.poetry.utils.storage;
 
-import com.ld.poetry.entity.Resource;
 import com.ld.poetry.handle.PoetryRuntimeException;
-import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.vo.FileVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -17,7 +14,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -29,13 +25,16 @@ import java.util.Map;
 public class LskyUtil implements StoreService {
 
     @Autowired
-    private ResourceService resourceService;
-
-    @Autowired
     private SysConfigService sysConfigService;
 
     @Autowired
     private RestTemplate restTemplate;
+
+    @Autowired
+    private RemoteStorageVerifier remoteStorageVerifier;
+
+    @Autowired
+    private TrustedRemoteStorageReader trustedRemoteStorageReader;
 
     private String getUrl() {
         return sysConfigService.getConfigValueByKey("lsky.url");
@@ -49,66 +48,62 @@ public class LskyUtil implements StoreService {
         return sysConfigService.getConfigValueByKey("lsky.strategy_id");
     }
 
+    private String getDownloadHosts() {
+        return sysConfigService.getConfigValueByKey("lsky.download_hosts");
+    }
+
     private boolean isEnabled() {
         String enable = sysConfigService.getConfigValueByKey("lsky.enable");
         return "true".equalsIgnoreCase(enable);
     }
 
     @Override
-    public void deleteFile(List<String> files) {
+    public List<StorageDeleteResult> deleteFiles(List<StorageResourceRef> resources) {
         if (!isEnabled()) {
-            log.warn("兰空图床未启用，忽略删除操作");
-            return;
+            return resources == null ? List.of() : resources.stream()
+                    .map(resource -> StorageDeleteResult.failed(resource, "兰空图床未启用"))
+                    .toList();
+        }
+        if (CollectionUtils.isEmpty(resources)) {
+            return List.of();
         }
 
-        if (CollectionUtils.isEmpty(files)) {
-            return;
-        }
-
-        for (String filePath : files) {
-            try {
-                // 尝试从数据库中获取图片密钥
-                Resource resource = resourceService.lambdaQuery()
-                        .eq(Resource::getPath, filePath)
-                        .eq(Resource::getStoreType, StoreEnum.LSKY.getCode())
-                        .one();
-                
-                if (resource != null && resource.getOriginalName() != null) {
-                    // 从originalName中提取key
-                    String key = resource.getOriginalName();
-                    
-                    HttpHeaders headers = new HttpHeaders();
-                    headers.set("Authorization", "Bearer " + getToken());
-                    headers.set("Accept", "application/json");
-                    
-                    HttpEntity<String> entity = new HttpEntity<>(headers);
-                    
-                    // 删除图片
-                    ResponseEntity<Map> response = restTemplate.exchange(
-                            getUrl() + "/images/" + key,
-                            HttpMethod.DELETE,
-                            entity,
-                            Map.class
-                    );
-                    
-                    if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                        Map<String, Object> responseData = response.getBody();
-                        if (Boolean.TRUE.equals(responseData.get("status"))) {
-                            log.info("兰空图床文件删除成功：" + filePath);
-                            resourceService.lambdaUpdate().eq(Resource::getPath, filePath).remove();
-                        } else {
-                            log.error("兰空图床文件删除失败：" + filePath + "，原因：" + responseData.get("message"));
-                        }
-                    } else {
-                        log.error("兰空图床文件删除失败，HTTP状态码：" + response.getStatusCode());
-                    }
-                } else {
-                    log.error("未找到兰空图床图片记录或密钥：" + filePath);
-                }
-            } catch (Exception e) {
-                log.error("兰空图床文件删除异常：" + filePath, e);
+        return resources.stream().map(resource -> {
+            String key = StringUtils.hasText(resource.storageKey())
+                    ? resource.storageKey()
+                    : resource.originalName();
+            if (!StringUtils.hasText(key)) {
+                return StorageDeleteResult.failed(resource, "缺少兰空图床图片 key");
             }
-        }
+
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + getToken());
+                headers.set("Accept", "application/json");
+                HttpEntity<String> entity = new HttpEntity<>(headers);
+                ResponseEntity<Map> response = restTemplate.exchange(
+                        getUrl() + "/images/" + key,
+                        HttpMethod.DELETE,
+                        entity,
+                        Map.class
+                );
+                Map<String, Object> responseData = response.getBody();
+                if (response.getStatusCode().is2xxSuccessful()
+                        && responseData != null
+                        && Boolean.TRUE.equals(responseData.get("status"))) {
+                    return StorageDeleteResult.deleted(resource);
+                }
+                String message = responseData == null
+                        ? "兰空图床返回空响应"
+                        : String.valueOf(responseData.get("message"));
+                return StorageDeleteResult.failed(resource, message);
+            } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+                return StorageDeleteResult.missing(resource);
+            } catch (Exception e) {
+                log.error("兰空图床文件删除异常：{}", resource.path(), e);
+                return StorageDeleteResult.failed(resource, e.getMessage());
+            }
+        }).toList();
     }
 
     @Override
@@ -126,15 +121,9 @@ public class LskyUtil implements StoreService {
             headers.set("Accept", "application/json");
             
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            
-            // 添加文件
-            ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
-                @Override
-                public String getFilename() {
-                    return file.getOriginalFilename();
-                }
-            };
-            body.add("file", fileResource);
+
+            // 添加文件（流式上传，避免大图全量读入内存）
+            body.add("file", file.getResource());
             
             // 添加存储策略ID（如果有）
             String strategyId = getStrategyId();
@@ -163,13 +152,11 @@ public class LskyUtil implements StoreService {
                         Map<String, Object> links = (Map<String, Object>) responseData.get("links");
                         String imageUrl = (String) links.get("url");
                         
-                        FileVO result = new FileVO();
-                        result.setAbsolutePath(imageUrl);
-                        result.setVisitPath(imageUrl);
-                        // 将key存储在originalName中，用于后续删除
-                        fileVO.setOriginalName(key);
-                        
-                        return result;
+                        fileVO.setAbsolutePath(imageUrl);
+                        fileVO.setVisitPath(imageUrl);
+                        fileVO.setStoreType(StoreEnum.LSKY.getCode());
+                        fileVO.setStorageKey(key);
+                        return fileVO;
                     }
                 } else {
                     throw new PoetryRuntimeException("兰空图床上传失败：" + responseBody.get("message"));
@@ -177,13 +164,72 @@ public class LskyUtil implements StoreService {
             }
             
             throw new PoetryRuntimeException("兰空图床上传失败，请检查网络或API配置");
-        } catch (IOException e) {
-            log.error("兰空图床上传IO异常", e);
-            throw new PoetryRuntimeException("兰空图床上传IO异常：" + e.getMessage());
         } catch (Exception e) {
             log.error("兰空图床上传异常", e);
             throw new PoetryRuntimeException("兰空图床上传异常：" + e.getMessage());
         }
+    }
+
+    @Override
+    public StorageReadHandle openRead(StorageResourceRef resource, long maxBytes) {
+        if (!isEnabled()) {
+            throw new IllegalStateException("兰空图床未启用");
+        }
+        return trustedRemoteStorageReader.open(
+                resource.path(),
+                trustedRemoteStorageReader.parseTrustedHosts(getUrl(), getDownloadHosts()),
+                maxBytes
+        );
+    }
+
+    @Override
+    public StorageRangeReadHandle openReadRange(StorageResourceRef resource,
+                                                long startInclusive,
+                                                long endInclusive) {
+        if (!isEnabled()) {
+            throw new IllegalStateException("兰空图床未启用");
+        }
+        return trustedRemoteStorageReader.openRange(
+                resource.path(),
+                trustedRemoteStorageReader.parseTrustedHosts(getUrl(), getDownloadHosts()),
+                startInclusive,
+                endInclusive
+        );
+    }
+
+    @Override
+    public StorageClientAccess resolveClientAccess(StorageResourceRef resource) {
+        if (!isEnabled() || !isPublicAccessPathTrusted(resource.path())) {
+            return null;
+        }
+        return new StorageClientAccess(resource.path(), 60, false);
+    }
+
+    @Override
+    public StorageVerificationResult verify(StorageResourceRef resource) {
+        return remoteStorageVerifier.verify(
+                resource,
+                trustedRemoteStorageReader.parseTrustedHosts(getUrl(), getDownloadHosts())
+        );
+    }
+
+    @Override
+    public StorageCapability getCapability() {
+        boolean enabled = isEnabled();
+        boolean readable = enabled
+                && !trustedRemoteStorageReader.parseTrustedHosts(getUrl(), getDownloadHosts()).isEmpty();
+        return new StorageCapability(
+                StoreEnum.LSKY.getCode(), enabled, readable, true, true, true,
+                0, List.of("image/")
+        );
+    }
+
+    @Override
+    public boolean isPublicAccessPathTrusted(String accessPath) {
+        return trustedRemoteStorageReader.isTrustedPublicUrl(
+                accessPath,
+                trustedRemoteStorageReader.parseTrustedHosts(getUrl(), getDownloadHosts())
+        );
     }
 
     @Override

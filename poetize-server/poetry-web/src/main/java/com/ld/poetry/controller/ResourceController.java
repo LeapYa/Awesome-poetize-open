@@ -7,16 +7,20 @@ import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
+import com.ld.poetry.controller.dto.ResourceBatchDeleteRequest;
+import com.ld.poetry.controller.dto.ResourceBatchDeleteResult;
 import com.ld.poetry.dao.ResourceMapper;
 import com.ld.poetry.entity.Resource;
 import com.ld.poetry.enums.PoetryEnum;
+import com.ld.poetry.enums.ResourceContentState;
+import com.ld.poetry.service.ManagedResourceUploadService;
 import com.ld.poetry.service.ResourceAvailabilityService;
+import com.ld.poetry.service.ResourceBatchDeleteService;
+import com.ld.poetry.service.ResourceLocationService;
 import com.ld.poetry.service.ResourceReplaceService;
 import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.service.ResourceThumbnailService;
-import com.ld.poetry.utils.storage.StoreService;
 import com.ld.poetry.utils.*;
-import com.ld.poetry.utils.storage.FileStorageService;
 import com.ld.poetry.utils.storage.StoreEnum;
 import com.ld.poetry.utils.image.ImageCompressUtil;
 import com.ld.poetry.utils.image.IcoConvertUtil;
@@ -129,13 +133,19 @@ public class ResourceController {
     private ResourceAvailabilityService resourceAvailabilityService;
 
     @Autowired
+    private ResourceBatchDeleteService resourceBatchDeleteService;
+
+    @Autowired
     private ResourceReplaceService resourceReplaceService;
 
     @Autowired
     private ResourceThumbnailService resourceThumbnailService;
 
     @Autowired
-    private FileStorageService fileStorageService;
+    private ManagedResourceUploadService managedResourceUploadService;
+
+    @Autowired
+    private ResourceLocationService resourceLocationService;
 
     @Autowired
     private FileSecurityValidator fileSecurityValidator;
@@ -159,7 +169,21 @@ public class ResourceController {
         if (isResourceFilterType(resource.getType())) {
             return PoetryResult.fail(resourceFilterTypeName(resource.getType()) + "是筛选视图，不能作为资源类型保存！");
         }
-        
+        if (resource.getPath().startsWith("/media/")) {
+            try {
+                resourceLocationService.updateStableMetadata(
+                        resource.getPath(),
+                        PoetryUtil.getUserIdRequired(),
+                        resource.getType(),
+                        resource.getOriginalName()
+                );
+                return PoetryResult.success();
+            } catch (Exception e) {
+                log.error("更新稳定资源逻辑元数据失败: path={}", resource.getPath(), e);
+                return PoetryResult.fail("保存资源信息失败: " + e.getMessage());
+            }
+        }
+
         // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
         if (resource.getSize() != null && resource.getSize() > Integer.MAX_VALUE) {
             log.error("资源大小超过系统限制: {} bytes, 最大允许: {} bytes", resource.getSize(), Integer.MAX_VALUE);
@@ -174,6 +198,7 @@ public class ResourceController {
         re.setMimeType(resource.getMimeType());
         re.setResourceHash(resource.getResourceHash());
         re.setStoreType(resource.getStoreType());
+        re.setStorageKey(resource.getStorageKey());
         re.setUserId(PoetryUtil.getUserId());
         
         try {
@@ -190,6 +215,7 @@ public class ResourceController {
                 existingResource.setMimeType(resource.getMimeType());
                 existingResource.setResourceHash(resource.getResourceHash());
                 existingResource.setStoreType(resource.getStoreType());
+                existingResource.setStorageKey(resource.getStorageKey());
                 existingResource.setUserId(PoetryUtil.getUserId());
                 resourceService.updateById(existingResource);
             } else {
@@ -209,7 +235,6 @@ public class ResourceController {
      */
     @PostMapping("/upload")
     @LoginCheck
-    @Transactional(rollbackFor = Exception.class)
     @AuditLog(action = "RESOURCE_UPLOAD", targetType = "RESOURCE", targetIdParam = "relativePath", summary = "上传资源")
     public synchronized PoetryResult<String> upload(@RequestParam("file") MultipartFile file, FileVO fileVO) {
         if (file == null || !StringUtils.hasText(fileVO.getType()) || !StringUtils.hasText(fileVO.getRelativePath())) {
@@ -331,54 +356,9 @@ public class ResourceController {
             }
 
             fileVO.setFile(processedFile);
-            StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
-            FileVO result = storeService.saveFile(fileVO);
-            if (Boolean.TRUE.equals(result.getReuseExistingResource())) {
-                return PoetryResult.success(result.getVisitPath());
-            }
-            // log.info("文件上传成功 - 路径: {}", result.getVisitPath());
-
-            Resource re = new Resource();
-            re.setPath(result.getVisitPath());
-            re.setType(fileVO.getType());
-            re.setSize(Integer.valueOf(Long.toString(fileSize)));
-            re.setMimeType(processedFile.getContentType());
-            re.setResourceHash(result.getResourceHash());
-            re.setStoreType(result.getStoreType());
-            re.setOriginalName(fileVO.getOriginalName());
-            re.setUserId(PoetryUtil.getUserId());
-            // 读取图片宽高并写入资源记录
-            int[] dims = readImageDimensions(processedFile.getBytes());
-            if (dims != null) {
-                re.setWidth(dims[0]);
-                re.setHeight(dims[1]);
-            }
-
-            // 先查询是否已存在相同路径的资源
-            Resource existingResource = resourceService.lambdaQuery()
-                .eq(Resource::getPath, result.getVisitPath())
-                .one();
-            
-            if (existingResource != null) {
-                // 如果存在，更新资源信息
-                existingResource.setType(fileVO.getType());
-                existingResource.setSize(Integer.valueOf(Long.toString(fileSize)));
-                existingResource.setOriginalName(fileVO.getOriginalName());
-                existingResource.setMimeType(processedFile.getContentType());
-                existingResource.setResourceHash(result.getResourceHash());
-                existingResource.setStoreType(result.getStoreType());
-                existingResource.setUserId(PoetryUtil.getUserId());
-                if (dims != null) {
-                    existingResource.setWidth(dims[0]);
-                    existingResource.setHeight(dims[1]);
-                }
-                resourceService.updateById(existingResource);
-            } else {
-                // 不存在则保存新记录
-                resourceService.save(re);
-            }
-            
-            return PoetryResult.success(result.getVisitPath());
+            ManagedResourceUploadService.ManagedUploadResult result =
+                    managedResourceUploadService.upload(fileVO, PoetryUtil.getUserIdRequired());
+            return PoetryResult.success(result.stablePath());
             
         } catch (Exception e) {
             log.error("文件上传失败: {}", e.getMessage(), e);
@@ -391,7 +371,6 @@ public class ResourceController {
      */
     @PostMapping("/uploadImageWithCompress")
     @LoginCheck
-    @Transactional(rollbackFor = Exception.class)
     @AuditLog(action = "RESOURCE_IMAGE_UPLOAD", targetType = "RESOURCE", targetIdParam = "relativePath", summary = "上传压缩图片")
     public synchronized PoetryResult<Object> uploadImageWithCompress(
             @RequestParam("file") MultipartFile file,
@@ -454,60 +433,19 @@ public class ResourceController {
             }
 
             fileVO.setFile(compressedFile);
-            StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
-            FileVO result = storeService.saveFile(fileVO);
+            ManagedResourceUploadService.ManagedUploadResult result =
+                    managedResourceUploadService.upload(fileVO, PoetryUtil.getUserIdRequired());
 
-            if (Boolean.TRUE.equals(result.getReuseExistingResource())) {
-                return PoetryResult.success(new Object() {
-                    public final String visitPath = result.getVisitPath();
-                    public final long originalSize = compressResult.getOriginalSize();
-                    public final long compressedSize = compressResult.getCompressedSize();
-                    public final double compressionRatio = compressResult.getCompressionRatio();
-                    public final String contentType = compressResult.getContentType();
-                    public final boolean reused = true;
-                });
-            }
+            log.info("智能压缩上传成功 - 路径: {}, 压缩率: {:.1f}%",
+                    result.stablePath(), compressResult.getCompressionRatio());
 
-            Resource re = new Resource();
-            re.setPath(result.getVisitPath());
-            re.setType(fileVO.getType());
-            re.setSize(Integer.valueOf(Long.toString(fileSize)));
-            re.setMimeType(compressedFile.getContentType());
-            re.setResourceHash(result.getResourceHash());
-            re.setStoreType(result.getStoreType());
-            re.setOriginalName(fileVO.getOriginalName());
-            re.setUserId(PoetryUtil.getUserId());
-            
-            // 先查询是否已存在相同路径的资源
-            Resource existingResource = resourceService.lambdaQuery()
-                .eq(Resource::getPath, result.getVisitPath())
-                .one();
-            
-            if (existingResource != null) {
-                // 如果存在，更新资源信息
-                existingResource.setType(fileVO.getType());
-                existingResource.setSize(Integer.valueOf(Long.toString(fileSize)));
-                existingResource.setOriginalName(fileVO.getOriginalName());
-                existingResource.setMimeType(compressedFile.getContentType());
-                existingResource.setResourceHash(result.getResourceHash());
-                existingResource.setStoreType(result.getStoreType());
-                existingResource.setUserId(PoetryUtil.getUserId());
-                resourceService.updateById(existingResource);
-            } else {
-                // 不存在则保存新记录
-            resourceService.save(re);
-            }
-
-            log.info("智能压缩上传成功 - 路径: {}, 压缩率: {:.1f}%", 
-                    result.getVisitPath(), compressResult.getCompressionRatio());
-
-            // 返回详细的压缩信息
             return PoetryResult.success(new Object() {
-                public final String visitPath = result.getVisitPath();
+                public final String visitPath = result.stablePath();
                 public final long originalSize = compressResult.getOriginalSize();
                 public final long compressedSize = compressResult.getCompressedSize();
                 public final double compressionRatio = compressResult.getCompressionRatio();
                 public final String contentType = compressResult.getContentType();
+                public final boolean reused = result.reused();
             });
             
         } catch (Exception e) {
@@ -559,11 +497,11 @@ public class ResourceController {
             fileVO.setRelativePath("waifu_previews/" + fileName);
             fileVO.setOriginalName(originalFilename);
             
-            StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
-            FileVO result = storeService.saveFile(fileVO);
-            
-            log.info("看板娘预览图上传成功: {}", result.getVisitPath());
-            return PoetryResult.success(result.getVisitPath());
+            ManagedResourceUploadService.ManagedUploadResult result =
+                    managedResourceUploadService.upload(fileVO, PoetryUtil.getUserIdRequired());
+
+            log.info("看板娘预览图上传成功: {}", result.stablePath());
+            return PoetryResult.success(result.stablePath());
             
         } catch (Exception e) {
             log.error("看板娘预览图上传失败: {}", e.getMessage(), e);
@@ -577,15 +515,29 @@ public class ResourceController {
     @PostMapping("/deleteResource")
     @LoginCheck(0)
     @AuditLog(action = "RESOURCE_DELETE", targetType = "RESOURCE", targetIdParam = "path", summary = "删除资源")
-    public PoetryResult deleteResource(@RequestParam("path") String path) {
-        Resource resource = resourceService.lambdaQuery().select(Resource::getStoreType).eq(Resource::getPath, path).one();
+    public PoetryResult<ResourceBatchDeleteResult> deleteResource(@RequestParam("path") String path) {
+        Resource resource = resourceService.lambdaQuery()
+                .select(Resource::getId, Resource::getPath)
+                .eq(Resource::getPath, path)
+                .one();
         if (resource == null) {
             return PoetryResult.fail("文件不存在：" + path);
         }
 
-        StoreService storeService = fileStorageService.getFileStorageByStoreType(resource.getStoreType());
-        storeService.deleteFile(Collections.singletonList(path));
-        return PoetryResult.success();
+        ResourceBatchDeleteRequest request = new ResourceBatchDeleteRequest(
+                List.of(new ResourceBatchDeleteRequest.Target(resource.getId(), resource.getPath())),
+                false,
+                false,
+                false
+        );
+        ResourceBatchDeleteResult result = resourceBatchDeleteService.delete(request);
+        if (result.deletedCount() == 1) {
+            return PoetryResult.success(result);
+        }
+        String message = result.items().isEmpty()
+                ? "删除失败"
+                : result.items().getFirst().message();
+        return PoetryResult.fail(500, message, result);
     }
 
     /**
@@ -666,7 +618,6 @@ public class ResourceController {
      */
     @PostMapping("/mergeChunks")
     @LoginCheck
-    @Transactional(rollbackFor = Exception.class)
     @AuditLog(action = "RESOURCE_CHUNKS_MERGE", targetType = "RESOURCE", targetIdParam = "relativePath", summary = "合并分片上传资源")
     public synchronized PoetryResult<String> mergeChunks(@RequestParam("uploadId") String uploadId,
                                                          @RequestParam("totalChunks") int totalChunks,
@@ -756,53 +707,9 @@ public class ResourceController {
 
         fileVO.setFile(file);
         fileVO.setStoreType(StoreEnum.LOCAL.getCode());
-        StoreService storeService = fileStorageService.getFileStorage(StoreEnum.LOCAL.getCode());
-        FileVO result = storeService.saveFile(fileVO);
-        if (Boolean.TRUE.equals(result.getReuseExistingResource())) {
-            return PoetryResult.success(result.getVisitPath());
-        }
-
-        Resource resource = new Resource();
-        resource.setPath(result.getVisitPath());
-        resource.setType(fileVO.getType());
-        resource.setSize(Integer.valueOf(Long.toString(fileSize)));
-        resource.setMimeType(file.getContentType());
-        resource.setResourceHash(result.getResourceHash());
-        resource.setStoreType(result.getStoreType());
-        resource.setOriginalName(fileVO.getOriginalName());
-        resource.setUserId(PoetryUtil.getUserId());
-
-        if (StringUtils.hasText(file.getContentType()) && file.getContentType().startsWith("image/")) {
-            try {
-                int[] dims = readImageDimensions(file.getBytes());
-                if (dims != null) {
-                    resource.setWidth(dims[0]);
-                    resource.setHeight(dims[1]);
-                }
-            } catch (IOException e) {
-                log.debug("读取分片合并图片尺寸失败: {}", e.getMessage());
-            }
-        }
-
-        Resource existingResource = resourceService.lambdaQuery()
-                .eq(Resource::getPath, result.getVisitPath())
-                .one();
-        if (existingResource != null) {
-            existingResource.setType(resource.getType());
-            existingResource.setSize(resource.getSize());
-            existingResource.setOriginalName(resource.getOriginalName());
-            existingResource.setMimeType(resource.getMimeType());
-            existingResource.setResourceHash(resource.getResourceHash());
-            existingResource.setStoreType(resource.getStoreType());
-            existingResource.setUserId(resource.getUserId());
-            existingResource.setWidth(resource.getWidth());
-            existingResource.setHeight(resource.getHeight());
-            resourceService.updateById(existingResource);
-        } else {
-            resourceService.save(resource);
-        }
-
-        return PoetryResult.success(result.getVisitPath());
+        ManagedResourceUploadService.ManagedUploadResult result =
+                managedResourceUploadService.upload(fileVO, PoetryUtil.getUserIdRequired());
+        return PoetryResult.success(result.stablePath());
     }
 
     private boolean isValidChunkUpload(String uploadId, int chunkIndex, int totalChunks) {
@@ -992,7 +899,23 @@ public class ResourceController {
     @LoginCheck(0)
     @AuditLog(action = "RESOURCE_STATUS_CHANGE", targetType = "RESOURCE", targetIdParam = "id", summary = "修改资源状态")
     public PoetryResult changeResourceStatus(@RequestParam("id") Integer id, @RequestParam("flag") Boolean flag) {
-        resourceService.lambdaUpdate().eq(Resource::getId, id).set(Resource::getStatus, flag).update();
+        if (Boolean.TRUE.equals(flag)) {
+            boolean updated = resourceService.lambdaUpdate()
+                    .eq(Resource::getId, id)
+                    .and(wrapper -> wrapper.isNull(Resource::getContentState)
+                            .or()
+                            .ne(Resource::getContentState, ResourceContentState.DELETION_PENDING.name()))
+                    .set(Resource::getStatus, true)
+                    .update();
+            if (!updated) {
+                return PoetryResult.fail("资源不存在或正在删除，不能重新启用");
+            }
+            return PoetryResult.success();
+        }
+        resourceService.lambdaUpdate()
+                .eq(Resource::getId, id)
+                .set(Resource::getStatus, false)
+                .update();
         return PoetryResult.success();
     }
 

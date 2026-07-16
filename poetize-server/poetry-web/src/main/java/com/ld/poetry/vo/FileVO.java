@@ -22,5 +22,12 @@ public class FileVO {
 
     private String resourceHash;
 
+    private String storageKey;
+
     private Boolean reuseExistingResource = false;
+
+    /**
+     * 为 true 时存储适配器必须拒绝覆盖已存在对象。
+     */
+    private Boolean createOnly = false;
 }

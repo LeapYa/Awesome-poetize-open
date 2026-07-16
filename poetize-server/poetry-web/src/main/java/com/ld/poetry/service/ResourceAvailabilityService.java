@@ -445,7 +445,7 @@ public class ResourceAvailabilityService {
     }
 
     private boolean isLocalResourceLoadable(String resourcePath) {
-        for (Path filePath : resolveLocalResourcePaths(resourcePath)) {
+        for (Path filePath : resolveSafeLocalResourcePaths(resourcePath)) {
             if (isLocalFileLoadable(filePath, resourcePath)) {
                 return true;
             }
@@ -453,8 +453,32 @@ public class ResourceAvailabilityService {
         return false;
     }
 
+    List<Path> resolveSafeLocalResourcePaths(String resourcePath) {
+        if (!StringUtils.hasText(resourcePath)) {
+            return Collections.emptyList();
+        }
+        List<Path> managedRoots = managedLocalRoots();
+        return resolveLocalResourcePaths(resourcePath).stream()
+                .map(path -> resolveSafeLocalPath(path, managedRoots))
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
     List<Path> resolveLocalResourcePaths(String resourcePath) {
-        String relativePath = stripQueryAndFragment(resourcePath.replace('\\', '/'));
+        String normalizedResourcePath = resourcePath.replace('\\', '/');
+        if (isRemoteResource(normalizedResourcePath)) {
+            try {
+                String uriPath = URI.create(normalizedResourcePath).getPath();
+                if (StringUtils.hasText(uriPath)) {
+                    normalizedResourcePath = uriPath;
+                }
+            } catch (IllegalArgumentException ignored) {
+                return Collections.emptyList();
+            }
+        }
+
+        String relativePath = stripQueryAndFragment(normalizedResourcePath);
         String originalRelativePath = trimLeadingSlashes(relativePath);
         String normalizedDownloadUrl = normalizeDownloadUrl();
         if (StringUtils.hasText(normalizedDownloadUrl) && relativePath.startsWith(normalizedDownloadUrl)) {
@@ -496,6 +520,36 @@ public class ResourceAvailabilityService {
         if (filePath.startsWith(normalizedBase)) {
             paths.add(filePath);
         }
+    }
+
+    private List<Path> managedLocalRoots() {
+        List<Path> roots = new ArrayList<>();
+        roots.add(Paths.get(normalizeLocalUploadUrl()).toAbsolutePath().normalize());
+        roots.addAll(buildStaticResourceRoots());
+        return roots.stream().distinct().toList();
+    }
+
+    private Path resolveSafeLocalPath(Path candidate, List<Path> managedRoots) {
+        if (candidate == null || Files.isSymbolicLink(candidate)
+                || !Files.isRegularFile(candidate, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            return null;
+        }
+        try {
+            Path realCandidate = candidate.toRealPath();
+            for (Path root : managedRoots) {
+                try {
+                    Path realRoot = root.toRealPath();
+                    if (realCandidate.startsWith(realRoot)) {
+                        return realCandidate;
+                    }
+                } catch (IOException ignored) {
+                    // 不存在或无法解析的根目录不能构成可信边界。
+                }
+            }
+        } catch (IOException ignored) {
+            // 无法取得真实路径时按不可读取处理。
+        }
+        return null;
     }
 
     private List<Path> buildStaticResourceRoots() {
@@ -626,8 +680,6 @@ public class ResourceAvailabilityService {
     private HttpResponse<Void> sendHead(URI uri) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(HTTP_REQUEST_TIMEOUT)
-                .header("X-Admin-Request", "true")
-                .header("X-Internal-Service", "resource-availability")
                 .method("HEAD", HttpRequest.BodyPublishers.noBody())
                 .build();
         return httpClient.send(request, HttpResponse.BodyHandlers.discarding());
@@ -637,8 +689,6 @@ public class ResourceAvailabilityService {
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(HTTP_REQUEST_TIMEOUT)
                 .header("Range", "bytes=0-0")
-                .header("X-Admin-Request", "true")
-                .header("X-Internal-Service", "resource-availability")
                 .GET()
                 .build();
         HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());

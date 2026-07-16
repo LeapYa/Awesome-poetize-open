@@ -2,6 +2,11 @@ package com.ld.poetry.service;
 
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.Resource;
+import com.ld.poetry.entity.ResourceContentReplacement;
+import com.ld.poetry.entity.ResourceContentReplacementTarget;
+import com.ld.poetry.entity.ResourceLocation;
+import com.ld.poetry.enums.ResourceReplacementResolution;
+import com.ld.poetry.enums.ResourceReplacementStatus;
 import com.ld.poetry.utils.font.Woff2Encoder;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import com.ld.poetry.utils.storage.StoreEnum;
@@ -10,10 +15,10 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.annotation.PostConstruct;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -34,6 +39,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -54,6 +60,12 @@ public class ResourceReplaceService {
 
     @Autowired
     private ResourceService resourceService;
+
+    @Autowired
+    private ResourceLocationService resourceLocationService;
+
+    @Autowired
+    private ResourceContentReplacementService contentReplacementService;
 
     @Autowired
     private FileSecurityValidator fileSecurityValidator;
@@ -79,9 +91,62 @@ public class ResourceReplaceService {
     @Value("${resource.replace.mediaConverter.maxDurationSeconds:30}")
     private long mediaConverterMaxDurationSeconds = 30;
 
-    @Transactional(rollbackFor = Exception.class)
+    @PostConstruct
+    public void recoverInterruptedReplacements() {
+        try {
+            for (ResourceContentReplacementService.ReplacementClaim claim
+                    : contentReplacementService.listOpenClaims()) {
+                recoverInterruptedReplacement(claim);
+            }
+            for (ResourceContentReplacementService.ReplacementClaim claim
+                    : contentReplacementService.listTerminalClaimsWithArtifacts()) {
+                cleanupTerminalArtifacts(claim);
+            }
+        } catch (Exception e) {
+            log.info("资源内容替换表尚未就绪或恢复扫描失败，将保持数据库状态不变: {}", e.getMessage());
+        }
+    }
+
+    private void recoverInterruptedReplacement(
+            ResourceContentReplacementService.ReplacementClaim claim) {
+        String operationId = claim.operation().getOperationId();
+        try {
+            ResourceContentReplacementService.RecoveryResult first = contentReplacementService.recover(
+                    operationId,
+                    observeTargetsBestEffort(claim)
+            );
+            if (first.resolution() != ResourceReplacementResolution.KEEP_BLOCKED) {
+                cleanupTerminalArtifacts(claim);
+                return;
+            }
+
+            restoreKnownTargetsToOld(claim);
+            ResourceContentReplacementService.RecoveryResult restored = contentReplacementService.recover(
+                    operationId,
+                    observeTargetsBestEffort(claim)
+            );
+            if (restored.resolution() != ResourceReplacementResolution.KEEP_BLOCKED) {
+                cleanupTerminalArtifacts(claim);
+                return;
+            }
+            log.error("内容替换恢复后仍无法取得一致哈希证据: operationId={}", operationId);
+        } catch (Exception e) {
+            log.error("恢复中断的内容替换失败: operationId={}", operationId, e);
+            try {
+                contentReplacementService.markRecoveryRequired(
+                        operationId,
+                        observeTargetsBestEffort(claim),
+                        "服务启动恢复失败：" + e.getMessage()
+                );
+            } catch (Exception markError) {
+                log.error("持久化启动恢复失败状态异常: operationId={}", operationId, markError);
+            }
+        }
+    }
+
     public PoetryResult<Resource> replaceResource(Integer id, String expectedPath, MultipartFile file) {
-        List<ReplaceRecord> replacedRecords = Collections.emptyList();
+        PreparedReplacement prepared = null;
+        ResourceContentReplacementService.ReplacementClaim claim = null;
         try {
             if (id == null) {
                 return PoetryResult.fail("资源ID不能为空！");
@@ -103,14 +168,17 @@ public class ResourceReplaceService {
             if (!resource.getPath().equals(expectedPath)) {
                 return PoetryResult.fail("资源路径已变化，请刷新列表后再替换！");
             }
-            if (!isLocalReplaceableResource(resource)) {
-                return PoetryResult.fail("当前存储平台不支持原路径替换，仅支持服务器本地资源！");
+            String physicalPath;
+            try {
+                physicalPath = resolveLocalPhysicalPath(resource);
+            } catch (IllegalStateException e) {
+                return PoetryResult.fail(e.getMessage());
             }
-            if (!isPathReplaceable(resource.getPath())) {
-                return PoetryResult.fail("该资源路径不支持原路径替换！");
+            if (!isPathReplaceable(physicalPath)) {
+                return PoetryResult.fail("当前活动本地副本路径不支持原路径替换！");
             }
 
-            List<Path> targetPaths = resolveReplacementTargets(resource.getPath());
+            List<Path> targetPaths = resolveReplacementTargets(physicalPath);
             if (targetPaths.isEmpty()) {
                 return PoetryResult.fail("未找到可替换的本地文件，请确认资源文件存在且 static root 配置正确！");
             }
@@ -120,31 +188,75 @@ public class ResourceReplaceService {
                 }
             }
 
-            ReplacementPayload replacementPayload = prepareReplacementPayload(resource, file);
+            ReplacementPayload replacementPayload = prepareReplacementPayload(physicalPath, file);
             if (!replacementPayload.success) {
                 return PoetryResult.fail(replacementPayload.message);
             }
-
-            byte[] replacementBytes = replacementPayload.bytes;
-            if (replacementBytes.length == 0) {
+            if (replacementPayload.bytes.length == 0) {
                 return PoetryResult.fail("替换文件不能为空！");
             }
 
-            Resource updatedResource = buildUpdatedResource(resource, replacementPayload, targetPaths.get(0));
-            replacedRecords = replaceFiles(targetPaths, replacementBytes);
-            boolean updated = resourceService.updateById(updatedResource);
-            if (!updated) {
-                throw new IOException("资源元数据更新失败");
-            }
+            Resource updatedResource = buildUpdatedResource(resource, replacementPayload, targetPaths.getFirst());
+            prepared = prepareReplacementTargets(
+                    targetPaths,
+                    updatedResource.getResourceHash()
+            );
+            claim = contentReplacementService.begin(
+                    resource,
+                    updatedResource,
+                    prepared.sourceHash(),
+                    prepared.plans()
+            );
 
-            deleteBackups(replacedRecords);
-            applyUpdatedFields(resource, updatedResource);
-            return PoetryResult.success(resource);
+            stageReplacementArtifacts(claim, replacementPayload.bytes);
+            List<ResourceContentReplacementService.TargetEvidence> evidence = applyReplacement(claim);
+            Resource persistedResource = contentReplacementService.commit(
+                    claim.operation().getOperationId(),
+                    evidence
+            );
+            cleanupTerminalArtifacts(claim);
+            return PoetryResult.success(persistedResource);
         } catch (Exception e) {
-            rollbackFiles(replacedRecords);
+            if (claim == null) {
+                cleanupPreparedReplacement(prepared);
+            } else {
+                FailureResolution resolution = resolveFailedReplacement(claim, e);
+                if (resolution.committedResource() != null) {
+                    return PoetryResult.success(resolution.committedResource());
+                }
+                log.warn(
+                        "替换资源失败: id={}, path={}, blocked={}, message={}",
+                        id,
+                        expectedPath,
+                        resolution.blocked(),
+                        e.getMessage(),
+                        e
+                );
+                String suffix = resolution.blocked()
+                        ? "；资源已保持阻塞，等待自动恢复或人工核验"
+                        : "；原文件已恢复";
+                return PoetryResult.fail("替换资源失败: " + e.getMessage() + suffix);
+            }
             log.warn("替换资源失败: id={}, path={}, message={}", id, expectedPath, e.getMessage(), e);
             return PoetryResult.fail("替换资源失败: " + e.getMessage());
         }
+    }
+
+    private String resolveLocalPhysicalPath(Resource resource) {
+        if (resource.getActiveLocationId() != null) {
+            ResourceLocation activeLocation = resourceLocationService.requireActiveLocation(resource);
+            if (!StoreEnum.LOCAL.getCode().equals(activeLocation.getStoreType())) {
+                throw new IllegalStateException("当前活动物理副本不是服务器本地存储，无法原路径替换！");
+            }
+            if (!StringUtils.hasText(activeLocation.getAccessPath())) {
+                throw new IllegalStateException("当前活动本地副本路径为空，无法原路径替换！");
+            }
+            return activeLocation.getAccessPath();
+        }
+        if (!isLocalReplaceableResource(resource)) {
+            throw new IllegalStateException("当前存储平台不支持原路径替换，仅支持服务器本地资源！");
+        }
+        return resource.getPath();
     }
 
     private boolean isLocalReplaceableResource(Resource resource) {
@@ -164,35 +276,35 @@ public class ResourceReplaceService {
                 && !lowerPath.startsWith("blob:");
     }
 
-    private ReplacementPayload prepareReplacementPayload(Resource resource,
+    private ReplacementPayload prepareReplacementPayload(String targetPath,
                                                          MultipartFile file) throws IOException {
-        String targetExtension = normalizeExtension(extensionOf(stripQueryAndFragment(resource.getPath())));
+        String targetExtension = normalizeExtension(extensionOf(stripQueryAndFragment(targetPath)));
         if (!StringUtils.hasText(targetExtension)) {
             return ReplacementPayload.fail("资源路径缺少扩展名，无法安全替换！");
         }
 
         if (isConvertibleImageTarget(targetExtension)) {
-            return prepareImageReplacementPayload(resource, file, targetExtension);
+            return prepareImageReplacementPayload(targetPath, file, targetExtension);
         }
 
         if ("woff2".equals(targetExtension)) {
-            return prepareWoff2ReplacementPayload(resource, file);
+            return prepareWoff2ReplacementPayload(targetPath, file);
         }
 
         if (isMediaResourceExtension(targetExtension)) {
-            return prepareMediaReplacementPayload(resource, file, targetExtension);
+            return prepareMediaReplacementPayload(targetPath, file, targetExtension);
         }
 
         if (FONT_EXTENSIONS.contains(targetExtension)) {
-            return prepareSameExtensionPayload(resource, file);
+            return prepareSameExtensionPayload(targetPath, file);
         }
 
-        return prepareSameExtensionPayload(resource, file);
+        return prepareSameExtensionPayload(targetPath, file);
     }
 
-    private ReplacementPayload prepareSameExtensionPayload(Resource resource,
+    private ReplacementPayload prepareSameExtensionPayload(String targetPath,
                                                           MultipartFile file) throws IOException {
-        if (!isExtensionCompatible(resource.getPath(), file.getOriginalFilename())) {
+        if (!isExtensionCompatible(targetPath, file.getOriginalFilename())) {
             return ReplacementPayload.fail("替换文件扩展名必须与原资源一致（jpg 与 jpeg 视为一致）！");
         }
         FileSecurityValidator.ValidationResult validationResult = validateUploadedFile(file);
@@ -202,7 +314,7 @@ public class ResourceReplaceService {
         return ReplacementPayload.success(file.getBytes(), file.getOriginalFilename(), file.getContentType());
     }
 
-    private ReplacementPayload prepareWoff2ReplacementPayload(Resource resource,
+    private ReplacementPayload prepareWoff2ReplacementPayload(String targetPath,
                                                               MultipartFile file) throws IOException {
         String uploadedExtension = normalizeExtension(extensionOf(file.getOriginalFilename()));
         if (!Set.of("woff2", "ttf", "otf").contains(uploadedExtension)) {
@@ -219,10 +331,10 @@ public class ResourceReplaceService {
         }
 
         byte[] encodedBytes = encodeWoff2Bytes(file.getBytes());
-        return ReplacementPayload.success(encodedBytes, targetFileName(resource.getPath()), "font/woff2");
+        return ReplacementPayload.success(encodedBytes, targetFileName(targetPath), "font/woff2");
     }
 
-    private ReplacementPayload prepareMediaReplacementPayload(Resource resource,
+    private ReplacementPayload prepareMediaReplacementPayload(String targetPath,
                                                              MultipartFile file,
                                                              String targetExtension) throws IOException {
         String uploadedExtension = normalizeExtension(extensionOf(file.getOriginalFilename()));
@@ -254,12 +366,12 @@ public class ResourceReplaceService {
         byte[] convertedBytes = convertMediaBytes(file, targetExtension);
         return ReplacementPayload.success(
                 convertedBytes,
-                targetFileName(resource.getPath()),
+                targetFileName(targetPath),
                 resolveMimeTypeForExtension(targetExtension, "")
         );
     }
 
-    private ReplacementPayload prepareImageReplacementPayload(Resource resource,
+    private ReplacementPayload prepareImageReplacementPayload(String targetPath,
                                                              MultipartFile file,
                                                              String targetExtension) throws IOException {
         String uploadedExtension = normalizeExtension(extensionOf(file.getOriginalFilename()));
@@ -277,10 +389,10 @@ public class ResourceReplaceService {
             return ReplacementPayload.fail("上传文件不是可转换的图片，无法替换当前图片资源！");
         }
 
-        if (isExtensionCompatible(resource.getPath(), file.getOriginalFilename())) {
+        if (isExtensionCompatible(targetPath, file.getOriginalFilename())) {
             return ReplacementPayload.success(file.getBytes(), file.getOriginalFilename(), resolveImageMimeType(targetExtension));
         }
-        return encodeConvertedImage(uploadedImage, targetExtension, targetFileName(resource.getPath()));
+        return encodeConvertedImage(uploadedImage, targetExtension, targetFileName(targetPath));
     }
 
     private FileSecurityValidator.ValidationResult validateUploadedFile(MultipartFile file) {
@@ -835,53 +947,377 @@ public class ResourceReplaceService {
         return result;
     }
 
-    private List<ReplaceRecord> replaceFiles(List<Path> targetPaths, byte[] replacementBytes) throws IOException {
-        List<ReplaceRecord> records = new ArrayList<>();
-        for (Path targetPath : targetPaths) {
-            ReplaceRecord record = replaceOneFile(targetPath, replacementBytes);
-            records.add(record);
+    private PreparedReplacement prepareReplacementTargets(List<Path> targetPaths,
+                                                           String expectedNewHash) throws IOException {
+        String newHash = requireFileHash(expectedNewHash, "替换文件SHA-256不合法");
+        List<PreparedArtifact> artifacts = new ArrayList<>(targetPaths.size());
+        List<ResourceContentReplacementService.TargetPlan> plans = new ArrayList<>(targetPaths.size());
+        String sourceHash = null;
+        for (Path path : targetPaths) {
+            Path targetPath = validateManagedTargetPath(path);
+            String observedSourceHash = requireExistingFileHash(targetPath, "替换前目标文件不可读取");
+            if (sourceHash == null) {
+                sourceHash = observedSourceHash;
+            } else if (!sourceHash.equals(observedSourceHash)) {
+                throw new ConcurrentModificationException("同一逻辑资源的本地文件内容不一致，拒绝替换");
+            }
+
+            Path parent = targetPath.getParent();
+            String nonce = java.util.UUID.randomUUID().toString().replace("-", "");
+            Path tempPath = parent.resolve(targetPath.getFileName() + "." + nonce + ".replacing");
+            Path backupPath = parent.resolve(targetPath.getFileName() + "." + nonce + ".backup");
+            if (Files.exists(tempPath) || Files.exists(backupPath)) {
+                throw new IOException("替换恢复路径发生冲突，请重试");
+            }
+            PreparedArtifact artifact = new PreparedArtifact(targetPath, tempPath, backupPath);
+            artifacts.add(artifact);
+            plans.add(new ResourceContentReplacementService.TargetPlan(
+                    targetPath.toString(),
+                    tempPath.toString(),
+                    backupPath.toString(),
+                    sourceHash,
+                    newHash
+            ));
         }
-        return records;
+        return new PreparedReplacement(sourceHash, List.copyOf(plans), List.copyOf(artifacts));
     }
 
-    private ReplaceRecord replaceOneFile(Path targetPath, byte[] replacementBytes) throws IOException {
-        Path parent = targetPath.getParent();
-        Path tempPath = Files.createTempFile(parent, targetPath.getFileName() + ".", ".replacing");
-        Path backupPath = Files.createTempFile(parent, targetPath.getFileName() + ".", ".backup");
-        boolean backupCreated = false;
+    private void stageReplacementArtifacts(
+            ResourceContentReplacementService.ReplacementClaim claim,
+            byte[] replacementBytes) throws IOException {
+        for (ResourceContentReplacementTarget target : claim.targets()) {
+            ArtifactPaths paths = validateArtifactPaths(target);
+            String sourceHash = requireFileHash(target.getSourceHash(), "替换事务旧文件SHA-256不合法");
+            String newHash = requireFileHash(target.getNewHash(), "替换事务新文件SHA-256不合法");
+            if (!sourceHash.equals(requireExistingFileHash(paths.targetPath(), "替换目标文件不可读取"))) {
+                throw new ConcurrentModificationException("目标文件在替换声明后发生变化");
+            }
+
+            Files.write(
+                    paths.tempPath(),
+                    replacementBytes,
+                    java.nio.file.StandardOpenOption.CREATE_NEW,
+                    java.nio.file.StandardOpenOption.WRITE
+            );
+            forceFile(paths.tempPath());
+            if (!newHash.equals(requireExistingFileHash(paths.tempPath(), "替换临时文件不可读取"))) {
+                throw new IOException("替换临时文件完整回读SHA-256不一致");
+            }
+
+            Files.copy(paths.targetPath(), paths.backupPath());
+            forceFile(paths.backupPath());
+            if (!sourceHash.equals(requireExistingFileHash(paths.backupPath(), "替换备份文件不可读取"))) {
+                throw new IOException("替换备份完整回读SHA-256不一致");
+            }
+            if (!sourceHash.equals(requireExistingFileHash(paths.targetPath(), "替换目标文件不可读取"))) {
+                throw new ConcurrentModificationException("目标文件在恢复材料建立期间发生变化");
+            }
+        }
+    }
+
+    private List<ResourceContentReplacementService.TargetEvidence> applyReplacement(
+            ResourceContentReplacementService.ReplacementClaim claim) throws IOException {
+        for (ResourceContentReplacementTarget target : claim.targets()) {
+            ArtifactPaths paths = validateArtifactPaths(target);
+            String sourceHash = requireFileHash(target.getSourceHash(), "替换事务旧文件SHA-256不合法");
+            String newHash = requireFileHash(target.getNewHash(), "替换事务新文件SHA-256不合法");
+            if (!sourceHash.equals(requireExistingFileHash(paths.targetPath(), "替换目标文件不可读取"))) {
+                throw new ConcurrentModificationException("目标文件在替换声明后发生变化");
+            }
+            if (!sourceHash.equals(requireExistingFileHash(paths.backupPath(), "替换备份文件不可读取"))) {
+                throw new IOException("替换备份SHA-256与声明不一致");
+            }
+            if (!newHash.equals(requireExistingFileHash(paths.tempPath(), "替换临时文件不可读取"))) {
+                throw new IOException("替换临时文件SHA-256与声明不一致");
+            }
+
+            moveReplace(paths.tempPath(), paths.targetPath());
+            if (!newHash.equals(requireExistingFileHash(paths.targetPath(), "替换后目标文件不可读取"))) {
+                throw new IOException("替换后目标文件完整回读SHA-256不一致");
+            }
+        }
+        return observeTargets(claim);
+    }
+
+    private FailureResolution resolveFailedReplacement(
+            ResourceContentReplacementService.ReplacementClaim claim,
+            Exception originalError) {
+        String operationId = claim.operation().getOperationId();
+        ResourceContentReplacement latest;
         try {
-            Files.write(tempPath, replacementBytes);
-            moveReplace(targetPath, backupPath);
-            backupCreated = true;
-            moveReplace(tempPath, targetPath);
-            return new ReplaceRecord(targetPath, backupPath);
-        } catch (IOException e) {
-            safeDelete(tempPath);
-            if (backupCreated && Files.exists(backupPath)) {
-                moveReplace(backupPath, targetPath);
-            } else {
-                safeDelete(backupPath);
-            }
-            throw e;
+            latest = contentReplacementService.find(operationId);
+        } catch (Exception stateError) {
+            log.error("读取内容替换事务失败，保留物理文件和阻塞状态: operationId={}", operationId, stateError);
+            return FailureResolution.blockedResolution();
         }
-    }
+        if (latest == null) {
+            return FailureResolution.blockedResolution();
+        }
+        if (ResourceReplacementStatus.COMMITTED.name().equals(latest.getStatus())) {
+            cleanupTerminalArtifacts(claim);
+            return FailureResolution.committed(resourceService.getById(latest.getResourceId()));
+        }
+        if (ResourceReplacementStatus.ABORTED.name().equals(latest.getStatus())) {
+            cleanupTerminalArtifacts(claim);
+            return FailureResolution.restored();
+        }
 
-    private void rollbackFiles(List<ReplaceRecord> records) {
-        for (int i = records.size() - 1; i >= 0; i--) {
-            ReplaceRecord record = records.get(i);
+        try {
+            restoreKnownTargetsToOld(claim);
+            List<ResourceContentReplacementService.TargetEvidence> evidence = observeTargets(claim);
+            ResourceContentReplacementService.RecoveryResult recovered = contentReplacementService.recover(
+                    operationId,
+                    evidence
+            );
+            if (recovered.resolution() == ResourceReplacementResolution.COMMIT_NEW) {
+                cleanupTerminalArtifacts(claim);
+                return FailureResolution.committed(recovered.resource());
+            }
+            if (recovered.resolution() == ResourceReplacementResolution.RESTORE_OLD) {
+                cleanupTerminalArtifacts(claim);
+                return FailureResolution.restored();
+            }
+            return FailureResolution.blockedResolution();
+        } catch (Exception recoveryError) {
+            log.error("内容替换回滚未能取得一致哈希证据: operationId={}", operationId, recoveryError);
             try {
-                if (Files.exists(record.backupPath)) {
-                    moveReplace(record.backupPath, record.targetPath);
-                }
-            } catch (IOException e) {
-                log.error("回滚替换文件失败: {}", record.targetPath, e);
+                contentReplacementService.markRecoveryRequired(
+                        operationId,
+                        observeTargetsBestEffort(claim),
+                        originalError.getMessage() + "；恢复失败：" + recoveryError.getMessage()
+                );
+            } catch (Exception markError) {
+                log.error("持久化内容替换恢复状态失败: operationId={}", operationId, markError);
             }
+            return FailureResolution.blockedResolution();
         }
     }
 
-    private void deleteBackups(List<ReplaceRecord> records) {
-        for (ReplaceRecord record : records) {
-            safeDelete(record.backupPath);
+    private void restoreKnownTargetsToOld(
+            ResourceContentReplacementService.ReplacementClaim claim) throws IOException {
+        for (ResourceContentReplacementTarget target : claim.targets()) {
+            ArtifactPaths paths = validateArtifactPaths(target);
+            String sourceHash = requireFileHash(target.getSourceHash(), "替换事务旧文件SHA-256不合法");
+            String newHash = requireFileHash(target.getNewHash(), "替换事务新文件SHA-256不合法");
+            String observedHash = hashFileIfPresent(paths.targetPath());
+            if (sourceHash.equals(observedHash)) {
+                continue;
+            }
+            if (observedHash != null && !newHash.equals(observedHash)) {
+                continue;
+            }
+            if (!sourceHash.equals(hashFileIfPresent(paths.backupPath()))) {
+                continue;
+            }
+            restoreBackup(paths, sourceHash);
+        }
+    }
+
+    private void restoreBackup(ArtifactPaths paths, String sourceHash) throws IOException {
+        Path restorePath = Files.createTempFile(
+                paths.targetPath().getParent(),
+                paths.targetPath().getFileName() + ".",
+                ".restoring"
+        );
+        try {
+            Files.copy(paths.backupPath(), restorePath, StandardCopyOption.REPLACE_EXISTING);
+            forceFile(restorePath);
+            if (!sourceHash.equals(requireExistingFileHash(restorePath, "恢复临时文件不可读取"))) {
+                throw new IOException("恢复临时文件完整回读SHA-256不一致");
+            }
+            moveReplace(restorePath, paths.targetPath());
+            if (!sourceHash.equals(requireExistingFileHash(paths.targetPath(), "恢复后目标文件不可读取"))) {
+                throw new IOException("恢复后目标文件完整回读SHA-256不一致");
+            }
+        } finally {
+            safeDelete(restorePath);
+        }
+    }
+
+    private List<ResourceContentReplacementService.TargetEvidence> observeTargets(
+            ResourceContentReplacementService.ReplacementClaim claim) throws IOException {
+        List<ResourceContentReplacementService.TargetEvidence> evidence = new ArrayList<>(claim.targets().size());
+        for (ResourceContentReplacementTarget target : claim.targets()) {
+            ArtifactPaths paths = validateArtifactPaths(target);
+            evidence.add(new ResourceContentReplacementService.TargetEvidence(
+                    target.getId(),
+                    hashFileIfPresent(paths.targetPath())
+            ));
+        }
+        return evidence;
+    }
+
+    private List<ResourceContentReplacementService.TargetEvidence> observeTargetsBestEffort(
+            ResourceContentReplacementService.ReplacementClaim claim) {
+        List<ResourceContentReplacementService.TargetEvidence> evidence = new ArrayList<>(claim.targets().size());
+        for (ResourceContentReplacementTarget target : claim.targets()) {
+            String observedHash = null;
+            try {
+                observedHash = hashFileIfPresent(validateArtifactPaths(target).targetPath());
+            } catch (Exception ignored) {
+                // 无法安全确认的目标必须保留为未知状态。
+            }
+            evidence.add(new ResourceContentReplacementService.TargetEvidence(target.getId(), observedHash));
+        }
+        return evidence;
+    }
+
+    private ArtifactPaths validateArtifactPaths(ResourceContentReplacementTarget target) {
+        if (target == null) {
+            throw new IllegalArgumentException("替换目标记录不能为空");
+        }
+        Path targetPath = validateManagedTargetPath(Paths.get(target.getTargetPath()));
+        Path tempPath = requireSiblingArtifactPath(targetPath, target.getTempPath(), ".replacing");
+        Path backupPath = requireSiblingArtifactPath(targetPath, target.getBackupPath(), ".backup");
+        if (targetPath.equals(tempPath) || targetPath.equals(backupPath) || tempPath.equals(backupPath)) {
+            throw new IllegalStateException("替换目标、临时文件和备份文件路径冲突");
+        }
+        return new ArtifactPaths(targetPath, tempPath, backupPath);
+    }
+
+    private Path validateManagedTargetPath(Path path) {
+        if (path == null) {
+            throw new IllegalArgumentException("替换目标路径不能为空");
+        }
+        Path normalized = path.toAbsolutePath().normalize();
+        if (Files.isSymbolicLink(normalized)) {
+            throw new IllegalStateException("替换目标不能是符号链接：" + normalized);
+        }
+        Path parent = normalized.getParent();
+        if (parent == null) {
+            throw new IllegalStateException("替换目标缺少父目录：" + normalized);
+        }
+        try {
+            Path realParent = parent.toRealPath();
+            boolean underManagedRoot = false;
+            for (Path root : managedRoots()) {
+                if (!normalized.startsWith(root)) {
+                    continue;
+                }
+                try {
+                    if (realParent.startsWith(root.toRealPath())) {
+                        underManagedRoot = true;
+                        break;
+                    }
+                } catch (IOException ignored) {
+                    // 不存在或不可解析的配置根不能成为可信恢复边界。
+                }
+            }
+            if (!underManagedRoot) {
+                throw new IllegalStateException("替换目标不在受控资源目录内：" + normalized);
+            }
+            return realParent.resolve(normalized.getFileName()).normalize();
+        } catch (IOException e) {
+            throw new IllegalStateException("替换目标父目录无法安全解析：" + normalized, e);
+        }
+    }
+
+    private Path requireSiblingArtifactPath(Path targetPath,
+                                            String artifactPath,
+                                            String suffix) {
+        if (!StringUtils.hasText(artifactPath)) {
+            throw new IllegalStateException("替换恢复文件路径为空");
+        }
+        Path normalized = Paths.get(artifactPath).toAbsolutePath().normalize();
+        String fileName = String.valueOf(normalized.getFileName());
+        String targetPrefix = targetPath.getFileName() + ".";
+        if (!normalized.getParent().equals(targetPath.getParent())
+                || Files.isSymbolicLink(normalized)
+                || !fileName.startsWith(targetPrefix)
+                || !fileName.endsWith(suffix)) {
+            throw new IllegalStateException("替换恢复文件必须是目标同目录下的受控文件");
+        }
+        return normalized;
+    }
+
+    private Set<Path> managedRoots() {
+        Set<Path> roots = new LinkedHashSet<>();
+        roots.add(Paths.get(normalizeLocalUploadUrl()).toAbsolutePath().normalize());
+        buildStaticResourceRoots().stream().map(root -> root.root).forEach(roots::add);
+        return roots;
+    }
+
+    private String requireExistingFileHash(Path path, String message) throws IOException {
+        String hash = hashFileIfPresent(path);
+        if (hash == null) {
+            throw new IOException(message + "：" + path);
+        }
+        return hash;
+    }
+
+    private String hashFileIfPresent(Path path) throws IOException {
+        if (path == null || !Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            return null;
+        }
+        try (InputStream inputStream = Files.newInputStream(path)) {
+            return DigestUtils.sha256Hex(inputStream);
+        }
+    }
+
+    private String requireFileHash(String hash, String message) {
+        if (!StringUtils.hasText(hash) || !hash.matches("(?i)[a-f0-9]{64}")) {
+            throw new IllegalArgumentException(message);
+        }
+        return hash.toLowerCase(Locale.ROOT);
+    }
+
+    private void forceFile(Path path) throws IOException {
+        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(
+                path,
+                java.nio.file.StandardOpenOption.WRITE
+        )) {
+            channel.force(true);
+        }
+    }
+
+    private void cleanupPreparedReplacement(PreparedReplacement prepared) {
+        if (prepared != null) {
+            cleanupArtifacts(prepared.artifacts());
+        }
+    }
+
+    private void cleanupTerminalArtifacts(
+            ResourceContentReplacementService.ReplacementClaim claim) {
+        boolean cleaned = true;
+        for (ResourceContentReplacementTarget target : claim.targets()) {
+            try {
+                ArtifactPaths paths = validateArtifactPaths(target);
+                cleaned &= deleteArtifact(paths.tempPath());
+                cleaned &= deleteArtifact(paths.backupPath());
+            } catch (Exception e) {
+                cleaned = false;
+                log.warn("清理内容替换恢复文件失败: targetId={}", target.getId(), e);
+            }
+        }
+        if (!cleaned) {
+            return;
+        }
+        try {
+            contentReplacementService.markArtifactsCleaned(claim.operation().getOperationId());
+        } catch (Exception e) {
+            log.warn(
+                    "记录内容替换恢复文件清理状态失败: operationId={}",
+                    claim.operation().getOperationId(),
+                    e
+            );
+        }
+    }
+
+    private boolean deleteArtifact(Path path) throws IOException {
+        if (path == null) {
+            return true;
+        }
+        if (Files.isSymbolicLink(path)) {
+            throw new IOException("拒绝删除符号链接恢复文件：" + path);
+        }
+        Files.deleteIfExists(path);
+        return !Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+    }
+
+    private void cleanupArtifacts(List<PreparedArtifact> artifacts) {
+        for (PreparedArtifact artifact : artifacts) {
+            safeDelete(artifact.tempPath());
+            safeDelete(artifact.backupPath());
         }
     }
 
@@ -936,13 +1372,31 @@ public class ResourceReplaceService {
         }
     }
 
-    private static class ReplaceRecord {
-        private final Path targetPath;
-        private final Path backupPath;
+    private record PreparedReplacement(
+            String sourceHash,
+            List<ResourceContentReplacementService.TargetPlan> plans,
+            List<PreparedArtifact> artifacts
+    ) {
+    }
 
-        private ReplaceRecord(Path targetPath, Path backupPath) {
-            this.targetPath = targetPath;
-            this.backupPath = backupPath;
+    private record PreparedArtifact(Path targetPath, Path tempPath, Path backupPath) {
+    }
+
+    private record ArtifactPaths(Path targetPath, Path tempPath, Path backupPath) {
+    }
+
+    private record FailureResolution(boolean blocked, Resource committedResource) {
+
+        private static FailureResolution blockedResolution() {
+            return new FailureResolution(true, null);
+        }
+
+        private static FailureResolution restored() {
+            return new FailureResolution(false, null);
+        }
+
+        private static FailureResolution committed(Resource resource) {
+            return new FailureResolution(false, resource);
         }
     }
 

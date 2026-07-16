@@ -13,7 +13,6 @@ import com.ld.poetry.dao.LabelMapper;
 import com.ld.poetry.dao.SortMapper;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.Label;
-import com.ld.poetry.entity.Resource;
 import com.ld.poetry.entity.SeoConfig;
 import com.ld.poetry.entity.SeoSearchEnginePush;
 import com.ld.poetry.entity.Sort;
@@ -25,7 +24,7 @@ import com.ld.poetry.handle.PoetryRuntimeException;
 import com.ld.poetry.service.ArticleService;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.LabelService;
-import com.ld.poetry.service.ResourceService;
+import com.ld.poetry.service.ManagedResourceUploadService;
 import com.ld.poetry.service.SeoConfigService;
 import com.ld.poetry.service.SeoService;
 import com.ld.poetry.service.SitemapService;
@@ -45,8 +44,6 @@ import com.ld.poetry.utils.IpUtil;
 import com.ld.poetry.utils.ArticleUrlUtil;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.security.FileSecurityValidator;
-import com.ld.poetry.utils.storage.FileStorageService;
-import com.ld.poetry.utils.storage.StoreService;
 import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.FileVO;
@@ -134,9 +131,7 @@ public class ApiController {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    private final ResourceService resourceService;
-
-    private final FileStorageService fileStorageService;
+    private final ManagedResourceUploadService managedResourceUploadService;
 
     private final FileSecurityValidator fileSecurityValidator;
 
@@ -162,8 +157,7 @@ public class ApiController {
                         SitemapService sitemapService,
                         HistoryInfoMapper historyInfoMapper,
                         RedisTemplate<String, Object> redisTemplate,
-                        ResourceService resourceService,
-                        FileStorageService fileStorageService,
+                        ManagedResourceUploadService managedResourceUploadService,
                         FileSecurityValidator fileSecurityValidator,
                         ApplicationEventPublisher eventPublisher,
                         @Qualifier("asyncExecutor") Executor asyncExecutor,
@@ -184,8 +178,7 @@ public class ApiController {
         this.sitemapService = sitemapService;
         this.historyInfoMapper = historyInfoMapper;
         this.redisTemplate = redisTemplate;
-        this.resourceService = resourceService;
-        this.fileStorageService = fileStorageService;
+        this.managedResourceUploadService = managedResourceUploadService;
         this.fileSecurityValidator = fileSecurityValidator;
         this.eventPublisher = eventPublisher;
         this.asyncExecutor = asyncExecutor;
@@ -910,20 +903,17 @@ public class ApiController {
                     ? relativePath
                     : buildApiUploadPath(fileVO.getType(), file.getOriginalFilename()));
 
-            StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
-            FileVO saved = storeService.saveFile(fileVO);
-            if (!Boolean.TRUE.equals(saved.getReuseExistingResource())) {
-                saveUploadedResource(saved, fileVO, file, adminUser);
-            }
+            ManagedResourceUploadService.ManagedUploadResult saved =
+                    managedResourceUploadService.upload(fileVO, adminUser.getId());
 
             Map<String, Object> data = new HashMap<>();
-            data.put("url", saved.getVisitPath());
-            data.put("path", saved.getVisitPath());
-            data.put("type", fileVO.getType());
-            data.put("originalName", file.getOriginalFilename());
-            data.put("size", file.getSize());
-            data.put("mimeType", file.getContentType());
-            data.put("reused", Boolean.TRUE.equals(saved.getReuseExistingResource()));
+            data.put("url", saved.stablePath());
+            data.put("path", saved.stablePath());
+            data.put("type", saved.resource().getType());
+            data.put("originalName", saved.resource().getOriginalName());
+            data.put("size", saved.resource().getSize());
+            data.put("mimeType", saved.resource().getMimeType());
+            data.put("reused", saved.reused());
             return PoetryResult.success(data);
         } catch (PoetryRuntimeException e) {
             log.error("API上传资源失败：{}", e.getMessage());
@@ -1571,34 +1561,6 @@ public class ApiController {
         String safeType = StringUtils.hasText(type) ? type : "articleCover";
         String dateSegment = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy/MM"));
         return safeType + "/api/" + dateSegment + "/" + UUID.randomUUID().toString().replace("-", "") + extension;
-    }
-
-    private void saveUploadedResource(FileVO saved, FileVO fileVO, MultipartFile file, User adminUser) {
-        Resource resource = new Resource();
-        resource.setPath(saved.getVisitPath());
-        resource.setType(fileVO.getType());
-        resource.setSize((int) Math.min(file.getSize(), Integer.MAX_VALUE));
-        resource.setMimeType(file.getContentType());
-        resource.setStoreType(saved.getStoreType());
-        resource.setResourceHash(saved.getResourceHash());
-        resource.setOriginalName(file.getOriginalFilename());
-        resource.setUserId(adminUser.getId());
-
-        Resource existing = resourceService.lambdaQuery()
-                .eq(Resource::getPath, saved.getVisitPath())
-                .one();
-        if (existing != null) {
-            existing.setType(resource.getType());
-            existing.setSize(resource.getSize());
-            existing.setMimeType(resource.getMimeType());
-            existing.setStoreType(resource.getStoreType());
-            existing.setResourceHash(resource.getResourceHash());
-            existing.setOriginalName(resource.getOriginalName());
-            existing.setUserId(resource.getUserId());
-            resourceService.updateById(existing);
-        } else {
-            resourceService.save(resource);
-        }
     }
 
     private Map<String, Object> buildThemePluginItem(SysPlugin plugin, SysPlugin activePlugin) {

@@ -54,22 +54,10 @@ public class LoginCheckAspect {
 
     @Around("@annotation(loginCheck)")
     public Object around(ProceedingJoinPoint joinPoint, LoginCheck loginCheck) throws Throwable {
-        // 检查是否来自内部服务的请求
         HttpServletRequest request = PoetryUtil.getRequest();
-        String adminFlag = request.getHeader("X-Admin-Request");
-        String internalService = request.getHeader("X-Internal-Service");
         String clientIp = PoetryUtil.getIpAddr(request);
         String requestURI = request.getRequestURI();
-        
-        // 检查是否来自Docker内部网络
-        boolean isInternalNetwork = DockerNetworkUtil.isInDockerNetwork(clientIp);
-        
-        // 如果是内部网络请求且带有正确的标识头，直接通过
-        if (isInternalNetwork && "true".equals(adminFlag) && StringUtils.hasText(internalService)) {
-            log.info("内部服务请求通过认证检查 - 服务: {}, IP: {}", internalService, clientIp);
-            return joinPoint.proceed();
-        }
-        
+
         String token = PoetryUtil.getTokenWithoutBearer();
         if (!StringUtils.hasText(token)) {
             log.warn("Token为空，登录已过期");

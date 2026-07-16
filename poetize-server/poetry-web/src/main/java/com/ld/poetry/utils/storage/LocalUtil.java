@@ -1,14 +1,11 @@
 package com.ld.poetry.utils.storage;
 
 import cn.hutool.core.io.FileUtil;
-import com.ld.poetry.entity.Resource;
 import com.ld.poetry.handle.PoetryRuntimeException;
-import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.utils.StringUtil;
 import com.ld.poetry.vo.FileVO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -17,6 +14,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,27 +36,155 @@ public class LocalUtil implements StoreService {
     @Value("${local.downloadUrl}")
     private String downloadUrl;
 
-    @Autowired
-    private ResourceService resourceService;
-
     @Override
-    public void deleteFile(List<String> files) {
-        if (CollectionUtils.isEmpty(files)) {
-            return;
+    public List<StorageDeleteResult> deleteFiles(List<StorageResourceRef> resources) {
+        if (CollectionUtils.isEmpty(resources)) {
+            return List.of();
         }
 
-        for (String filePath : files) {
-            File file = new File(filePath.replace(downloadUrl, uploadUrl));
-            if (file.exists() && file.isFile()) {
-                if (file.delete()) {
-                    log.info("文件删除成功：" + filePath);
-                    resourceService.lambdaUpdate().eq(Resource::getPath, filePath).remove();
-                } else {
-                    log.error("文件删除失败：" + filePath);
+        return resources.stream().map(resource -> {
+            try {
+                File file = resolveLocalFile(resource.path());
+                if (!file.isFile()) {
+                    log.warn("本地资源不存在：{}", resource.path());
+                    return StorageDeleteResult.missing(resource);
                 }
-            } else {
-                log.error("文件不存在或者不是一个文件：" + filePath);
+                if (!file.delete()) {
+                    log.error("本地资源删除失败：{}", resource.path());
+                    return StorageDeleteResult.failed(resource, "本地文件删除失败");
+                }
+                log.info("本地资源删除成功：{}", resource.path());
+                return StorageDeleteResult.deleted(resource);
+            } catch (Exception e) {
+                log.error("本地资源删除异常：{}", resource.path(), e);
+                return StorageDeleteResult.failed(resource, e.getMessage());
             }
+        }).toList();
+    }
+
+    @Override
+    public StorageReadHandle openRead(StorageResourceRef resource, long maxBytes) {
+        try {
+            File file = resolveLocalFile(resource.path());
+            if (!file.isFile()) {
+                throw new IllegalStateException("本地文件不存在");
+            }
+            return StorageReadHandle.bounded(
+                    new FileInputStream(file),
+                    file.length(),
+                    resource.mimeType(),
+                    file.toURI(),
+                    maxBytes
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException("本地文件读取失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public StorageVerificationResult verify(StorageResourceRef resource) {
+        try {
+            File file = resolveLocalFile(resource.path());
+            if (!file.isFile()) {
+                return StorageVerificationResult.missing("本地文件不存在");
+            }
+            return StorageVerificationResult.available(file.length(), calculateFileHash(file));
+        } catch (Exception e) {
+            return StorageVerificationResult.unknown(e.getMessage());
+        }
+    }
+
+    @Override
+    public StorageCapability getCapability() {
+        return new StorageCapability(
+                StoreEnum.LOCAL.getCode(), true, true, true, true, true, 0, List.of()
+        );
+    }
+
+    @Override
+    public String resolveAccessPath(String storageKey) {
+        if (!StringUtils.hasText(storageKey)) {
+            return null;
+        }
+        String normalizedKey = storageKey.replace('\\', '/');
+        while (normalizedKey.startsWith("/")) {
+            normalizedKey = normalizedKey.substring(1);
+        }
+        return downloadUrl.endsWith("/") ? downloadUrl + normalizedKey : downloadUrl + "/" + normalizedKey;
+    }
+
+    @Override
+    public String resolveStorageKey(String accessPath) {
+        if (!StringUtils.hasText(accessPath)) {
+            return null;
+        }
+        String normalizedPath = accessPath.trim().replace('\\', '/');
+        if (normalizedPath.indexOf('?') >= 0 || normalizedPath.indexOf('#') >= 0 || normalizedPath.contains("%")) {
+            return null;
+        }
+        String normalizedDownloadUrl = downloadUrl.replace('\\', '/');
+        String relativePath;
+        if (normalizedPath.startsWith(normalizedDownloadUrl)) {
+            relativePath = normalizedPath.substring(normalizedDownloadUrl.length());
+        } else if (normalizedPath.startsWith("/static/")) {
+            relativePath = normalizedPath.substring("/static/".length());
+        } else {
+            return null;
+        }
+        while (relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+        if (!StringUtils.hasText(relativePath)) {
+            return null;
+        }
+        for (String segment : relativePath.split("/", -1)) {
+            if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
+                return null;
+            }
+        }
+        return relativePath;
+    }
+
+    @Override
+    public boolean isPublicAccessPathTrusted(String accessPath) {
+        return resolveStorageKey(accessPath) != null;
+    }
+
+    @Override
+    public boolean supportsDeterministicWrite() {
+        return true;
+    }
+
+    private File resolveLocalFile(String resourcePath) {
+        if (!StringUtils.hasText(resourcePath)) {
+            throw new PoetryRuntimeException("资源路径不能为空！");
+        }
+        String normalizedDownloadUrl = downloadUrl.replace('\\', '/');
+        String normalizedPath = resourcePath.replace('\\', '/');
+        String relativePath;
+        if (normalizedPath.startsWith(normalizedDownloadUrl)) {
+            relativePath = normalizedPath.substring(normalizedDownloadUrl.length());
+        } else if (normalizedPath.startsWith("/static/")) {
+            relativePath = normalizedPath.substring("/static/".length());
+        } else {
+            throw new PoetryRuntimeException("不是可管理的本地资源路径：" + resourcePath);
+        }
+        while (relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+
+        File root = new File(uploadUrl).getAbsoluteFile();
+        File resolved = new File(root, relativePath.replace("/", File.separator));
+        try {
+            String rootPath = root.getCanonicalPath();
+            String resolvedPath = resolved.getCanonicalPath();
+            if (!resolvedPath.equals(rootPath)
+                    && !resolvedPath.startsWith(rootPath + File.separator)) {
+                throw new PoetryRuntimeException("本地资源路径越界！");
+            }
+            return resolved;
+        } catch (IOException e) {
+            throw new PoetryRuntimeException("本地资源路径解析失败：" + e.getMessage());
         }
     }
 
@@ -134,37 +260,20 @@ public class LocalUtil implements StoreService {
             String resourceHash = writeTempFileAndCalculateHash(fileVO.getFile(), tempFile);
             fileVO.setResourceHash(resourceHash);
 
-            Resource existingResource = findReusableResource(resourceHash);
-            if (existingResource == null && StringUtils.hasText(resourceHash)) {
-                existingResource = findAndBackfillReusableResource(resourceHash, fileVO.getFile().getSize());
-            }
-            if (existingResource != null) {
-                FileUtil.del(tempFile);
-                FileVO result = new FileVO();
-                result.setAbsolutePath(existingResource.getPath().replace(downloadUrl, uploadUrl)
-                        .replace("/", File.separator));
-                result.setVisitPath(existingResource.getPath());
-                result.setStoreType(StoreEnum.LOCAL.getCode());
-                result.setResourceHash(resourceHash);
-                result.setReuseExistingResource(true);
-                log.info("LocalUtil.saveFile 命中相同哈希资源，复用已有路径: {}", result.getVisitPath());
-                return result;
-            }
-
             log.info("准备保存文件: {}", newFile.getAbsolutePath());
             moveTempFile(tempFile, newFile);
             tempFile = null;
             log.info("文件内容写入成功，文件大小: {} bytes", newFile.length());
             FileVO result = new FileVO();
             result.setAbsolutePath(absolutePath);
-            result.setVisitPath(downloadUrl + path);
+            result.setVisitPath(resolveAccessPath(path));
             result.setStoreType(StoreEnum.LOCAL.getCode());
+            result.setStorageKey(path);
             result.setResourceHash(resourceHash);
             log.info("LocalUtil.saveFile 完成 - VisitPath: {}", result.getVisitPath());
             return result;
         } catch (IOException e) {
             log.error("文件上传失败：", e);
-            FileUtil.del(absolutePath);
             throw new PoetryRuntimeException("文件上传失败！");
         } finally {
             if (tempFile != null && tempFile.exists()) {
@@ -191,102 +300,9 @@ public class LocalUtil implements StoreService {
     }
 
     private void moveTempFile(File tempFile, File newFile) throws IOException {
-        try {
-            java.nio.file.Files.move(
-                    tempFile.toPath(),
-                    newFile.toPath(),
-                    java.nio.file.StandardCopyOption.ATOMIC_MOVE
-            );
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-            java.nio.file.Files.move(tempFile.toPath(), newFile.toPath());
-        }
-    }
-
-    private Resource findReusableResource(String resourceHash) {
-        if (!StringUtils.hasText(resourceHash)) {
-            return null;
-        }
-
-        List<Resource> resources = resourceService.lambdaQuery()
-                .select(Resource::getPath, Resource::getResourceHash, Resource::getStoreType)
-                .eq(Resource::getResourceHash, resourceHash)
-                .and(wrapper -> wrapper.eq(Resource::getStoreType, StoreEnum.LOCAL.getCode())
-                        .or()
-                        .isNull(Resource::getStoreType))
-                .isNotNull(Resource::getPath)
-                .list();
-
-        if (CollectionUtils.isEmpty(resources)) {
-            return null;
-        }
-
-        for (Resource resource : resources) {
-            String path = resource.getPath();
-            if (!StringUtils.hasText(path)) {
-                continue;
-            }
-            File file = new File(path.replace(downloadUrl, uploadUrl));
-            if (file.exists() && file.isFile()) {
-                return resource;
-            }
-            log.warn("资源哈希匹配但本地文件不存在，跳过复用: {}", path);
-        }
-        return null;
-    }
-
-    private Resource findAndBackfillReusableResource(String resourceHash, long fileSize) {
-        if (!StringUtils.hasText(resourceHash) || fileSize > Integer.MAX_VALUE) {
-            return null;
-        }
-
-        List<Resource> resources = resourceService.lambdaQuery()
-                .select(Resource::getId, Resource::getPath, Resource::getSize, Resource::getStoreType)
-                .isNull(Resource::getResourceHash)
-                .eq(Resource::getSize, Integer.valueOf(Long.toString(fileSize)))
-                .and(wrapper -> wrapper.eq(Resource::getStoreType, StoreEnum.LOCAL.getCode())
-                        .or()
-                        .isNull(Resource::getStoreType))
-                .isNotNull(Resource::getPath)
-                .list();
-
-        if (CollectionUtils.isEmpty(resources)) {
-            return null;
-        }
-
-        for (Resource resource : resources) {
-            String path = resource.getPath();
-            if (!StringUtils.hasText(path)) {
-                continue;
-            }
-
-            File file = new File(path.replace(downloadUrl, uploadUrl));
-            if (!file.exists() || !file.isFile()) {
-                log.warn("待回填哈希的本地资源文件不存在，跳过: {}", path);
-                continue;
-            }
-
-            String existingHash = calculateFileHash(file);
-            if (!StringUtils.hasText(existingHash)) {
-                continue;
-            }
-
-            Resource update = new Resource();
-            update.setId(resource.getId());
-            update.setResourceHash(existingHash);
-            if (!StringUtils.hasText(resource.getStoreType())) {
-                update.setStoreType(StoreEnum.LOCAL.getCode());
-                resource.setStoreType(StoreEnum.LOCAL.getCode());
-            }
-            resourceService.updateById(update);
-            resource.setResourceHash(existingHash);
-
-            if (resourceHash.equals(existingHash)) {
-                log.info("LocalUtil.saveFile 回填旧资源哈希后命中复用路径: {}", path);
-                return resource;
-            }
-        }
-
-        return null;
+        // 不使用 ATOMIC_MOVE：Java 对“原子移动且目标已存在”是否覆盖的行为不作保证。
+        // 临时文件与目标位于同一目录，普通 move 保留 create-only 语义，目标存在时必定失败。
+        java.nio.file.Files.move(tempFile.toPath(), newFile.toPath());
     }
 
     private String calculateFileHash(File file) {
