@@ -7,7 +7,9 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.dao.SysPluginActiveMapper;
 import com.ld.poetry.entity.SysPlugin;
 import com.ld.poetry.entity.SysPluginActive;
+import com.ld.poetry.service.PluginBootstrapDataProvider;
 import com.ld.poetry.service.SysPluginService;
+import com.ld.poetry.service.prerender.PluginBootstrapMaterializer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
@@ -36,6 +38,12 @@ public class SysPluginController {
 
     @Autowired
     private SysPluginActiveMapper sysPluginActiveMapper;
+
+    @Autowired
+    private PluginBootstrapDataProvider pluginBootstrapDataProvider;
+
+    @Autowired
+    private PluginBootstrapMaterializer pluginBootstrapMaterializer;
 
     // ============ 公开接口（前端网站调用） ============
 
@@ -179,39 +187,11 @@ public class SysPluginController {
      * 前台首屏插件聚合接口（公开接口）。
      * 一次性返回首屏初始化需要的插件数据，替代 listActivePlugins、
      * getMouseClickEffects、getActiveMouseClickEffect、getActiveParticleEffect 的多次并发请求。
-     * 每一项独立兜底，单项失败不影响其余字段。
+     * 每一项独立兜底，单项失败不影响其余字段（容错逻辑下沉到 PluginBootstrapDataProvider）。
      */
     @GetMapping("/frontendBootstrap")
     public PoetryResult<Map<String, Object>> frontendBootstrap() {
-        Map<String, Object> result = new HashMap<>();
-
-        try {
-            result.put("activePlugins", loadActivePlugins());
-        } catch (Exception e) {
-            log.warn("frontendBootstrap 获取通用激活插件失败", e);
-            result.put("activePlugins", java.util.Collections.emptyList());
-        }
-
-        try {
-            result.put("mouseClickEffects", loadMouseClickEffects());
-        } catch (Exception e) {
-            log.warn("frontendBootstrap 获取鼠标点击效果列表失败", e);
-            result.put("mouseClickEffects", java.util.Collections.emptyList());
-        }
-
-        try {
-            result.put("activeMouseClickEffect", loadActiveMouseClickEffect());
-        } catch (Exception e) {
-            log.warn("frontendBootstrap 获取激活鼠标点击效果失败", e);
-        }
-
-        try {
-            result.put("activeParticleEffect", loadActiveParticleEffect());
-        } catch (Exception e) {
-            log.warn("frontendBootstrap 获取激活粒子特效失败", e);
-        }
-
-        return PoetryResult.success(result);
+        return PoetryResult.success(pluginBootstrapDataProvider.buildBootstrapData());
     }
 
     private Map<String, Object> buildFrontendPluginPayload(SysPlugin plugin) {
@@ -300,6 +280,7 @@ public class SysPluginController {
         
         boolean success = sysPluginService.setActivePlugin(pluginType, pluginKey);
         if (success) {
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success();
         } else {
             return PoetryResult.fail("设置失败");
@@ -356,6 +337,7 @@ public class SysPluginController {
         boolean success = sysPluginService.save(plugin);
         if (success) {
             log.info("新增插件成功: type={}, key={}, name={}", plugin.getPluginType(), plugin.getPluginKey(), plugin.getPluginName());
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success(plugin);
         } else {
             return PoetryResult.fail("新增失败");
@@ -394,6 +376,7 @@ public class SysPluginController {
         boolean success = sysPluginService.updateById(plugin);
         if (success) {
             log.info("更新插件成功: id={}, name={}", plugin.getId(), plugin.getPluginName());
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success(plugin);
         } else {
             return PoetryResult.fail("更新失败");
@@ -432,6 +415,7 @@ public class SysPluginController {
         boolean success = sysPluginService.removeById(id);
         if (success) {
             log.info("删除插件成功: id={}, name={}", id, existing.getPluginName());
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success();
         } else {
             return PoetryResult.fail("删除失败");
@@ -488,6 +472,7 @@ public class SysPluginController {
         
         if (success) {
             log.info("切换插件状态成功: id={}, enabled={}", id, enabled);
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success();
         } else {
             return PoetryResult.fail("操作失败");

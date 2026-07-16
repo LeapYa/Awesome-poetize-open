@@ -19,6 +19,15 @@ export function getPluginBootstrap() {
         return bootstrapPromise
     }
 
+    // 优先使用物化的静态 JS 配置：后端在插件变更时把聚合数据写入
+    // /static/pb.[hash].js（挂到 window.__PB__），
+    // 并通过 index.html 中的 <script> 同步加载。该 JS 走 CDN 永久缓存，避免每次回源 API。
+    if (typeof window !== 'undefined' && window.__PB__) {
+        bootstrapPromise = Promise.resolve(window.__PB__)
+        return bootstrapPromise
+    }
+
+    // 回退：物化文件缺失或未加载时走原 API
     bootstrapPromise = request
         .get('/sysPlugin/frontendBootstrap')
         .then(res => (res && res.data ? res.data : null))

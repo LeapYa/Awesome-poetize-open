@@ -816,6 +816,19 @@ server {
         try_files $uri @handle_404;
     }
 
+    # 插件配置物化 JS（飘落特效等首屏插件配置）
+    # 由后端在插件变更时生成，文件名带内容 hash，内容不变则 hash 不变，可永久缓存。
+    # index.html 不缓存，引用更新后即时拉取新 hash 文件，实现"CDN 永久缓存 + 立即生效"。
+    location ~* ^/static/pb\..*\.js$ {
+        root /usr/share/nginx/html/poetize;
+        types { application/javascript js; }
+        gzip off;
+        brotli off;
+        expires max;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri @handle_404;
+    }
+
     # Live2D模型和相关资源 - 专门优化Live2D资源的缓存
     location ^~ /static/live2d_api/ {
         root /usr/share/nginx/html/poetize;

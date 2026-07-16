@@ -4,6 +4,7 @@ import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.plugin.GroovyPluginEngine;
 import com.ld.poetry.plugin.PluginInstallService;
+import com.ld.poetry.service.prerender.PluginBootstrapMaterializer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -29,6 +30,9 @@ public class PluginInstallController {
     @Autowired
     private GroovyPluginEngine groovyPluginEngine;
 
+    @Autowired
+    private PluginBootstrapMaterializer pluginBootstrapMaterializer;
+
     /**
      * 安装插件（上传 .zip）
      */
@@ -37,6 +41,7 @@ public class PluginInstallController {
     public PoetryResult<Map<String, Object>> install(@RequestParam("file") MultipartFile file) {
         try {
             PluginInstallService.InstallResult result = pluginInstallService.installPlugin(file);
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success(Map.of(
                     "pluginKey", result.pluginKey(),
                     "version", result.version(),
@@ -62,6 +67,7 @@ public class PluginInstallController {
         }
         try {
             pluginInstallService.uninstallPlugin(pluginKey);
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success("插件卸载成功");
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("插件卸载参数异常: {}", e.getMessage());
@@ -80,6 +86,7 @@ public class PluginInstallController {
     public PoetryResult<Map<String, Object>> upgrade(@RequestParam("file") MultipartFile file) {
         try {
             PluginInstallService.InstallResult result = pluginInstallService.upgradePlugin(file);
+            pluginBootstrapMaterializer.materializeAsync();
             return PoetryResult.success(Map.of(
                     "pluginKey", result.pluginKey(),
                     "version", result.version(),

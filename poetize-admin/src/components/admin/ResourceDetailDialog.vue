@@ -3,7 +3,7 @@
     title="资源详情与副本管理"
     :visible.sync="visible"
     width="920px"
-    custom-class="resource-detail-dialog"
+    custom-class="centered-dialog"
     :append-to-body="true"
     :close-on-click-modal="false"
     :before-close="handleClose">
@@ -201,6 +201,7 @@
       title="删除活动副本前选择替代副本"
       :visible.sync="replacementVisible"
       width="520px"
+      custom-class="centered-dialog"
       :append-to-body="true"
       :close-on-click-modal="false">
       <div v-if="pendingDeleteActiveLocation">
