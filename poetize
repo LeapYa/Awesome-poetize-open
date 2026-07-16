@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-07-14
+## 修改时间: 2026-07-17
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.13.4
+## 版本: 1.13.5
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.13.2"
+POETIZE_VERSION="1.13.5"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -10747,7 +10747,6 @@ patch_dockerfile_mirror() {
     done
     patch_dockerfile_alpine_mirror "docker/translation-model/Dockerfile" 5
     patch_dockerfile_alpine_mirror "docker/java/Dockerfile" 16
-    patch_dockerfile_alpine_mirror "docker/prerender/Dockerfile" 5
     
     # 前端多阶段构建：动态查找 FROM 行并插入镜像源
     # 第一阶段（node:bookworm-slim）需要 Debian 镜像源

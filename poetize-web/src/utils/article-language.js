@@ -260,33 +260,6 @@ export async function getDefaultTargetLanguage() {
   }
 }
 
-export async function getArticleAvailableLanguages() {
-  if (!this.article || !this.article.id) {
-    return
-  }
-
-  try {
-    const response = await this.$http.get(
-      this.$constant.baseURL + '/article/getAvailableLanguages',
-      {
-        id: this.article.id,
-      }
-    )
-
-    if (response.code === 200 && response.data) {
-      this.availableLanguages = response.data || []
-      this.generateLanguageButtons()
-    } else {
-      this.availableLanguages = []
-      this.generateLanguageButtons()
-    }
-  } catch (error) {
-    console.error('获取文章可用翻译语言出错:', error)
-    this.availableLanguages = []
-    this.generateLanguageButtons()
-  }
-}
-
 export function generateLanguageButtons() {
   this.availableLanguageButtons = []
 

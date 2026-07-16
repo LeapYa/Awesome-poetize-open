@@ -275,6 +275,62 @@ public class CacheService {
         redisUtil.del(CacheConstants.SORT_ARTICLE_LIST_KEY);
     }
 
+    /**
+     * 缓存文章分页列表(listArticle 接口的完整 PoetryResult)
+     * TTL 为 5 分钟, 写操作会主动清理相关缓存
+     */
+    public void cacheArticleListPage(String key, Object result) {
+        if (key != null && result != null) {
+            redisUtil.set(key, result, CacheConstants.SHORT_EXPIRE_TIME);
+        }
+    }
+
+    /**
+     * 获取缓存的文章分页列表
+     */
+    public Object getCachedArticleListPage(String key) {
+        if (key == null) return null;
+        return redisUtil.get(key);
+    }
+
+    /**
+     * 删除所有文章分页列表缓存(模糊删除)
+     * 用于文章增删改时清理, 避免分页维度爆炸导致逐个删除
+     */
+    public void evictAllArticleListPage() {
+        deleteKeysByPattern(CacheConstants.ARTICLE_LIST_PAGE_PREFIX + "*");
+    }
+
+    /**
+     * 缓存按文章 source 隔离的微言列表
+     * TTL 为 5 分钟, 写操作会清理对应 source 的缓存
+     */
+    public void cacheWeiYanNewsList(Integer source, Object records) {
+        if (source != null && records != null) {
+            String key = CacheConstants.buildWeiYanNewsListKey(source);
+            redisUtil.set(key, records, CacheConstants.SHORT_EXPIRE_TIME);
+        }
+    }
+
+    /**
+     * 获取缓存的微言(文章最新进展)列表
+     */
+    public Object getCachedWeiYanNewsList(Integer source) {
+        if (source == null) return null;
+        String key = CacheConstants.buildWeiYanNewsListKey(source);
+        return redisUtil.get(key);
+    }
+
+    /**
+     * 删除指定文章 source 的微言(最新进展)缓存
+     */
+    public void evictWeiYanNewsList(Integer source) {
+        if (source != null) {
+            String key = CacheConstants.buildWeiYanNewsListKey(source);
+            redisUtil.del(key);
+        }
+    }
+
 
 
     /**
@@ -284,9 +340,10 @@ public class CacheService {
         if (articleId != null) {
             // 删除文章详情缓存
             evictArticle(articleId);
-            // 删除文章列表缓存（模糊删除）
-            // 注意：这里简化处理，实际可以使用Redis的SCAN命令
+            // 删除分类文章列表缓存
             evictSortArticleList();
+            // 删除文章分页列表缓存(listArticle 接口), 文章增删改时必须清理
+            evictAllArticleListPage();
         }
     }
 
@@ -480,6 +537,78 @@ public class CacheService {
         if (configKey != null) {
             String key = CacheConstants.buildSysConfigKey(configKey);
             redisUtil.del(key);
+        }
+    }
+
+    // ================================ AI 配置相关缓存 ================================
+
+    /**
+     * 缓存文章 AI 默认语言配置（永久缓存，配置变更后主动清理）
+     */
+    public void cacheArticleAiDefaultLang(Map<String, Object> defaultLang) {
+        if (defaultLang != null) {
+            redisUtil.set(CacheConstants.AI_ARTICLE_DEFAULT_LANG_KEY, defaultLang, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存文章AI默认语言配置(永久): {}", defaultLang);
+        }
+    }
+
+    /**
+     * 获取缓存的文章 AI 默认语言配置
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCachedArticleAiDefaultLang() {
+        Object cached = redisUtil.get(CacheConstants.AI_ARTICLE_DEFAULT_LANG_KEY);
+        if (cached instanceof Map) {
+            return (Map<String, Object>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除文章 AI 默认语言配置缓存
+     */
+    public void evictArticleAiDefaultLang() {
+        try {
+            redisUtil.del(CacheConstants.AI_ARTICLE_DEFAULT_LANG_KEY);
+            log.info("删除文章AI默认语言配置缓存 - Key: {}", CacheConstants.AI_ARTICLE_DEFAULT_LANG_KEY);
+        } catch (Exception e) {
+            log.error("删除文章AI默认语言配置缓存失败", e);
+        }
+    }
+
+    /**
+     * 缓存语言映射表（永久缓存，数据源为硬编码 Map，运行期不变）
+     */
+    public void cacheLanguageMapping(Map<String, String> mapping) {
+        if (mapping != null) {
+            redisUtil.set(CacheConstants.AI_LANGUAGE_MAPPING_KEY, mapping, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存语言映射表(永久): size={}", mapping.size());
+        }
+    }
+
+    /**
+     * 获取缓存的语言映射表
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, String> getCachedLanguageMapping() {
+        Object cached = redisUtil.get(CacheConstants.AI_LANGUAGE_MAPPING_KEY);
+        if (cached instanceof Map) {
+            return (Map<String, String>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除语言映射表缓存
+     * 说明: 当前数据源为硬编码 Map，运行期不变，原则上不需要 evict；
+     *       保留方法供未来数据源改为 DB 时使用。
+     */
+    public void evictLanguageMapping() {
+        try {
+            redisUtil.del(CacheConstants.AI_LANGUAGE_MAPPING_KEY);
+            log.info("删除语言映射表缓存 - Key: {}", CacheConstants.AI_LANGUAGE_MAPPING_KEY);
+        } catch (Exception e) {
+            log.error("删除语言映射表缓存失败", e);
         }
     }
 

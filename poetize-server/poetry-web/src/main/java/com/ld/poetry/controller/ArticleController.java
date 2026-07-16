@@ -527,26 +527,6 @@ public class ArticleController {
     }
 
     /**
-     * 获取文章所有可用的翻译语言
-     */
-    @GetMapping("/getAvailableLanguages")
-    public PoetryResult<List<String>> getAvailableLanguages(@RequestParam("id") Integer id) {
-        // 检查参数
-        if (id == null) {
-            return PoetryResult.fail("文章ID不能为空");
-        }
-
-        try {
-            // 获取文章所有可用的翻译语言
-            List<String> availableLanguages = translationService.getArticleAvailableLanguages(id);
-            return PoetryResult.success(availableLanguages);
-        } catch (Exception e) {
-            log.error("获取文章可用翻译语言失败", e);
-            return PoetryResult.fail("获取可用翻译语言失败：" + e.getMessage());
-        }
-    }
-
-    /**
      * 获取文章翻译
      */
     @GetMapping("/getTranslation")

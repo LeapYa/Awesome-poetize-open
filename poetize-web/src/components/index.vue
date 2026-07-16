@@ -535,12 +535,8 @@ export default {
         })
     },
     getSortArticles() {
-      // 添加时间戳参数，避免浏览器缓存
-      const timestamp = Date.now()
-      const url = `${this.$constant.baseURL}/article/listSortArticle?t=${timestamp}`
-
       this.$http
-        .get(url)
+        .get(this.$constant.baseURL + '/article/listSortArticle')
         .then((res) => {
           if (!this.$common.isEmpty(res.data)) {
             this.sortArticles = res.data

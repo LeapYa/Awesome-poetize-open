@@ -67,6 +67,20 @@ public class CacheConstants {
      * 格式: poetize:article:list:{sortId}:{page}:{size}
      */
     public static final String ARTICLE_LIST_PREFIX = CACHE_PREFIX + "article:list:";
+
+    /**
+     * 文章分页列表缓存键前缀(前端首页 listArticle 接口)
+     * 格式: poetize:article:listpage:{sortId}:{labelId}:{page}:{size}:{recommendStatus}
+     * 说明: 仅缓存无搜索关键词的常规分页查询, 带搜索关键词的请求直接查询数据库
+     */
+    public static final String ARTICLE_LIST_PAGE_PREFIX = CACHE_PREFIX + "article:listpage:";
+
+    /**
+     * 微言(文章最新进展)列表缓存键前缀
+     * 格式: poetize:weiyan:news:{source}
+     * 说明: 按文章 source 维度缓存, 文章动态增删改时 evict 对应 source
+     */
+    public static final String WEIYAN_NEWS_LIST_PREFIX = CACHE_PREFIX + "weiyan:news:";
     
     /**
      * 热门文章缓存键
@@ -140,6 +154,29 @@ public class CacheConstants {
      * 格式: poetize:config:{configKey}
      */
     public static final String SYS_CONFIG_PREFIX = CACHE_PREFIX + "config:";
+
+    // ================================ AI 配置相关缓存 ================================
+
+    /**
+     * AI 配置缓存键前缀
+     * 格式: poetize:ai:config:{...}
+     */
+    public static final String AI_CONFIG_PREFIX = CACHE_PREFIX + "ai:config:";
+
+    /**
+     * 文章 AI 默认语言配置缓存键
+     * 格式: poetize:ai:config:article_ai:default_lang
+     * 说明: 数据源 sys_ai_config 表 article_ai 行，高读低写，永久缓存 + 主动 evict
+     *       evict 触发点: SysAiConfigServiceImpl.saveArticleAiConfig 成功后
+     */
+    public static final String AI_ARTICLE_DEFAULT_LANG_KEY = AI_CONFIG_PREFIX + "article_ai:default_lang";
+
+    /**
+     * 语言映射表缓存键
+     * 格式: poetize:ai:config:language_mapping
+     * 说明: 数据源为 SysAiConfigServiceImpl.getLanguageMapping() 硬编码 Map，运行期不变，永久缓存
+     */
+    public static final String AI_LANGUAGE_MAPPING_KEY = AI_CONFIG_PREFIX + "language_mapping";
 
     /**
      * 管理员用户缓存键
@@ -524,6 +561,33 @@ public class CacheConstants {
      */
     public static String buildArticleListKey(Integer sortId, Integer page, Integer size) {
         return ARTICLE_LIST_PREFIX + sortId + ":" + page + ":" + size;
+    }
+
+    /**
+     * 构建文章分页列表缓存键(前端首页 listArticle 接口)
+     * <p>仅用于无搜索关键词的常规分页查询, 维度: sortId + labelId + page + size + recommendStatus
+     * @param sortId 分类ID(可为null)
+     * @param labelId 标签ID(可为null)
+     * @param page 页码
+     * @param size 页大小
+     * @param recommendStatus 是否推荐(可为null)
+     * @return 缓存键
+     */
+    public static String buildArticleListPageKey(Integer sortId, Integer labelId, long page, long size, Boolean recommendStatus) {
+        return ARTICLE_LIST_PAGE_PREFIX
+                + (sortId == null ? "_" : sortId) + ":"
+                + (labelId == null ? "_" : labelId) + ":"
+                + page + ":" + size + ":"
+                + (recommendStatus == null ? "_" : recommendStatus);
+    }
+
+    /**
+     * 构建微言(文章最新进展)列表缓存键
+     * @param source 文章ID
+     * @return 缓存键
+     */
+    public static String buildWeiYanNewsListKey(Integer source) {
+        return WEIYAN_NEWS_LIST_PREFIX + source;
     }
 
     /**

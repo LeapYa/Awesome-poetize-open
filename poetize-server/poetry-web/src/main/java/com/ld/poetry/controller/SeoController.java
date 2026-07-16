@@ -4,7 +4,6 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.SeoMetaService;
 import com.ld.poetry.service.SeoStaticService;
 import com.ld.poetry.service.SeoConfigService;
-import com.ld.poetry.service.ArticleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -39,33 +38,10 @@ public class SeoController {
     private SeoConfigService seoConfigService;
 
     @Autowired
-    private ArticleService articleService;
-    
-    @Autowired
     private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
     // ========== 元数据生成API（公开接口） ==========
 
-    /**
-     * 获取文章SEO元数据（前端文章页面调用）
-     */
-    @GetMapping("/getArticleMeta")
-    public PoetryResult<Map<String, Object>> getArticleMeta(
-            @RequestParam(value = "articleId", required = false) Integer articleId,
-            @RequestParam(value = "articlePath", required = false) String articlePath,
-            @RequestParam(value = "lang", defaultValue = "zh-CN") String language) {
-        try {
-            Integer resolvedArticleId = articleId != null ? articleId : articleService.resolveArticleIdByPath(articlePath);
-            if (resolvedArticleId == null) {
-                return PoetryResult.fail("文章不存在");
-            }
-            Map<String, Object> meta = seoMetaService.generateArticleMeta(resolvedArticleId, language);
-            return PoetryResult.success(meta);
-        } catch (Exception e) {
-            log.error("获取文章SEO元数据失败: articleId={}, articlePath={}", articleId, articlePath, e);
-            return PoetryResult.fail("获取文章元数据失败");
-        }
-    }
 
     /**
      * 获取网站首页SEO元数据

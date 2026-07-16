@@ -224,7 +224,6 @@ import { syncTocPosition, getTocbot, formatTocLinks } from '@/utils/article-toc'
 import {
   setDefaultMetaTags,
   updateMetaTags,
-  fetchArticleMeta,
 } from '@/utils/article-meta'
 import {
   setupLanguageSwitchEventDelegation,
@@ -236,7 +235,6 @@ import {
   updateUrlWithLanguage,
   initializeLanguageSettings,
   getDefaultTargetLanguage,
-  getArticleAvailableLanguages,
   generateLanguageButtons,
 } from '@/utils/article-language'
 import {
@@ -360,8 +358,6 @@ export default {
       scrollTop: 0,
       hasInitTocbot: false,
       metaTags: null,
-      metaTagRetryCount: 0,
-      isLoadingMeta: false,
       currentLang: 'zh', // 默认中文
       isLoading: false,
       translatedTitle: '',
@@ -956,8 +952,6 @@ export default {
 
       // 重置元标签相关状态
       this.metaTags = null
-      this.metaTagRetryCount = 0
-      this.isLoadingMeta = false
 
       // 重置目录相关状态
       this.tocbotRefreshed = false
@@ -1342,14 +1336,9 @@ export default {
         articleParams.language = this.currentLang
       }
 
-      Promise.all([
-        this.$http.get(
-          this.$constant.baseURL + '/article/getArticleByPath',
-          articleParams
-        ),
-        this.fetchArticleMeta(),
-      ])
-        .then(async ([articleRes]) => {
+      this.$http
+        .get(this.$constant.baseURL + '/article/getArticleByPath', articleParams)
+        .then(async (articleRes) => {
           // 处理文章数据
           if (!this.$common.isEmpty(articleRes.data)) {
             this.article = articleRes.data
@@ -1423,8 +1412,18 @@ export default {
               ).includes(this.article.labelId)
             }
 
-            // 获取文章可用的翻译语言并生成动态按钮
-            this.getArticleAvailableLanguages()
+            // 从文章详情响应读取可用的翻译语言
+            this.availableLanguages = this.article.availableLanguages || []
+            this.generateLanguageButtons()
+
+            // 从文章详情响应读取 SEO 元信息
+            if (this.article.seoMeta) {
+              this.metaTags = this.article.seoMeta
+              this.updateMetaTags()
+            } else {
+              this.setDefaultMetaTags()
+            }
+
             this.checkPendingSubscribe()
           } else {
             // 文章数据为空，说明文章不存在，跳转到404页面
@@ -1500,7 +1499,6 @@ export default {
           })
         })
     },
-    fetchArticleMeta,
     highlight,
     
     /**
@@ -1779,7 +1777,6 @@ export default {
      */
     initializeLanguageSettings,
     getDefaultTargetLanguage,
-    getArticleAvailableLanguages,
     generateLanguageButtons,
 
   },

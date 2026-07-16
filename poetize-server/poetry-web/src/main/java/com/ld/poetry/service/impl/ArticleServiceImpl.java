@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.ResourceCheck;
 import com.ld.poetry.constants.CommonConst;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.dao.LabelMapper;
 import com.ld.poetry.dao.SortMapper;
@@ -45,6 +46,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import com.ld.poetry.service.SummaryService;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.StructuredTaskScope;
 import java.util.concurrent.StructuredTaskScope.Subtask;
@@ -246,9 +248,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 });
             }
 
-            // 清除缓存
+            // 清理文章详情、分类列表和分页列表缓存，保持后续读取与数据库一致
             try {
-                cacheService.evictSortArticleList();
+                cacheService.evictArticleRelatedCache(savedArticleId);
             } catch (Exception e) {
                 log.error("清除缓存失败: {}", e.getMessage(), e);
             }
@@ -399,9 +401,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 }
                 applySummaryOutcome(taskId, summaryOutcome);
 
-                // 清除缓存
+                // 清理文章详情、分类列表和分页列表缓存，保持后续读取与数据库一致
                 try {
-                    cacheService.evictSortArticleList();
+                    cacheService.evictArticleRelatedCache(savedArticleId);
                 } catch (Exception e) {
                     log.error("清除缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }
@@ -1787,9 +1789,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 log.info("文章{}使用手动摘要，跳过自动摘要更新", updatedArticleId);
             }
 
-            // 清除缓存
+            // 清理文章详情、分类列表和分页列表缓存，保持后续读取与数据库一致
             try {
-                cacheService.evictSortArticleList();
+                cacheService.evictArticleRelatedCache(updatedArticleId);
             } catch (Exception e) {
                 log.error("清除缓存失败: {}", e.getMessage(), e);
             }
@@ -1830,6 +1832,34 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             }
         }
 
+        // 仅对不含搜索条件的常规分页请求启用缓存
+        // 搜索条件可能改变结果集，直接查询数据库，避免复用不匹配的分页缓存
+        boolean cacheable = !StringUtils.hasText(baseRequestVO.getArticleSearch())
+                && !StringUtils.hasText(baseRequestVO.getSearchKey());
+        if (cacheable) {
+            String cacheKey = CacheConstants.buildArticleListPageKey(
+                    baseRequestVO.getSortId(),
+                    baseRequestVO.getLabelId(),
+                    baseRequestVO.getCurrent(),
+                    baseRequestVO.getSize(),
+                    baseRequestVO.getRecommendStatus());
+            Object cached = cacheService.getCachedArticleListPage(cacheKey);
+            if (cached instanceof PoetryResult) {
+                @SuppressWarnings("unchecked")
+                PoetryResult<Page> cachedResult = (PoetryResult<Page>) cached;
+                // 复制分页记录，避免调用方修改缓存对象中的列表
+                Page cachedPage = cachedResult.getData();
+                if (cachedPage != null) {
+                    Page pageCopy = new Page(cachedPage.getCurrent(), cachedPage.getSize());
+                    pageCopy.setTotal(cachedPage.getTotal());
+                    pageCopy.setRecords(new ArrayList<>(cachedPage.getRecords()));
+                    baseRequestVO.setRecords(pageCopy.getRecords());
+                    baseRequestVO.setTotal(pageCopy.getTotal());
+                    return PoetryResult.success(baseRequestVO);
+                }
+            }
+        }
+
         LambdaQueryChainWrapper<Article> lambdaQuery = lambdaQuery();
         lambdaQuery.in(!CollectionUtils.isEmpty(ids), Article::getId, ids);
         lambdaQuery.like(StringUtils.hasText(baseRequestVO.getSearchKey()), Article::getArticleTitle,
@@ -1857,12 +1887,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             List<ArticleVO> titles = new ArrayList<>();
             List<ArticleVO> contents = new ArrayList<>();
 
+            // 预加载当前页面所需的用户、评论数和分类信息，构建文章 VO 时直接从内存读取
+            List<Object> preloaded = preloadArticleRelations(records);
+            Map<Integer, User> userMap = (Map<Integer, User>) preloaded.get(0);
+            Map<Integer, Integer> commentCountMap = (Map<Integer, Integer>) preloaded.get(1);
+            List<Sort> sortInfoList = (List<Sort>) preloaded.get(2);
+
             for (Article article : records) {
                 // 保存原始内容用于显示前的高亮处理
                 String originalContent = article.getArticleContent();
                 String originalTitle = article.getArticleTitle();
 
-                ArticleVO articleVO = buildArticleVO(article, false);
+                ArticleVO articleVO = buildArticleVOBatch(article, false, userMap, commentCountMap, sortInfoList);
 
                 // 直接使用数据库中存储的摘要（仅在非搜索场景下设置）
                 if (!StringUtils.hasText(baseRequestVO.getArticleSearch())
@@ -2024,7 +2060,19 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             collect.addAll(contents);
             baseRequestVO.setRecords(collect);
         }
-        return PoetryResult.success(baseRequestVO);
+
+        PoetryResult<Page> result = PoetryResult.success(baseRequestVO);
+        // 写入常规分页缓存，搜索请求不会进入此分支
+        if (cacheable) {
+            String cacheKey = CacheConstants.buildArticleListPageKey(
+                    baseRequestVO.getSortId(),
+                    baseRequestVO.getLabelId(),
+                    baseRequestVO.getCurrent(),
+                    baseRequestVO.getSize(),
+                    baseRequestVO.getRecommendStatus());
+            cacheService.cacheArticleListPage(cacheKey, result);
+        }
+        return result;
     }
 
     @Override
@@ -2282,10 +2330,41 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public PoetryResult<Map<Integer, List<ArticleVO>>> listSortArticle() {
-        // 使用Redis缓存替换PoetryCache
         Map<Integer, List<Article>> cachedResult = cacheService.getCachedSortArticleList();
         if (cachedResult != null) {
-            Map<Integer, Integer> latestViewCountMap = loadLatestViewCountMap(cachedResult);
+            // 异步刷新缓存中的浏览量，主请求直接使用缓存数据返回
+            CompletableFuture.runAsync(() -> {
+                try {
+                    Map<Integer, Integer> latestViewCountMap = loadLatestViewCountMap(cachedResult);
+                    // 将数据库中的最新浏览量写回缓存，供后续请求使用
+                    for (List<Article> articles : cachedResult.values()) {
+                        if (articles == null) continue;
+                        for (Article article : articles) {
+                            if (article == null || article.getId() == null) continue;
+                            Integer latest = latestViewCountMap.get(article.getId());
+                            if (latest != null) {
+                                article.setViewCount(latest);
+                            }
+                        }
+                    }
+                    // 保存更新后的分类文章列表，并刷新缓存有效期
+                    cacheService.cacheSortArticleList(cachedResult);
+                } catch (Exception e) {
+                    log.warn("异步刷新 viewCount 失败, 下次请求仍用旧 viewCount", e);
+                }
+            });
+
+            // 使用缓存中的浏览量构建响应，避免等待浏览量查询完成
+            // 预加载页面所需的关联数据
+            List<Article> allArticles = new ArrayList<>();
+            for (List<Article> articles : cachedResult.values()) {
+                if (articles != null) allArticles.addAll(articles);
+            }
+            List<Object> preloaded = preloadArticleRelations(allArticles);
+            Map<Integer, User> userMap = (Map<Integer, User>) preloaded.get(0);
+            Map<Integer, Integer> commentCountMap = (Map<Integer, Integer>) preloaded.get(1);
+            List<Sort> sortInfoList = (List<Sort>) preloaded.get(2);
+
             // 转换为ArticleVO
             Map<Integer, List<ArticleVO>> result = new HashMap<>();
             for (Map.Entry<?, List<Article>> entry : cachedResult.entrySet()) {
@@ -2293,8 +2372,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 Integer sortId = convertToInteger(entry.getKey());
                 if (sortId != null) {
                     List<ArticleVO> articleVOList = entry.getValue().stream().map(article -> {
-                        applyLatestViewCount(article, latestViewCountMap);
-                        ArticleVO vo = buildArticleVO(article, false);
+                        ArticleVO vo = buildArticleVOBatch(article, false, userMap, commentCountMap, sortInfoList);
                         if (StringUtils.hasText(article.getSummary())) {
                             vo.setSummary(article.getSummary());
                         }
@@ -2539,6 +2617,152 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
 
         return articleVO;
+    }
+
+    /**
+     * 根据预加载的关联数据构建 ArticleVO。
+     * <p>调用方应为同一批文章复用预加载结果，避免在构建单条记录时重复读取关联数据。
+     * @param article 文章实体
+     * @param isAdmin 是否管理端
+     * @param userMap userId -> User(可为空, 表示该用户未预加载, 内部回退到 commonQuery.getUser)
+     * @param commentCountMap articleId -> Integer 评论数(可为空, 内部回退到 commonQuery.getCommentCount)
+     * @param sortInfoList 分类信息列表(可为空, 内部回退到 commonQuery.getSortInfo)
+     */
+    private ArticleVO buildArticleVOBatch(Article article, Boolean isAdmin,
+                                          Map<Integer, User> userMap,
+                                          Map<Integer, Integer> commentCountMap,
+                                          List<Sort> sortInfoList) {
+        ArticleVO articleVO = new ArticleVO();
+        BeanUtils.copyProperties(article, articleVO);
+        if (!isAdmin) {
+            if (!StringUtils.hasText(articleVO.getArticleCover())) {
+                articleVO.setArticleCover(PoetryUtil.getRandomCover(articleVO.getId().toString()));
+            }
+        }
+
+        // 生成文章访问链接
+        try {
+            String siteUrl = mailUtil.getSiteUrl();
+            if (StringUtils.hasText(siteUrl)) {
+                articleVO.setArticleUrl(siteUrl + ArticleUrlUtil.buildArticlePath(article.getId(), article.getArticleSlug()));
+            }
+        } catch (Exception e) {
+        }
+
+        // 1. 用户信息(优先从预加载 map 取, 未命中则回退到 commonQuery)
+        User user = null;
+        if (userMap != null && articleVO.getUserId() != null) {
+            user = userMap.get(articleVO.getUserId());
+        }
+        if (user == null && articleVO.getUserId() != null) {
+            user = commonQuery.getUser(articleVO.getUserId());
+        }
+        if (user != null && StringUtils.hasText(user.getUsername())) {
+            articleVO.setUsername(user.getUsername());
+            articleVO.setAvatar(user.getAvatar());
+        } else if (!isAdmin) {
+            articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
+        }
+
+        // 2. 评论数(优先从预加载 map 取)
+        if (articleVO.getCommentStatus() != null && articleVO.getCommentStatus()) {
+            Integer commentCount = null;
+            if (commentCountMap != null && articleVO.getId() != null) {
+                commentCount = commentCountMap.get(articleVO.getId());
+            }
+            if (commentCount == null && articleVO.getId() != null) {
+                commentCount = commonQuery.getCommentCount(articleVO.getId(),
+                        CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode());
+            }
+            articleVO.setCommentCount(commentCount == null ? 0 : commentCount);
+        } else {
+            articleVO.setCommentCount(0);
+        }
+
+        // 3. 分类和标签信息(优先从预加载列表取)
+        List<Sort> sortInfo = sortInfoList;
+        if (sortInfo == null) {
+            sortInfo = commonQuery.getSortInfo();
+        }
+        if (!CollectionUtils.isEmpty(sortInfo) && articleVO.getSortId() != null) {
+            for (Sort s : sortInfo) {
+                if (s.getId().intValue() == articleVO.getSortId().intValue()) {
+                    Sort sort = new Sort();
+                    BeanUtils.copyProperties(s, sort);
+                    sort.setLabels(null);
+                    articleVO.setSort(sort);
+                    articleVO.setSortName(s.getSortName());
+                    if (!CollectionUtils.isEmpty(s.getLabels()) && articleVO.getLabelId() != null) {
+                        for (Label l : s.getLabels()) {
+                            if (l.getId().intValue() == articleVO.getLabelId().intValue()) {
+                                Label label = new Label();
+                                BeanUtils.copyProperties(l, label);
+                                articleVO.setLabel(label);
+                                articleVO.setLabelName(l.getLabelName());
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        return articleVO;
+    }
+
+    /**
+     * 批量预加载一页文章的关联数据(User / CommentCount / SortInfo), 供 buildArticleVOBatch 使用。
+     * 使用 CompletableFuture 并行加载用户、评论数和分类信息。
+     * @param records 一页文章实体
+     * @return 三元组: [userMap, commentCountMap, sortInfoList]
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Object> preloadArticleRelations(List<Article> records) {
+        if (CollectionUtils.isEmpty(records)) {
+            return Arrays.asList(new HashMap<>(), new HashMap<>(), new ArrayList<>());
+        }
+
+        // 收集需要预加载的 userId 和 articleId
+        Set<Integer> userIds = new HashSet<>();
+        Set<Integer> articleIds = new HashSet<>();
+        for (Article a : records) {
+            if (a.getUserId() != null) userIds.add(a.getUserId());
+            if (a.getId() != null) articleIds.add(a.getId());
+        }
+
+        // 并行预加载三类关联数据
+        CompletableFuture<Map<Integer, User>> userFuture = CompletableFuture.supplyAsync(() -> {
+            Map<Integer, User> map = new HashMap<>();
+            for (Integer uid : userIds) {
+                User u = commonQuery.getUser(uid);
+                if (u != null) {
+                    map.put(uid, u);
+                }
+            }
+            return map;
+        });
+
+        CompletableFuture<Map<Integer, Integer>> commentCountFuture = CompletableFuture.supplyAsync(() -> {
+            Map<Integer, Integer> map = new HashMap<>();
+            for (Integer aid : articleIds) {
+                Integer count = commonQuery.getCommentCount(aid,
+                        CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode());
+                map.put(aid, count == null ? 0 : count);
+            }
+            return map;
+        });
+
+        CompletableFuture<List<Sort>> sortInfoFuture = CompletableFuture.supplyAsync(commonQuery::getSortInfo);
+
+        // 等待全部完成
+        CompletableFuture.allOf(userFuture, commentCountFuture, sortInfoFuture).join();
+
+        return Arrays.asList(
+                userFuture.join(),
+                commentCountFuture.join(),
+                sortInfoFuture.join()
+        );
     }
 
     /**
@@ -2915,9 +3139,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     applySummaryOutcome(taskId, summaryOutcome);
                 }
 
-                // 清除缓存
+                // 清理文章详情、分类列表和分页列表缓存，保持后续读取与数据库一致
                 try {
-                    cacheService.evictSortArticleList();
+                    cacheService.evictArticleRelatedCache(updatedArticleId);
                 } catch (Exception e) {
                     log.error("清除缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }

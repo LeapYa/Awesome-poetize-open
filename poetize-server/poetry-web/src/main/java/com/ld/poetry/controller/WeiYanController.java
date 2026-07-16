@@ -9,6 +9,7 @@ import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.WeiYan;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.WeiYanService;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.enums.PoetryEnum;
@@ -21,6 +22,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 
 /**
  * <p>
@@ -40,6 +42,9 @@ public class WeiYanController {
 
     @Autowired
     private ArticleMapper articleMapper;
+
+    @Autowired
+    private CacheService cacheService;
 
     /**
      * 保存
@@ -109,6 +114,8 @@ public class WeiYanController {
         weiYan.setCreateTime(weiYanVO.getCreateTime());
         weiYan.setType(CommonConst.WEIYAN_TYPE_NEWS);
         weiYanService.save(weiYan);
+        // 保存文章动态后清理对应文章的列表缓存
+        cacheService.evictWeiYanNewsList(weiYanVO.getSource());
         return PoetryResult.success();
     }
 
@@ -120,6 +127,17 @@ public class WeiYanController {
         if (baseRequestVO.getSource() == null) {
             return PoetryResult.fail("来源不能为空！");
         }
+
+        // 命中缓存直接返回(文章页 size=9999 拉全量, 缓存键按 source 维度)
+        Object cached = cacheService.getCachedWeiYanNewsList(baseRequestVO.getSource());
+        if (cached instanceof BaseRequestVO) {
+            BaseRequestVO cachedVO = (BaseRequestVO) cached;
+            // 浅拷贝 records, 避免上层修改污染缓存
+            baseRequestVO.setRecords(new ArrayList<>(cachedVO.getRecords()));
+            baseRequestVO.setTotal(cachedVO.getTotal());
+            return PoetryResult.success(baseRequestVO);
+        }
+
         LambdaQueryChainWrapper<WeiYan> lambdaQuery = weiYanService.lambdaQuery();
         lambdaQuery.eq(WeiYan::getType, CommonConst.WEIYAN_TYPE_NEWS);
         lambdaQuery.eq(WeiYan::getSource, baseRequestVO.getSource());
@@ -129,6 +147,16 @@ public class WeiYanController {
         lambdaQuery.page(page);
         baseRequestVO.setRecords(page.getRecords());
         baseRequestVO.setTotal(page.getTotal());
+
+        // 写入缓存(浅拷贝 records, 避免后续被修改污染缓存)
+        BaseRequestVO cacheSnapshot = new BaseRequestVO();
+        cacheSnapshot.setSource(baseRequestVO.getSource());
+        cacheSnapshot.setCurrent(baseRequestVO.getCurrent());
+        cacheSnapshot.setSize(baseRequestVO.getSize());
+        cacheSnapshot.setRecords(new ArrayList<>(baseRequestVO.getRecords()));
+        cacheSnapshot.setTotal(baseRequestVO.getTotal());
+        cacheService.cacheWeiYanNewsList(baseRequestVO.getSource(), cacheSnapshot);
+
         return PoetryResult.success(baseRequestVO);
     }
 
@@ -140,9 +168,20 @@ public class WeiYanController {
     @AuditLog(action = "WEIYAN_DELETE", targetType = "WEIYAN", targetIdParam = "id", summary = "删除微言")
     public PoetryResult deleteWeiYan(@RequestParam("id") Integer id) {
         Integer userId = PoetryUtil.getUserId();
+        // 先查出 WeiYan 的 source, 用于删除后 evict 对应 source 的 listNews 缓存
+        WeiYan existing = weiYanService.lambdaQuery()
+                .select(WeiYan::getSource, WeiYan::getType)
+                .eq(WeiYan::getId, id)
+                .eq(WeiYan::getUserId, userId)
+                .one();
         weiYanService.lambdaUpdate().eq(WeiYan::getId, id)
                 .eq(WeiYan::getUserId, userId)
                 .remove();
+        // 仅当是 NEWS 类型(有 source)时才需要 evict listNews 缓存
+        if (existing != null && existing.getSource() != null
+                && CommonConst.WEIYAN_TYPE_NEWS.equals(existing.getType())) {
+            cacheService.evictWeiYanNewsList(existing.getSource());
+        }
         return PoetryResult.success();
     }
 

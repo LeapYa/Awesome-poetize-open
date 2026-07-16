@@ -2531,8 +2531,8 @@ const uploadPicture = () => import("../common/uploadPicture");
         if (this.$common.isEmpty(articleId)) {
           return;
         }
-        // 检查文章是否有可用的翻译语言
-        this.$http.get(this.$constant.baseURL + "/article/getAvailableLanguages", {id: articleId})
+        // 通过后台接口读取文章可用的翻译语言
+        this.$http.get(this.$constant.baseURL + "/admin/article/getAvailableLanguages", {articleId: articleId})
           .then((res) => {
             if (res.code === 200 && res.data && res.data.length > 0) {
               // 如果文章有翻译，自动开启跳过AI翻译

@@ -1,96 +1,36 @@
-import axios from 'axios'
-
-export function getArticleMeta() {
-  this.isLoadingMeta = true
-  const articlePath = this.articlePathToken || this.id
-  const timeout = setTimeout(() => {
-    if (this.isLoadingMeta) {
-      this.isLoadingMeta = false
-      this.setDefaultMetaTags()
-    }
-  }, 3000)
-
-  this.$http
-    .get(this.$constant.baseURL + '/article/getArticleByPathNoCount', {
-      path: articlePath,
-    })
-    .then((articleRes) => {
-      if (articleRes.code === 200 && articleRes.data) {
-        axios
-          .get(
-            this.$constant.baseURL +
-              `/seo/getArticleMeta?articlePath=${encodeURIComponent(articlePath)}&lang=${this.currentLang}`
-          )
-          .then((res) => {
-            clearTimeout(timeout)
-            this.isLoadingMeta = false
-
-            if (res.data && res.data.code === 200 && res.data.data) {
-              this.metaTags = res.data.data
-              this.updateMetaTags()
-            } else {
-              console.error(
-                '获取文章元标签失败, 服务返回错误:',
-                res.data ? res.data.message || '未知错误' : '返回数据为空'
-              )
-              this.setDefaultMetaTags()
-            }
-          })
-          .catch((error) => {
-            clearTimeout(timeout)
-            this.isLoadingMeta = false
-            console.error('获取文章元标签失败:', error)
-
-            if (!this.metaTagRetryCount || this.metaTagRetryCount < 2) {
-              this.metaTagRetryCount = (this.metaTagRetryCount || 0) + 1
-              setTimeout(() => {
-                this.getArticleMeta()
-              }, 1500)
-            } else {
-              this.setDefaultMetaTags()
-            }
-          })
-      } else {
-        clearTimeout(timeout)
-        this.isLoadingMeta = false
-        console.error('获取文章信息失败，无法获取元标签')
-        this.setDefaultMetaTags()
-      }
-    })
-    .catch((error) => {
-      clearTimeout(timeout)
-      this.isLoadingMeta = false
-      console.error('获取文章信息失败:', error)
-      this.setDefaultMetaTags()
-    })
-}
-
 export function setDefaultMetaTags() {
-  if (this.article) {
-    this.metaTags = {
-      title: this.article.articleTitle || 'POETIZE博客',
-      description: this.article.articleTitle
-        ? this.article.articleTitle + ' - POETIZE博客'
-        : 'POETIZE博客',
-      keywords: 'POETIZE,博客,个人网站',
-      author: this.article.username || 'Admin',
-      'og:url': window.location.href,
-      'og:image': this.article.articleCover || '',
-      'twitter:card': 'summary',
-      'article:published_time': this.article.createTime || '',
-      'article:modified_time': this.article.updateTime || '',
-    }
-    this.updateMetaTags()
+  if (!this.article) return
+
+  const title = this.article.articleTitle || ''
+  const keywords =
+    this.article.seoMeta?.keywords ||
+    [
+      this.article.sortName || this.article.sort?.sortName,
+      this.article.labelName || this.article.label?.labelName,
+      title,
+    ]
+      .filter(Boolean)
+      .join(',')
+
+  this.metaTags = {
+    title,
+    description: this.article.summary || title,
+    keywords,
+    author: this.article.username || '',
+    'og:url': window.location.href,
+    'og:image': this.article.articleCover || '',
+    'twitter:card': 'summary',
+    'article:published_time': this.article.createTime || '',
+    'article:modified_time': this.article.updateTime || '',
   }
+  this.updateMetaTags()
 }
 
 export function updateMetaTags() {
   if (!this.metaTags) return
 
-  if (this.metaTags.title) {
-    document.title = this.metaTags.title
-    window.OriginTitile = this.metaTags.title
-  }
+  document.title = this.metaTags.title || ''
+  window.OriginTitile = document.title
 
   document
     .querySelectorAll('meta[data-vue-meta="true"]')
@@ -141,47 +81,4 @@ export function updateMetaTags() {
     this.metaTags['article:modified_time'],
     true
   )
-}
-
-export function fetchArticleMeta() {
-  return new Promise((resolve) => {
-    this.isLoadingMeta = true
-    const articlePath = this.articlePathToken || this.id
-    const timeout = setTimeout(() => {
-      if (this.isLoadingMeta) {
-        this.isLoadingMeta = false
-        this.setDefaultMetaTags()
-        resolve()
-      }
-    }, 3000)
-
-    axios
-      .get(
-        this.$constant.baseURL +
-          `/seo/getArticleMeta?articlePath=${encodeURIComponent(articlePath)}&lang=${this.currentLang}`
-      )
-      .then((res) => {
-        clearTimeout(timeout)
-        this.isLoadingMeta = false
-
-        if (res.data && res.data.code === 200 && res.data.data) {
-          this.metaTags = res.data.data
-          this.updateMetaTags()
-        } else {
-          console.error(
-            '获取文章元标签失败, 服务返回错误:',
-            res.data ? res.data.message || '未知错误' : '返回数据为空'
-          )
-          this.setDefaultMetaTags()
-        }
-        resolve()
-      })
-      .catch((error) => {
-        clearTimeout(timeout)
-        this.isLoadingMeta = false
-        console.error('获取文章元标签失败:', error)
-        this.setDefaultMetaTags()
-        resolve()
-      })
-  })
 }

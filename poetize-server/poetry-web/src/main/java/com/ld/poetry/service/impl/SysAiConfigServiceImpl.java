@@ -57,6 +57,10 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
     @Lazy
     private com.ld.poetry.service.ai.LlmTranslationService llmTranslationService;
 
+    @Autowired
+    @Lazy
+    private com.ld.poetry.service.CacheService cacheService;
+
     private static final String[] API_TRANSLATION_SECRET_FIELDS = {
             "api_key",
             "app_secret",
@@ -311,7 +315,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             preserveMissingArticleAiSecrets(config, existingConfig);
         }
 
-        return saveOrUpdateConfig(config);
+        boolean success = saveOrUpdateConfig(config);
+        if (success) {
+            // 清除文章 AI 默认语言缓存（default_source_lang / default_target_lang 可能被修改）
+            cacheService.evictArticleAiDefaultLang();
+        }
+        return success;
     }
 
     private void preserveMissingArticleAiSecrets(SysAiConfig config, SysAiConfig existingConfig) {
@@ -637,8 +646,16 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
         }
 
         try {
+            // 删除前先读取配置类型，用于决定是否清理缓存
+            SysAiConfig existing = sysAiConfigMapper.selectById(id);
             boolean success = removeById(id);
-            log.info("删除AI配置成功: id={}", id);
+            if (success) {
+                log.info("删除AI配置成功: id={}", id);
+                // 防御性 evict: 若删除的是 article_ai 配置，清掉 defaultLang 缓存
+                if (existing != null && "article_ai".equals(existing.getConfigType())) {
+                    cacheService.evictArticleAiDefaultLang();
+                }
+            }
             return success;
 
         } catch (Exception e) {
@@ -649,6 +666,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
 
     @Override
     public Map<String, Object> getDefaultLanguages() {
+        // 优先走 Redis 缓存（文章页每次访问都会调用，高频读）
+        Map<String, Object> cached = cacheService.getCachedArticleAiDefaultLang();
+        if (cached != null) {
+            return cached;
+        }
+
         Map<String, Object> result = new HashMap<>();
 
         // 只需要语言配置，直接查询数据库，无需解密敏感字段
@@ -665,11 +688,20 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             result.put("default_target_lang", "en");
         }
 
+        // 写入永久缓存（saveArticleAiConfig 时主动 evict）
+        cacheService.cacheArticleAiDefaultLang(result);
+
         return result;
     }
 
     @Override
     public Map<String, String> getLanguageMapping() {
+        // 优先走 Redis 缓存（数据源为硬编码 Map，运行期不变，永久缓存）
+        Map<String, String> cached = cacheService.getCachedLanguageMapping();
+        if (cached != null) {
+            return cached;
+        }
+
         // 前台展示用语言映射（原生语言文字）
         Map<String, String> mapping = new HashMap<>();
         mapping.put("zh", "中文");
@@ -687,6 +719,10 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
         mapping.put("th", "ไทย");
         mapping.put("vi", "Tiếng Việt");
         mapping.put("auto", "Auto Detect");
+
+        // 写入永久缓存
+        cacheService.cacheLanguageMapping(mapping);
+
         return mapping;
     }
 
