@@ -49,8 +49,9 @@ public class PluginBootstrapMaterializer {
             Pattern.CASE_INSENSITIVE);
     private static final Pattern APP_DIV_PATTERN = Pattern.compile(
             "<div\\s+id\\s*=\\s*[\"']app[\"']", Pattern.CASE_INSENSITIVE);
+    // 限定为 /pb.<hex>.js 形式，避免误匹配 HTML 注释里的 pb.[hash].js 字面量
     private static final Pattern ANY_PLUGIN_SCRIPT_PATTERN = Pattern.compile(
-            "pb\\.[^\"']*\\.js", Pattern.CASE_INSENSITIVE);
+            "/pb\\.[0-9a-f]+\\.js", Pattern.CASE_INSENSITIVE);
     private static final int KEEP_FILE_COUNT = 100;
 
     private final PluginBootstrapDataProvider dataProvider;
