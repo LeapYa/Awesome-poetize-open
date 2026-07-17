@@ -70,56 +70,24 @@ const TOC_TITLE_MAP = {
 // 缓存语言映射，避免频繁请求
 let cachedLanguageMap = null
 let cachedAdminLanguageMap = null
-let isLoading = false
 let isAdminLoading = false
-let loadPromise = null
 let loadAdminPromise = null
-
-const ARTICLE_DEFAULT_LANG_KEY = 'articleDefaultLanguages'
-const LANGUAGE_CACHE_MAX_AGE = 24 * 60 * 60 * 1000
 
 /**
  * 获取语言映射配置
- * 优先从数据库读取，失败则使用默认配置
+ * 优先返回 bootstrap 已写入的内存缓存，未命中则使用硬编码默认值
+ * (与后端 SysAiConfigServiceImpl.getLanguageMapping() 硬编码 Map 完全一致)
+ * bootstrap 聚合接口已返回 languageMap 字段，无需再单独请求
  *
  * @returns {Promise<Object>} 语言代码到自然语言名称的映射对象
  */
 export async function getLanguageMapping() {
-  // 如果有缓存，直接返回
   if (cachedLanguageMap !== null) {
     return cachedLanguageMap
   }
-
-  // 如果正在加载，等待加载完成
-  if (isLoading && loadPromise) {
-    return loadPromise
-  }
-
-  // 开始加载
-  isLoading = true
-  loadPromise = (async () => {
-    try {
-      const response = await axios.get(
-        constant.baseURL + '/webInfo/ai/config/system/languageMapping'
-      )
-
-      if (response.data && response.data.code === 200 && response.data.data) {
-        cachedLanguageMap = response.data.data
-        return cachedLanguageMap
-      }
-
-      cachedLanguageMap = DEFAULT_LANGUAGE_MAP
-      return cachedLanguageMap
-    } catch (error) {
-      cachedLanguageMap = DEFAULT_LANGUAGE_MAP
-      return cachedLanguageMap
-    } finally {
-      isLoading = false
-      loadPromise = null
-    }
-  })()
-
-  return loadPromise
+  // 缓存未命中(首次访问且 bootstrap 未完成)，使用硬编码默认值
+  cachedLanguageMap = DEFAULT_LANGUAGE_MAP
+  return cachedLanguageMap
 }
 
 /**
@@ -178,37 +146,6 @@ export function getLanguageMappingSync() {
 export function applyLanguageBootstrap(bootstrap = {}) {
   if (bootstrap.languageMap && typeof bootstrap.languageMap === 'object') {
     cachedLanguageMap = bootstrap.languageMap
-  }
-
-  if (
-    bootstrap.articleDefaultLanguages &&
-    typeof bootstrap.articleDefaultLanguages === 'object'
-  ) {
-    localStorage.setItem(
-      ARTICLE_DEFAULT_LANG_KEY,
-      JSON.stringify({
-        timestamp: Date.now(),
-        data: bootstrap.articleDefaultLanguages,
-      })
-    )
-  }
-}
-
-export function getCachedArticleDefaultLanguages() {
-  const cached = localStorage.getItem(ARTICLE_DEFAULT_LANG_KEY)
-  if (!cached) return null
-
-  try {
-    const parsed = JSON.parse(cached)
-    if (!parsed || !parsed.timestamp || !parsed.data) return null
-    if (Date.now() - parsed.timestamp > LANGUAGE_CACHE_MAX_AGE) {
-      localStorage.removeItem(ARTICLE_DEFAULT_LANG_KEY)
-      return null
-    }
-    return parsed.data
-  } catch (error) {
-    localStorage.removeItem(ARTICLE_DEFAULT_LANG_KEY)
-    return null
   }
 }
 

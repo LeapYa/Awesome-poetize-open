@@ -185,13 +185,14 @@ public class SysPluginController {
 
     /**
      * 前台首屏插件聚合接口（公开接口）。
-     * 一次性返回首屏初始化需要的插件数据，替代 listActivePlugins、
-     * getMouseClickEffects、getActiveMouseClickEffect、getActiveParticleEffect 的多次并发请求。
-     * 每一项独立兜底，单项失败不影响其余字段（容错逻辑下沉到 PluginBootstrapDataProvider）。
+     * 返回首屏立即需要的字段：activePlugins、mouseClickEffects、activeMouseClickEffect。
+     * 不含 activeParticleEffect：粒子特效体积大、加载时机晚，由 /sysPlugin/getActiveParticleEffect 单独请求。
+     * 正常路径：物化 JS /static/pb.[hash].js 命中后零 API 回源（且物化 JS 含全部 4 字段）；
+     * fallback 路径：物化 JS 缺失时由前端 getPluginBootstrap() 调用此接口，粒子特效走单字段接口。
      */
     @GetMapping("/frontendBootstrap")
     public PoetryResult<Map<String, Object>> frontendBootstrap() {
-        return PoetryResult.success(pluginBootstrapDataProvider.buildBootstrapData());
+        return PoetryResult.success(pluginBootstrapDataProvider.buildApiBootstrapData());
     }
 
     private Map<String, Object> buildFrontendPluginPayload(SysPlugin plugin) {

@@ -234,30 +234,11 @@ export async function initializeLanguageSettings() {
 }
 
 export async function getDefaultTargetLanguage() {
-  try {
-    const response = await this.$http.get(
-      this.$constant.baseURL + '/webInfo/ai/config/articleAi/defaultLang'
-    )
-
-    if (response.code === 200 && response.data) {
-      this.targetLanguage = response.data.default_target_lang || 'en'
-      this.targetLanguageName =
-        this.languageMap[this.targetLanguage] || 'English'
-      this.sourceLanguage = response.data.default_source_lang || 'zh'
-      this.sourceLanguageName = this.languageMap[this.sourceLanguage] || '中文'
-    } else {
-      this.targetLanguage = 'en'
-      this.targetLanguageName = 'English'
-      this.sourceLanguage = 'zh'
-      this.sourceLanguageName = '中文'
-    }
-  } catch (error) {
-    console.error('获取默认语言配置出错:', error)
-    this.targetLanguage = 'en'
-    this.targetLanguageName = 'English'
-    this.sourceLanguage = 'zh'
-    this.sourceLanguageName = '中文'
-  }
+  // 设置默认翻译方向：源语言中文，目标语言英文
+  this.targetLanguage = 'en'
+  this.targetLanguageName = 'English'
+  this.sourceLanguage = 'zh'
+  this.sourceLanguageName = '中文'
 }
 
 export function generateLanguageButtons() {

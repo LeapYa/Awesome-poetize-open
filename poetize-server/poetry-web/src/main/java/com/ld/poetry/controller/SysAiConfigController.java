@@ -237,14 +237,10 @@ public class SysAiConfigController {
         }
     }
 
-    /**
-     * 获取默认支持的语言列表
-     */
-    @GetMapping("/articleAi/defaultLang")
-    public PoetryResult<Map<String, Object>> getDefaultLanguages() {
-        Map<String, Object> result = sysAiConfigService.getDefaultLanguages();
-        return PoetryResult.success(result);
-    }
+    // 注意: /articleAi/defaultLang 和 /system/languageMapping 两个 endpoint 已下线
+    // 这两个字段已由 /webInfo/bootstrap 聚合接口一次性返回(languageMap + articleDefaultLanguages)
+    // 前端通过 applyLanguageBootstrap 写入缓存,无需再单独请求
+    // Service 方法保留,供 bootstrap 内部调用
 
     /**
      * 检查系统是否有文章（用于前端判断是否允许修改源语言）
@@ -253,16 +249,6 @@ public class SysAiConfigController {
     public PoetryResult<Boolean> checkHasArticles() {
         boolean hasArticles = sysAiConfigService.hasArticles();
         return PoetryResult.success(hasArticles);
-    }
-
-    /**
-     * 获取系统语言映射配置（前台展示用，原生语言文字）
-     * 返回语言代码到自然语言名称的映射
-     */
-    @GetMapping("/system/languageMapping")
-    public PoetryResult<Map<String, String>> getLanguageMapping() {
-        Map<String, String> mapping = sysAiConfigService.getLanguageMapping();
-        return PoetryResult.success(mapping);
     }
 
     /**

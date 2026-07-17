@@ -18,11 +18,11 @@ import java.util.Map;
 /**
  * 前台首屏插件聚合数据构建器。
  *
- * <p>抽取自 {@link com.ld.poetry.controller.SysPluginController#frontendBootstrap()}，
- * 同时供 {@link com.ld.poetry.service.prerender.PluginBootstrapMaterializer} 物化静态 JS 使用，
- * 避免循环依赖（Controller 依赖 Materializer，Materializer 反向依赖聚合数据）。
+ * <p>供 {@link com.ld.poetry.service.prerender.PluginBootstrapMaterializer} 物化为
+ * /static/pb.[hash].js 静态 JS，通过 index.html 同步 <script> 加载到 window.__PB__，
+ * 走 CDN 永久缓存，零 API 回源。
  *
- * <p>每一项独立 try-catch 兜底，单项失败不影响其余字段，保持与原 frontendBootstrap 容错语义一致。
+ * <p>每一项独立 try-catch 兜底，单项失败不影响其余字段。
  *
  * @author LeapYa
  * @since 2026-07-16
@@ -38,39 +38,54 @@ public class PluginBootstrapDataProvider {
     private SysPluginActiveMapper sysPluginActiveMapper;
 
     /**
-     * 构建首屏插件聚合数据，结构与 SysPluginController.frontendBootstrap() 的 result 一致，
+     * 构建首屏插件聚合数据（全量，供物化 JS 使用），
      * 包含 activePlugins、mouseClickEffects、activeMouseClickEffect、activeParticleEffect 四个 key。
+     * 粒子特效 pluginCode 体积较大，物化 JS 一次性打包，走 CDN 永久缓存，首屏零额外 RTT。
      */
     public Map<String, Object> buildBootstrapData() {
         Map<String, Object> result = new HashMap<>();
+        loadAggregatedFields(result);
 
+        try {
+            result.put("activeParticleEffect", loadActiveParticleEffect());
+        } catch (Exception e) {
+            log.warn("buildBootstrapData 获取激活粒子特效失败", e);
+        }
+
+        return result;
+    }
+
+    /**
+     * 构建聚合 API 响应数据（首屏必需字段，不含粒子特效），
+     * 包含 activePlugins、mouseClickEffects、activeMouseClickEffect 三个 key。
+     * 粒子特效加载时机晚（waitForPageResourcesReady），不阻塞首屏，走 /sysPlugin/getActiveParticleEffect 单独请求。
+     */
+    public Map<String, Object> buildApiBootstrapData() {
+        Map<String, Object> result = new HashMap<>();
+        loadAggregatedFields(result);
+        return result;
+    }
+
+    private void loadAggregatedFields(Map<String, Object> result) {
         try {
             result.put("activePlugins", loadActivePlugins());
         } catch (Exception e) {
-            log.warn("frontendBootstrap 获取通用激活插件失败", e);
+            log.warn("buildBootstrapData 获取通用激活插件失败", e);
             result.put("activePlugins", Collections.emptyList());
         }
 
         try {
             result.put("mouseClickEffects", loadMouseClickEffects());
         } catch (Exception e) {
-            log.warn("frontendBootstrap 获取鼠标点击效果列表失败", e);
+            log.warn("buildBootstrapData 获取鼠标点击效果列表失败", e);
             result.put("mouseClickEffects", Collections.emptyList());
         }
 
         try {
             result.put("activeMouseClickEffect", loadActiveMouseClickEffect());
         } catch (Exception e) {
-            log.warn("frontendBootstrap 获取激活鼠标点击效果失败", e);
+            log.warn("buildBootstrapData 获取激活鼠标点击效果失败", e);
         }
-
-        try {
-            result.put("activeParticleEffect", loadActiveParticleEffect());
-        } catch (Exception e) {
-            log.warn("frontendBootstrap 获取激活粒子特效失败", e);
-        }
-
-        return result;
     }
 
     private List<Map<String, Object>> loadActivePlugins() {

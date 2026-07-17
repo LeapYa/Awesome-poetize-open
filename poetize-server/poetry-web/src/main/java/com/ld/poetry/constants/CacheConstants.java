@@ -179,6 +179,23 @@ public class CacheConstants {
     public static final String AI_LANGUAGE_MAPPING_KEY = AI_CONFIG_PREFIX + "language_mapping";
 
     /**
+     * AI 聊天流式配置缓存键前缀
+     * 格式: poetize:ai:config:streaming:{configName}
+     * 说明: 数据源 sys_ai_config 表 ai_chat 行，高读低写，永久缓存 + 主动 evict
+     *       evict 触发点: saveAiChatConfig / toggleEnabled / deleteConfig 成功后
+     */
+    public static final String AI_STREAMING_CONFIG_PREFIX = AI_CONFIG_PREFIX + "streaming:";
+
+    /**
+     * 构建 AI 聊天流式配置缓存键
+     * @param configName 配置名称(如 "default")
+     * @return 缓存键
+     */
+    public static String buildStreamingConfigKey(String configName) {
+        return AI_STREAMING_CONFIG_PREFIX + (configName != null ? configName : "default");
+    }
+
+    /**
      * 管理员用户缓存键
      */
     public static final String ADMIN_CACHE_KEY = CACHE_PREFIX + "admin";

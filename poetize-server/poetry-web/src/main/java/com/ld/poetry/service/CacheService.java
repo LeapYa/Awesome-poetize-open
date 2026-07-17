@@ -613,6 +613,43 @@ public class CacheService {
     }
 
     /**
+     * 缓存 AI 聊天流式配置（永久缓存，由 saveAiChatConfig/toggleEnabled/deleteConfig 触发 evict）
+     */
+    public void cacheStreamingConfig(String configName, Map<String, Object> streamingConfig) {
+        if (streamingConfig != null) {
+            String key = CacheConstants.buildStreamingConfigKey(configName);
+            redisUtil.set(key, streamingConfig, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存AI聊天流式配置(永久): configName={}", configName);
+        }
+    }
+
+    /**
+     * 获取缓存的 AI 聊天流式配置
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCachedStreamingConfig(String configName) {
+        String key = CacheConstants.buildStreamingConfigKey(configName);
+        Object cached = redisUtil.get(key);
+        if (cached instanceof Map) {
+            return (Map<String, Object>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除 AI 聊天流式配置缓存
+     */
+    public void evictStreamingConfig(String configName) {
+        try {
+            String key = CacheConstants.buildStreamingConfigKey(configName);
+            redisUtil.del(key);
+            log.info("删除AI聊天流式配置缓存 - configName={}", configName);
+        } catch (Exception e) {
+            log.error("删除AI聊天流式配置缓存失败: configName={}", configName, e);
+        }
+    }
+
+    /**
      * 规范化访问统计使用的IP值。
      */
     public String normalizeVisitIp(String ip) {

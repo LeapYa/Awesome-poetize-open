@@ -113,6 +113,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
 
     @Override
     public Map<String, Object> getStreamingConfig(String configName) {
+        // 优先走 Redis 缓存（文章/留言/恋爱页 PV 都会调用，高频读）
+        Map<String, Object> cached = cacheService.getCachedStreamingConfig(configName);
+        if (cached != null) {
+            return cached;
+        }
+
         Map<String, Object> result = new HashMap<>();
 
         try {
@@ -197,6 +203,9 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             result.put("vision_supported", false);
             result.put("vision_configured", false);
         }
+
+        // 写入永久缓存（saveAiChatConfig/toggleEnabled/deleteConfig 时主动 evict）
+        cacheService.cacheStreamingConfig(configName, result);
 
         return result;
     }
@@ -288,7 +297,12 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
         config.setConfigType("ai_chat");
         applyDefaultCommentSkill(config);
         normalizeRagConfig(config);
-        return saveOrUpdateConfig(config);
+        boolean success = saveOrUpdateConfig(config);
+        if (success) {
+            // 清除流式配置缓存
+            cacheService.evictStreamingConfig(config.getConfigName());
+        }
+        return success;
     }
 
     @Override
@@ -577,6 +591,9 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             int rows = sysAiConfigMapper.updateEnabled(id, newEnabled);
 
             log.info("切换配置启用状态成功: id={}, enabled={}", id, newEnabled);
+            if (rows > 0 && "ai_chat".equals(config.getConfigType())) {
+                cacheService.evictStreamingConfig(config.getConfigName());
+            }
             return rows > 0;
 
         } catch (Exception e) {
@@ -654,6 +671,10 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 // 防御性 evict: 若删除的是 article_ai 配置，清掉 defaultLang 缓存
                 if (existing != null && "article_ai".equals(existing.getConfigType())) {
                     cacheService.evictArticleAiDefaultLang();
+                }
+                // 若删除的是 ai_chat 配置，清掉流式配置缓存
+                if (existing != null && "ai_chat".equals(existing.getConfigType())) {
+                    cacheService.evictStreamingConfig(existing.getConfigName());
                 }
             }
             return success;

@@ -53,11 +53,11 @@ export function initParticleEffect() {
         .then(() => ensurePluginSdk())
         .then(() => getPluginBootstrap())
         .then(data => {
-            // 聚合数据命中：activeParticleEffect 为 null 表示无激活特效（不再回退请求）
+            // 物化 JS 命中时 data 含 activeParticleEffect 字段（null 表示无激活特效，不再回退）
+            // 聚合 API fallback 时 data 不含该字段，走单字段接口
             if (data && Object.prototype.hasOwnProperty.call(data, 'activeParticleEffect')) {
                 return data.activeParticleEffect
             }
-            // 聚合整体失败才回退旧接口
             return request.get('/sysPlugin/getActiveParticleEffect').then(res => res && res.data)
         })
         .then(plugin => {
