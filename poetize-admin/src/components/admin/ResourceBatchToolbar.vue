@@ -33,7 +33,7 @@
               icon="el-icon-upload2"
               :disabled="!canMigrate"
               @click="$emit('migrate')">
-              迁移到图床
+              迁移存储位置
             </el-button>
           </span>
         </el-tooltip>

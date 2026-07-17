@@ -127,14 +127,20 @@
             </el-table-column>
             <el-table-column label="操作" width="150" align="center" fixed="right">
               <template slot-scope="scope">
-                <el-button
+                <el-tooltip
                   v-if="canActivate(scope.row)"
-                  type="text"
-                  size="mini"
-                  :disabled="operating"
-                  @click="activateLocation(scope.row)">
-                  激活为活动
-                </el-button>
+                  content="将该副本所在存储设为活动存储（即迁移回该存储），原活动副本降级为保留"
+                  placement="top">
+                  <span>
+                    <el-button
+                      type="text"
+                      size="mini"
+                      :disabled="operating"
+                      @click="activateLocation(scope.row)">
+                      激活为活动
+                    </el-button>
+                  </span>
+                </el-tooltip>
                 <el-button
                   v-if="canDelete(scope.row)"
                   type="text"

@@ -215,7 +215,13 @@
           </template>
         </el-table-column>
         <el-table-column prop="mimeType" label="类型" width="96" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
-        <el-table-column prop="storeType" label="存储平台" width="88" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
+        <el-table-column prop="storeType" label="存储平台" width="100" align="center" sortable="custom" :sort-orders="tableSortOrders">
+          <template slot-scope="scope">
+            <el-tag :type="getStoreTagType(scope.row.storeType)" size="mini" effect="plain">
+              {{ getStoreTypeLabel(scope.row.storeType) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="146" align="center" sortable="custom" :sort-orders="tableSortOrders">
           <template slot-scope="scope">
             {{ formatDateTime(scope.row.createTime) }}
@@ -1590,6 +1596,22 @@ export default {
     getStoreTypeLabel(storeType) {
       const store = this.storeTypes.find((item) => item.value === storeType);
       return store ? store.label + '(' + store.value + ')' : (storeType || '-');
+    },
+    getStoreTagType(storeType) {
+      const type = ((storeType || 'local') + '').toLowerCase();
+      if (type === 'local') {
+        return 'info';
+      }
+      if (type === 'qiniu') {
+        return 'success';
+      }
+      if (type === 'lsky') {
+        return 'warning';
+      }
+      if (type === 'easyimage') {
+        return 'primary';
+      }
+      return 'info';
     },
     escapeHtml(value) {
       return String(value || '')

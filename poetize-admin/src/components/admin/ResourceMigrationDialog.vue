@@ -28,16 +28,16 @@
     </div>
 
     <el-dialog
-      title="资源迁移到图床"
+      title="迁移存储位置"
       :visible.sync="dialogVisible"
       width="820px"
-      custom-class="resource-migration-dialog"
+      custom-class="centered-dialog"
       :append-to-body="true"
       :close-on-click-modal="false"
       :before-close="handleDialogClose">
       <div v-if="panelMode === 'config'" v-loading="capabilitiesLoading || previewLoading || creating">
         <el-alert
-          title="迁移只复制服务器本地资源。任务默认保留源文件，完成后如需释放磁盘空间，请单独执行源文件清理。"
+          title="迁移会把资源复制到目标存储并切换为活动副本，源文件默认保留，完成后可单独清理。"
           type="info"
           :closable="false"
           show-icon>
@@ -50,7 +50,7 @@
               当前勾选（{{ selectedCount }} 项）
             </el-radio-button>
             <el-radio-button label="FILTER" :disabled="!filterScopeAvailable">
-              当前筛选下全部本地资源
+              当前筛选下全部资源
             </el-radio-button>
           </el-radio-group>
           <p class="resource-migration__hint">
@@ -71,19 +71,22 @@
         </section>
 
         <section class="resource-migration__section">
-          <h4>2. 选择目标图床</h4>
+          <h4>2. 选择目标存储</h4>
           <el-select
             v-model="form.targetStoreType"
-            placeholder="请选择已启用且支持服务端上传的图床"
+            placeholder="请选择已启用且支持上传的存储"
             class="resource-migration__target"
             @change="handleConfigChange">
             <el-option
-              v-for="capability in availableCapabilities"
-              :key="capability.storeType"
-              :label="getStoreLabel(capability.storeType)"
-              :value="capability.storeType">
-            </el-option>
-          </el-select>
+            v-for="capability in availableCapabilities"
+            :key="capability.storeType"
+            :label="getStoreLabel(capability.storeType)"
+            :value="capability.storeType">
+          </el-option>
+        </el-select>
+        <p class="resource-migration__hint" v-if="form.targetStoreType">
+          选择“服务器本地”即把图床资源迁回本地，选择图床即把本地资源迁出。
+        </p>
 
           <div v-if="selectedCapability" class="resource-migration__capability">
             <div class="resource-migration__capability-head">
@@ -110,7 +113,7 @@
 
           <el-empty
             v-else-if="!capabilitiesLoading && availableCapabilities.length === 0"
-            description="没有已启用且支持服务端上传的目标图床">
+            description="没有已启用且支持上传的目标存储">
           </el-empty>
         </section>
 
@@ -350,7 +353,7 @@ export default {
     },
     availableCapabilities() {
       return this.capabilities.filter((capability) => {
-        return capability && capability.storeType !== 'local' && capability.enabled && capability.uploadSupported;
+        return capability && capability.enabled && capability.uploadSupported;
       });
     },
     selectedCapability() {
