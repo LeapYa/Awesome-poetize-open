@@ -3,6 +3,29 @@
 
 # 设置变量（这些值将在部署时由deploy.sh脚本替换）
 WEBROOT_PATH="/usr/share/nginx/html"
+# 证书的 cert-name（也是 /etc/letsencrypt/live/ 下的目录名）
+# 兼容设计：deploy.sh / poetize install 会通过 sed 把 example.com 替换为实际域名
+# 旧版本部署脚本若未替换此变量，entrypoint 会自动从 certbot certificates 推断（见下方 fallback）
+CERT_NAME="example.com"
+
+# 兼容旧版本部署脚本：若 CERT_NAME 仍为占位 example.com，则尝试从已存在的证书目录推断实际域名
+# 这样新版本 template 即使被旧版本 poetize 部署，也能正确识别已有证书并跳过重复申请
+# 安全策略：仅当 live/ 下只有一个证书目录时才推断（多个目录可能是换域名场景，保守地走申请流程）
+if [ "$CERT_NAME" = "example.com" ] && [ -d /etc/letsencrypt/live ]; then
+  live_dir_count=$(find /etc/letsencrypt/live -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
+  if [ "$live_dir_count" = "1" ]; then
+    for dir in /etc/letsencrypt/live/*/; do
+      [ -d "$dir" ] || continue
+      if [ -f "${dir}fullchain.pem" ]; then
+        CERT_NAME=$(basename "$dir")
+        echo "CERT_NAME 未被部署脚本替换，已从已有证书推断为: $CERT_NAME"
+        break
+      fi
+    done
+  else
+    echo "CERT_NAME 未被替换且 live/ 下有 $live_dir_count 个证书目录（可能是换域名场景），保守地走申请流程"
+  fi
+fi
 
 # 权限修复函数
 fix_cert_permissions() {
@@ -86,9 +109,11 @@ apply_certificate() {
       echo "网络诊断完成，继续申请证书..."
     fi
     
-    echo "执行: certbot certonly --webroot --webroot-path=$WEBROOT_PATH --email your-email@example.com --cert-name example.com --agree-tos --no-eff-email --force-renewal --expand -d example.com -d www.example.com"
-    
+    echo "执行: certbot certonly --webroot --webroot-path=$WEBROOT_PATH --email your-email@example.com --agree-tos --no-eff-email --force-renewal --expand -d example.com -d www.example.com"
+
     # 执行certbot命令
+    # --cert-name 保持 example.com 占位，由 deploy.sh / poetize install 用 sed 替换为实际域名
+    # 旧版本部署脚本若未替换，apply 时 certbot 会用第一个 -d 参数作为 cert-name（行为一致）
     certbot certonly --webroot \
       --webroot-path=$WEBROOT_PATH \
       --email your-email@example.com \
@@ -145,12 +170,19 @@ apply_certificate() {
   done
 }
 
-# 首次申请证书
-echo "开始申请证书..."
-apply_certificate
+# 首次申请证书（已存在当前域名的证书则跳过，避免触发 Let's Encrypt rate limit）
+# 升级流程会把旧 certbot-etc 卷的证书恢复到新卷，此时容器启动应跳过重新申请
+# 换域名场景下，旧域名证书虽在 live/ 目录里但 CERT_NAME 已变化，会精确匹配并触发新申请
+if [ -f "/etc/letsencrypt/live/$CERT_NAME/fullchain.pem" ]; then
+  echo "检测到当前域名 $CERT_NAME 的证书已存在，跳过首次申请..."
+  fix_cert_permissions
+else
+  echo "未检测到当前域名 $CERT_NAME 的证书，开始申请..."
+  apply_certificate
 
-if [ $? -ne 0 ]; then
-  echo "证书申请最终失败，将继续尝试自动续期..."
+  if [ $? -ne 0 ]; then
+    echo "证书申请最终失败，将继续尝试自动续期..."
+  fi
 fi
 
 # 设置自动续期

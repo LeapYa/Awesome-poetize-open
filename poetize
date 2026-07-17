@@ -5605,6 +5605,8 @@ init_deploy() {
     # 使用sed替换certbot命令行certbot-entrypoint.sh
     sed_i "s|--email your-email@example.com|--email $EMAIL|g" docker/nginx/certbot-entrypoint.sh
     sed_i "s|--cert-name example.com|--cert-name $PRIMARY_DOMAIN|g" docker/nginx/certbot-entrypoint.sh
+    # 替换 CERT_NAME 变量值（entrypoint 据此精确检测当前域名证书是否已存在）
+    sed_i "s|CERT_NAME=\"example.com\"|CERT_NAME=\"$PRIMARY_DOMAIN\"|g" docker/nginx/certbot-entrypoint.sh
     sed_i "s|-d example.com -d www.example.com|$DOMAINS_PARAM|g" docker/nginx/certbot-entrypoint.sh
     # 替换DNS检查中的遗留占位域名
     sed_i "s|check_dns \"example.com\"|check_dns \"$PRIMARY_DOMAIN\"|g" docker/nginx/certbot-entrypoint.sh
@@ -15142,7 +15144,30 @@ perform_backup_operations() {
         info "未找到Redis数据volume，跳过备份"
     fi
 
-    # 7. 备份nginx配置中的域名信息
+    # 7. 备份证书数据（certbot-etc 卷：证书本体、私钥、Let's Encrypt 账户信息）
+    info "备份SSL证书数据..."
+    local certbot_etc_volume=$(resolve_service_volume_name "certbot" "/etc/letsencrypt" "certbot-etc" 2>/dev/null || true)
+    if [ -z "$certbot_etc_volume" ]; then
+        certbot_etc_volume=$(resolve_project_volume_name "certbot-etc" 2>/dev/null || true)
+    fi
+    if [ -n "$certbot_etc_volume" ]; then
+        info "找到证书volume: $certbot_etc_volume"
+        # 检查volume中是否有证书文件
+        if sudo docker run --rm -v "$certbot_etc_volume":/data alpine sh -c "[ -d /data/live ] && [ \"\$(ls -A /data/live 2>/dev/null)\" ]"; then
+            info "导出证书数据..."
+            if sudo docker run --rm -v "$certbot_etc_volume":/data -v "$backup_dir":/backup alpine tar -czf "/backup/certbot_etc_backup.tar.gz" -C /data .; then
+                success "证书数据备份完成"
+            else
+                warning "证书数据备份失败，升级后可能需要重新申请证书"
+            fi
+        else
+            info "证书volume为空（可能未启用HTTPS），跳过证书备份"
+        fi
+    else
+        info "未找到证书volume（旧版本或未启用HTTPS），跳过证书备份"
+    fi
+
+    # 8. 备份nginx配置中的域名信息
     info "备份域名配置信息..."
     local extracted_domains=$(extract_domains_from_nginx_config 2>/dev/null || echo "")
     if [ -z "$extracted_domains" ] && [ -f ".env" ]; then
@@ -15160,7 +15185,7 @@ perform_backup_operations() {
         info "未找到域名配置，跳过域名备份"
     fi
     
-    # 8. 备份端口配置
+    # 9. 备份端口配置
     info "备份端口配置..."
     local http_port=""
     
@@ -15190,7 +15215,7 @@ perform_backup_operations() {
         success ".env 配置文件备份完成"
     fi
     
-    # 9. 创建备份清单
+    # 10. 创建备份清单
     info "创建备份清单..."
     cat > "$backup_dir/backup_manifest.txt" << EOF
 POETIZE系统备份清单
@@ -15204,6 +15229,7 @@ POETIZE系统备份清单
 - Python配置: py/data/
 - 用户上传文件: uploads_backup.tar.gz
 - Redis缓存数据: redis_backup.tar.gz
+- SSL证书数据: certbot_etc_backup.tar.gz（如已启用 HTTPS）
 - 域名配置: domains.txt
 - 端口配置: http_port.txt
 
@@ -15976,8 +16002,34 @@ perform_restore_operations() {
     else
         info "备份中未找到Redis数据"
     fi
+
+    # 6. 恢复SSL证书数据（避免升级后重新申请证书触发 Let's Encrypt rate limit）
+    info "恢复SSL证书数据..."
+    if [ -f "$backup_dir/certbot_etc_backup.tar.gz" ]; then
+        local actual_certbot_volume=$(resolve_service_volume_name "certbot" "/etc/letsencrypt" "certbot-etc" 2>/dev/null || true)
+        if [ -z "$actual_certbot_volume" ]; then
+            actual_certbot_volume=$(resolve_project_volume_name "certbot-etc" 2>/dev/null || true)
+        fi
+        if [ -z "$actual_certbot_volume" ]; then
+            local compose_project_name
+            compose_project_name=$(get_compose_project_name)
+            actual_certbot_volume="${compose_project_name}_certbot-etc"
+            info "创建证书volume: $actual_certbot_volume"
+            sudo docker volume create "$actual_certbot_volume" >/dev/null
+        fi
+
+        clear_volume_contents "$actual_certbot_volume" "SSL证书" || true
+        info "恢复到volume: $actual_certbot_volume"
+        if sudo docker run --rm -v "$actual_certbot_volume":/data -v "$backup_dir":/backup alpine sh -c "cd /data && tar -xzf /backup/certbot_etc_backup.tar.gz"; then
+            success "SSL证书恢复完成（certbot 容器启动时会检测到已有证书并跳过重新申请）"
+        else
+            warning "SSL证书恢复失败，certbot 容器将重新申请证书"
+        fi
+    else
+        info "备份中未找到SSL证书（旧版本升级或未启用HTTPS），certbot 容器将重新申请证书"
+    fi
     
-    # 6. 重新启动相关服务并清理可重建缓存
+    # 7. 重新启动相关服务并清理可重建缓存
     info "启动相关服务以应用恢复后的配置..."
 
     if [ -n "$redis_container" ]; then
@@ -16497,6 +16549,9 @@ change_domain() {
 
         sed_i "s|--email your-email@example.com|--email ${current_email:-example@qq.com}|g" docker/nginx/certbot-entrypoint.sh
         sed_i "s|--cert-name example.com|--cert-name $PRIMARY_DOMAIN|g" docker/nginx/certbot-entrypoint.sh
+        # 替换 CERT_NAME 变量值（entrypoint 据此精确检测当前域名证书是否已存在）
+        sed_i "s|CERT_NAME=\"example.com\"|CERT_NAME=\"$PRIMARY_DOMAIN\"|g" docker/nginx/certbot-entrypoint.sh
+        sed_i "s|CERT_NAME=\"[^\"]*\"|CERT_NAME=\"$PRIMARY_DOMAIN\"|g" docker/nginx/certbot-entrypoint.sh
         sed_i "s|-d example.com -d www.example.com|$domains_param|g" docker/nginx/certbot-entrypoint.sh
         sed_i "s|check_dns \"example.com\"|check_dns \"$PRIMARY_DOMAIN\"|g" docker/nginx/certbot-entrypoint.sh
         success "已更新 certbot 证书申请脚本"
