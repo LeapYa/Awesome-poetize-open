@@ -6,9 +6,11 @@ import com.ld.poetry.dao.WebInfoMapper;
 import com.ld.poetry.entity.*;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.FamilyService;
+import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.enums.PoetryEnum;
+import com.ld.poetry.utils.CommonQuery;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,11 +61,19 @@ public class PoetryApplicationRunner implements ApplicationRunner {
     @Autowired
     private CacheService cacheService;
 
+    @Autowired
+    private SysConfigService sysConfigService;
+
+    @Autowired
+    private CommonQuery commonQuery;
+
     @Override
     public void run(ApplicationArguments args) {
         initWebInfoCache();
         initAdminUserCache();
         initHistoryCache();
+        initPublicSysConfigCache();
+        initSortInfoCache();
 
         // WebSocket 由 Spring WebSocket 自动管理
         log.info("Spring WebSocket 服务已自动配置，端点: /ws/im");
@@ -145,5 +155,37 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         history.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryBy24Hour(ignoredIps));
         history.put(CommonConst.IP_HISTORY_COUNT, historyInfoMapper.getHistoryCount(ignoredIps));
         cacheService.cacheIpHistoryStatistics(history);
+    }
+
+    /**
+     * 初始化全量公开系统配置 Map 缓存
+     * <p>预热 bootstrap 聚合接口中的 sysConfig 数据，避免首个用户承担 DB 查询延迟。
+     */
+    private void initPublicSysConfigCache() {
+        try {
+            List<SysConfig> sysConfigs = new LambdaQueryChainWrapper<>(sysConfigService.getBaseMapper())
+                    .eq(SysConfig::getConfigType, Integer.toString(PoetryEnum.SYS_CONFIG_PUBLIC.getCode()))
+                    .list();
+            Map<String, String> configMap = sysConfigs.stream().collect(Collectors.toMap(
+                    SysConfig::getConfigKey,
+                    SysConfig::getConfigValue,
+                    (oldValue, newValue) -> newValue
+            ));
+            cacheService.cachePublicSysConfigMap(configMap);
+        } catch (Exception e) {
+            log.error("预热公开系统配置 Map 缓存失败", e);
+        }
+    }
+
+    /**
+     * 预热分类标签树缓存
+     * <p>getSortInfo 内部已实现「读缓存未命中则查 DB 并回填」逻辑，预热只需调用一次触发回填。
+     */
+    private void initSortInfoCache() {
+        try {
+            commonQuery.getSortInfo();
+        } catch (Exception e) {
+            log.error("预热分类标签树缓存失败", e);
+        }
     }
 }

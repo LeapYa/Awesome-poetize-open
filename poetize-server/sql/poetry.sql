@@ -1215,10 +1215,6 @@ INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_v
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (27, '图片压缩模式(lossy:有损,lossless:无损)', 'image.compress.mode', 'lossy', '2');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (28, '图片压缩启用状态', 'image.compress.enabled', 'true', '2');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (29, '字体文件CDN基础路径(末尾必须有/)', 'font.cdn.base-url', '/static/assets/font_chunks/', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (30, '是否使用单一字体文件', 'font.use.single', 'false', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (31, '单一字体文件名称', 'font.single.filename', 'font.woff2', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (32, '是否从远程加载字体Unicode范围', 'font.unicode.remote', 'true', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (33, '字体Unicode范围JSON文件路径', 'font.unicode.path', '/static/assets/font_chunks/unicode_ranges.json', '2');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (34, '腾讯位置服务Key', 'tencent.lbs.key', '', '1');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (35, '全局评论开关', 'enableComment', 'true', '2');
 INSERT INTO `poetize`.`sys_config` (`config_name`, `config_key`, `config_value`, `config_type`) VALUES ('兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1');
@@ -1573,15 +1569,8 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `resource_h
 (1, 'assets', '/static/assets/ai_avatar.png', 1332990, '79E7B5285919D0783D11C371843D010B68CB9A1CE38E74ED8E326113F6D3A8CC', 'ai_avatar.png', 'image/png', 1, 'local', NOW());
 
 -- 视频文件
-INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
+INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES
 (1, 'assets', '/static/assets/backgroundVideo.mp4', 1955207, 'backgroundVideo.mp4', 'video/mp4', 1, 'local', NOW());
-
--- 字体文件
-INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
-(1, 'assets', '/static/assets/font_chunks/font.base.woff2', 8956, 'font.base.woff2', 'font/woff2', 1, 'local', NOW()),
-(1, 'assets', '/static/assets/font_chunks/font.level1.woff2', 830860, 'font.level1.woff2', 'font/woff2', 1, 'local', NOW()),
-(1, 'assets', '/static/assets/font_chunks/font.level2.woff2', 756328, 'font.level2.woff2', 'font/woff2', 1, 'local', NOW()),
-(1, 'assets', '/static/assets/font_chunks/font.other.woff2', 198920, 'font.other.woff2', 'font/woff2', 1, 'local', NOW());
 
 -- 为初始资源建立稳定逻辑身份和当前物理副本；不改写现有访问路径。
 UPDATE `poetize`.`resource`

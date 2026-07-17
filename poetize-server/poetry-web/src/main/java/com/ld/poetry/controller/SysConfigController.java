@@ -9,6 +9,7 @@ import com.ld.poetry.entity.SysConfig;
 import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.SysConfigService;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -42,6 +43,9 @@ public class SysConfigController {
 
     @Autowired
     private CacheService cacheService;
+
+    @Autowired
+    private PrerenderFacade prerenderFacade;
 
     /**
      * 查询系统参数
@@ -105,7 +109,19 @@ public class SysConfigController {
         }
         
         boolean success = sysConfigService.saveOrUpdate(sysConfig);
-        
+
+        // 公开配置变更后清除 bootstrap 聚合缓存，下次请求会回填最新值
+        if (success && Integer.toString(PoetryEnum.SYS_CONFIG_PUBLIC.getCode())
+                .equals(sysConfig.getConfigType())) {
+            cacheService.evictPublicSysConfigMap();
+            // 异步重建预渲染 HTML，让 sysConfig 变更（如 footer.friendLinks）反映到静态产物
+            try {
+                prerenderFacade.rebuildSiteAsync(java.time.Duration.ofSeconds(2));
+            } catch (Exception e) {
+                log.warn("sysConfig 变更后触发预渲染重建失败，配置项: {}", sysConfig.getConfigKey(), e);
+            }
+        }
+
         // 检查是否是影响sitemap的关键配置
         if (success && isConfigAffectingSitemap(sysConfig.getConfigKey(), oldValue, sysConfig.getConfigValue())) {
             try {
@@ -115,7 +131,7 @@ public class SysConfigController {
                     sitemapService.updateSitemapAndPush(reason);
                     log.info("系统配置更新后已重新生成sitemap并推送到搜索引擎，配置项: {}", sysConfig.getConfigKey());
                 }
-                
+
                 // 清除robots.txt缓存，让下次访问时重新生成
                 if (robotsService != null) {
                     robotsService.clearRobotsCache();
@@ -125,7 +141,7 @@ public class SysConfigController {
                 log.warn("系统配置更新后清除SEO缓存失败，配置项: {}", sysConfig.getConfigKey(), e);
             }
         }
-        
+
         return PoetryResult.success();
     }
 
@@ -140,7 +156,19 @@ public class SysConfigController {
         SysConfig config = sysConfigService.getById(id);
         if (config != null) {
             boolean success = sysConfigService.removeById(id);
-            
+
+            // 公开配置删除后清除 bootstrap 聚合缓存，下次请求会回填最新值
+            if (success && Integer.toString(PoetryEnum.SYS_CONFIG_PUBLIC.getCode())
+                    .equals(config.getConfigType())) {
+                cacheService.evictPublicSysConfigMap();
+                // 异步重建预渲染 HTML，让 sysConfig 删除（如 footer.friendLinks）反映到静态产物
+                try {
+                    prerenderFacade.rebuildSiteAsync(java.time.Duration.ofSeconds(2));
+                } catch (Exception e) {
+                    log.warn("sysConfig 删除后触发预渲染重建失败，配置项: {}", config.getConfigKey(), e);
+                }
+            }
+
             // 检查删除的配置是否影响sitemap
             if (success && isConfigAffectingSitemap(config.getConfigKey(), config.getConfigValue(), null)) {
                 try {

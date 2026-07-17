@@ -27,6 +27,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -74,6 +76,9 @@ public class PrerenderService {
 
     @Autowired
     private ResourcePathMapper resourcePathMapper;
+
+    @Autowired
+    private JsonMapper jsonMapper;
 
     @Autowired
     private MailUtil mailUtil;
@@ -203,7 +208,9 @@ public class PrerenderService {
                                 + (StringUtils.hasText(article.getSummary()) ? "<p>" + text(article.getSummary()) + "</p>" : "")
                                 + "<time>" + text(formatDate(article.getCreateTime())) + "</time></a></li>")
                         .collect(Collectors.joining())
-                + "</ul></div></div>";
+                + "</ul></div></div>"
+                // 完整页脚（版权 + 友链 + 联系方式）内联到预渲染 HTML，供爬虫/审核员直接看到
+                + buildFooterHtml(webInfo);
 
         writePage("home", PrerenderPageData.builder()
                 .title(title)
@@ -212,6 +219,78 @@ public class PrerenderService {
                 .lang(sourceLanguage)
                 .pageType("home")
                 .build());
+    }
+
+    /**
+     * 构建页脚 HTML 片段，内联到预渲染首页。
+     * <p>包含版权信息、友链（CDN/云服务商，从 sysConfig['footer.friendLinks'] 读取）、联系方式。
+     * <p>爬虫和友链审核员可直接从 HTML 源码看到这些链接，无需执行 JS。
+     */
+    private String buildFooterHtml(WebInfo webInfo) {
+        int year = java.time.Year.now().getValue();
+        String siteName = firstNonBlank(webInfo.getWebName(), webInfo.getWebTitle(), "本站");
+        String email = firstNonBlank(webInfo.getEmail(), "admin@poetize.cn");
+        List<FriendLinkItem> friendLinks = getFooterFriendLinks();
+
+        StringBuilder sb = new StringBuilder("<footer class=\"prerender-footer\"><div class=\"prerender-copyright\">");
+        sb.append("<span>© ").append(year).append(" ").append(text(siteName)).append("</span>");
+        sb.append("<span>保留所有权利</span>");
+        sb.append("<a href=\"/privacy\">隐私政策</a>");
+        sb.append("</div>");
+
+        if (!friendLinks.isEmpty()) {
+            sb.append("<div class=\"prerender-friend-links\"><span>本站由</span>");
+            for (FriendLinkItem link : friendLinks) {
+                sb.append("<a href=\"").append(attr(link.url))
+                        .append("\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">")
+                        .append(text(link.name)).append("</a>");
+            }
+            sb.append("<span>提供加速与云服务</span></div>");
+        }
+        sb.append("<div class=\"prerender-contact\">本站内容均为原创或合法转载，如有侵权请通过邮箱：")
+                .append(text(email)).append(" 与我们联系，确认后将立即删除</div>");
+        sb.append("</footer>");
+        return sb.toString();
+    }
+
+    /**
+     * 从 sysConfig['footer.friendLinks'] 读取并解析友链列表。
+     * <p>配置值为 JSON 数组字符串：[{ name, url, logo?, ariaLabel? }]。
+     * <p>读取失败或未配置时返回空列表，页脚不渲染友链区。
+     */
+    private List<FriendLinkItem> getFooterFriendLinks() {
+        Map<String, String> sysConfigMap = cacheService.getCachedPublicSysConfigMap();
+        if (sysConfigMap == null) return List.of();
+        String raw = sysConfigMap.get("footer.friendLinks");
+        if (!StringUtils.hasText(raw)) return List.of();
+        try {
+            JsonNode root = jsonMapper.readTree(raw);
+            if (!root.isArray()) return List.of();
+            List<FriendLinkItem> result = new ArrayList<>();
+            for (JsonNode item : root) {
+                String name = item.path("name").asText("");
+                String url = item.path("url").asText("");
+                if (!name.isBlank() && !url.isBlank()) {
+                    result.add(new FriendLinkItem(name.trim(), url.trim()));
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("解析 footer.friendLinks 配置失败，已忽略: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 友链项，仅保留预渲染需要的字段（logo 在静态 HTML 中省略以保持轻量）
+     */
+    private static class FriendLinkItem {
+        final String name;
+        final String url;
+        FriendLinkItem(String name, String url) {
+            this.name = name;
+            this.url = url;
+        }
     }
 
     public void renderFriendsPage() {

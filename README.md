@@ -125,7 +125,11 @@ bash <(curl -sL install.leapya.com)
 - **操作系统**：Ubuntu 20.04+、Debian 11+ 或 CentOS 7/8+（[更多系统测试结果](#14-系统兼容性测试结果)）
 - **CPU/内存**：2核2GB起步（1核1GB可运行但较卡，2核2GB足够了）
 - **硬盘空间**：15GB+
-- **带宽**：建议5Mbps+（1Mbps≈128KB/s，一个普通页面至少600KB）
+- **带宽**：1Mbps 起步（套 CDN 后源站只需承担未命中回源流量，1Mbps 足够；未使用 CDN 时建议 5Mbps+，1Mbps≈128KB/s，一个普通页面至少 600KB）
+
+> **免费 CDN 方案（可选，进一步降低源站带宽压力）：**
+> - **腾讯云 EdgeOne**：免费版适合**已备案**域名；未备案域名会绕行美国节点，国内访问龟速，慎用
+> - **Cloudflare**：免费版全球可用，但国内访问默认线路较差，需配置**优选 IP**才能拿到合理速度
 
 **地域与线路选择：**
 
@@ -176,6 +180,10 @@ bash <(curl -sL install.leapya.com)
 | Docker 容器（--privileged） | 2核+ | 2G+  | 30GB | ⚠️ 可尝试 |
 
 > **其他支持的系统**：RHEL、Rocky Linux、AlmaLinux、Fedora、Amazon Linux、阿里云/腾讯云 Linux、麒麟、统信UOS、Deepin、openEuler、Alpine、Arch Linux、openSUSE等主流Linux发行版均已测试通过。
+
+---
+
+> 👇 已有服务器/域名/解析？跳过上面的准备工作，直接看本节安装命令
 
 ### 2.运行一键安装脚本
 

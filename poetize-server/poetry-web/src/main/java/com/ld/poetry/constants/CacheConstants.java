@@ -135,6 +135,13 @@ public class CacheConstants {
     public static final String SORT_ARTICLE_LIST_KEY = CACHE_PREFIX + "sort:article:list";
 
     /**
+     * 分类标签树缓存键（含每个分类/标签的文章数 countOfSort/countOfLabel）
+     * <p>数据源 CommonQuery.getSortInfo()，/webInfo/bootstrap 高频读取。
+     * 永久缓存 + 主动 evict，evict 复用 evictSortArticleList() 全部触发点（文章/分类/标签增删改）。
+     */
+    public static final String SORT_INFO_KEY = CACHE_PREFIX + "sort:info";
+
+    /**
      * 标签信息缓存键前缀
      * 格式: poetize:label:list:{sortId}
      */
@@ -154,6 +161,14 @@ public class CacheConstants {
      * 格式: poetize:config:{configKey}
      */
     public static final String SYS_CONFIG_PREFIX = CACHE_PREFIX + "config:";
+
+    /**
+     * 全量公开系统配置 Map 缓存键
+     * <p>数据源 sys_config 表中 config_type=2(公开) 的全量记录聚合，
+     * 供 /webInfo/bootstrap 等高频接口读取。永久缓存 + 主动 evict。
+     * <p>evict 触发点: SysConfigController.saveOrUpdateConfig / deleteConfig 成功后
+     */
+    public static final String PUBLIC_SYS_CONFIG_MAP_KEY = CACHE_PREFIX + "config:public:map";
 
     // ================================ AI 配置相关缓存 ================================
 

@@ -1,4 +1,22 @@
 <template>
+  <!--
+    页脚友链/服务商展示区（默认关闭）。
+    启用方式：后台「参数配置」→ 新增配置
+      configKey   = footer.friendLinks
+      configType  = 公开
+      configValue = JSON 数组字符串，每项结构：
+        {
+          "name":      展示文字，必填，如 "雨云"
+          "url":       跳转链接，必填，可携带 AFF 邀请码，如 "https://www.rainyun.com/?ref=YOUR_AFF"
+          "logo":      可选，内联 SVG 字符串（currentColor 自动继承文字颜色）。仅允许纯 SVG，禁用脚本/事件处理器。
+                       不需要 logo 时：整字段省略 / 留空串 / 不写该键均可，会自动降级为纯文字链接
+          "ariaLabel": 可选，无障碍标签，留空时回退到 name
+        }
+    示例 configValue（混合：一条带 logo、一条纯文字）：
+      [{"name":"又拍云联盟","url":"https://www.upyun.com/","logo":"<svg viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M17.5 19a4.5 4.5 0 0 0 0-9h-1.1A5 5 0 0 0 6 8.5 4 4 0 0 0 6.5 16.5\"/></svg>"},
+       {"name":"雨云","url":"https://www.rainyun.com/?ref=YOUR_AFF"}]
+    未配置该键、配置为空、或 JSON 解析失败时，本区域不渲染（即默认关闭）。
+  -->
   <div class="myFooter-wrap" v-show="showFooter">
     <div
       class="myFooter"
@@ -45,6 +63,31 @@
           ><a href="/privacy" class="policy-link">隐私政策</a></span
         >
       </div>
+      <!-- 友链/服务商展示区：由 sysConfig['footer.friendLinks'] 驱动，未配置则不渲染 -->
+      <div
+        class="footer-links font"
+        :style="textStyle"
+        v-if="!isMinimalFooter && footerLinks.length"
+      >
+        <span class="footer-links-text">本站由</span>
+        <a
+          v-for="link in footerLinks"
+          :key="link.name"
+          :href="link.url"
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          class="footer-link"
+          :aria-label="link.ariaLabel || link.name"
+        >
+          <span
+            v-if="link.logo"
+            class="footer-link-logo"
+            v-html="link.logo"
+          ></span>
+          <span class="footer-link-name">{{ link.name }}</span>
+        </a>
+        <span class="footer-links-text">提供加速与云服务</span>
+      </div>
       <div class="contact font" :style="textStyle" v-if="!isMinimalFooter">
         本站内容均为原创或合法转载，如有侵权请通过邮箱：{{
           mainStore.webInfo.email || 'admin@poetize.cn'
@@ -77,6 +120,48 @@ export default {
     },
     currentYear() {
       return new Date().getFullYear()
+    },
+    /**
+     * 页脚友链/服务商列表：从 sysConfig['footer.friendLinks'] 读取。
+     * 配置值是 JSON 字符串，结构：[{ name, url, logo?, ariaLabel? }]。
+     * 默认未配置该键 → 返回空数组 → 模板不渲染该区域（功能默认关闭）。
+     * 在后台「参数配置」中新增 configKey=footer.friendLinks、configType=公开，
+     * 即可启用。配置示例见本文件顶部注释。
+     */
+    footerLinks() {
+      const raw = this.mainStore.sysConfig
+        ? this.mainStore.sysConfig['footer.friendLinks']
+        : null
+      if (!raw || typeof raw !== 'string' || !raw.trim()) return []
+      try {
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return []
+        // 仅保留必要字段并通过校验的项，过滤非法/空项以保证渲染安全
+        return parsed
+          .filter(
+            (item) =>
+              item &&
+              typeof item === 'object' &&
+              typeof item.name === 'string' &&
+              item.name.trim() &&
+              typeof item.url === 'string' &&
+              item.url.trim()
+          )
+          .map((item) => ({
+            name: item.name,
+            url: item.url,
+            // logo 仅允许 <svg>...</svg> 形态，过滤脚本/事件处理器以防 XSS
+            logo: this.sanitizeSvgLogo(item.logo),
+            ariaLabel:
+              typeof item.ariaLabel === 'string' && item.ariaLabel.trim()
+                ? item.ariaLabel
+                : item.name,
+          }))
+      } catch (e) {
+        // 配置 JSON 解析失败时静默降级为空，避免拖垮整个页脚
+        console.warn('[myFooter] footer.friendLinks 配置解析失败，已忽略:', e)
+        return []
+      }
     },
     hasBgImage() {
       const img = this.mainStore.webInfo.footerBackgroundImage
@@ -236,6 +321,22 @@ export default {
   },
   beforeUnmount() {
     window.removeEventListener('resize', this._resizeHandler)
+  },
+  methods: {
+    /**
+     * 对外部配置注入的 SVG 字符串做最小化安全过滤。
+     * 仅允许形如 <svg ...>...</svg> 的纯 SVG，剔除 <script>/事件处理器/javascript: 等危险内容。
+     * 任何不合法内容统一返回空串，渲染降级为纯文字链接。
+     */
+    sanitizeSvgLogo(raw) {
+      if (typeof raw !== 'string') return ''
+      const s = raw.trim()
+      if (!s) return ''
+      if (!/^<svg[\s>]/i.test(s) || !/<\/svg>\s*$/i.test(s)) return ''
+      if (/<script[\s>]/i.test(s) || /\son\w+\s*=/i.test(s)) return ''
+      if (/javascript:/i.test(s)) return ''
+      return s
+    },
   },
 }
 </script>
@@ -398,6 +499,66 @@ export default {
   color: var(--white) !important;
   font-weight: 400;
 }
+/* 友链/服务商展示区：自适应换行、可继承文字颜色 */
+.footer-links {
+  font-size: 13px;
+  line-height: 1.7;
+  position: relative;
+  z-index: 10;
+  font-weight: 400;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 0;
+}
+.footer-links-text {
+  font-weight: 400;
+  opacity: 0.85;
+}
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  color: inherit;
+  font-weight: 500;
+  transition: color 0.3s ease, opacity 0.3s ease;
+}
+/* 多个友链之间用 · 分隔，仅在两条及以上时生效 */
+.footer-link + .footer-link::before {
+  content: '·';
+  margin-right: 4px;
+  opacity: 0.6;
+  font-weight: 400;
+}
+.footer-link-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+/* v-html 注入的 SVG 需穿透 scoped 样式 */
+.footer-link-logo :deep(svg) {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.footer-link:hover {
+  color: var(--themeBackground);
+  opacity: 0.85;
+}
+.myFooter[style*='--footer-bg-image'] .footer-links,
+.myFooter[style*='--footer-bg-image'] .footer-link {
+  color: var(--white) !important;
+  font-weight: 500;
+}
+.myFooter[style*='--footer-bg-image'] .footer-link:hover {
+  color: var(--themeBackground) !important;
+}
 @media (max-width: 768px) {
   .myFooter {
     border-radius: 0;
@@ -424,6 +585,14 @@ export default {
   .copyright-center,
   .copyright-right {
     font-size: 14px;
+  }
+  .footer-links {
+    font-size: 12px;
+    gap: 2px 4px;
+  }
+  .footer-link-logo :deep(svg) {
+    width: 12px;
+    height: 12px;
   }
 }
 .myFooter.minimal {

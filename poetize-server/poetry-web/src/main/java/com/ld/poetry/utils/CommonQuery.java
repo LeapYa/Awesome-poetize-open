@@ -665,8 +665,14 @@ public class CommonQuery {
         return null;
     }
 
+    @SuppressWarnings("unchecked")
     public List<Sort> getSortInfo() {
-        // 直接从数据库查询，不使用缓存
+        // 优先读 Redis 永久缓存，避免 bootstrap 高频 N+1 查询
+        Object cached = cacheService.getCachedSortInfo();
+        if (cached instanceof List) {
+            return (List<Sort>) cached;
+        }
+        // 缓存未命中：执行 N+1 查询并回填缓存
         List<Sort> sorts = new LambdaQueryChainWrapper<>(sortMapper).list();
         if (!CollectionUtils.isEmpty(sorts)) {
             sorts.forEach(sort -> {
@@ -692,6 +698,7 @@ public class CommonQuery {
                 }
             });
         }
+        cacheService.cacheSortInfo(sorts);
         return sorts;
     }
 }

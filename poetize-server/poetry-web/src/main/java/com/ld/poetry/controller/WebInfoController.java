@@ -471,9 +471,15 @@ public class WebInfoController {
     /**
      * 获取前台首屏需要的站点启动数据。
      * 合并 webInfo、sysConfig、sortInfo 和语言基础配置，减少首页/文章页初始化并发请求。
+     * 响应设置 Cache-Control 让 CDN 边缘缓存 10 秒，stale-while-revalidate 允许 5 分钟内返回旧值同时异步刷新。
+     * 后台改 sysConfig 时 SysConfigController 会主动 evict Redis 缓存，10 秒内 CDN 同步生效。
      */
     @GetMapping("/bootstrap")
-    public PoetryResult<Map<String, Object>> getBootstrap() {
+    public PoetryResult<Map<String, Object>> getBootstrap(jakarta.servlet.http.HttpServletResponse response) {
+        // 与 HTML 策略一致：CDN 边缘缓存 10 秒，5 分钟内可返回旧值同时异步刷新
+        response.setHeader("Cache-Control",
+                "public, max-age=0, s-maxage=10, stale-while-revalidate=300, must-revalidate");
+
         Map<String, Object> result = new LinkedHashMap<>();
 
         try {
@@ -509,16 +515,24 @@ public class WebInfoController {
     }
 
     private Map<String, String> listPublicSysConfig() {
+        // 优先从 Redis 永久缓存读取，避免 bootstrap 等高频接口每次都查 DB
+        Map<String, String> cached = cacheService.getCachedPublicSysConfigMap();
+        if (cached != null) {
+            return cached;
+        }
+        // 缓存未命中：查 DB 并回填
         LambdaQueryChainWrapper<SysConfig> wrapper = new LambdaQueryChainWrapper<>(sysConfigService.getBaseMapper());
         List<SysConfig> sysConfigs = wrapper
                 .eq(SysConfig::getConfigType, Integer.toString(PoetryEnum.SYS_CONFIG_PUBLIC.getCode()))
                 .list();
 
-        return sysConfigs.stream().collect(Collectors.toMap(
+        Map<String, String> result = sysConfigs.stream().collect(Collectors.toMap(
                 SysConfig::getConfigKey,
                 SysConfig::getConfigValue,
                 (oldValue, newValue) -> newValue
         ));
+        cacheService.cachePublicSysConfigMap(result);
+        return result;
     }
 
     /**

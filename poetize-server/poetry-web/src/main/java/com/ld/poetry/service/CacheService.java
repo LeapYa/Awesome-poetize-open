@@ -269,10 +269,36 @@ public class CacheService {
     }
 
     /**
-     * 删除分类文章列表缓存
+     * 删除分类文章列表缓存，同时清理 sortInfo 树缓存
+     * <p>sortInfo 的 countOfSort/countOfLabel 与文章增删改强相关，
+     * 复用既有 11 处 evict 触发点一并清理，避免新增触发点漏清。
      */
     public void evictSortArticleList() {
         redisUtil.del(CacheConstants.SORT_ARTICLE_LIST_KEY);
+        redisUtil.del(CacheConstants.SORT_INFO_KEY);
+    }
+
+    /**
+     * 缓存分类标签树（含 countOfSort/countOfLabel），永久缓存
+     */
+    public void cacheSortInfo(List<?> sortInfo) {
+        if (sortInfo != null) {
+            redisUtil.set(CacheConstants.SORT_INFO_KEY, sortInfo, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存分类标签树(永久): {} 个分类", sortInfo.size());
+        }
+    }
+
+    /**
+     * 获取缓存的分类标签树
+     * @return 缓存未命中返回 null
+     */
+    @SuppressWarnings("unchecked")
+    public List<?> getCachedSortInfo() {
+        Object cached = redisUtil.get(CacheConstants.SORT_INFO_KEY);
+        if (cached instanceof List) {
+            return (List<?>) cached;
+        }
+        return null;
     }
 
     /**
@@ -537,6 +563,43 @@ public class CacheService {
         if (configKey != null) {
             String key = CacheConstants.buildSysConfigKey(configKey);
             redisUtil.del(key);
+        }
+    }
+
+    /**
+     * 缓存全量公开系统配置 Map（永久缓存）
+     * <p>数据源 listPublicSysConfig()，/webInfo/bootstrap 等高频接口读取。
+     * 配置变更时由 SysConfigController 主动 evict。
+     */
+    public void cachePublicSysConfigMap(Map<String, String> configMap) {
+        if (configMap != null) {
+            redisUtil.set(CacheConstants.PUBLIC_SYS_CONFIG_MAP_KEY, configMap, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存公开系统配置 Map(永久): {} 条", configMap.size());
+        }
+    }
+
+    /**
+     * 获取缓存的公开系统配置 Map
+     * @return 缓存未命中返回 null
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, String> getCachedPublicSysConfigMap() {
+        Object cached = redisUtil.get(CacheConstants.PUBLIC_SYS_CONFIG_MAP_KEY);
+        if (cached instanceof Map) {
+            return (Map<String, String>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除公开系统配置 Map 缓存
+     */
+    public void evictPublicSysConfigMap() {
+        try {
+            redisUtil.del(CacheConstants.PUBLIC_SYS_CONFIG_MAP_KEY);
+            log.info("删除公开系统配置 Map 缓存成功 - Key: {}", CacheConstants.PUBLIC_SYS_CONFIG_MAP_KEY);
+        } catch (Exception e) {
+            log.error("删除公开系统配置 Map 缓存失败 - Key: {}", CacheConstants.PUBLIC_SYS_CONFIG_MAP_KEY, e);
         }
     }
 
