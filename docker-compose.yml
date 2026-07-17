@@ -106,7 +106,7 @@ services:
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - web-root:/usr/share/nginx/html
-      - ./docker/nginx/certbot-logs:/var/log/letsencrypt
+      - certbot_logs:/var/log/letsencrypt
       - ./docker/nginx/certbot-entrypoint.sh:/certbot-entrypoint.sh
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -326,6 +326,7 @@ volumes:
   redis_data:
   certbot-etc:
   certbot-var:
+  certbot_logs:
   web-root:
   poetize_web_dist:
   poetize_admin_dist:
