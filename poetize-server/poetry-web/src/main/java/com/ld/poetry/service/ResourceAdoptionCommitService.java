@@ -41,7 +41,7 @@ public class ResourceAdoptionCommitService {
     private final ResourceReferenceService referenceService;
     private final ResourceLocationService resourceLocationService;
 
-    @Transactional(rollbackFor = Exception.class, isolation = Isolation.SERIALIZABLE)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.REPEATABLE_READ)
     public CommitResult commit(VerifiedAdoption adoption) {
         validate(adoption);
         ResourceAdoptionItem discoveredItem = itemMapper.selectById(adoption.itemId());
