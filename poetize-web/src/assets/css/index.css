@@ -94,11 +94,13 @@ body {
 }
 
 /* 隐藏预渲染内容 - 解决首页底部显示预渲染文本的问题 */
+/* .article-detail 同样纳入隐藏：避免文章页 Vue 接管前预渲染正文可见导致的闪烁 */
 .home-prerender,
 .prerender-footer,
 .favorite-prerender,
 .sort-prerender,
-.sort-list-prerender {
+.sort-list-prerender,
+.article-detail {
     display: none !important;
 }
 
