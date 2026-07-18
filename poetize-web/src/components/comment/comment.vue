@@ -441,6 +441,11 @@ export default {
   },
   methods: {
     loadAiChatConfig() {
+      // 看板娘总开关未启用时跳过 AI 配置请求，避免无意义调用
+      if (this.mainStore?.webInfo?.enableWaifu !== true) {
+        return
+      }
+
       this.$http
         .get(
           this.$constant.baseURL + '/webInfo/ai/config/chat/getStreamingConfig',

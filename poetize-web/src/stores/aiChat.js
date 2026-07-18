@@ -4,6 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import constant from '@/utils/constant'
+import { useMainStore } from './main'
 import {
   saveImage,
   getMessageImages,
@@ -326,6 +327,21 @@ export const useAIChatStore = defineStore('aiChat', {
     async loadConfig() {
       if (this.configLoaded) {
         return
+      }
+
+      // 看板娘总开关未启用时跳过 AI 配置请求
+      // ai_chat.enabled 是后端开关，但只有发起请求才能获取，存在循环依赖；
+      // 以前端可见的 enableWaifu 作为前置门禁，避免后台未开启看板娘时仍向
+      // /webInfo/ai/config/chat/getStreamingConfig 发起无意义请求
+      try {
+        const mainStore = useMainStore()
+        if (mainStore.webInfo?.enableWaifu !== true) {
+          this.config = { ...DEFAULT_AI_CHAT_CONFIG }
+          this.configLoaded = true
+          return
+        }
+      } catch (e) {
+        // mainStore 未就绪时降级继续请求，避免阻断正常流程
       }
 
       try {
