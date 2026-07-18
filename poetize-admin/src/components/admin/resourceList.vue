@@ -1129,7 +1129,7 @@ export default {
       }
 
       if (this.isReplaceMediaTarget(this.replaceResourceTarget)) {
-        if (this.isSameResourceExtension(this.replaceResourceTarget.path, file.name) || this.isReplaceUploadMediaFile(file)) {
+        if (this.isSameResourceExtension(this.getResourcePathForExtension(this.replaceResourceTarget), file.name) || this.isReplaceUploadMediaFile(file)) {
           return true;
         }
         if (showMessage) {
@@ -1141,7 +1141,7 @@ export default {
         return false;
       }
 
-      if (!this.isSameResourceExtension(this.replaceResourceTarget.path, file.name)) {
+      if (!this.isSameResourceExtension(this.getResourcePathForExtension(this.replaceResourceTarget), file.name)) {
         if (showMessage) {
           this.$message({
             message: '替换文件扩展名必须与原资源一致（jpg 与 jpeg 视为一致）！',
@@ -1211,7 +1211,7 @@ export default {
       return !this.getReplaceDisabledReason(resource);
     },
     getReplaceDisabledReason(resource) {
-      if (!resource || !resource.id || !resource.path) {
+      if (!resource || !resource.id || (!resource.path && !resource.originalName)) {
         return '资源信息不完整，无法替换';
       }
       const storeType = ((resource.storeType || 'local') + '').toLowerCase();
@@ -1222,7 +1222,7 @@ export default {
       if (/^(https?:)?\/\//i.test(path) || /^(data|blob):/i.test(path)) {
         return '远程或临时资源不支持原路径替换';
       }
-      if (!this.getPathExtension(path)) {
+      if (!this.getPathExtension(this.getResourcePathForExtension(resource))) {
         return '资源路径缺少扩展名，无法安全替换';
       }
       return '';
@@ -1231,7 +1231,7 @@ export default {
       if (!resource) {
         return '';
       }
-      const extension = this.normalizeResourceExtension(this.getPathExtension(resource.path));
+      const extension = this.normalizeResourceExtension(this.getPathExtension(this.getResourcePathForExtension(resource)));
       if (!extension) {
         return '';
       }
@@ -1253,7 +1253,7 @@ export default {
       if (!resource || !this.isImageResource(resource)) {
         return false;
       }
-      const extension = this.normalizeResourceExtension(this.getPathExtension(resource.path));
+      const extension = this.normalizeResourceExtension(this.getPathExtension(this.getResourcePathForExtension(resource)));
       return extension === 'jpg' || extension === 'png';
     },
     isReplaceWoff2Target(resource) {
@@ -1273,7 +1273,7 @@ export default {
       return REPLACE_VIDEO_EXTENSIONS.includes(this.normalizeResourceExtension(extension));
     },
     getReplaceTargetFormatLabel(resource) {
-      const extension = this.normalizeResourceExtension(this.getPathExtension(resource && resource.path));
+      const extension = this.normalizeResourceExtension(this.getPathExtension(this.getResourcePathForExtension(resource)));
       if (extension === 'jpg') {
         return 'JPG';
       }
@@ -1442,18 +1442,19 @@ export default {
       return blob;
     },
     buildReplaceFrameFileName(currentSecond) {
-      const resourcePath = (this.replaceResourceTarget && this.replaceResourceTarget.path) || '';
+      // 归一化后 path 形如 /media/{publicId} 无扩展名，优先用 originalName 获取带扩展名的文件名
+      const resourcePath = (this.replaceResourceTarget && this.getResourcePathForExtension(this.replaceResourceTarget)) || '';
       const cleanPath = resourcePath.split(/[?#]/)[0].replace(/\\/g, '/');
       const slashIndex = cleanPath.lastIndexOf('/');
       const baseName = slashIndex >= 0 ? cleanPath.substring(slashIndex + 1) : cleanPath;
-      if (baseName) {
+      if (baseName && this.getPathExtension(baseName)) {
         return baseName;
       }
       const extension = this.getReplaceTargetExtension(this.replaceResourceTarget) || 'jpg';
       return 'video-frame-' + Math.round(Math.max(0, currentSecond || 0) * 1000) + '.' + extension;
     },
     getReplaceTargetExtension(resource) {
-      return this.normalizeResourceExtension(this.getPathExtension(resource && resource.path));
+      return this.normalizeResourceExtension(this.getPathExtension(this.getResourcePathForExtension(resource)));
     },
     getReplaceTargetMimeType(resource) {
       return this.getReplaceTargetExtension(resource) === 'png' ? 'image/png' : 'image/jpeg';
@@ -1482,6 +1483,21 @@ export default {
         return '';
       }
       return cleanPath.substring(dotIndex + 1).toLowerCase();
+    },
+    /**
+     * 返回用于提取扩展名的最佳路径。
+     * 资源归一化后 path 形如 /media/{publicId} 无扩展名，
+     * 因此优先使用 originalName（保留原始扩展名），回退到 path。
+     */
+    getResourcePathForExtension(resource) {
+      if (!resource) {
+        return '';
+      }
+      const originalName = (resource.originalName || '') + '';
+      if (originalName && this.getPathExtension(originalName)) {
+        return originalName;
+      }
+      return (resource.path || '') + '';
     },
     markResourcePreviewReplaced(resource) {
       const cacheKey = this.getResourceCacheKey(resource);
