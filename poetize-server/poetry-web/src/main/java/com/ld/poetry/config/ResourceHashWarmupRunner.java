@@ -215,7 +215,9 @@ public class ResourceHashWarmupRunner implements ApplicationRunner {
         if (locCorrectedMime != null) {
             locUpdate.setMimeType(locCorrectedMime);
         }
-        if (actualSize > 0 && (location.getSize() == null || location.getSize() <= 0)) {
+        // 实际大小与数据库记录不一致时更新（SQL 种子数据的 size 常与实际构建产物不符，
+        // 会导致 ResourceMediaService.openRange() 的 totalLength != descriptor.size() 检查失败返回 503）
+        if (actualSize > 0 && !Long.valueOf(actualSize).equals(location.getSize())) {
             locUpdate.setSize(actualSize);
         }
         resourceLocationMapper.updateById(locUpdate);
