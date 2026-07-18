@@ -1874,64 +1874,21 @@ export default {
         });
     },
     downloadFontPackage() {
-      this.fontDownloading = true;
-      // dev 环境使用 Vite 代理的相对路径，避免跨域直连后端端口不一致导致 Network Error；
-      // 生产环境沿用 $http.download 走 /api 前缀由 Nginx 代理
+      // 直接用浏览器原生导航触发下载：cookie 自动携带，浏览器下载列表立即显示进度条，
+      // 避免 axios responseType:blob 把整个响应缓存在内存再触发 link.click() 导致的转圈。
+      // 后端已设置 Content-Disposition: attachment，浏览器会按下载处理而非页面跳转。
+      // 鉴权失败时浏览器会下载一个小的 JSON 错误文件，用户能直观感知。
       const downloadUrl = import.meta.env.DEV
         ? '/fontSubset/download'
         : (this.$constant.baseURL + '/fontSubset/download');
-      const downloadReq = import.meta.env.DEV
-        ? fetch(downloadUrl, { credentials: 'include' }).then(async resp => {
-            if (!resp.ok) {
-              let msg = `下载失败 (HTTP ${resp.status})`;
-              try { const json = await resp.json(); if (json && json.message) msg = json.message; } catch (_) {}
-              throw new Error(msg);
-            }
-            return resp.blob();
-          })
-        : this.$http.download(this.$constant.baseURL + '/fontSubset/download', {}, true);
-      downloadReq
-        .then(async blob => {
-          if (!blob || !blob.size) {
-            throw new Error('下载失败，响应为空');
-          }
-          // 双重校验：优先 MIME/Content-Type，MIME 被代理改写或为空时以 ZIP PK 魔数兜底
-          let isZip = !!(blob.type && (blob.type.includes('octet-stream') || blob.type.includes('zip')));
-          if (!isZip) {
-            try {
-              const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
-              isZip = header[0] === 0x50 && header[1] === 0x4B;
-            } catch (_) { /* 魔数读取失败，保持 false */ }
-          }
-          if (!isZip) {
-            return blob.text().then(text => {
-              let msg = '下载失败';
-              try {
-                const json = JSON.parse(text);
-                if (json && json.message) msg = json.message;
-              } catch (_) {
-                // 非标准 JSON 错误体：仅在内容较短时直接展示，避免把二进制当文本
-                if (text && text.length < 200) msg = text.trim() || msg;
-              }
-              throw new Error(msg);
-            });
-          }
-          const downloadUrl = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = downloadUrl;
-          link.download = 'font_chunks.zip';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(downloadUrl);
-          this.$message.success('字体切割包已开始下载');
-        })
-        .catch(error => {
-          this.$message.error(error.message || '下载失败，请检查网络或字体状态');
-        })
-        .finally(() => {
-          this.fontDownloading = false;
-        });
+
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = 'font_chunks.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.$message.success('字体切割包已开始下载');
     },
     loadFontCdnConfig() {
       this.$http.get(this.$constant.baseURL + '/sysConfig/listConfig', {}, true)

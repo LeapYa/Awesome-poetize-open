@@ -156,6 +156,9 @@ public class FontSubsetController {
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"font_chunks.zip\"");
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache");
         response.setDateHeader(HttpHeaders.EXPIRES, 0);
+        // 通知所有 Nginx 层（含 1Panel 外层反代）关闭 proxy_buffering，实现流式下载。
+        // 否则 Nginx 默认缓冲整个响应体后才发给客户端，浏览器收不到首字节一直转圈。
+        response.setHeader("X-Accel-Buffering", "no");
 
         // 优先发送预打包的缓存 ZIP（秒级零拷贝），避免下载时实时打包数百个分片导致前端超时。
         // 缓存由字体切割完成时预生成（buildCachedZip），清理时同步删除。
