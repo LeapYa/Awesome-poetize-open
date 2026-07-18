@@ -206,6 +206,11 @@ public class PrerenderEngine {
         String content = data.getContent() == null ? "" : data.getContent();
 
         String html = template;
+        // 清除模板中残留的 <!--PB_BOOTSTRAP--> 占位符，插件配置走 /sysPlugin/frontendBootstrap API 回退
+        if (html.indexOf(PluginBootstrapMaterializer.PLUGIN_BOOTSTRAP_PLACEHOLDER) >= 0) {
+            log.warn("index.html 模板仍残留 <!--PB_BOOTSTRAP--> 占位符，预渲染输出中将清除该占位符");
+            html = html.replace(PluginBootstrapMaterializer.PLUGIN_BOOTSTRAP_PLACEHOLDER, "");
+        }
         html = replaceHtmlLang(html, lang);
         html = replaceTitle(html, title);
         html = removeExistingSeoTags(html);

@@ -168,7 +168,8 @@ public class PrerenderService {
 
         String siteName = getSiteName(webInfo);
         String baseUrl = getBaseUrl(webInfo);
-        String title = firstNonBlank(webInfo.getWebTitle(), webInfo.getWebName(), siteName);
+        // 首页 <title> 使用 homeTitle，为空时回退到 webTitle
+        String title = firstNonBlank(webInfo.getHomeTitle(), webInfo.getWebTitle());
         String description = firstNonBlank(stringValue(seoConfig.get("site_description")),
                 siteName + " - 个人博客网站，分享技术文章、生活感悟。");
         String keywords = firstNonBlank(stringValue(seoConfig.get("site_keywords")), "博客,个人网站,技术分享");

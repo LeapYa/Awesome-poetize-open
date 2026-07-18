@@ -17,8 +17,13 @@ class PrerenderExecutor {
 
     private final PrerenderService prerenderService;
     private final PrerenderNodeRendererRegistry rendererRegistry;
+    private final PluginBootstrapMaterializer pluginBootstrapMaterializer;
 
     void execute(PrerenderRequest request, PrerenderPlan plan, PrerenderSnapshot snapshot) {
+        // 预渲染前确保 index.html 中的 <!--PB_BOOTSTRAP--> 占位符已被物化为 pb.*.js script 引用
+        // 已物化时直接返回，不重复写文件
+        pluginBootstrapMaterializer.ensureMaterialized();
+
         if (request.clearTemplateCache()) {
             prerenderService.clearTemplateCache();
         }

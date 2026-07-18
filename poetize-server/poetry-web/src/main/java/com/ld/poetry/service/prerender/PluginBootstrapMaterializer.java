@@ -43,7 +43,11 @@ public class PluginBootstrapMaterializer {
 
     private static final String FILE_PREFIX = "pb.";
     private static final String FILE_SUFFIX = ".js";
-    private static final String PLACEHOLDER = "<!--PB_BOOTSTRAP-->";
+    /**
+     * index.html 中用于注入插件 bootstrap script 的占位符。
+     * 暴露为 public 供预渲染流程复用，确保占位符字面量单一数据源。
+     */
+    public static final String PLUGIN_BOOTSTRAP_PLACEHOLDER = "<!--PB_BOOTSTRAP-->";
     private static final Pattern SCRIPT_PATTERN = Pattern.compile(
             "<script\\s+[^>]*src=\"[^\"]*pb\\.[^\"]*\\.js\"[^>]*></script>\\s*",
             Pattern.CASE_INSENSITIVE);
@@ -155,8 +159,8 @@ public class PluginBootstrapMaterializer {
             String html = Files.readString(template, StandardCharsets.UTF_8);
             String scriptTag = "<script src=\"/static/" + currentFileName + "\"></script>";
             String newHtml;
-            if (html.contains(PLACEHOLDER)) {
-                newHtml = html.replace(PLACEHOLDER, scriptTag);
+            if (html.contains(PLUGIN_BOOTSTRAP_PLACEHOLDER)) {
+                newHtml = html.replace(PLUGIN_BOOTSTRAP_PLACEHOLDER, scriptTag);
             } else {
                 Matcher matcher = SCRIPT_PATTERN.matcher(html);
                 if (matcher.find()) {
