@@ -1,7 +1,9 @@
 package com.ld.poetry.service;
 
 import com.ld.poetry.entity.Resource;
+import com.ld.poetry.entity.ResourceLocation;
 import com.ld.poetry.utils.storage.StoreEnum;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -19,6 +21,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 @Service
+@Slf4j
 public class ResourceThumbnailService {
 
     private static final int DEFAULT_WIDTH = 120;
@@ -31,6 +34,9 @@ public class ResourceThumbnailService {
 
     @Autowired
     private ResourceAvailabilityService resourceAvailabilityService;
+
+    @Autowired
+    private ResourceLocationService resourceLocationService;
 
     public Thumbnail createThumbnail(Integer id, Integer width, Integer height) throws ThumbnailException {
         int targetWidth = clampSize(width, DEFAULT_WIDTH);
@@ -89,6 +95,27 @@ public class ResourceThumbnailService {
     }
 
     private Path resolveSourcePath(Resource resource) throws ThumbnailException {
+        // 优先用 resource_location.access_path 定位物理文件
+        // 归一化后 resource.path 是 /media/{publicId}，无法直接解析为物理路径
+        if (resource.getActiveLocationId() != null) {
+            try {
+                ResourceLocation location = resourceLocationService.requireActiveLocation(resource);
+                String accessPath = location.getAccessPath();
+                if (StringUtils.hasText(accessPath) && isLocalPath(accessPath)) {
+                    List<Path> candidates = resourceAvailabilityService.resolveLocalResourcePaths(accessPath);
+                    for (Path candidate : candidates) {
+                        if (Files.isRegularFile(candidate)) {
+                            return candidate;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("通过 activeLocation 解析缩略图源文件失败 resourceId={}, err={}",
+                        resource.getId(), e.getMessage());
+            }
+        }
+
+        // 回退到 resource.path（兼容旧资源或未登记物理副本的情况）
         List<Path> candidates = resourceAvailabilityService.resolveLocalResourcePaths(resource.getPath());
         for (Path candidate : candidates) {
             if (Files.isRegularFile(candidate)) {
@@ -117,9 +144,15 @@ public class ResourceThumbnailService {
         if (StringUtils.hasText(mimeType) && mimeType.toLowerCase().contains("image")) {
             return true;
         }
+        // 归一化后 path 是 /media/{publicId} 无扩展名，用 originalName 兜底
         String path = resource.getPath();
-        return StringUtils.hasText(path)
-                && path.toLowerCase().matches(".*\\.(png|jpe?g|gif|svg|webp|bmp|avif|ico)(?:[?#].*)?$");
+        if (StringUtils.hasText(path)
+                && path.toLowerCase().matches(".*\\.(png|jpe?g|gif|svg|webp|bmp|avif|ico)(?:[?#].*)?$")) {
+            return true;
+        }
+        String originalName = resource.getOriginalName();
+        return StringUtils.hasText(originalName)
+                && originalName.toLowerCase().matches(".*\\.(png|jpe?g|gif|svg|webp|bmp|avif|ico)(?:[?#].*)?$");
     }
 
     private int clampSize(Integer requestedSize, int defaultSize) {
