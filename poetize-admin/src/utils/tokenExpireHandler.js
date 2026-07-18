@@ -50,7 +50,13 @@ export function handleTokenExpire(isAdmin = false, currentPath = null, options =
   clearAuthState();
 
   // 确定当前路径（完整路径，包含 /admin 前缀）
-  const redirectPath = currentPath || '/admin' + router.currentRoute.fullPath;
+  // router 配置了 base: '/admin/'，currentRoute.fullPath 返回相对路径（如 /welcome），
+  // 调用方传入的 currentPath 同样是相对路径，必须补上 /admin 前缀，
+  // 否则生产环境登录后跳转到前台主站的 /welcome 会 404（主站无此路由）。
+  let redirectPath = currentPath;
+  if (!redirectPath || !redirectPath.startsWith('/admin')) {
+    redirectPath = '/admin' + router.currentRoute.fullPath;
+  }
 
   // 跳转到前台登录页
   const loginUrl = getLoginUrl(redirectPath, options.showMessage !== false);
