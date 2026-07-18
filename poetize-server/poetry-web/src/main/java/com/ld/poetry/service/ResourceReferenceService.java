@@ -39,6 +39,8 @@ public class ResourceReferenceService {
             column("web_info", "random_cover", null, CacheDomain.WEB_INFO),
             column("web_info", "waifu_json", null, CacheDomain.WEB_INFO),
             column("web_info", "nav_config", null, CacheDomain.WEB_INFO),
+            column("web_info", "footer", null, CacheDomain.WEB_INFO),
+            column("web_info", "notices", null, CacheDomain.WEB_INFO),
             column("web_info", "footer_background_image", null, CacheDomain.WEB_INFO),
             column("web_info", "footer_background_config", null, CacheDomain.WEB_INFO),
             column("web_info", "mouse_click_effect_config", null, CacheDomain.WEB_INFO),
@@ -65,7 +67,10 @@ public class ResourceReferenceService {
             column("seo_pwa_config", "pwa_screenshot_desktop", null, CacheDomain.SEO),
             column("seo_pwa_config", "pwa_screenshot_mobile", null, CacheDomain.SEO),
             column("sys_ai_config", "chat_avatar", null, CacheDomain.CONFIG),
-            column("sys_config", "config_value", null, CacheDomain.CONFIG)
+            column("sys_config", "config_value", null, CacheDomain.CONFIG),
+            column("sys_plugin", "plugin_config", null, CacheDomain.CONFIG),
+            column("sys_plugin", "manifest", null, CacheDomain.CONFIG),
+            column("sys_plugin", "frontend_css", null, CacheDomain.CONFIG)
     );
 
     private final JdbcTemplate jdbcTemplate;

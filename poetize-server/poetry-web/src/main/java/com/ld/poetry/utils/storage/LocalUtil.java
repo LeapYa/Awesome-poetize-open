@@ -19,9 +19,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -36,6 +40,14 @@ public class LocalUtil implements StoreService {
     @Value("${local.downloadUrl}")
     private String downloadUrl;
 
+    /**
+     * 受控前端静态根目录（如 web-dist/static）。上传目录找不到物理副本时回退到这里读取，
+     * 用于接管随前端构建产物发布的默认素材（backgroundPicture.jpg 等）。
+     * 与 ResourceAvailabilityService/ResourceReplaceService 的同名配置保持一致。
+     */
+    @Value("${resource.availability.staticRoots:${RESOURCE_AVAILABILITY_STATICROOTS:}}")
+    private String staticResourceRoots;
+
     @Override
     public List<StorageDeleteResult> deleteFiles(List<StorageResourceRef> resources) {
         if (CollectionUtils.isEmpty(resources)) {
@@ -44,8 +56,10 @@ public class LocalUtil implements StoreService {
 
         return resources.stream().map(resource -> {
             try {
-                File file = resolveLocalFile(resource.path());
-                if (!file.isFile()) {
+                // 删除仅限上传目录下的受控副本，不回退到前端静态根（web-dist），
+                // 避免误删随版本发布的默认素材导致 nginx 404。
+                File file = resolveUploadFile(resource.path());
+                if (file == null || !file.isFile()) {
                     log.warn("本地资源不存在：{}", resource.path());
                     return StorageDeleteResult.missing(resource);
                 }
@@ -60,6 +74,16 @@ public class LocalUtil implements StoreService {
                 return StorageDeleteResult.failed(resource, e.getMessage());
             }
         }).toList();
+    }
+
+    /**
+     * 仅在上传目录内解析文件，不回退到前端静态根。用于删除场景。
+     */
+    private File resolveUploadFile(String resourcePath) {
+        String relativePath = stripDownloadPrefix(resourcePath);
+        File root = new File(uploadUrl).getAbsoluteFile();
+        File candidate = new File(root, relativePath.replace("/", File.separator));
+        return resolveWithin(root, candidate);
     }
 
     @Override
@@ -156,6 +180,29 @@ public class LocalUtil implements StoreService {
     }
 
     private File resolveLocalFile(String resourcePath) {
+        String relativePath = stripDownloadPrefix(resourcePath);
+
+        File uploadRoot = new File(uploadUrl).getAbsoluteFile();
+        File uploadCandidate = new File(uploadRoot, relativePath.replace("/", File.separator));
+        File uploadResolved = resolveWithin(uploadRoot, uploadCandidate);
+        if (uploadResolved != null && uploadResolved.isFile()) {
+            return uploadResolved;
+        }
+
+        // 上传目录找不到物理副本时，回退到受控前端静态根（如 web-dist/static），
+        // 用于接管随前端构建产物发布的默认素材。写操作仍只落到 uploadUrl，不污染静态根。
+        for (Path staticRoot : buildStaticResourceRoots()) {
+            File candidate = staticRoot.resolve(relativePath.replace("/", File.separator)).toFile();
+            File resolved = resolveWithin(staticRoot.toFile(), candidate);
+            if (resolved != null && resolved.isFile()) {
+                return resolved;
+            }
+        }
+
+        throw new PoetryRuntimeException("本地文件不存在：" + resourcePath);
+    }
+
+    private String stripDownloadPrefix(String resourcePath) {
         if (!StringUtils.hasText(resourcePath)) {
             throw new PoetryRuntimeException("资源路径不能为空！");
         }
@@ -172,20 +219,37 @@ public class LocalUtil implements StoreService {
         while (relativePath.startsWith("/")) {
             relativePath = relativePath.substring(1);
         }
+        return relativePath;
+    }
 
-        File root = new File(uploadUrl).getAbsoluteFile();
-        File resolved = new File(root, relativePath.replace("/", File.separator));
+    private File resolveWithin(File root, File candidate) {
         try {
             String rootPath = root.getCanonicalPath();
-            String resolvedPath = resolved.getCanonicalPath();
+            String resolvedPath = candidate.getCanonicalPath();
             if (!resolvedPath.equals(rootPath)
                     && !resolvedPath.startsWith(rootPath + File.separator)) {
-                throw new PoetryRuntimeException("本地资源路径越界！");
+                return null;
             }
-            return resolved;
+            return candidate;
         } catch (IOException e) {
             throw new PoetryRuntimeException("本地资源路径解析失败：" + e.getMessage());
         }
+    }
+
+    private List<Path> buildStaticResourceRoots() {
+        List<Path> roots = new ArrayList<>();
+        if (!StringUtils.hasText(staticResourceRoots)) {
+            return roots;
+        }
+        for (String root : staticResourceRoots.split(",")) {
+            if (StringUtils.hasText(root)) {
+                Path normalized = Paths.get(root.trim()).toAbsolutePath().normalize();
+                if (Files.isDirectory(normalized) && !roots.contains(normalized)) {
+                    roots.add(normalized);
+                }
+            }
+        }
+        return roots;
     }
 
     @Override

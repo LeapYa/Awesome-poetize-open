@@ -9081,18 +9081,49 @@ handle_multi_instance_deployment() {
   info "开始处理多实例部署..."
   local new_instance_dir=${1:-"/home"}
   local blog_numbers=${2:-"2"}
+  local instance_name="awesome-poetize-open-blog$blog_numbers"
+  local target_dir="$new_instance_dir/$instance_name"
+  local suffix="-blog$blog_numbers"
 
-  info "新实例将创建在: $new_instance_dir"
-  
-  # 进入新实例目录
-  cd "$new_instance_dir"
+  info "新实例将创建在: $target_dir"
 
-  # 下载项目
-  download_and_extract_project "awesome-poetize-open-blog$blog_numbers"
-  
-  # 修改docker-compose.yml以支持多实例
-  modify_docker_compose_for_multi_instance "$blog_numbers"
-  
+  cd "$new_instance_dir" || { error "无法进入目录: $new_instance_dir"; return 1; }
+
+  # 目录健康检查：根据目标目录的完整性决定下一步动作
+  # 覆盖三类残留场景：空目录、下载中断的不完整目录、已配置好的完整目录
+  if [ -d "$target_dir" ]; then
+    if [ -s "$target_dir/docker-compose.yml" ]; then
+      # 目录存在且 docker-compose.yml 非空，无需重新拉取
+      if grep -q "poetize-java$suffix" "$target_dir/docker-compose.yml" 2>/dev/null; then
+        info "目标目录已存在且已应用多实例后缀 $suffix，跳过下载直接复用"
+      else
+        info "目标目录已存在且 docker-compose.yml 完整，跳过下载直接进入配置"
+      fi
+      cd "$target_dir" || { error "无法进入目标目录: $target_dir"; return 1; }
+    else
+      # 目录存在但不完整（空目录、残留下载中断的文件等）
+      # 清理后从远端重新拉取，避免在不完整目录上 sed 产生假成功
+      warning "目标目录已存在但不完整（缺少 docker-compose.yml 或为空），清理后从远端重新拉取"
+      rm -rf "$target_dir"
+      download_and_extract_project "$instance_name" || {
+        error "项目重新下载失败，中止多实例部署"
+        return 1
+      }
+    fi
+  else
+    # 目录不存在，正常从远端下载
+    download_and_extract_project "$instance_name" || {
+      error "项目下载失败，中止多实例部署"
+      return 1
+    }
+  fi
+
+  # 修改docker-compose.yml以支持多实例（失败时中止，避免后续 nginx 配置应用错乱后缀）
+  modify_docker_compose_for_multi_instance "$blog_numbers" || {
+    error "docker-compose.yml 多实例配置失败，中止部署"
+    return 1
+  }
+
   success "多实例配置完成，继续部署流程..."
 }
 
@@ -9100,7 +9131,28 @@ handle_multi_instance_deployment() {
 modify_docker_compose_for_multi_instance() {
   local instance_num=${1:-"2"}
   local suffix="-blog$instance_num"
-  
+
+  # 前置校验：docker-compose.yml 必须存在且非空
+  # 防止 download_and_extract_project 失败/中断后残留空目录或不完整目录时
+  # sed 对不存在文件静默失败却仍输出"成功"的假象
+  if [ ! -s docker-compose.yml ]; then
+    error "docker-compose.yml 不存在或为空，项目下载可能失败或残留不完整目录"
+    return 1
+  fi
+
+  # 幂等性保护：若 docker-compose.yml 已包含当前后缀，说明 sed 已执行过，直接跳过
+  # 避免二次安装/中断重试场景下重复 sed 导致容器名变成 poetize-java-blog2-blog2
+  # （nginx .conf 因主流程有 cp .template -> .conf 恢复机制总是单后缀，docker-compose.yml 无此机制需显式保护）
+  if grep -q "poetize-java$suffix" docker-compose.yml 2>/dev/null; then
+    info "docker-compose.yml 已包含多实例后缀 $suffix，跳过重复修改（幂等保护）"
+    MULTI_INSTANCE_SUFFIX="$suffix"
+    export MULTI_INSTANCE_SUFFIX
+    info "已设置多实例后缀: $suffix（将在 nginx 配置恢复后应用）"
+    assign_non_conflict_subnet_for_multi_instance "$instance_num"
+    success "docker-compose.yml多实例配置完成（幂等跳过）"
+    return 0
+  fi
+
   info "正在修改docker-compose.yml以支持多实例..."
   
   # 修改容器名称（支持新旧版本）
