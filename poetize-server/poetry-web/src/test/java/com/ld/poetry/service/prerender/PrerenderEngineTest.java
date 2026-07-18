@@ -90,7 +90,8 @@ class PrerenderEngineTest {
         assertTrue(html.contains("<meta name=\"google-site-verification\" content=\"verify-token\">"));
         assertTrue(html.contains("<meta name=\"custom-head\" content=\"1\">"));
         assertTrue(html.contains("<body data-prerender-type=\"article\" data-prerender-lang=\"en\">"));
-        assertTrue(html.contains("<div id=\"app\" class=\"article-detail\"><main><article><section>hello</section></article></main></div>"));
+        assertTrue(html.contains("<div id=\"prerender-container\" class=\"article-detail\"><main><article><section>hello</section></article></main></div>"));
+        assertTrue(html.contains("<div id=\"app\"></div>"));
     }
 
     @Test
@@ -112,6 +113,38 @@ class PrerenderEngineTest {
 
         engine.deletePage("article/42");
         assertFalse(Files.exists(articlePath));
+    }
+
+    @Test
+    void buildPageClearsResidualPbBootstrapPlaceholder() throws IOException {
+        Path templatePath = tempDir.resolve("index.html");
+        Files.writeString(templatePath, """
+                <!doctype html>
+                <html>
+                <head>
+                  <title>Old</title>
+                </head>
+                <body>
+                  <!--PB_BOOTSTRAP-->
+                  <div id="app"></div>
+                </body>
+                </html>
+                """, StandardCharsets.UTF_8);
+
+        PrerenderEngine engine = createEngine();
+        ReflectionTestUtils.setField(engine, "templatePath", templatePath.toString());
+        ReflectionTestUtils.setField(engine, "outputRoot", tempDir.resolve("prerender").toString());
+
+        String html = engine.buildPage(PrerenderPageData.builder()
+                .title("Home")
+                .content("<section>hello</section>")
+                .lang("zh")
+                .pageType("home")
+                .build());
+
+        assertFalse(html.contains(PluginBootstrapMaterializer.PLUGIN_BOOTSTRAP_PLACEHOLDER),
+                "残留的 PB 占位符必须被清除，避免输出到预渲染 HTML");
+        assertTrue(html.contains("<title>Home</title>"));
     }
 
     private PrerenderEngine createEngine() {

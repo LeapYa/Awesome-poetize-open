@@ -13,6 +13,7 @@ import com.ld.poetry.utils.CommonQuery;
 import com.ld.poetry.utils.mail.MailUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -21,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -128,5 +130,53 @@ class PrerenderServiceTest {
         webInfo.setWebTitle("Example Site");
         webInfo.setSiteAddress("https://example.com");
         return webInfo;
+    }
+
+    @Test
+    void renderHomePageShouldPreferHomeTitleOverWebTitle() {
+        WebInfo webInfo = new WebInfo();
+        webInfo.setWebTitle("网页标题");
+        webInfo.setHomeTitle("首页标题");
+        webInfo.setSiteAddress("https://example.com");
+
+        stubRenderHomePageDependencies(webInfo);
+
+        service.renderHomePage();
+
+        PrerenderPageData pageData = captureHomePageBuildPageArgument();
+        assertEquals("首页标题", pageData.getTitle(),
+                "homeTitle 非空时首页 <title> 必须使用 homeTitle");
+    }
+
+    @Test
+    void renderHomePageShouldFallbackToWebTitleWhenHomeTitleBlank() {
+        WebInfo webInfo = new WebInfo();
+        webInfo.setWebTitle("网页标题");
+        webInfo.setSiteAddress("https://example.com");
+
+        stubRenderHomePageDependencies(webInfo);
+
+        service.renderHomePage();
+
+        PrerenderPageData pageData = captureHomePageBuildPageArgument();
+        assertEquals("网页标题", pageData.getTitle(),
+                "homeTitle 为空时回退到 webTitle");
+    }
+
+    private void stubRenderHomePageDependencies(WebInfo webInfo) {
+        when(cacheService.getCachedWebInfo()).thenReturn(webInfo);
+        when(seoConfigService.getSeoConfigAsJson()).thenReturn(new LinkedHashMap<>());
+        when(commonQuery.getSortInfo()).thenReturn(List.of());
+        when(languageSupport.getSourceLanguage()).thenReturn("zh");
+        when(mailUtil.getSiteUrl()).thenReturn("https://example.com");
+        when(seoMetaService.generateSiteMeta("zh")).thenReturn(new LinkedHashMap<>());
+        when(cacheService.getCachedPublicSysConfigMap()).thenReturn(Map.of());
+        when(engine.buildPage(any())).thenReturn("<html></html>");
+    }
+
+    private PrerenderPageData captureHomePageBuildPageArgument() {
+        ArgumentCaptor<PrerenderPageData> captor = ArgumentCaptor.forClass(PrerenderPageData.class);
+        verify(engine).buildPage(captor.capture());
+        return captor.getValue();
     }
 }

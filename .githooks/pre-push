@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# pre-push hook: 推送前对 Java 改动执行编译校验，避免编译错误进入远程
+# 启用方式: git config core.hooksPath .githooks
+
+set -u
+
+POM="poetize-server/poetry-web/pom.xml"
+ZERO="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # 只校验 main / master 分支
+    case "$remote_ref" in
+        refs/heads/main|refs/heads/master) ;;
+        *) continue ;;
+    esac
+
+    # 删除远程分支跳过
+    if [ "$local_sha" = "$ZERO" ]; then
+        continue
+    fi
+
+    # 计算待推送的提交范围
+    if [ "$remote_sha" = "$ZERO" ]; then
+        range="$local_sha"
+    else
+        range="${remote_sha}..${local_sha}"
+    fi
+
+    # 仅当存在 .java 改动时才触发编译
+    if ! git diff --name-only "$range" -- 'poetize-server/' | grep -q '\.java$'; then
+        continue
+    fi
+
+    echo "[pre-push] 检测到 Java 改动，执行编译校验..."
+    if ! mvn compile -q -f "$POM"; then
+        echo "[pre-push] 编译失败，推送已阻断。请修复编译错误后重试。"
+        exit 1
+    fi
+
+    echo "[pre-push] 编译通过，继续推送。"
+done
+
+exit 0
