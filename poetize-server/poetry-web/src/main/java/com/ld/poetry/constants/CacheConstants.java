@@ -170,6 +170,24 @@ public class CacheConstants {
      */
     public static final String PUBLIC_SYS_CONFIG_MAP_KEY = CACHE_PREFIX + "config:public:map";
 
+    /**
+     * 前台侧边栏首屏聚合缓存键
+     * <p>数据源 resource_path 表中 CONTACT / QUICK_ENTRY / ASIDE_BACKGROUND 三类记录聚合，
+     * 供 /webInfo/asideBootstrap 高频接口读取。永久缓存 + 主动 evict。
+     * <p>evict 触发点: ResourceAggregationController.saveResourcePath / updateResourcePath
+     *                / deleteResourcePath 在上述三类资源变更成功后
+     */
+    public static final String ASIDE_BOOTSTRAP_KEY = CACHE_PREFIX + "aside:bootstrap";
+
+    /**
+     * 友人帐友链列表缓存键
+     * <p>数据源 resource_path 表中 FRIEND 类型且 status=true 的记录按 classify 分组，
+     * 供 /webInfo/listFriend 高频接口读取。永久缓存 + 主动 evict。
+     * <p>evict 触发点: ResourceAggregationController.saveResourcePath / updateResourcePath
+     *                / deleteResourcePath 在 FRIEND 资源变更成功后
+     */
+    public static final String FRIEND_LIST_KEY = CACHE_PREFIX + "friend:list";
+
     // ================================ AI 配置相关缓存 ================================
 
     /**

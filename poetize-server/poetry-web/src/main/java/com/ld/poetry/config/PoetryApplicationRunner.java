@@ -1,6 +1,8 @@
 package com.ld.poetry.config;
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.controller.FriendController;
+import com.ld.poetry.controller.ResourceAggregationController;
 import com.ld.poetry.dao.HistoryInfoMapper;
 import com.ld.poetry.dao.WebInfoMapper;
 import com.ld.poetry.entity.*;
@@ -67,6 +69,12 @@ public class PoetryApplicationRunner implements ApplicationRunner {
     @Autowired
     private CommonQuery commonQuery;
 
+    @Autowired
+    private ResourceAggregationController resourceAggregationController;
+
+    @Autowired
+    private FriendController friendController;
+
     @Override
     public void run(ApplicationArguments args) {
         initWebInfoCache();
@@ -74,6 +82,8 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         initHistoryCache();
         initPublicSysConfigCache();
         initSortInfoCache();
+        initAsideBootstrapCache();
+        initFriendListCache();
 
         // WebSocket 由 Spring WebSocket 自动管理
         log.info("Spring WebSocket 服务已自动配置，端点: /ws/im");
@@ -186,6 +196,32 @@ public class PoetryApplicationRunner implements ApplicationRunner {
             commonQuery.getSortInfo();
         } catch (Exception e) {
             log.error("预热分类标签树缓存失败", e);
+        }
+    }
+
+    /**
+     * 预热侧边栏首屏聚合缓存
+     * <p>loadAsideBootstrapData 内部已实现「读缓存未命中则查 DB 并回填」逻辑，预热只需调用一次触发回填，
+     * 避免首个用户请求承担 3 次 DB 查询延迟。
+     */
+    private void initAsideBootstrapCache() {
+        try {
+            resourceAggregationController.loadAsideBootstrapData();
+        } catch (Exception e) {
+            log.error("预热侧边栏首屏聚合缓存失败", e);
+        }
+    }
+
+    /**
+     * 预热友人帐友链列表缓存
+     * <p>loadFriendListData 内部已实现「读缓存未命中则查 DB 并回填」逻辑，预热只需调用一次触发回填，
+     * 避免首个用户访问友人帐页面时承担 DB 查询延迟。
+     */
+    private void initFriendListCache() {
+        try {
+            friendController.loadFriendListData();
+        } catch (Exception e) {
+            log.error("预热友人帐友链列表缓存失败", e);
         }
     }
 }

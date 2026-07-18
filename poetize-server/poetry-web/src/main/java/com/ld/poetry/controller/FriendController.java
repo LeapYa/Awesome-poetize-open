@@ -7,6 +7,7 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
 import com.ld.poetry.entity.ResourcePath;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.XssFilterUtil;
@@ -39,6 +40,9 @@ public class FriendController {
 
     @Autowired
     private PrerenderFacade prerenderFacade;
+
+    @Autowired
+    private CacheService cacheService;
 
     /**
      * 保存友链
@@ -81,9 +85,28 @@ public class FriendController {
 
     /**
      * 查询友链
+     * <p>响应设 Cache-Control 让 CDN 边缘缓存 10 秒，stale-while-revalidate 允许 5 分钟内返回旧值同时异步刷新；
+     * 服务端走 Redis 永久缓存，后台改 FRIEND 类型 resource_path 时由 save/update/delete 主动 evict，10 秒内 CDN 同步生效。
      */
     @GetMapping("/listFriend")
-    public PoetryResult<Map<String, List<ResourcePathVO>>> listFriend() {
+    public PoetryResult<Map<String, ?>> listFriend(jakarta.servlet.http.HttpServletResponse response) {
+        // 与 /webInfo/bootstrap 策略一致：CDN 边缘缓存 10 秒，5 分钟内可返回旧值同时异步刷新
+        response.setHeader("Cache-Control",
+                "public, max-age=0, s-maxage=10, stale-while-revalidate=300, must-revalidate");
+        return PoetryResult.success(loadFriendListData());
+    }
+
+    /**
+     * 加载友人帐友链列表（读缓存→未命中查 DB→回填缓存）。
+     * 供 listFriend 端点和启动预热 Runner 共用，保证首个用户请求不承担 DB 查询延迟。
+     */
+    public Map<String, ?> loadFriendListData() {
+        // 优先走 Redis 缓存（友链页高频读，后台改配置后由 save/update/delete 主动 evict）
+        Map<String, ?> cached = cacheService.getCachedFriendList();
+        if (cached != null) {
+            return cached;
+        }
+
         LambdaQueryChainWrapper<ResourcePath> wrapper = new LambdaQueryChainWrapper<>(resourcePathMapper);
         List<ResourcePath> resourcePaths = wrapper.eq(ResourcePath::getType, CommonConst.RESOURCE_PATH_TYPE_FRIEND)
                 .eq(ResourcePath::getStatus, Boolean.TRUE)
@@ -97,6 +120,10 @@ public class FriendController {
                 return resourcePathVO;
             }).collect(Collectors.groupingBy(ResourcePathVO::getClassify));
         }
-        return PoetryResult.success(collect);
+
+        // 写回 Redis 永久缓存（仅在缓存缺失时回源并写回，避免每次请求都打 DB）
+        cacheService.cacheFriendList(collect);
+
+        return collect;
     }
 }

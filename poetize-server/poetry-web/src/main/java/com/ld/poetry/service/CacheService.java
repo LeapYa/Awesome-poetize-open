@@ -713,6 +713,74 @@ public class CacheService {
     }
 
     /**
+     * 缓存侧边栏首屏聚合数据（永久缓存，由 ResourceAggregationController 增删改触发 evict）
+     */
+    public void cacheAsideBootstrap(Map<String, Object> data) {
+        if (data != null) {
+            redisUtil.set(CacheConstants.ASIDE_BOOTSTRAP_KEY, data, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存侧边栏首屏聚合数据(永久)");
+        }
+    }
+
+    /**
+     * 获取缓存的侧边栏首屏聚合数据
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCachedAsideBootstrap() {
+        Object cached = redisUtil.get(CacheConstants.ASIDE_BOOTSTRAP_KEY);
+        if (cached instanceof Map) {
+            return (Map<String, Object>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除侧边栏首屏聚合缓存（联系方式/快捷入口/侧边栏背景任一变更时触发）
+     */
+    public void evictAsideBootstrap() {
+        try {
+            redisUtil.del(CacheConstants.ASIDE_BOOTSTRAP_KEY);
+            log.info("删除侧边栏首屏聚合缓存");
+        } catch (Exception e) {
+            log.error("删除侧边栏首屏聚合缓存失败", e);
+        }
+    }
+
+    /**
+     * 缓存友人帐友链列表（永久缓存，由 ResourceAggregationController 增删改触发 evict）
+     */
+    public void cacheFriendList(Map<String, ?> data) {
+        if (data != null) {
+            redisUtil.set(CacheConstants.FRIEND_LIST_KEY, data, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存友人帐友链列表(永久)");
+        }
+    }
+
+    /**
+     * 获取缓存的友人帐友链列表
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, ?> getCachedFriendList() {
+        Object cached = redisUtil.get(CacheConstants.FRIEND_LIST_KEY);
+        if (cached instanceof Map) {
+            return (Map<String, ?>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除友人帐友链列表缓存（友链增删改时触发）
+     */
+    public void evictFriendList() {
+        try {
+            redisUtil.del(CacheConstants.FRIEND_LIST_KEY);
+            log.info("删除友人帐友链列表缓存");
+        } catch (Exception e) {
+            log.error("删除友人帐友链列表缓存失败", e);
+        }
+    }
+
+    /**
      * 规范化访问统计使用的IP值。
      */
     public String normalizeVisitIp(String ip) {

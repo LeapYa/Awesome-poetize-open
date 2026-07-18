@@ -10,6 +10,7 @@ import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
 import com.ld.poetry.entity.ResourcePath;
 import com.ld.poetry.utils.PoetryUtil;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.prerender.PrerenderFacade;
 import com.ld.poetry.utils.XssFilterUtil;
 import com.ld.poetry.vo.BaseRequestVO;
@@ -48,6 +49,9 @@ public class ResourceAggregationController {
 
     @Autowired
     private PrerenderFacade prerenderFacade;
+
+    @Autowired
+    private CacheService cacheService;
 
     /**
      * 保存
@@ -144,14 +148,27 @@ public class ResourceAggregationController {
         try {
             if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType())) {
                 prerenderFacade.refreshFavoritesPage();
-            } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) || 
+            } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) ||
                        CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
                 prerenderFacade.refreshFriendsPage();
             }
         } catch (Exception e) {
             // 预渲染失败不影响主流程
         }
-        
+
+        // 联系方式/快捷入口/侧边栏背景变更后，失效侧边栏首屏聚合缓存
+        // evictAsideBootstrap 内部已捕获异常，失败不影响主流程
+        if (CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(resourcePathVO.getType()) ||
+            CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(resourcePathVO.getType()) ||
+            CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePathVO.getType())) {
+            cacheService.evictAsideBootstrap();
+        }
+
+        // 友链变更后，失效友人帐友链列表缓存
+        if (CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
+            cacheService.evictFriendList();
+        }
+
         return PoetryResult.success();
     }
 
@@ -165,21 +182,33 @@ public class ResourceAggregationController {
         ResourcePath resourcePath = resourcePathMapper.selectById(id);
         
         resourcePathMapper.deleteById(id);
-        
+
         // 如果是收藏夹类型、本站信息类型或友链类型的资源，重新渲染相关页面
         if (resourcePath != null) {
             try {
                 if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePath.getType())) {
                     prerenderFacade.refreshFavoritesPage();
-                } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePath.getType()) || 
+                } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePath.getType()) ||
                            CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePath.getType())) {
                     prerenderFacade.refreshFriendsPage();
                 }
             } catch (Exception e) {
                 // 预渲染失败不影响主流程
             }
+
+            // 联系方式/快捷入口/侧边栏背景删除后，失效侧边栏首屏聚合缓存
+            if (CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(resourcePath.getType()) ||
+                CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(resourcePath.getType()) ||
+                CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePath.getType())) {
+                cacheService.evictAsideBootstrap();
+            }
+
+            // 友链删除后，失效友人帐友链列表缓存
+            if (CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePath.getType())) {
+                cacheService.evictFriendList();
+            }
         }
-        
+
         return PoetryResult.success();
     }
 
@@ -270,14 +299,26 @@ public class ResourceAggregationController {
         try {
             if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType())) {
                 prerenderFacade.refreshFavoritesPage();
-            } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) || 
+            } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) ||
                        CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
                 prerenderFacade.refreshFriendsPage();
             }
         } catch (Exception e) {
             // 预渲染失败不影响主流程
         }
-        
+
+        // 联系方式/快捷入口/侧边栏背景更新后，失效侧边栏首屏聚合缓存
+        if (CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(resourcePathVO.getType()) ||
+            CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(resourcePathVO.getType()) ||
+            CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePathVO.getType())) {
+            cacheService.evictAsideBootstrap();
+        }
+
+        // 友链更新后，失效友人帐友链列表缓存
+        if (CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
+            cacheService.evictFriendList();
+        }
+
         return PoetryResult.success();
     }
 
@@ -395,9 +436,28 @@ public class ResourceAggregationController {
     /**
      * 前台侧边栏首屏聚合：一次返回联系方式、快捷入口、侧边栏背景。
      * 替代 myAside.vue 中对 /webInfo/listResourcePath 的 3 次独立请求。
+     * <p>响应设 Cache-Control 让 CDN 边缘缓存 10 秒，stale-while-revalidate 允许 5 分钟内返回旧值同时异步刷新；
+     * 服务端走 Redis 永久缓存，后台改 resource_path 时由 save/update/delete 主动 evict，10 秒内 CDN 同步生效。
      */
     @GetMapping("/asideBootstrap")
-    public PoetryResult<Map<String, Object>> asideBootstrap() {
+    public PoetryResult<Map<String, Object>> asideBootstrap(jakarta.servlet.http.HttpServletResponse response) {
+        // 与 /webInfo/bootstrap 策略一致：CDN 边缘缓存 10 秒，5 分钟内可返回旧值同时异步刷新
+        response.setHeader("Cache-Control",
+                "public, max-age=0, s-maxage=10, stale-while-revalidate=300, must-revalidate");
+        return PoetryResult.success(loadAsideBootstrapData());
+    }
+
+    /**
+     * 加载侧边栏首屏聚合数据（读缓存→未命中查 DB→回填缓存）。
+     * 供 asideBootstrap 端点和启动预热 Runner 共用，保证首个用户请求不承担 DB 查询延迟。
+     */
+    public Map<String, Object> loadAsideBootstrapData() {
+        // 优先走 Redis 缓存（首屏高频读，后台改配置后由 save/update/delete 主动 evict）
+        Map<String, Object> cached = cacheService.getCachedAsideBootstrap();
+        if (cached != null) {
+            return cached;
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
 
         try {
@@ -434,6 +494,9 @@ public class ResourceAggregationController {
             result.put("asideBackground", null);
         }
 
-        return PoetryResult.success(result);
+        // 写回 Redis 永久缓存（仅在缓存缺失时回源并写回，避免每次请求都打 DB）
+        cacheService.cacheAsideBootstrap(result);
+
+        return result;
     }
 }
