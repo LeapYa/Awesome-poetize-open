@@ -106,6 +106,30 @@ public class FontSubsetService {
         } catch (IOException e) {
             log.error("初始化 cn-font-split 运行脚本失败", e);
         }
+        // 启动时异步预打包内置字体缓存 ZIP，避免首次下载走实时打包导致前端转圈
+        submitBuiltinCacheBuildIfNeeded();
+    }
+
+    /**
+     * 启动时检测内置字体目录存在但缓存 ZIP 缺失时，异步预打包。
+     * 内置字体是前端构建产物，不会触发 {@link #subsetFont}，缓存 ZIP 不会被自动生成，
+     * 每次下载都走实时打包路径（收集数百个 woff2 分片 + 同步 ZIP 压缩），导致前端转圈。
+     */
+    private void submitBuiltinCacheBuildIfNeeded() {
+        try {
+            Path builtinDir = getBuiltinOutputDir();
+            if (!hasFontFiles(builtinDir)) {
+                return;
+            }
+            Path cachedZip = getCachedZipPath(builtinDir);
+            if (Files.exists(cachedZip) && Files.size(cachedZip) > 0) {
+                return;
+            }
+            log.info("检测到内置字体缓存 ZIP 缺失，启动异步预打包: {}", builtinDir);
+            submitCacheBuild(builtinDir);
+        } catch (Exception e) {
+            log.warn("启动时预打包内置字体缓存失败，下载时将回退到实时打包", e);
+        }
     }
 
     @PreDestroy
