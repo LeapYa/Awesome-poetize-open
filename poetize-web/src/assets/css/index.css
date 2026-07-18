@@ -95,6 +95,7 @@ body {
 
 /* 隐藏预渲染内容 - 解决首页底部显示预渲染文本的问题 */
 .home-prerender,
+.prerender-footer,
 .favorite-prerender,
 .sort-prerender,
 .sort-list-prerender {
