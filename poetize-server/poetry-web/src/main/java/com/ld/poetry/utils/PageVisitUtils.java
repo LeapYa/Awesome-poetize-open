@@ -39,7 +39,7 @@ public final class PageVisitUtils {
                 "/api/", "/admin", "/track/",
                 "/webInfo", "/sysConfig", "/sysPlugin", "/resource",
                 "/imageCompress", "/captcha", "/comment", "/family",
-                "/qiniu", "/qrcode", "/imChat", "/collect", "/actuator",
+                "/qiniu", "/qrcode", "/imChat", "/collect", "/internal/monitor",
                 "/static/", "/css/", "/js/", "/images/", "/assets/", "/libs/", "/uploads/",
                 "/seo/", "/python/", "/ws/", "/login/", "/callback/",
                 "/oauth/", "/internal_proxy/", "/sitemap", "/.well-known/"

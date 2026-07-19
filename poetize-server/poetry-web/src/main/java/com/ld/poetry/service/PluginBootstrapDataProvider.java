@@ -111,10 +111,18 @@ public class PluginBootstrapDataProvider {
         return result;
     }
 
-    private List<SysPlugin> loadMouseClickEffects() {
+    private List<Map<String, Object>> loadMouseClickEffects() {
         List<SysPlugin> plugins = sysPluginService.getMouseClickEffectPlugins();
-        plugins.forEach(plugin -> stripSensitiveFields(plugin, true));
-        return plugins;
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (SysPlugin plugin : plugins) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("pluginKey", plugin.getPluginKey());
+            item.put("pluginName", plugin.getPluginName());
+            item.put("pluginCode", plugin.getPluginCode());
+            item.put("pluginConfig", plugin.getPluginConfig());
+            result.add(item);
+        }
+        return result;
     }
 
     private Map<String, Object> loadActiveMouseClickEffect() {
@@ -153,15 +161,4 @@ public class PluginBootstrapDataProvider {
         return result;
     }
 
-    private SysPlugin stripSensitiveFields(SysPlugin plugin, boolean includeFrontendCode) {
-        if (plugin == null) return null;
-        if (!includeFrontendCode) {
-            plugin.setPluginCode(null);
-        }
-        plugin.setBackendCode(null);
-        plugin.setInstallSql(null);
-        plugin.setUninstallSql(null);
-        plugin.setManifest(null);
-        return plugin;
-    }
 }

@@ -88,7 +88,7 @@ jobs:
           
           # 健康检查
           curl -f http://localhost:80/ || echo "Frontend check completed"
-          curl -f http://localhost:80/actuator/health || echo "Backend health check completed"
+          curl -f http://localhost:80/internal/monitor/health || echo "Backend health check completed"
 
       - name: Test fresh install (if no previous version)
         if: steps.prev_version.outputs.skip_update == 'true'

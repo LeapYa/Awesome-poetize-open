@@ -7,6 +7,15 @@ server:
     max-connections: 500
     max-http-form-post-size: 120MB
     connection-timeout: 60000
+  error:
+    # 禁用 Spring Boot 默认错误页，使用自定义 CustomErrorController
+    whitelabel:
+      enabled: false
+    # 不在错误响应中暴露内部信息
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+    include-exception: false
 
 logback:
   rootDir: ${LOGBACK_ROOT_DIR:${user.home}/.poetize/logs}
@@ -201,25 +210,26 @@ easyimage:
 # 百度翻译 API 配置请在管理面板 article_ai 配置中设置 baiduConfig
 # LLM 翻译配置请在管理面板 article_ai 配置中设置 llmConfig / translationLlmConfig
 
-# Actuator配置
+# Actuator配置 - 最小化暴露，避免泄露内部组件信息
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
-      base-path: /actuator
+        include: health
+      base-path: /internal/monitor
   endpoint:
     health:
-      show-details: always
-      show-components: always
+      # 仅显示整体状态，不暴露各组件（数据库、Redis、磁盘）详情
+      show-details: never
+      show-components: never
   health:
     defaults:
       enabled: true
   info:
     build:
-      enabled: true
+      enabled: false
     env:
-      enabled: true
+      enabled: false
 
 # 在现有配置中添加图片压缩配置
 image:

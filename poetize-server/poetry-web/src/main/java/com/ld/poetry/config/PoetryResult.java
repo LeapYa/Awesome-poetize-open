@@ -15,7 +15,6 @@ public class PoetryResult<T> implements Serializable {
     private int code;
     private String message;
     private T data;
-    private long currentTimeMillis = System.currentTimeMillis();
     private boolean success;
 
     public PoetryResult() {

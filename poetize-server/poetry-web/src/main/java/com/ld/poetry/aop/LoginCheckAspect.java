@@ -1,6 +1,5 @@
 package com.ld.poetry.aop;
 
-import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.enums.CodeMsg;
@@ -87,7 +86,7 @@ public class LoginCheckAspect {
                     user.getUsername(), clientIp, TokenValidationUtil.getTokenPrefix(token));
                 recordSecurityEvent("PERMISSION_DENIED", user, "普通用户尝试访问管理员接口", requestURI,
                         "USER_TOKEN_FOR_ADMIN_API", loginCheck.value(), user.getUserType());
-                return PoetryResult.fail("请输入管理员账号！");
+                throw new PoetryRuntimeException("权限不足，请输入管理员账号！");
             }
         } else if (TokenValidationUtil.isAdminToken(token)) {
             // 管理员请求日志限流：每分钟最多记录一次
@@ -103,7 +102,7 @@ public class LoginCheckAspect {
                             user.getUsername(), user.getUserType(), clientIp);
                     recordSecurityEvent("PERMISSION_DENIED", user, "非管理员用户尝试访问管理员接口", requestURI,
                             "ADMIN_ROLE_REQUIRED", loginCheck.value(), user.getUserType());
-                    return PoetryResult.fail("请输入管理员账号！");
+                    throw new PoetryRuntimeException("权限不足，请输入管理员账号！");
                 }
                 log.info("管理员用户访问管理员接口 - 用户: {}, userType: {}, IP: {}",
                         user.getUsername(), user.getUserType(), clientIp);

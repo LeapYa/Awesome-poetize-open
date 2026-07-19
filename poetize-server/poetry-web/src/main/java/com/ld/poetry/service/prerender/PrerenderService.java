@@ -181,6 +181,8 @@ public class PrerenderService {
         } else {
             meta.putIfAbsent("twitter:card", firstNonBlank(stringValue(seoConfig.get("twitter_card")), "summary_large_image"));
         }
+        // 首页 og:site_name 优先使用 homeTitle，其次回退到 webTitle
+        meta.put("og:site_name", firstNonBlank(webInfo.getHomeTitle(), getSiteName(webInfo)));
 
         String homeContent = "<div class=\"home-prerender\"><div class=\"home-hero\"><h1>" + text(firstNonBlank(webInfo.getWebName(), webInfo.getWebTitle(), siteName))
                 + "</h1><p>" + text(description)

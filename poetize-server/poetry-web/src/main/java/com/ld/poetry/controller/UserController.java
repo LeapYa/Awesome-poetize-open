@@ -106,13 +106,13 @@ public class UserController {
      * 用户名、邮箱、手机号/密码登录
      * 
      * 限流规则：
-     * - 指纹维度：20次/5分钟（防暴力破解）
-     * - IP维度：100次/分钟（宽松兜底，防DDoS）
+     * - 指纹维度：5次/5分钟（防暴力破解）
+     * - IP维度：30次/分钟（兜底防DDoS，兼顾NAT后多用户）
      */
     @PostMapping("/login")
     @RateLimits({
-            @RateLimit(name = "login:fp", count = 20, time = 300, keyType = KeyType.FINGERPRINT, message = "登录尝试过于频繁，请5分钟后再试"),
-            @RateLimit(name = "login:ip", count = 100, time = 60, keyType = KeyType.IP, message = "当前网络登录请求过多，请稍后再试")
+            @RateLimit(name = "login:fp", count = 5, time = 300, keyType = KeyType.FINGERPRINT, message = "登录尝试过于频繁，请5分钟后再试"),
+            @RateLimit(name = "login:ip", count = 30, time = 60, keyType = KeyType.IP, message = "当前网络登录请求过多，请稍后再试")
     })
     public PoetryResult<EncryptedResponseVO> login(@RequestParam(value = "account", required = false) String account,
             @RequestParam(value = "password", required = false) String password,
@@ -461,13 +461,13 @@ public class UserController {
      * 第三方登录
      * 
      * 限流规则：
-     * - 指纹维度：20次/5分钟（防自动化攻击）
-     * - IP维度：100次/分钟（宽松兜底）
+     * - 指纹维度：5次/5分钟（防自动化攻击）
+     * - IP维度：30次/分钟（兜底防DDoS，兼顾NAT后多用户）
      */
     @PostMapping("/thirdLogin")
     @RateLimits({
-            @RateLimit(name = "thirdLogin:fp", count = 20, time = 300, keyType = KeyType.FINGERPRINT, message = "登录尝试过于频繁，请5分钟后再试"),
-            @RateLimit(name = "thirdLogin:ip", count = 100, time = 60, keyType = KeyType.IP, message = "当前网络登录请求过多，请稍后再试")
+            @RateLimit(name = "thirdLogin:fp", count = 5, time = 300, keyType = KeyType.FINGERPRINT, message = "登录尝试过于频繁，请5分钟后再试"),
+            @RateLimit(name = "thirdLogin:ip", count = 30, time = 60, keyType = KeyType.IP, message = "当前网络登录请求过多，请稍后再试")
     })
     public PoetryResult<UserVO> thirdLogin(@RequestBody UserVO thirdUserInfo,
             HttpServletRequest request,

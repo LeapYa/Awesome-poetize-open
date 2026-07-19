@@ -3,8 +3,9 @@ package com.ld.poetry.enums;
 public enum CodeMsg {
     SUCCESS(200, "成功！"),
     PARAMETER_ERROR(400, "参数异常！"),
-    NOT_LOGIN(300, "未登陆，请登陆后再进行操作！"),
-    LOGIN_EXPIRED(300, "登录已过期，请重新登陆！"),
+    NOT_LOGIN(401, "未登陆，请登陆后再进行操作！"),
+    LOGIN_EXPIRED(401, "登录已过期，请重新登陆！"),
+    FORBIDDEN(403, "权限不足！"),
     SYSTEM_REPAIR(301, "系统维护中，敬请期待！"),
     CAPTCHA_REQUIRED(460, "需要完成验证码验证"),
     CAPTCHA_INVALID(461, "验证码验证失败"),
