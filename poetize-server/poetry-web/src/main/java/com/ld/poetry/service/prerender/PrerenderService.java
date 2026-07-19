@@ -238,6 +238,17 @@ public class PrerenderService {
         StringBuilder sb = new StringBuilder("<footer class=\"prerender-footer\"><div class=\"prerender-copyright\">");
         sb.append("<span>© ").append(year).append(" ").append(text(siteName)).append("</span>");
         sb.append("<span>保留所有权利</span>");
+        Map<String, String> cfgMap = cacheService.getCachedPublicSysConfigMap();
+        String beian = cfgMap != null ? cfgMap.get("beian") : null;
+        String policeBeian = cfgMap != null ? cfgMap.get("policeBeian") : null;
+        if (StringUtils.hasText(beian)) {
+            sb.append("<a href=\"https://beian.miit.gov.cn/\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                    .append(text(beian)).append("</a>");
+        }
+        if (StringUtils.hasText(policeBeian)) {
+            sb.append("<a href=\"https://www.beian.gov.cn/\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                    .append(text(policeBeian)).append("</a>");
+        }
         sb.append("<a href=\"/privacy\">隐私政策</a>");
         sb.append("</div>");
 
