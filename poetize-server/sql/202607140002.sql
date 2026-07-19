@@ -13,26 +13,46 @@
 
 SET @dbname = DATABASE();
 
-INSERT INTO `sys_config` (`config_name`, `config_key`, `config_value`, `config_type`)
-SELECT '兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1'
-WHERE NOT EXISTS (
-  SELECT 1 FROM `sys_config`
-  WHERE `config_key` = 'lsky.download_hosts' AND `config_type` = '1'
-);
+-- 如果旧系统中 id=17 为 easyimage.enable，说明需要顺延旧配置项 ID 为新版结构空出 17、21、22
+SET @preparedStatement = (SELECT IF(
+  EXISTS(SELECT 1 FROM `sys_config` WHERE `id` = 17 AND `config_key` = 'easyimage.enable'),
+  'UPDATE `sys_config` SET `id` = `id` + 3 WHERE `id` >= 20 ORDER BY `id` DESC',
+  'SELECT 1'
+));
+PREPARE stmt FROM @preparedStatement;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-INSERT INTO `sys_config` (`config_name`, `config_key`, `config_value`, `config_type`)
-SELECT '简单图床-可信下载域名（多个用逗号分隔）', 'easyimage.download_hosts', '', '1'
-WHERE NOT EXISTS (
-  SELECT 1 FROM `sys_config`
-  WHERE `config_key` = 'easyimage.download_hosts' AND `config_type` = '1'
-);
+SET @preparedStatement = (SELECT IF(
+  EXISTS(SELECT 1 FROM `sys_config` WHERE `id` = 17 AND `config_key` = 'easyimage.enable'),
+  'UPDATE `sys_config` SET `id` = `id` + 1 WHERE `id` >= 17 AND `id` <= 19 ORDER BY `id` DESC',
+  'SELECT 1'
+));
+PREPARE stmt FROM @preparedStatement;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-INSERT INTO `sys_config` (`config_name`, `config_key`, `config_value`, `config_type`)
-SELECT '资源迁移是否允许访问私网图床', 'resource.migration.remote.allow-private-hosts', 'false', '1'
-WHERE NOT EXISTS (
-  SELECT 1 FROM `sys_config`
-  WHERE `config_key` = 'resource.migration.remote.allow-private-hosts' AND `config_type` = '1'
-);
+-- 清理之前未设置 ID 或主键不规范插入的重复记录
+DELETE FROM `sys_config`
+WHERE `config_key` IN ('lsky.download_hosts', 'easyimage.download_hosts', 'resource.migration.remote.allow-private-hosts')
+  AND `id` NOT IN (17, 21, 22);
+
+-- 插入或更新可信域名及私网迁移配置项（显式指定 ID 17, 21, 22）
+INSERT INTO `sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`)
+VALUES (17, '兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1')
+ON DUPLICATE KEY UPDATE `config_name` = VALUES(`config_name`), `config_type` = VALUES(`config_type`);
+
+INSERT INTO `sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`)
+VALUES (21, '简单图床-可信下载域名（多个用逗号分隔）', 'easyimage.download_hosts', '', '1')
+ON DUPLICATE KEY UPDATE `config_name` = VALUES(`config_name`), `config_type` = VALUES(`config_type`);
+
+INSERT INTO `sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`)
+VALUES (22, '资源迁移是否允许访问私网图床', 'resource.migration.remote.allow-private-hosts', 'false', '1')
+ON DUPLICATE KEY UPDATE `config_name` = VALUES(`config_name`), `config_type` = VALUES(`config_type`);
+
+-- 修复历史遗留跳号，将末尾两条配置项 ID 统一重置为连续的 33 和 34
+UPDATE `sys_config` SET `id` = 33 WHERE `config_key` = 'tencent.lbs.key';
+UPDATE `sys_config` SET `id` = 34 WHERE `config_key` = 'enableComment';
 
 SET @preparedStatement = (SELECT IF(
   EXISTS(

@@ -234,6 +234,31 @@ body.dark-mode .el-checkbox__inner:hover {
   border-color: #409eff !important;
 }
 
+body.dark-mode .el-radio-button__inner {
+  background-color: #2d2d2d !important;
+  border-color: #4a4a4a !important;
+  color: #e0e0e0 !important;
+  box-shadow: -1px 0 0 0 #4a4a4a !important;
+}
+
+body.dark-mode .el-radio-button:first-child .el-radio-button__inner {
+  border-left: 1px solid #4a4a4a !important;
+}
+
+body.dark-mode .el-radio-button__orig-radio:checked + .el-radio-button__inner {
+  background-color: #409eff !important;
+  border-color: #409eff !important;
+  color: #ffffff !important;
+  box-shadow: -1px 0 0 0 #409eff !important;
+}
+
+body.dark-mode .el-radio-button.is-disabled .el-radio-button__inner {
+  background-color: #232323 !important;
+  border-color: #3a3a3a !important;
+  color: #6a6a6a !important;
+}
+
+
 /* 卡片暗色模式 */
 body.dark-mode .el-card {
   background-color: #2d2d2d !important;
@@ -1332,6 +1357,85 @@ body.dark-mode .page-header h3 {
 
 body.dark-mode .page-desc {
   color: #8a8a8a !important;
+}
+
+/* ========== 资源迁移对话框暗色模式 ========== */
+body.dark-mode .resource-migration__section {
+  border-color: #4a4a4a !important;
+}
+
+body.dark-mode .resource-migration__section h4 {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .resource-migration__hint {
+  color: #8a8a8a !important;
+}
+
+body.dark-mode .resource-migration__capability {
+  background: #1f1f1f !important;
+  border: 1px solid #3a3a3a !important;
+}
+
+body.dark-mode .resource-migration__capability-head strong {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .resource-migration__capability dl > div {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .resource-migration__capability dt {
+  color: #8a8a8a !important;
+}
+
+body.dark-mode .resource-migration__stats > div {
+  background: #1f1f1f !important;
+  border: 1px solid #3a3a3a !important;
+}
+
+body.dark-mode .resource-migration__stats strong {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .resource-migration__stats span {
+  color: #8a8a8a !important;
+}
+
+body.dark-mode .resource-migration__task-bar {
+  border-color: #2a5a82 !important;
+  background: #1a3a52 !important;
+}
+
+body.dark-mode .resource-migration__task-bar.is-success {
+  border-color: #2a6b2c !important;
+  background: #1e4620 !important;
+}
+
+body.dark-mode .resource-migration__task-bar.is-failed,
+body.dark-mode .resource-migration__task-bar.is-partial_success {
+  border-color: #8a2e2e !important;
+  background: #5a1e1e !important;
+}
+
+body.dark-mode .resource-migration__task-copy strong {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .resource-migration__task-copy span {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .resource-migration__task-header strong {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .resource-migration__task-header span {
+  color: #8a8a8a !important;
+}
+
+body.dark-mode .resource-migration__task-meta {
+  color: #b0b0b0 !important;
 }
 
 

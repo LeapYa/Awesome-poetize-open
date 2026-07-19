@@ -1155,24 +1155,24 @@ INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_v
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (14, '兰空图床-API地址', 'lsky.url', 'http://your-lsky-instance.com/api/v1', '1');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (15, '兰空图床-Token', 'lsky.token', '', '1');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (16, '兰空图床-存储策略ID', 'lsky.strategy_id', '', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (17, '简单图床启用状态', 'easyimage.enable', 'false', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (18, '简单图床-API地址', 'easyimage.url', 'https://your-easyimage-instance.com/api/upload', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (19, '简单图床-Token', 'easyimage.token', '', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (20, 'IM-聊天室启用状态', 'im.enable', 'true', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (21, '备案号', 'beian', '', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (22, '公安备案号', 'policeBeian', '', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (23, '前端静态资源路径前缀', 'webStaticResourcePrefix', '/static/', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (24, 'WebP图片转换启用状态', 'image.webp.enabled', 'true', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (25, 'WebP转换最小文件大小(KB)', 'image.webp.min-size', '50', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (26, 'WebP转换最小节省比例(%)', 'image.webp.min-saving-ratio', '10', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (27, '图片压缩模式(lossy:有损,lossless:无损)', 'image.compress.mode', 'lossy', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (28, '图片压缩启用状态', 'image.compress.enabled', 'true', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (29, '字体文件CDN基础路径(末尾必须有/)', 'font.cdn.base-url', '/static/assets/font_chunks/', '2');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (34, '腾讯位置服务Key', 'tencent.lbs.key', '', '1');
-INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (35, '全局评论开关', 'enableComment', 'true', '2');
-INSERT INTO `poetize`.`sys_config` (`config_name`, `config_key`, `config_value`, `config_type`) VALUES ('兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1');
-INSERT INTO `poetize`.`sys_config` (`config_name`, `config_key`, `config_value`, `config_type`) VALUES ('简单图床-可信下载域名（多个用逗号分隔）', 'easyimage.download_hosts', '', '1');
-INSERT INTO `poetize`.`sys_config` (`config_name`, `config_key`, `config_value`, `config_type`) VALUES ('资源迁移是否允许访问私网图床', 'resource.migration.remote.allow-private-hosts', 'false', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (17, '兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (18, '简单图床启用状态', 'easyimage.enable', 'false', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (19, '简单图床-API地址', 'easyimage.url', 'https://your-easyimage-instance.com/api/upload', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (20, '简单图床-Token', 'easyimage.token', '', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (21, '简单图床-可信下载域名（多个用逗号分隔）', 'easyimage.download_hosts', '', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (22, '资源迁移是否允许访问私网图床', 'resource.migration.remote.allow-private-hosts', 'false', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (23, 'IM-聊天室启用状态', 'im.enable', 'true', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (24, '备案号', 'beian', '', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (25, '公安备案号', 'policeBeian', '', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (26, '前端静态资源路径前缀', 'webStaticResourcePrefix', '/static/', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (27, 'WebP图片转换启用状态', 'image.webp.enabled', 'true', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (28, 'WebP转换最小文件大小(KB)', 'image.webp.min-size', '50', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (29, 'WebP转换最小节省比例(%)', 'image.webp.min-saving-ratio', '10', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (30, '图片压缩模式(lossy:有损,lossless:无损)', 'image.compress.mode', 'lossy', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (31, '图片压缩启用状态', 'image.compress.enabled', 'true', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (32, '字体文件CDN基础路径(末尾必须有/)', 'font.cdn.base-url', '/static/assets/font_chunks/', '2');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (33, '腾讯位置服务Key', 'tencent.lbs.key', '', '1');
+INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (34, '全局评论开关', 'enableComment', 'true', '2');
 
 -- 插入默认的看板娘模型插件（使用 INSERT IGNORE 避免重复插入）
 INSERT IGNORE INTO `sys_plugin` (`plugin_type`, `plugin_key`, `plugin_name`, `plugin_description`, `plugin_config`, `enabled`, `is_system`, `sort_order`) VALUES
