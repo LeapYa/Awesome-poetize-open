@@ -73,8 +73,7 @@
     }
     window.addEventListener('app-mounted',function(){
         appMounted=true;
-        tryFinish();
-        setTimeout(done,5000);
+        setTimeout(done,300);
     },{once:true});
     setTimeout(done,30000);
 })();

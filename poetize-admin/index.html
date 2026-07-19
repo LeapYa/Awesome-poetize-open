@@ -105,6 +105,52 @@
             }
         })();
     </script>
+    <!-- 顶部加载进度条 -->
+    <div id="top-loading-bar" aria-hidden="true"><div id="tlb-fill"></div>
+      <style>
+        #top-loading-bar{position:fixed;top:0;left:0;width:100%;height:3px;z-index:99999;pointer-events:none;transition:opacity .4s ease}
+        #top-loading-bar.done{opacity:0}
+        #tlb-fill{height:100%;width:0;border-radius:0 2px 2px 0;background:#66BB6A;transition:width .3s ease}
+      </style>
+    </div>
+    <script>
+      (function(){
+        var bar=document.getElementById('top-loading-bar');
+        var fill=document.getElementById('tlb-fill');
+        if(!bar||!fill)return;
+        var total=0,loaded=0,finished=false;
+        function update(){
+          if(finished)return;
+          var pct=total>0?Math.min(Math.round(loaded/total*90),90):5;
+          fill.style.width=pct+'%';
+        }
+        function trackEl(el){
+          if(el.dataset.tlbTracked)return;
+          el.dataset.tlbTracked='1';
+          total++;update();
+          el.addEventListener('load',function(){loaded++;update()});
+          el.addEventListener('error',function(){loaded++;update()});
+        }
+        document.querySelectorAll('script[src],link[rel="modulepreload"],link[rel="stylesheet"]').forEach(trackEl);
+        var mo=new MutationObserver(function(muts){
+          muts.forEach(function(m){m.addedNodes.forEach(function(n){
+            if(n.nodeType!==1)return;
+            if(n.tagName==='SCRIPT'&&n.src)trackEl(n);
+            else if(n.tagName==='LINK'&&(n.rel==='modulepreload'||n.rel==='stylesheet'))trackEl(n);
+          })});
+        });
+        mo.observe(document.head,{childList:true,subtree:true});
+        update();
+        function done(){
+          if(finished)return;
+          finished=true;mo.disconnect();
+          fill.style.width='100%';
+          setTimeout(function(){bar.classList.add('done');setTimeout(function(){bar.remove()},500)},200);
+        }
+        window.addEventListener('app-mounted',function(){setTimeout(done,300)},{once:true});
+        setTimeout(done,30000);
+      })();
+    </script>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
 </body>

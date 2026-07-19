@@ -267,6 +267,27 @@
           </div>
         </el-form-item>
 
+        <!-- 页脚友链（服务提供商展示） -->
+        <el-form-item id="field-footer-friend-links" label="页脚友链">
+          <div style="width: 100%;">
+            <p style="font-size: 12px; color: #909399; margin: 0 0 10px 0;">
+              在页脚展示 CDN / 云服务等提供商链接（如"本站由 XX 提供加速"），留空则不显示。
+            </p>
+            <div v-for="(link, index) in footerFriendLinks" :key="index"
+                 style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <el-input v-model="link.name" placeholder="名称（如：又拍云）" style="width: 25%;" size="small"></el-input>
+              <el-input v-model="link.url" placeholder="链接（如：https://www.upyun.com）" style="width: 40%;" size="small"></el-input>
+              <el-input v-model="link.logo" placeholder="Logo URL（可选）" style="width: 25%;" size="small"></el-input>
+              <el-button type="danger" icon="el-icon-delete" size="small" circle
+                         @click="footerFriendLinks.splice(index, 1)"></el-button>
+            </div>
+            <el-button type="primary" size="small" icon="el-icon-plus" plain
+                       @click="footerFriendLinks.push({ name: '', url: '', logo: '' })">
+              添加友链
+            </el-button>
+          </div>
+        </el-form-item>
+
         <el-form-item id="field-contact-email" label="邮箱" prop="email">
           <el-input v-model="webInfo.email" placeholder="联系邮箱（用于隐私政策和侵权联系）"></el-input>
         </el-form-item>
@@ -361,6 +382,15 @@ const uploadPicture = () => import( "../common/uploadPicture");
           textShadow: false,
           maskColor: 'rgba(0, 0, 0, 0.5)'
         },
+        // 页脚友链配置
+        footerFriendLinks: [],
+        footerFriendLinksConfig: {
+          id: null,
+          configName: '页脚友链（服务提供商展示）',
+          configKey: 'footer.friendLinks',
+          configValue: '',
+          configType: '2'
+        },
 
       }
     },
@@ -405,7 +435,10 @@ const uploadPicture = () => import( "../common/uploadPicture");
       async initializeData() {
         this.setContentLoading(true);
         try {
-          await this.getWebInfo();
+          await Promise.all([
+            this.getWebInfo(),
+            this.loadFooterFriendLinks()
+          ]);
         } catch (error) {
           console.error("初始化数据时出错:", error);
         } finally {
@@ -628,10 +661,24 @@ const uploadPicture = () => import( "../common/uploadPicture");
             this.$http.post(this.$constant.baseURL + "/webInfo/updateWebInfo", updateData, true)
           ];
 
+          // 保存页脚友链配置
+          const validLinks = this.footerFriendLinks.filter(l => l.name && l.url);
+          this.footerFriendLinksConfig.configValue = validLinks.length > 0 ? JSON.stringify(validLinks) : '';
+          promises.push(
+            this.$http.post(this.$constant.baseURL + '/sysConfig/saveOrUpdateConfig', this.footerFriendLinksConfig, true)
+          );
+
           // 处理所有请求完成
           Promise.all(promises)
-            .then(() => {
+            .then(async () => {
               this.getWebInfo();
+              // 刷新 sysConfig store
+              try {
+                const sysConfRes = await this.$http.get(this.$constant.baseURL + '/sysConfig/listSysConfig');
+                if (sysConfRes && sysConfRes.data) {
+                  this.mainStore.loadSysConfig(sysConfRes.data);
+                }
+              } catch (_) {}
               // 更新mainStore中的webInfo，确保组件能立即响应变化
               this.mainStore.setWebInfo({...this.mainStore.webInfo, ...this.webInfo});
               this.$message({
@@ -661,6 +708,28 @@ const uploadPicture = () => import( "../common/uploadPicture");
       },
       addFooterBackgroundImage(res) {
         this.webInfo.footerBackgroundImage = res;
+      },
+      // 加载页脚友链配置
+      async loadFooterFriendLinks() {
+        try {
+          const res = await this.$http.get(this.$constant.baseURL + '/sysConfig/listConfig', {}, true);
+          if (res && res.data) {
+            const list = Array.isArray(res.data) ? res.data : (res.data.data || []);
+            const item = list.find(c => c.configKey === 'footer.friendLinks');
+            if (item) {
+              this.footerFriendLinksConfig.id = item.id;
+              this.footerFriendLinksConfig.configValue = item.configValue || '';
+              try {
+                const parsed = JSON.parse(item.configValue);
+                this.footerFriendLinks = Array.isArray(parsed) ? parsed : [];
+              } catch (_) {
+                this.footerFriendLinks = [];
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('加载页脚友链配置失败:', e);
+        }
       },
 
     }
