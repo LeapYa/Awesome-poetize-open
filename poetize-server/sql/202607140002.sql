@@ -13,46 +13,78 @@
 
 SET @dbname = DATABASE();
 
--- 如果旧系统中 id=17 为 easyimage.enable，说明需要顺延旧配置项 ID 为新版结构空出 17、21、22
-SET @preparedStatement = (SELECT IF(
-  EXISTS(SELECT 1 FROM `sys_config` WHERE `id` = 17 AND `config_key` = 'easyimage.enable'),
-  'UPDATE `sys_config` SET `id` = `id` + 3 WHERE `id` >= 20 ORDER BY `id` DESC',
-  'SELECT 1'
-));
-PREPARE stmt FROM @preparedStatement;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+-- ============================================================
+-- sys_config 全量 ID 重排
+-- 无论旧库 ID 如何错乱，重排后与 poetry.sql 新装完全一致
+-- ============================================================
 
-SET @preparedStatement = (SELECT IF(
-  EXISTS(SELECT 1 FROM `sys_config` WHERE `id` = 17 AND `config_key` = 'easyimage.enable'),
-  'UPDATE `sys_config` SET `id` = `id` + 1 WHERE `id` >= 17 AND `id` <= 19 ORDER BY `id` DESC',
-  'SELECT 1'
-));
-PREPARE stmt FROM @preparedStatement;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+-- 1) 清理重复记录（同一 config_key 只保留一条）
+DELETE s1 FROM `sys_config` s1
+INNER JOIN `sys_config` s2
+  ON s1.`config_key` = s2.`config_key` AND s1.`id` > s2.`id`;
 
--- 清理之前未设置 ID 或主键不规范插入的重复记录
-DELETE FROM `sys_config`
-WHERE `config_key` IN ('lsky.download_hosts', 'easyimage.download_hosts', 'resource.migration.remote.allow-private-hosts')
-  AND `id` NOT IN (17, 21, 22);
+-- 2) 补入 poetry.sql 中定义但旧库可能缺失的配置项（不指定 ID，后续统一归位）
+INSERT INTO `sys_config` (`config_name`, `config_key`, `config_value`, `config_type`)
+SELECT '兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1'
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `sys_config` WHERE `config_key` = 'lsky.download_hosts');
 
--- 插入或更新可信域名及私网迁移配置项（显式指定 ID 17, 21, 22）
-INSERT INTO `sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`)
-VALUES (17, '兰空图床-可信下载域名（多个用逗号分隔）', 'lsky.download_hosts', '', '1')
-ON DUPLICATE KEY UPDATE `config_name` = VALUES(`config_name`), `config_type` = VALUES(`config_type`);
+INSERT INTO `sys_config` (`config_name`, `config_key`, `config_value`, `config_type`)
+SELECT '简单图床-可信下载域名（多个用逗号分隔）', 'easyimage.download_hosts', '', '1'
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `sys_config` WHERE `config_key` = 'easyimage.download_hosts');
 
-INSERT INTO `sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`)
-VALUES (21, '简单图床-可信下载域名（多个用逗号分隔）', 'easyimage.download_hosts', '', '1')
-ON DUPLICATE KEY UPDATE `config_name` = VALUES(`config_name`), `config_type` = VALUES(`config_type`);
+INSERT INTO `sys_config` (`config_name`, `config_key`, `config_value`, `config_type`)
+SELECT '资源迁移是否允许访问私网图床', 'resource.migration.remote.allow-private-hosts', 'false', '1'
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `sys_config` WHERE `config_key` = 'resource.migration.remote.allow-private-hosts');
 
-INSERT INTO `sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`)
-VALUES (22, '资源迁移是否允许访问私网图床', 'resource.migration.remote.allow-private-hosts', 'false', '1')
-ON DUPLICATE KEY UPDATE `config_name` = VALUES(`config_name`), `config_type` = VALUES(`config_type`);
+-- 3) 全部 ID 平移到临时高位，避免归位时主键冲突
+UPDATE `sys_config` SET `id` = `id` + 1000;
 
--- 修复历史遗留跳号，将末尾两条配置项 ID 统一重置为连续的 33 和 34
+-- 4) 按 poetry.sql 定义逐条归位
+UPDATE `sys_config` SET `id` = 1 WHERE `config_key` = 'user.code.format';
+UPDATE `sys_config` SET `id` = 2 WHERE `config_key` = 'user.subscribe.format';
+UPDATE `sys_config` SET `id` = 3 WHERE `config_key` = 'store.type';
+UPDATE `sys_config` SET `id` = 4 WHERE `config_key` = 'local.enable';
+UPDATE `sys_config` SET `id` = 5 WHERE `config_key` = 'local.uploadUrl';
+UPDATE `sys_config` SET `id` = 6 WHERE `config_key` = 'local.downloadUrl';
+UPDATE `sys_config` SET `id` = 7 WHERE `config_key` = 'qiniu.enable';
+UPDATE `sys_config` SET `id` = 8 WHERE `config_key` = 'qiniu.accessKey';
+UPDATE `sys_config` SET `id` = 9 WHERE `config_key` = 'qiniu.secretKey';
+UPDATE `sys_config` SET `id` = 10 WHERE `config_key` = 'qiniu.bucket';
+UPDATE `sys_config` SET `id` = 11 WHERE `config_key` = 'qiniu.downloadUrl';
+UPDATE `sys_config` SET `id` = 12 WHERE `config_key` = 'qiniuUrl';
+UPDATE `sys_config` SET `id` = 13 WHERE `config_key` = 'lsky.enable';
+UPDATE `sys_config` SET `id` = 14 WHERE `config_key` = 'lsky.url';
+UPDATE `sys_config` SET `id` = 15 WHERE `config_key` = 'lsky.token';
+UPDATE `sys_config` SET `id` = 16 WHERE `config_key` = 'lsky.strategy_id';
+UPDATE `sys_config` SET `id` = 17 WHERE `config_key` = 'lsky.download_hosts';
+UPDATE `sys_config` SET `id` = 18 WHERE `config_key` = 'easyimage.enable';
+UPDATE `sys_config` SET `id` = 19 WHERE `config_key` = 'easyimage.url';
+UPDATE `sys_config` SET `id` = 20 WHERE `config_key` = 'easyimage.token';
+UPDATE `sys_config` SET `id` = 21 WHERE `config_key` = 'easyimage.download_hosts';
+UPDATE `sys_config` SET `id` = 22 WHERE `config_key` = 'resource.migration.remote.allow-private-hosts';
+UPDATE `sys_config` SET `id` = 23 WHERE `config_key` = 'im.enable';
+UPDATE `sys_config` SET `id` = 24 WHERE `config_key` = 'beian';
+UPDATE `sys_config` SET `id` = 25 WHERE `config_key` = 'policeBeian';
+UPDATE `sys_config` SET `id` = 26 WHERE `config_key` = 'webStaticResourcePrefix';
+UPDATE `sys_config` SET `id` = 27 WHERE `config_key` = 'image.webp.enabled';
+UPDATE `sys_config` SET `id` = 28 WHERE `config_key` = 'image.webp.min-size';
+UPDATE `sys_config` SET `id` = 29 WHERE `config_key` = 'image.webp.min-saving-ratio';
+UPDATE `sys_config` SET `id` = 30 WHERE `config_key` = 'image.compress.mode';
+UPDATE `sys_config` SET `id` = 31 WHERE `config_key` = 'image.compress.enabled';
+UPDATE `sys_config` SET `id` = 32 WHERE `config_key` = 'font.cdn.base-url';
 UPDATE `sys_config` SET `id` = 33 WHERE `config_key` = 'tencent.lbs.key';
 UPDATE `sys_config` SET `id` = 34 WHERE `config_key` = 'enableComment';
+
+-- 5) 未在 poetry.sql 中定义的配置项（运行时新增），从 35 开始顺序排列
+SET @next_id = 34;
+UPDATE `sys_config` SET `id` = (@next_id := @next_id + 1) WHERE `id` >= 1000 ORDER BY `id`;
+
+-- 6) 重置自增起点
+SET @max_id = (SELECT MAX(`id`) FROM `sys_config`);
+SET @sql = CONCAT('ALTER TABLE `sys_config` AUTO_INCREMENT = ', @max_id + 1);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 SET @preparedStatement = (SELECT IF(
   EXISTS(
