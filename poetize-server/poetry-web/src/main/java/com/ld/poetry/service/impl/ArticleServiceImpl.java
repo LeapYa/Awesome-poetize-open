@@ -1117,7 +1117,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         if (translationResult == null || translationResult.isEmpty()) {
             updateTranslationStage(taskId, "translating", "failed",
-                    articleReadyMessage + "，AI翻译失败，" + getAfterTranslationSummaryMessage(autoSummary), null, false);
+                    articleReadyMessage + "，AI翻译失败（长文章可在文章AI助手设置中调大max_tokens），"
+                            + getAfterTranslationSummaryMessage(autoSummary), null, false);
             return new AsyncTranslationOutcome("failed", true);
         }
 
@@ -1209,7 +1210,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return switch (translationStatus) {
                 case "saved" -> "文章" + actionText + "成功！翻译已生成，手动摘要已保存";
                 case "manual_saved" -> "文章" + actionText + "成功！手动翻译与手动摘要已保存";
-                case "failed" -> "文章" + actionText + "成功，但翻译失败，手动摘要已保存";
+                case "failed" -> "文章" + actionText + "成功，但翻译失败（可在文章AI助手设置中调大max_tokens），手动摘要已保存";
                 case "skipped" -> "文章" + actionText + "成功！已跳过AI翻译，手动摘要已保存";
                 default -> "文章" + actionText + "成功！手动摘要已保存";
             };
@@ -1219,7 +1220,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return switch (translationStatus) {
                 case "saved" -> "文章" + actionText + "成功！翻译已生成，未自动生成摘要";
                 case "manual_saved" -> "文章" + actionText + "成功！手动翻译已保存，未自动生成摘要";
-                case "failed" -> "文章" + actionText + "成功，但翻译失败，未自动生成摘要";
+                case "failed" -> "文章" + actionText + "成功，但翻译失败（可在文章AI助手设置中调大max_tokens），未自动生成摘要";
                 default -> "文章" + actionText + "成功！未自动生成摘要";
             };
         }
@@ -1229,12 +1230,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             boolean translationFailed = "failed".equals(translationStatus);
             boolean summaryFailed = "timeout".equals(summaryStatus) || "failed".equals(summaryStatus);
             if (translationFailed && summaryFailed) {
-                return "文章" + actionText + "成功，但翻译失败，" + summaryTaskLabel + "未完成";
+                return "文章" + actionText + "成功，但翻译失败（可在文章AI助手设置中调大max_tokens），" + summaryTaskLabel + "未完成";
             }
             if (summaryFailed) {
                 return "文章" + actionText + "成功，但" + summaryTaskLabel + "生成超时或失败";
             }
-            return "文章" + actionText + "成功，" + summaryTaskLabel + "已生成，但翻译失败";
+            return "文章" + actionText + "成功，" + summaryTaskLabel + "已生成，但翻译失败（可在文章AI助手设置中调大max_tokens）";
         }
 
         return switch (translationStatus) {
@@ -2300,6 +2301,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         Page<Article> page = new Page<>(baseRequestVO.getCurrent(), baseRequestVO.getSize());
         lambdaQuery.orderByDesc(Article::getCreateTime).page(page);
+        baseRequestVO.setTotal(page.getTotal());
 
         List<Article> records = page.getRecords();
         if (!CollectionUtils.isEmpty(records)) {

@@ -33,7 +33,7 @@
       <el-button type="success" icon="el-icon-upload2" @click="openImportDialog">导入文章</el-button>
       <el-button type="warning" icon="el-icon-download" @click="exportAllArticles" :loading="exportAllLoading">导出所有文章</el-button>
     </div>
-    <el-table :data="articles" border class="table" header-cell-class-name="table-header">
+    <el-table :data="articles" border class="table" header-cell-class-name="table-header" empty-text="暂无文章">
       <el-table-column prop="id" label="ID" width="55" align="center"></el-table-column>
       <el-table-column prop="username" label="作者" align="center"></el-table-column>
       <el-table-column prop="articleTitle" label="文章标题" align="center"></el-table-column>
@@ -489,6 +489,7 @@
 
 <script>
     import { useMainStore } from '@/stores/main';
+    import { setAdminContentLoading } from '@/utils/sessionValidation';
     import { getAdminLanguageMapping, getAdminLanguageName } from '@/utils/languageUtils';
     import { parseMarkdownFile, parseJsonFile, readFileAsText, getFileExtension, validateImportFile, smartDowngradeHeadings } from '@/utils/markdownImport';
     import { downgradeMarkdownHeadings } from '@/utils/markdownHeadingUtils';
@@ -506,6 +507,8 @@
           labelId: null
         },
         articles: [],
+        // 页面内容加载状态（驱动全局"页面加载中"遮罩）
+        loading: false,
         sorts: [],
         labels: [],
         labelsTemp: [],
@@ -661,6 +664,7 @@
     },
 
     async created() {
+      this.setContentLoading(true);
       // 加载后台管理用语言映射（中文）
       this.languageMap = await getAdminLanguageMapping();
       this.pagination.searchKey = ((this.$route.query.search || '') + '').trim();
@@ -672,10 +676,18 @@
     },
 
     beforeDestroy() {
+      this.setContentLoading(false);
       this.stopImportBatchStream();
     },
 
     methods: {
+      setContentLoading(loading) {
+        if (this.loading === loading) {
+          return;
+        }
+        this.loading = loading;
+        setAdminContentLoading(loading);
+      },
       getSortAndLabel() {
         this.$http.get(this.$constant.baseURL + "/webInfo/listSortAndLabel")
           .then((res) => {
@@ -766,6 +778,9 @@
               message: error.message,
               type: "error"
             });
+          })
+          .finally(() => {
+            this.setContentLoading(false);
           });
       },
       handlePageChange(val) {

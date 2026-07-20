@@ -7,7 +7,7 @@
       <el-button type="primary" @click="$router.push({ path: '/postEdit' })">新建草稿</el-button>
     </div>
 
-    <el-table :data="drafts" border class="table" header-cell-class-name="table-header">
+    <el-table :data="drafts" border class="table" header-cell-class-name="table-header" empty-text="暂无草稿">
       <el-table-column prop="id" label="草稿ID" min-width="210" show-overflow-tooltip></el-table-column>
       <el-table-column prop="titleCache" label="标题" min-width="220" show-overflow-tooltip>
         <template slot-scope="scope">
@@ -67,6 +67,8 @@
 </template>
 
 <script>
+import { setAdminContentLoading } from '@/utils/sessionValidation';
+
 export default {
   data() {
     return {
@@ -76,13 +78,26 @@ export default {
         total: 0,
         searchKey: ''
       },
-      drafts: []
+      drafts: [],
+      // 页面内容加载状态（驱动全局"页面加载中"遮罩）
+      loading: false
     }
   },
   created() {
+    this.setContentLoading(true)
     this.loadDrafts()
   },
+  beforeDestroy() {
+    this.setContentLoading(false)
+  },
   methods: {
+    setContentLoading(loading) {
+      if (this.loading === loading) {
+        return
+      }
+      this.loading = loading
+      setAdminContentLoading(loading)
+    },
     loadDrafts() {
       this.$http.post(this.$constant.baseURL + '/admin/articleDraft/list', this.pagination, true)
         .then((res) => {
@@ -95,6 +110,9 @@ export default {
         })
         .catch((error) => {
           this.$message.error(error.message || '获取草稿列表失败')
+        })
+        .finally(() => {
+          this.setContentLoading(false)
         })
     },
     handlePageChange(page) {
