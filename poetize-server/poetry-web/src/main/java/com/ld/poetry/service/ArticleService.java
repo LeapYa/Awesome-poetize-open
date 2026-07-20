@@ -40,6 +40,13 @@ public interface ArticleService extends IService<Article> {
 
     PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO);
 
+    /**
+     * 查询文章列表（可控制是否包含隐藏文章）
+     * @param includeHidden true 时不过滤 viewStatus，返回全部文章（含隐藏）；
+     *                      仅供 API Key 认证的管理入口使用，公开接口必须传 false
+     */
+    PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden);
+
     PoetryResult<ArticleVO> getArticleById(Integer id, String password);
 
     PoetryResult<ArticleVO> getArticleByPath(String path, String password);

@@ -942,7 +942,9 @@ public class ApiController {
             }
             
             // 调用文章列表服务
-            return articleService.listArticle(baseRequestVO);
+            // 管理语义：API Key + IP 白名单认证的入口默认返回全部文章（含隐藏），
+            // 每条记录自带 viewStatus 供调用方区分；公开接口不受影响
+            return articleService.listArticle(baseRequestVO, true);
         } catch (PoetryRuntimeException e) {
             log.error("API查询文章列表失败：{}", e.getMessage());
             return PoetryResult.fail(e.getMessage());

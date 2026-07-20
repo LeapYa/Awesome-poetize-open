@@ -1821,6 +1821,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO) {
+        // 公开入口（前台列表、预渲染）：仅返回可见文章
+        return listArticle(baseRequestVO, false);
+    }
+
+    @Override
+    public PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden) {
         List<Integer> ids = null;
         List<List<Integer>> idList = null;
         if (StringUtils.hasText(baseRequestVO.getArticleSearch())) {
@@ -1834,7 +1840,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
         // 仅对不含搜索条件的常规分页请求启用缓存
         // 搜索条件可能改变结果集，直接查询数据库，避免复用不匹配的分页缓存
-        boolean cacheable = !StringUtils.hasText(baseRequestVO.getArticleSearch())
+        // includeHidden（管理入口）与公开缓存共用 key 维度，必须绕开缓存，
+        // 否则含隐藏文章的结果会污染公开分页缓存，造成未公开文章泄露
+        boolean cacheable = !includeHidden
+                && !StringUtils.hasText(baseRequestVO.getArticleSearch())
                 && !StringUtils.hasText(baseRequestVO.getSearchKey());
         if (cacheable) {
             String cacheKey = CacheConstants.buildArticleListPageKey(
@@ -1868,7 +1877,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 Article::getRecommendStatus, PoetryEnum.STATUS_ENABLE.getCode());
 
         // 添加对可见文章的过滤，确保预渲染和前端只获取可见的文章
-        lambdaQuery.eq(Article::getViewStatus, true);
+        // 管理入口（API Key 认证）传 includeHidden=true 跳过过滤，可列出隐藏文章
+        lambdaQuery.eq(!includeHidden, Article::getViewStatus, true);
 
         if (baseRequestVO.getLabelId() != null) {
             lambdaQuery.eq(Article::getLabelId, baseRequestVO.getLabelId());
