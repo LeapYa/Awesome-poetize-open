@@ -706,6 +706,20 @@ public class LlmTranslationService {
                 Map.of("attempt", attempt, "sourceLang", String.valueOf(sourceLang),
                         "targetLang", String.valueOf(targetLang)));
         if (!finalView.titleClosed() || !finalView.contentClosed()) {
+            // TOON 格式兜底：title 已闭合且 content 有实质内容（LLM 输出截断导致闭合引号缺失），
+            // 接受部分翻译，避免整篇失败
+            if (finalView.titleClosed() && !finalView.content().isBlank()
+                    && finalView.content().length() >= content.length() / 3) {
+                log.warn("TOON content 未闭合但内容已实质完整 ({}字符, 原文{}字符)，接受部分翻译",
+                        finalView.content().length(), content.length());
+                return new StreamingTranslationState(
+                        finalView.title().trim(),
+                        finalView.content().trim(),
+                        true,
+                        true,
+                        rawResponse);
+            }
+
             Map<String, String> parsed = parseArticleTranslationResponse(rawResponse, title, content, targetLang);
             if (parsed != null) {
                 return new StreamingTranslationState(
@@ -1203,6 +1217,22 @@ public class LlmTranslationService {
     private Map<String, String> parseArticleTranslationResponse(
             String response, String originalTitle, String originalContent, String targetLang) {
         try {
+            // TOON 格式优先：响应含 "article:" + 缩进字段时，用 TOON 解析器提取
+            if (response.contains("article:") && response.contains("  title:") && response.contains("  content:")) {
+                StreamingTranslationView toonView = parseStreamingTranslationView(response);
+                if (!toonView.title().isBlank() && !toonView.content().isBlank()
+                        && !toonView.title().equals(originalTitle)
+                        && toonView.content().length() >= originalContent.length() / 3) {
+                    Map<String, String> result = new HashMap<>();
+                    result.put("title", toonView.title().trim());
+                    result.put("content", toonView.content().trim());
+                    result.put("language", targetLang);
+                    log.info("LLM 文章翻译 TOON 格式解析成功 (titleClosed={}, contentClosed={})",
+                            toonView.titleClosed(), toonView.contentClosed());
+                    return result;
+                }
+            }
+
             // 尝试提取 JSON
             String jsonStr = extractJson(response);
             if (jsonStr != null) {
