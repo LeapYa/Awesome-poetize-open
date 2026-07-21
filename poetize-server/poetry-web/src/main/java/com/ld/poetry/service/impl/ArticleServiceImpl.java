@@ -1904,6 +1904,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             Map<Integer, Integer> commentCountMap = (Map<Integer, Integer>) preloaded.get(1);
             List<Sort> sortInfoList = (List<Sort>) preloaded.get(2);
 
+            // 搜索参数预计算（循环外一次准备，避免每条文章重复编译正则/toLowerCase）
+            String searchText = baseRequestVO.getArticleSearch();
+            boolean hasSearch = StringUtils.hasText(searchText);
+            boolean isRegexSearch = hasSearch && searchText.startsWith("/") && searchText.endsWith("/")
+                    && searchText.length() > 2;
+            String actualSearchText = isRegexSearch ? searchText.substring(1, searchText.length() - 1) : searchText;
+            Pattern searchPattern = isRegexSearch ? Pattern.compile(actualSearchText, Pattern.CASE_INSENSITIVE) : null;
+            String lowerSearchText = hasSearch ? searchText.toLowerCase() : null;
+
             for (Article article : records) {
                 // 保存原始内容用于显示前的高亮处理
                 String originalContent = article.getArticleContent();
@@ -1922,32 +1931,23 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 articleVO.setVideoUrl(null);
 
                 // 如果是搜索结果，进行高亮处理
-                if (StringUtils.hasText(baseRequestVO.getArticleSearch())) {
-                    String searchText = baseRequestVO.getArticleSearch();
-
-                    // 检测是否为正则表达式搜索
-                    boolean isRegexSearch = searchText.startsWith("/") && searchText.endsWith("/")
-                            && searchText.length() > 2;
-                    String actualSearchText = isRegexSearch ? searchText.substring(1, searchText.length() - 1)
-                            : searchText;
-
+                if (hasSearch) {
                     // 使用高亮标签进行处理
                     String highlightStart = "<span class='search-highlight' style='color: var(--lightGreen); font-weight: bold;'>";
                     String highlightEnd = "</span>";
 
-                    // 检查原文是否匹配
+                    // 检查原文是否匹配（复用循环外预计算的 Pattern / lowerSearchText）
                     boolean originalTitleMatches = false;
                     boolean originalContentMatches = false;
 
                     if (isRegexSearch) {
-                        Pattern pattern = Pattern.compile(actualSearchText, Pattern.CASE_INSENSITIVE);
-                        originalTitleMatches = originalTitle != null && pattern.matcher(originalTitle).find();
-                        originalContentMatches = originalContent != null && pattern.matcher(originalContent).find();
+                        originalTitleMatches = originalTitle != null && searchPattern.matcher(originalTitle).find();
+                        originalContentMatches = originalContent != null && searchPattern.matcher(originalContent).find();
                     } else {
                         originalTitleMatches = originalTitle != null
-                                && originalTitle.toLowerCase().contains(searchText.toLowerCase());
+                                && originalTitle.toLowerCase().contains(lowerSearchText);
                         originalContentMatches = originalContent != null
-                                && originalContent.toLowerCase().contains(searchText.toLowerCase());
+                                && originalContent.toLowerCase().contains(lowerSearchText);
                     }
 
                     boolean originalMatches = originalTitleMatches || originalContentMatches;

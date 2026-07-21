@@ -111,6 +111,15 @@ local HEALTH_CHECK_PATHS_HEAD_ONLY = {
 -- shared dict：缓存规则快照 + 刷新时间戳（在 nginx.conf 中声明）
 local rules_cache = ngx.shared.ban_rules_cache
 
+-- 模块级规则缓存（per-worker）：refresh_rules_if_needed 成功后更新，
+-- 每请求直接读内存，避免重复 shared dict get + cjson.decode 开销。
+-- nil 表示尚未初始化，load_* 函数会 fallback 到 shared dict。
+local cached_ua_rules = nil
+local cached_cidr_rules = nil
+local cached_region_rules = nil
+local cached_disabled_ai_ua = nil
+local cached_disabled_automation_ua = nil
+
 -- ========== 工具函数 ==========
 
 -- 获取客户端真实 IP
@@ -566,13 +575,18 @@ local function refresh_rules_if_needed(red)
     end
 
     if snapshot == ngx.null then
-        -- 快照不存在（Java 端尚未写入规则），清空缓存
+        -- 快照不存在（Java 端尚未写入规则），清空缓存与模块级变量
         rules_cache:set("ua_rules", "")
         rules_cache:set("cidr_rules", "")
         rules_cache:set("region_rules", "")
         rules_cache:set("disabled_ai_ua", "")
         rules_cache:set("disabled_automation_ua", "")
         rules_cache:set("last_refresh", now)
+        cached_ua_rules = {}
+        cached_cidr_rules = {}
+        cached_region_rules = {}
+        cached_disabled_ai_ua = {}
+        cached_disabled_automation_ua = {}
         return
     end
 
@@ -600,20 +614,43 @@ local function refresh_rules_if_needed(red)
     rules_cache:set("disabled_ai_ua", cjson.encode(disabled_ai_ua))
     rules_cache:set("disabled_automation_ua", cjson.encode(disabled_automation_ua))
     rules_cache:set("last_refresh", now)
+
+    -- 同步更新模块级缓存：disabled 列表转为 set（key=小写UA, value=true）
+    cached_ua_rules = ua_rules
+    cached_cidr_rules = cidr_rules
+    cached_region_rules = region_rules
+    local ai_set = {}
+    for _, v in ipairs(disabled_ai_ua) do
+        if type(v) == "string" then ai_set[string.lower(v)] = true end
+    end
+    cached_disabled_ai_ua = ai_set
+    local automation_set = {}
+    for _, v in ipairs(disabled_automation_ua) do
+        if type(v) == "string" then automation_set[string.lower(v)] = true end
+    end
+    cached_disabled_automation_ua = automation_set
 end
 
--- 从 shared dict 读取并解码规则
+-- 从模块级缓存读取规则（fallback 到 shared dict）
 -- 返回 ua_rules, cidr_rules, region_rules（可能为空 table）
 local function load_rules_from_cache()
+    if cached_ua_rules ~= nil then
+        return cached_ua_rules, cached_cidr_rules, cached_region_rules
+    end
+    -- 冷启动 fallback：从 shared dict 解码
     local function decode(s)
         if not s or s == "" then return {} end
         local t = cjson.decode(s)
         if not t or type(t) ~= "table" then return {} end
         return t
     end
-    return decode(rules_cache:get("ua_rules")),
-           decode(rules_cache:get("cidr_rules")),
-           decode(rules_cache:get("region_rules"))
+    local ua = decode(rules_cache:get("ua_rules"))
+    local cidr = decode(rules_cache:get("cidr_rules"))
+    local region = decode(rules_cache:get("region_rules"))
+    cached_ua_rules = ua
+    cached_cidr_rules = cidr
+    cached_region_rules = region
+    return ua, cidr, region
 end
 
 -- ========== 各项检查（命中时记录日志并返回 true） ==========
@@ -648,35 +685,55 @@ local function check_cidr(cidr_rules, ip)
     return false
 end
 
--- 读取被禁用的内置 AI 爬虫硬名单（从 shared dict 快照缓存），返回 set（小写 => true）
--- 冷启动或快照未刷新时返回空表，此时硬名单全部生效（兜底更安全）
+-- 读取被禁用的内置 AI 爬虫硬名单，返回 set（小写 => true）
+-- 优先走模块级缓存；冷启动 fallback 到 shared dict
 local function load_disabled_ai_ua()
+    if cached_disabled_ai_ua ~= nil then
+        return cached_disabled_ai_ua
+    end
     local s = rules_cache:get("disabled_ai_ua")
-    if not s or s == "" then return {} end
+    if not s or s == "" then
+        cached_disabled_ai_ua = {}
+        return cached_disabled_ai_ua
+    end
     local t = cjson.decode(s)
-    if not t or type(t) ~= "table" then return {} end
+    if not t or type(t) ~= "table" then
+        cached_disabled_ai_ua = {}
+        return cached_disabled_ai_ua
+    end
     local set = {}
     for _, v in ipairs(t) do
         if type(v) == "string" then
             set[string.lower(v)] = true
         end
     end
+    cached_disabled_ai_ua = set
     return set
 end
 
--- 读取被禁用的内置自动化工具 UA 硬名单（从 shared dict 快照缓存），返回 set（小写 => true）
--- 冷启动或快照未刷新时返回空表，此时硬名单全部生效（兜底更安全）
+-- 读取被禁用的内置自动化工具 UA 硬名单，返回 set（小写 => true）
+-- 优先走模块级缓存；冷启动 fallback 到 shared dict
 local function load_disabled_automation_ua()
+    if cached_disabled_automation_ua ~= nil then
+        return cached_disabled_automation_ua
+    end
     local s = rules_cache:get("disabled_automation_ua")
-    if not s or s == "" then return {} end
+    if not s or s == "" then
+        cached_disabled_automation_ua = {}
+        return cached_disabled_automation_ua
+    end
     local t = cjson.decode(s)
-    if not t or type(t) ~= "table" then return {} end
+    if not t or type(t) ~= "table" then
+        cached_disabled_automation_ua = {}
+        return cached_disabled_automation_ua
+    end
     local set = {}
     for _, v in ipairs(t) do
         if type(v) == "string" then
             set[string.lower(v)] = true
         end
     end
+    cached_disabled_automation_ua = set
     return set
 end
 
