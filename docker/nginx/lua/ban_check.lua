@@ -89,9 +89,10 @@ local BLOCKED_AI_CRAWLER_UA = {
     "claudebot", "claude-web", "anthropic-ai", "gptbot",
 }
 
--- 自动化工具 UA 关键词（与 Java SecurityFilter.AUTOMATION_UA_KEYWORDS 保持同步）
--- 这些关键词只出现在自动化工具声明的 UA 中，正常浏览器不会包含，简单 contains 匹配
-local AUTOMATION_UA_KEYWORDS = {
+-- 自动化工具 UA 关键词兜底常量：仅在快照未加载时使用。
+-- 运行时从 ban_rules_snapshot.builtin_automation_ua 读取（由 Java CacheConstants.BUILTIN_AUTOMATION_UA 写入），
+-- 消除双端硬编码同步问题。快照刷新成功后此常量不再生效。
+local AUTOMATION_UA_KEYWORDS_FALLBACK = {
     "headlesschrome", "playwright", "puppeteer", "selenium", "webdriver", "phantomjs",
 }
 
@@ -119,6 +120,8 @@ local cached_cidr_rules = nil
 local cached_region_rules = nil
 local cached_disabled_ai_ua = nil
 local cached_disabled_automation_ua = nil
+-- 内置自动化工具 UA 硬名单（从快照读取，nil 时使用 FALLBACK 常量）
+local cached_builtin_automation_ua = nil
 
 -- ========== 工具函数 ==========
 
@@ -581,12 +584,14 @@ local function refresh_rules_if_needed(red)
         rules_cache:set("region_rules", "")
         rules_cache:set("disabled_ai_ua", "")
         rules_cache:set("disabled_automation_ua", "")
+        rules_cache:set("builtin_automation_ua", "")
         rules_cache:set("last_refresh", now)
         cached_ua_rules = {}
         cached_cidr_rules = {}
         cached_region_rules = {}
         cached_disabled_ai_ua = {}
         cached_disabled_automation_ua = {}
+        cached_builtin_automation_ua = nil
         return
     end
 
@@ -607,12 +612,15 @@ local function refresh_rules_if_needed(red)
     local disabled_ai_ua = rules.disabled_ai_ua or {}
     -- 被管理员禁用的内置自动化工具 UA 硬名单（小写字符串数组）
     local disabled_automation_ua = rules.disabled_automation_ua or {}
+    -- 内置自动化工具 UA 硬名单（由 Java 单一数据源写入）
+    local builtin_automation_ua = rules.builtin_automation_ua or {}
 
     rules_cache:set("ua_rules", cjson.encode(ua_rules))
     rules_cache:set("cidr_rules", cjson.encode(cidr_rules))
     rules_cache:set("region_rules", cjson.encode(region_rules))
     rules_cache:set("disabled_ai_ua", cjson.encode(disabled_ai_ua))
     rules_cache:set("disabled_automation_ua", cjson.encode(disabled_automation_ua))
+    rules_cache:set("builtin_automation_ua", cjson.encode(builtin_automation_ua))
     rules_cache:set("last_refresh", now)
 
     -- 同步更新模块级缓存：disabled 列表转为 set（key=小写UA, value=true）
@@ -629,6 +637,12 @@ local function refresh_rules_if_needed(red)
         if type(v) == "string" then automation_set[string.lower(v)] = true end
     end
     cached_disabled_automation_ua = automation_set
+    -- 内置自动化工具 UA 列表转为 set（key=小写UA, value=true）
+    local builtin_set = {}
+    for _, v in ipairs(builtin_automation_ua) do
+        if type(v) == "string" then builtin_set[string.lower(v)] = true end
+    end
+    cached_builtin_automation_ua = builtin_set
 end
 
 -- 从模块级缓存读取规则（fallback 到 shared dict）
@@ -765,13 +779,37 @@ local function is_ai_crawler(ua, disabled)
     return false
 end
 
+-- 获取生效的自动化工具 UA 关键词列表（优先快照，兜底 FALLBACK 常量）
+local function get_automation_ua_keywords()
+    if cached_builtin_automation_ua ~= nil then
+        return cached_builtin_automation_ua
+    end
+    -- 冷启动 fallback：从 shared dict 解码
+    local raw = rules_cache:get("builtin_automation_ua")
+    if raw and raw ~= "" then
+        local t = cjson.decode(raw)
+        if t and type(t) == "table" then
+            local set = {}
+            for _, v in ipairs(t) do
+                if type(v) == "string" then set[string.lower(v)] = true end
+            end
+            cached_builtin_automation_ua = set
+            return set
+        end
+    end
+    -- 快照未加载，使用本地兜底常量
+    return AUTOMATION_UA_KEYWORDS_FALLBACK
+end
+
 -- 自动化工具 UA 检查（简单 contains 匹配，与 Java isAutomationToolUa 逻辑一致）
 -- 不需要 Redis，纯字符串匹配，放在 Redis 连接之前以节省资源
 -- disabled：被管理员禁用的硬名单 set，命中则跳过（实现"内置 UA 弃用后可删除"）
 local function is_automation_tool_ua(ua, disabled)
     if not ua or ua == "" then return false end
     local ua_lower = string.lower(ua)
-    for _, keyword in ipairs(AUTOMATION_UA_KEYWORDS) do
+    local keywords = get_automation_ua_keywords()
+    -- keywords 为 set（key=关键词, value=true），直接遍历 key
+    for keyword, _ in pairs(keywords) do
         if not (disabled and disabled[keyword]) then
             if string.find(ua_lower, keyword, 1, true) then
                 return true

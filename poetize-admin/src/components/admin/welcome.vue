@@ -71,7 +71,20 @@
 <script>
   import constant from '@/utils/constant';
 
-  const STORAGE_KEY = 'poetize_guide_step';
+  const STORAGE_KEY = 'pb_guide_step';
+  // 一次性迁移：旧键 → 新键
+  try {
+    const migrate = (oldKey, newKey) => {
+      const oldVal = localStorage.getItem(oldKey);
+      if (oldVal !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, oldVal);
+        localStorage.removeItem(oldKey);
+      }
+    };
+    migrate('poetize_guide_step', 'pb_guide_step');
+    migrate('poetize_guide_hide', 'pb_guide_hide');
+    migrate('pb_update_check', 'pb_update_check');
+  } catch (e) { /* 忽略迁移失败 */ }
   const TOTAL_STEPS = 17;
   const GUIDE_TITLES = [
     '版本与更新',
@@ -149,7 +162,7 @@
         }
       }
 
-      if (localStorage.getItem('poetize_guide_hide') === 'true') {
+      if (localStorage.getItem('pb_guide_hide') === 'true') {
         this.hideGuide = true;
       }
 
@@ -161,7 +174,7 @@
        * 只读缓存比较版本，不发网络请求
        */
       checkCachedUpdate() {
-        const CACHE_KEY = 'poetize_update_check';
+        const CACHE_KEY = 'pb_update_check';
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached) {
           try {
@@ -196,7 +209,7 @@
           type: 'warning'
         }).then(() => {
           this.hideGuide = true;
-          localStorage.setItem('poetize_guide_hide', 'true');
+          localStorage.setItem('pb_guide_hide', 'true');
         }).catch(() => {
           // 取消关闭
         });
@@ -238,7 +251,7 @@
         this.checking = true;
         this.isLatest = false;
         try {
-          const CACHE_KEY = 'poetize_update_check';
+          const CACHE_KEY = 'pb_update_check';
           const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
           const cached = localStorage.getItem(CACHE_KEY);
 

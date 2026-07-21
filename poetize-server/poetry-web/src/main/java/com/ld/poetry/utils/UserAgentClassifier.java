@@ -783,9 +783,15 @@ public final class UserAgentClassifier {
             return new BotVerification(claimedName, "timeout", reason);
         }
 
-        /** UA 是否声称自己是搜索引擎（无论验证结果如何）。 */
+        /**
+         * UA 是否声称自己是搜索引擎且应跳过自动化封禁检查。
+         * <p>verified（DNS 验证通过）、unknown（首次访问/无规则/验证排队中）、
+         * error/timeout（验证过程异常，保守放行）均跳过自动化检查。
+         * <p>仅 failed（DNS 确认 IP 不属于官方域名，即伪装 UA）接受自动化封禁检查，
+         * 避免伪造搜索引擎声明的自动化工具在伪装计数达到拉黑阈值前绕过 Java 层拦截。
+         */
         public boolean claimsSearchEngine() {
-            return !"not_applicable".equals(status);
+            return !"not_applicable".equals(status) && !"failed".equals(status);
         }
     }
 

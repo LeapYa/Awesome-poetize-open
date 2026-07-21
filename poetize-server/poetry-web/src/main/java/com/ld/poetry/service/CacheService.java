@@ -1976,12 +1976,14 @@ public class CacheService {
     public void refreshBanRulesSnapshot() {
         try {
             Map<String, List<Map<String, Object>>> all = loadAllBanRules();
-            // 快照结构：{ua:[], cidr:[], region:[], disabled_ai_ua:[], disabled_automation_ua:[]}
+            // 快照结构：{ua:[], cidr:[], region:[], disabled_ai_ua:[], disabled_automation_ua:[], builtin_automation_ua:[]}
             // disabled_ai_ua 为被管理员禁用的内置 AI 爬虫硬名单，供 Nginx Lua 匹配时跳过。
             // disabled_automation_ua 为被管理员禁用的内置自动化工具 UA 硬名单，供 Nginx Lua 匹配时跳过。
+            // builtin_automation_ua 为内置自动化工具 UA 硬名单（单一数据源），供 Nginx Lua 直接读取，避免双端硬编码。
             Map<String, Object> snapshot = new HashMap<>(all);
             snapshot.put("disabled_ai_ua", new ArrayList<>(loadDisabledAiCrawlerUa()));
             snapshot.put("disabled_automation_ua", new ArrayList<>(loadDisabledAutomationUa()));
+            snapshot.put("builtin_automation_ua", new ArrayList<>(CacheConstants.BUILTIN_AUTOMATION_UA));
             String json = JsonUtils.toJsonString(snapshot);
             // 必须用 StringRedisTemplate 写原始 JSON 字符串，避免主 RedisTemplate 的
             // defaultTyping 把 String 再包一层 JSON 引号转义，导致 Lua cjson.decode 拿到 string 而非 table。

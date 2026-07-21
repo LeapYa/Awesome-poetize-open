@@ -5,8 +5,8 @@ server:
     use-virtual-threads: true
     # 调整为虚拟线程优化的配置
     max-connections: 500
-    # 表单/上传大小不在基础设施层拦截，按用户身份由应用层控制，-1 表示不限制
-    max-http-form-post-size: -1
+    # 表单/上传大小上限设为系统硬上限 2048M，应用层按用户身份二次控制
+    max-http-form-post-size: 2048MB
     connection-timeout: 60000
   error:
     # 禁用 Spring Boot 默认错误页，使用自定义 CustomErrorController
@@ -89,10 +89,10 @@ spring:
 
   servlet:
     multipart:
-      # 上传大小不在基础设施层拦截：普通用户 5MB、站长/管理员不限由应用层 isStaff() 控制，
-      # 系统硬上限约 2GB（资源 size 以 int 存储）。-1 表示不限制。
-      max-file-size: -1
-      max-request-size: -1
+      # 上传大小上限设为系统硬上限 2048M：普通用户 5MB、站长/管理员不限由应用层 isStaff() 控制，
+      # 基础设施层保留兜底防御，避免应用层校验被绕过时遭受大文件攻击
+      max-file-size: 2048MB
+      max-request-size: 2048MB
 
   mail:
     # 以下配置已注释，将从系统配置表动态获取

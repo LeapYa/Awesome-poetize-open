@@ -663,7 +663,15 @@ const uploadPicture = () => import("../common/uploadPicture");
     callback();
   };
 
-  const DEFAULT_CONFIG_KEY = 'poetize_article_default_config';
+  const DEFAULT_CONFIG_KEY = 'pb_article_default_config';
+  // 一次性迁移：旧键 poetize_article_default_config → 新键 pb_article_default_config
+  try {
+    const oldConfig = localStorage.getItem('poetize_article_default_config');
+    if (oldConfig !== null && localStorage.getItem(DEFAULT_CONFIG_KEY) === null) {
+      localStorage.setItem(DEFAULT_CONFIG_KEY, oldConfig);
+      localStorage.removeItem('poetize_article_default_config');
+    }
+  } catch (e) { /* 忽略迁移失败 */ }
   const DRAFT_SNAPSHOT_INTERVAL = 5000;
   const DRAFT_SNAPSHOT_RESCHEDULE_DELAY = 800;
   const DRAFT_WS_UPDATE_FLUSH_DELAY = 350;
@@ -816,6 +824,8 @@ const uploadPicture = () => import("../common/uploadPicture");
         draftSnapshotSaving: false,
         draftSnapshotSaveQueued: false,
         draftSnapshotSavePromise: null,
+        // 标记草稿会话是否已销毁，供 persistDraftSnapshot 异步回调跳过对已卸载状态的访问
+        draftSessionDestroyed: false,
         draftSnapshotQueuedTimer: null,
         draftSnapshotVersion: 0,
         suppressNextDraftRouteReload: false,
@@ -1374,8 +1384,9 @@ const uploadPicture = () => import("../common/uploadPicture");
         this.draftStatusText = '草稿已加载';
         this.draftStatusType = 'info';
         this.draftOnlineCount = 1;
+        this.draftSessionDestroyed = false;
         this.ydoc = new Y.Doc();
-        this.yPersistence = new IndexeddbPersistence(`poetize-article-draft-${this.draftId}`, this.ydoc);
+        this.yPersistence = new IndexeddbPersistence(`pb-article-draft-${this.draftId}`, this.ydoc);
         this.bindDraftDoc();
 
         if (detail.crdtSnapshotBase64) {
@@ -1429,6 +1440,8 @@ const uploadPicture = () => import("../common/uploadPicture");
         // SPA 路由跳转离开页面只触发 beforeDestroy（不触发 pagehide），
         // 若此处不保存，最近一次 5s 定时保存之后的编辑会丢失。
         // persistDraftSnapshot 内部同步编码快照，ydoc 销毁不影响后续异步上传。
+        // 标记会话已销毁，persistDraftSnapshot 的异步回调据此跳过对已卸载状态的访问。
+        this.draftSessionDestroyed = true;
         this.persistDraftSnapshot();
         this.draftReady = false;
         this.draftEditingUsers = {};
@@ -1917,6 +1930,8 @@ const uploadPicture = () => import("../common/uploadPicture");
               titleCache: this.article.articleTitle || '未命名草稿',
               snapshotBase64
             }, true);
+            // 会话已销毁时跳过状态更新，避免访问已卸载的响应式状态
+            if (this.draftSessionDestroyed) return;
             if (res.code === 200) {
               if (this.draftSnapshotVersion === savingVersion) {
                 this.draftSnapshotDirty = false;
@@ -1931,11 +1946,12 @@ const uploadPicture = () => import("../common/uploadPicture");
               this.draftLastSyncedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             }
           } catch (error) {
+            if (this.draftSessionDestroyed) return;
             this.draftStatusText = '草稿保存失败，仅保留本地副本';
             this.draftStatusType = 'danger';
           } finally {
             this.draftSnapshotSaving = false;
-            if (this.draftSnapshotSaveQueued && this.isDraftMode && this.draftId && this.ydoc) {
+            if (this.draftSnapshotSaveQueued && this.isDraftMode && this.draftId && this.ydoc && !this.draftSessionDestroyed) {
               this.draftSnapshotSaveQueued = false;
               this.scheduleDraftSnapshotSave();
             }
@@ -3086,9 +3102,9 @@ const uploadPicture = () => import("../common/uploadPicture");
         const safeTitle = this.escapeHtmlAttribute(fileName || '视频');
         const type = this.getVideoMimeType(file);
         const typeAttr = type ? ` type="${this.escapeHtmlAttribute(type)}"` : '';
-        return `<div class="poetize-video-card" data-title="${safeTitle}">
-  <video class="poetize-video-player" src="${safeUrl}"${typeAttr} controls preload="metadata" playsinline></video>
-  <span class="poetize-video-play-overlay" aria-hidden="true"></span>
+        return `<div class="pb-video-card" data-title="${safeTitle}">
+  <video class="pb-video-player" src="${safeUrl}"${typeAttr} controls preload="metadata" playsinline></video>
+  <span class="pb-video-play-overlay" aria-hidden="true"></span>
 </div>\n`;
       },
 

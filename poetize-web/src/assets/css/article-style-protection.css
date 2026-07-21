@@ -843,7 +843,7 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
 }
 
 /* ========== 附件卡片 ========== */
-.entry-content .poetize-attachment-card {
+.entry-content .pb-attachment-card {
   display: flex !important;
   align-items: center !important;
   width: 100% !important;
@@ -859,14 +859,14 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
   box-sizing: border-box !important;
 }
 
-.entry-content .poetize-attachment-card:hover {
+.entry-content .pb-attachment-card:hover {
   background: #ffffff !important;
   border-color: #c9e1fb !important;
   box-shadow: 0 4px 12px rgba(22, 119, 255, 0.1) !important;
   transform: translateY(-1px) !important;
 }
 
-.entry-content .poetize-attachment-pill-icon {
+.entry-content .pb-attachment-pill-icon {
   width: 32px !important;
   height: 32px !important;
   background: #1677ff !important;
@@ -879,7 +879,7 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
   flex-shrink: 0 !important;
 }
 
-.entry-content .poetize-attachment-pill-name {
+.entry-content .pb-attachment-pill-name {
   flex: 1 !important;
   white-space: nowrap !important;
   overflow: hidden !important;
@@ -889,7 +889,7 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
   color: #1f2d3d !important;
 }
 
-.entry-content .poetize-attachment-pill-meta {
+.entry-content .pb-attachment-pill-meta {
   font-size: 12px !important;
   color: #8bbaf2 !important;
   margin-left: 8px !important;
@@ -898,14 +898,14 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
   flex-shrink: 0 !important;
 }
 
-.entry-content .poetize-attachment-pill-actions {
+.entry-content .pb-attachment-pill-actions {
   display: flex !important;
   align-items: center !important;
   margin-left: 12px !important;
   gap: 8px !important;
 }
 
-.entry-content .poetize-attachment-pill-btn {
+.entry-content .pb-attachment-pill-btn {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -917,46 +917,46 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
   text-decoration: none !important;
 }
 
-.entry-content .poetize-attachment-pill-btn:hover {
+.entry-content .pb-attachment-pill-btn:hover {
   background: rgba(22, 119, 255, 0.1) !important;
 }
 
 /* 暗黑模式 */
-body.dark-mode .entry-content .poetize-attachment-card,
-.dark-mode .entry-content .poetize-attachment-card {
+body.dark-mode .entry-content .pb-attachment-card,
+.dark-mode .entry-content .pb-attachment-card {
   background: rgba(22, 119, 255, 0.1) !important;
   border-color: rgba(22, 119, 255, 0.2) !important;
 }
 
-body.dark-mode .entry-content .poetize-attachment-card:hover,
-.dark-mode .entry-content .poetize-attachment-card:hover {
+body.dark-mode .entry-content .pb-attachment-card:hover,
+.dark-mode .entry-content .pb-attachment-card:hover {
   background: rgba(22, 119, 255, 0.15) !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
 }
 
-body.dark-mode .entry-content .poetize-attachment-pill-name,
-.dark-mode .entry-content .poetize-attachment-pill-name {
+body.dark-mode .entry-content .pb-attachment-pill-name,
+.dark-mode .entry-content .pb-attachment-pill-name {
   color: #e5eaf3 !important;
 }
 
-body.dark-mode .entry-content .poetize-attachment-pill-meta,
-.dark-mode .entry-content .poetize-attachment-pill-meta {
+body.dark-mode .entry-content .pb-attachment-pill-meta,
+.dark-mode .entry-content .pb-attachment-pill-meta {
   color: #5c8bba !important;
   border-left-color: rgba(22, 119, 255, 0.3) !important;
 }
 
-body.dark-mode .entry-content .poetize-attachment-pill-btn,
-.dark-mode .entry-content .poetize-attachment-pill-btn {
+body.dark-mode .entry-content .pb-attachment-pill-btn,
+.dark-mode .entry-content .pb-attachment-pill-btn {
   color: #79bbff !important;
 }
 
-body.dark-mode .entry-content .poetize-attachment-pill-btn:hover,
-.dark-mode .entry-content .poetize-attachment-pill-btn:hover {
+body.dark-mode .entry-content .pb-attachment-pill-btn:hover,
+.dark-mode .entry-content .pb-attachment-pill-btn:hover {
   background: rgba(22, 119, 255, 0.2) !important;
 }
 
 /* ========== 文章正文视频 ========== */
-.entry-content .poetize-video-card {
+.entry-content .pb-video-card {
   position: relative !important;
   width: min(100%, 720px) !important;
   aspect-ratio: 16 / 9 !important;
@@ -967,7 +967,7 @@ body.dark-mode .entry-content .poetize-attachment-pill-btn:hover,
   border-radius: 8px !important;
 }
 
-.entry-content .poetize-video-player {
+.entry-content .pb-video-player {
   display: block !important;
   width: 100% !important;
   height: 100% !important;
@@ -975,7 +975,7 @@ body.dark-mode .entry-content .poetize-attachment-pill-btn:hover,
   object-fit: contain !important;
 }
 
-.entry-content .poetize-video-play-overlay {
+.entry-content .pb-video-play-overlay {
   position: absolute !important;
   top: 50% !important;
   left: 50% !important;
@@ -988,7 +988,7 @@ body.dark-mode .entry-content .poetize-attachment-pill-btn:hover,
   transition: opacity 0.2s ease, transform 0.2s ease !important;
 }
 
-.entry-content .poetize-video-play-overlay::before {
+.entry-content .pb-video-play-overlay::before {
   position: absolute !important;
   top: 50% !important;
   left: 52% !important;
@@ -1001,17 +1001,17 @@ body.dark-mode .entry-content .poetize-attachment-pill-btn:hover,
   transform: translate(-50%, -50%) !important;
 }
 
-.entry-content .poetize-video-card:hover .poetize-video-play-overlay,
-.entry-content .poetize-video-player:focus + .poetize-video-play-overlay {
+.entry-content .pb-video-card:hover .pb-video-play-overlay,
+.entry-content .pb-video-player:focus + .pb-video-play-overlay {
   opacity: 0.86 !important;
 }
 
-.entry-content .poetize-video-card.is-playing .poetize-video-play-overlay {
+.entry-content .pb-video-card.is-playing .pb-video-play-overlay {
   opacity: 0 !important;
   transform: translate(-50%, -50%) scale(0.92) !important;
 }
 
-body.dark-mode .entry-content .poetize-video-card,
-.dark-mode .entry-content .poetize-video-card {
+body.dark-mode .entry-content .pb-video-card,
+.dark-mode .entry-content .pb-video-card {
   border-color: rgba(255, 255, 255, 0.16) !important;
 }

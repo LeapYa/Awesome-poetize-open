@@ -32,9 +32,9 @@ public class CacheConstants {
     /**
      * 内置自动化工具 UA 硬名单（UA 中明确声明了自动化工具标识，直接拦截）。
      * <p>作为唯一数据源被 {@link com.ld.poetry.config.SecurityFilter} 引用；
-     * Nginx 端 {@code docker/nginx/lua/ban_check.lua} 保留一份等价常量，需手动同步。
-     * <p>这些规则会以内置规则形式展示在封禁列表中（id 形如 {@code builtin_automation:<ua>}），
-     * 管理员可单独删除（删除即写入 {@link #DISABLED_AUTOMATION_UA_KEY} 禁用集合，匹配时跳过）。
+     * 同时通过 {@link com.ld.poetry.service.CacheService#refreshBanRulesSnapshot()} 写入
+     * ban_rules_snapshot 的 {@code builtin_automation_ua} 字段，供 Nginx Lua 读取，
+     * 消除双端硬编码同步问题。Lua 端仅在快照未加载时使用本地兜底常量。
      */
     public static final List<String> BUILTIN_AUTOMATION_UA = List.of(
             "headlesschrome", "playwright", "puppeteer", "selenium", "webdriver", "phantomjs");

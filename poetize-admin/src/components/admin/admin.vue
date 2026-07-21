@@ -60,7 +60,15 @@
   import myHeader from "./common/myHeader.vue";
   import sidebar from "./common/sidebar.vue";
 
-  const STORAGE_KEY = 'poetize_guide_step';
+  const STORAGE_KEY = 'pb_guide_step';
+  // 一次性迁移：旧键 poetize_guide_step → 新键 pb_guide_step
+  try {
+    const oldVal = localStorage.getItem('poetize_guide_step');
+    if (oldVal !== null && localStorage.getItem(STORAGE_KEY) === null) {
+      localStorage.setItem(STORAGE_KEY, oldVal);
+      localStorage.removeItem('poetize_guide_step');
+    }
+  } catch (e) { /* 忽略迁移失败 */ }
   const GUIDE_STEPS = [
     { element: '#field-update-check', route: '/welcome', title: '🆕 Step 1: 版本与更新', description: '欢迎页右下角显示当前项目的版本。点击 <b>检查更新</b> 可检查是否有新版本；发现更新后，按钮会变成 <b>去更新</b>，点击后跳转到 GitHub Releases 查看升级说明。', side: 'left', align: 'end' },
     { element: '#menu-webEdit', route: '/webEdit', title: '🌐 Step 2: 基础设置', description: '配置 <b>站点基础信息</b>（包括网站名称、标题、地址、头像、背景图、页脚），让网站告别默认空白状态。配置完成后点击灵动胶囊的下一步继续配置。' },

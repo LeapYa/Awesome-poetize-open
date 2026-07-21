@@ -302,7 +302,15 @@
 <script>
 const ACTIVE_TASK_STATUSES = ['PENDING', 'RUNNING'];
 const TERMINAL_TASK_STATUSES = ['PARTIAL_SUCCESS', 'SUCCESS', 'FAILED', 'CANCELLED'];
-const TASK_STORAGE_KEY = 'poetize.resource.migration.taskId';
+const TASK_STORAGE_KEY = 'pb.resource.migration.taskId';
+// 一次性迁移：旧键 → 新键
+try {
+  const oldVal = localStorage.getItem('poetize.resource.migration.taskId');
+  if (oldVal !== null && localStorage.getItem(TASK_STORAGE_KEY) === null) {
+    localStorage.setItem(TASK_STORAGE_KEY, oldVal);
+    localStorage.removeItem('poetize.resource.migration.taskId');
+  }
+} catch (e) { /* 忽略迁移失败 */ }
 const POLL_INTERVAL = 1500;
 
 export default {

@@ -82,8 +82,6 @@ class SearchEngineVerifierTest {
                         "lj612134.crawl.yahoo.net"),
                 new BotCase("Baiduspider", BAIDU_UA, "180.76.15.10",
                         "baiduspider-180-76-15-10.crawl.baidu.com"),
-                new BotCase("360 Spider", QIHOO_360_UA, "101.226.167.226",
-                        "crawler-101-226-167-226.qhims.com"),
                 new BotCase("Bytespider", BYTESPIDER_UA, "110.249.201.100",
                         "bytespider-110-249-201-100.crawl.bytedance.com"),
                 new BotCase("Sogou Spider", SOGOU_UA, "106.120.173.96",
@@ -110,6 +108,30 @@ class SearchEngineVerifierTest {
             assertEquals(botCase.displayName(), result.claimedName());
             assertEquals("verified", result.status());
         }
+    }
+
+    @Test
+    void verifies360SpiderAgainstBuiltinIpPrefixes() throws Exception {
+        // 360 Spider 官方声明不支持反向 DNS，验证器必须走内置官方 IP 段，不依赖 PTR。
+        FakeRedisUtil redisUtil = new FakeRedisUtil();
+        // dnsResolver 不提供任何 PTR 记录，确保走 IP 段路径
+        SearchEngineVerifier verifier = newVerifier(redisUtil, new FakeDnsResolver());
+
+        UserAgentClassifier.BotVerification result = awaitStatus(
+                verifier, "180.153.236.84", QIHOO_360_UA, "verified");
+        assertEquals("360 Spider", result.claimedName());
+        assertEquals("verified", result.status());
+    }
+
+    @Test
+    void fails360SpiderWhenIpIsNotInBuiltinPrefixes() throws Exception {
+        FakeRedisUtil redisUtil = new FakeRedisUtil();
+        SearchEngineVerifier verifier = newVerifier(redisUtil, new FakeDnsResolver());
+
+        UserAgentClassifier.BotVerification result = awaitStatus(
+                verifier, "203.0.113.42", QIHOO_360_UA, "failed");
+        assertEquals("360 Spider", result.claimedName());
+        assertEquals("failed", result.status());
     }
 
     @Test
@@ -226,7 +248,8 @@ class SearchEngineVerifierTest {
         SearchEngineVerifier verifier = newVerifier(redisUtil, dnsResolver);
 
         awaitStatus(verifier, "203.0.113.10", GOOGLE_UA, "failed");
-        for (int i = 0; i < 20; i++) {
+        // SHORT_SPOOF_THRESHOLD=3：首次 failed 已计入计数，再触发 2 次即达阈值拉黑。
+        for (int i = 0; i < 2; i++) {
             verifier.verify("203.0.113.10", GOOGLE_UA);
         }
 

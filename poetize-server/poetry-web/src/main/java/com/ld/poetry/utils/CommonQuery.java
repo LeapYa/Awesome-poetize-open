@@ -708,20 +708,27 @@ public class CommonQuery {
     /**
      * 统计每个标签的订阅用户数
      * subscribe 字段存储 JSON 数组格式的标签ID列表，如 [1, 3, 5]
+     * 分页批量读取，避免用户量增长后一次性加载全表导致内存压力
      */
     private Map<Integer, Integer> buildLabelSubscribeCount() {
         Map<Integer, Integer> countMap = new HashMap<>();
         try {
-            List<User> users = userService.lambdaQuery()
-                    .select(User::getSubscribe)
-                    .isNotNull(User::getSubscribe)
-                    .ne(User::getSubscribe, "")
-                    .list();
-            for (User user : users) {
-                List<Integer> labelIds = JsonUtils.parseArray(user.getSubscribe(), Integer.class);
-                if (labelIds != null) {
-                    for (Integer labelId : labelIds) {
-                        countMap.merge(labelId, 1, Integer::sum);
+            int pageSize = 1000;
+            long total = userService.lambdaQuery().count();
+            int pages = (int) Math.ceil((double) total / pageSize);
+            for (int pageNum = 1; pageNum <= pages; pageNum++) {
+                List<User> users = userService.lambdaQuery()
+                        .select(User::getSubscribe)
+                        .isNotNull(User::getSubscribe)
+                        .ne(User::getSubscribe, "")
+                        .page(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize))
+                        .getRecords();
+                for (User user : users) {
+                    List<Integer> labelIds = JsonUtils.parseArray(user.getSubscribe(), Integer.class);
+                    if (labelIds != null) {
+                        for (Integer labelId : labelIds) {
+                            countMap.merge(labelId, 1, Integer::sum);
+                        }
                     }
                 }
             }

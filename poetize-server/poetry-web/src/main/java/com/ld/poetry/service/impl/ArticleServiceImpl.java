@@ -29,6 +29,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -1910,7 +1911,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             boolean isRegexSearch = hasSearch && searchText.startsWith("/") && searchText.endsWith("/")
                     && searchText.length() > 2;
             String actualSearchText = isRegexSearch ? searchText.substring(1, searchText.length() - 1) : searchText;
-            Pattern searchPattern = isRegexSearch ? Pattern.compile(actualSearchText, Pattern.CASE_INSENSITIVE) : null;
+            Pattern searchPattern = null;
+            if (isRegexSearch) {
+                try {
+                    searchPattern = Pattern.compile(actualSearchText, Pattern.CASE_INSENSITIVE);
+                } catch (PatternSyntaxException e) {
+                    // 非法正则退化为普通文本匹配，避免用户构造非法正则导致接口异常
+                    isRegexSearch = false;
+                }
+            }
             String lowerSearchText = hasSearch ? searchText.toLowerCase() : null;
 
             for (Article article : records) {

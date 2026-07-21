@@ -440,7 +440,7 @@ export default {
           message: '文件最大为' + this.effectiveMaxSize + 'M！',
           type: 'warning',
         })
-        fileList.splice(fileList.size - 1, 1)
+        fileList.splice(fileList.length - 1, 1)
       }
     },
   },

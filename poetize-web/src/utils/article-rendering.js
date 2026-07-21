@@ -38,8 +38,8 @@ function extractBlockLanguage(preCode) {
 
   let lang = ''
   classNameArr.some((className) => {
-    if (className.indexOf('language-') > -1) {
-      lang = className.substring(className.indexOf('-') + 1, className.length)
+    if (className.startsWith('language-')) {
+      lang = className.substring('language-'.length)
       return true
     }
     return false
@@ -308,13 +308,13 @@ export function detectAndLoadResources() {
       if (this.loadingArticleId !== articleId) {
         return
       }
-      this.$nextTick(() => {
-        this.highlight()
+      return this.$nextTick(() => {
+        return this.highlight()
       })
     })
     loadTasks.push(highlightTask)
   } else if (content.includes('```')) {
-    this.highlight()
+    loadTasks.push(Promise.resolve(this.highlight()))
   }
 
   if (content.includes('```') && !isClipboardLoaded()) {

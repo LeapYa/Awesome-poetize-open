@@ -793,7 +793,7 @@ export default {
       this.bindAttachmentCardActions()
       this.normalizeTaskListCheckboxes()
       this.wrapTables()
-      this.highlight()
+      this.highlight().catch(err => console.error('highlight failed:', err))
       this.renderMermaid()
       this.renderECharts()
       this.addId()
@@ -814,11 +814,11 @@ export default {
         document.querySelector('.entry-content')
       if (!root) return
 
-      const videos = root.querySelectorAll('.poetize-video-card video')
+      const videos = root.querySelectorAll('.pb-video-card video')
       videos.forEach((video) => {
-        const card = video.closest('.poetize-video-card')
-        if (!card || video.dataset.poetizeVideoReady === 'true') return
-        video.dataset.poetizeVideoReady = 'true'
+        const card = video.closest('.pb-video-card')
+        if (!card || video.dataset.pbVideoReady === 'true') return
+        video.dataset.pbVideoReady = 'true'
         const syncPlayingState = () => {
           card.classList.toggle('is-playing', !video.paused && !video.ended)
         }
@@ -837,11 +837,11 @@ export default {
       if (!root) return
 
       const privateCards = root.querySelectorAll(
-        '[data-poetize-private-attachment="true"]'
+        '[data-pb-private-attachment="true"]'
       )
       privateCards.forEach((card) => {
-        if (card.dataset.poetizeAttachmentBound === 'true') return
-        card.dataset.poetizeAttachmentBound = 'true'
+        if (card.dataset.pbAttachmentBound === 'true') return
+        card.dataset.pbAttachmentBound = 'true'
 
         card.addEventListener(
           'click',
@@ -1392,7 +1392,7 @@ export default {
                   'pre:not(.highlight-wrap)'
                 )
                 if (unprocessedBlocks.length > 0) {
-                  this.highlight()
+                  this.highlight().catch(err => console.error('highlight retry failed:', err))
                   this.renderMermaid()
                   this.renderECharts()
                 }

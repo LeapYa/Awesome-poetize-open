@@ -212,29 +212,29 @@ function getTurndownService() {
     filter: function (node) {
       return (
         node.classList &&
-        node.classList.contains('poetize-attachment-card') &&
-        node.getAttribute('data-poetize-attachment') === 'true'
+        node.classList.contains('pb-attachment-card') &&
+        node.getAttribute('data-pb-attachment') === 'true'
       ) || (
         node.nodeName === 'A' &&
         node.classList &&
-        node.classList.contains('poetize-attachment-card') &&
+        node.classList.contains('pb-attachment-card') &&
         node.getAttribute('href')
       );
     },
     replacement: function (content, node) {
       let href =
-        node.getAttribute('data-poetize-attachment-href') ||
+        node.getAttribute('data-pb-attachment-href') ||
         node.getAttribute('href') ||
         '';
-      const nameNode = node.querySelector('.poetize-attachment-pill-name');
+      const nameNode = node.querySelector('.pb-attachment-pill-name');
       const name = (nameNode ? nameNode.textContent : content || '附件').trim();
-      const isPrivate = node.getAttribute('data-poetize-private-attachment') === 'true';
+      const isPrivate = node.getAttribute('data-pb-private-attachment') === 'true';
 
       if (!href) {
-        const previewLink = node.querySelector('.poetize-attachment-pill-btn[data-poetize-attachment-action="preview"]');
-        const downloadLink = node.querySelector('.poetize-attachment-pill-btn[data-poetize-attachment-action="download"]');
+        const previewLink = node.querySelector('.pb-attachment-pill-btn[data-pb-attachment-action="preview"]');
+        const downloadLink = node.querySelector('.pb-attachment-pill-btn[data-pb-attachment-action="download"]');
         href = (previewLink && previewLink.getAttribute('href')) ||
-          (downloadLink && downloadLink.getAttribute('data-poetize-attachment-href')) ||
+          (downloadLink && downloadLink.getAttribute('data-pb-attachment-href')) ||
           (downloadLink && downloadLink.getAttribute('href')) ||
           '';
       }
@@ -243,7 +243,7 @@ function getTurndownService() {
         href = 'u/' + href.replace(/^\/+/, '');
       }
 
-      return '[' + name.replace(/[\[\]\(\)]/g, '') + '](' + href + ' "poetize-attachment")';
+      return '[' + name.replace(/[\[\]\(\)]/g, '') + '](' + href + ' "pb-attachment")';
     }
   });
 

@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -19,13 +20,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 验证自称搜索引擎的请求是否来自官方IP。
@@ -41,13 +44,18 @@ public class SearchEngineVerifier {
     private static final long SHORT_SPOOF_WINDOW_SECONDS = 10 * 60;
     private static final long LONG_SPOOF_WINDOW_SECONDS = 60 * 60;
     private static final long SHORT_BLACKLIST_SECONDS = 60 * 60;
-    private static final int SHORT_SPOOF_THRESHOLD = 20;
-    private static final int LONG_SPOOF_THRESHOLD = 100;
+    // failed 状态语义是 DNS/IP 段验证已确认 IP 不属于官方搜索引擎（不是疑似），
+    // 真搜索引擎永远不会 failed，因此阈值收紧到 3 次/10分钟、10 次/1小时。
+    private static final int SHORT_SPOOF_THRESHOLD = 3;
+    private static final int LONG_SPOOF_THRESHOLD = 10;
+    // 后台 DNS 验证并发上限，超过的任务在虚拟线程内排队等待，避免一次抖动瞬间打爆 DNS。
+    private static final int DNS_VERIFY_CONCURRENCY = 20;
 
     private final RedisUtil redisUtil;
     private final DnsResolver dnsResolver;
     private final IpPrefixProvider ipPrefixProvider;
     private final ExecutorService dnsVerifyExecutor;
+    private final Semaphore dnsVerifyConcurrency;
 
     @Autowired
     public SearchEngineVerifier(RedisUtil redisUtil) {
@@ -59,19 +67,28 @@ public class SearchEngineVerifier {
     }
 
     SearchEngineVerifier(RedisUtil redisUtil, DnsResolver dnsResolver, IpPrefixProvider ipPrefixProvider) {
-        this(redisUtil, dnsResolver, ipPrefixProvider, createDnsVerifyExecutor());
+        this(redisUtil, dnsResolver, ipPrefixProvider, createDnsVerifyExecutor(),
+                new Semaphore(DNS_VERIFY_CONCURRENCY));
     }
 
     SearchEngineVerifier(RedisUtil redisUtil, DnsResolver dnsResolver, ExecutorService dnsVerifyExecutor) {
-        this(redisUtil, dnsResolver, new HttpIpPrefixProvider(), dnsVerifyExecutor);
+        this(redisUtil, dnsResolver, new HttpIpPrefixProvider(), dnsVerifyExecutor,
+                new Semaphore(DNS_VERIFY_CONCURRENCY));
     }
 
     SearchEngineVerifier(RedisUtil redisUtil, DnsResolver dnsResolver, IpPrefixProvider ipPrefixProvider,
                          ExecutorService dnsVerifyExecutor) {
+        this(redisUtil, dnsResolver, ipPrefixProvider, dnsVerifyExecutor,
+                new Semaphore(DNS_VERIFY_CONCURRENCY));
+    }
+
+    SearchEngineVerifier(RedisUtil redisUtil, DnsResolver dnsResolver, IpPrefixProvider ipPrefixProvider,
+                         ExecutorService dnsVerifyExecutor, Semaphore dnsVerifyConcurrency) {
         this.redisUtil = redisUtil;
         this.dnsResolver = dnsResolver;
         this.ipPrefixProvider = ipPrefixProvider;
         this.dnsVerifyExecutor = dnsVerifyExecutor;
+        this.dnsVerifyConcurrency = dnsVerifyConcurrency;
     }
 
     public UserAgentClassifier.BotVerification verify(String ip, String userAgent) {
@@ -106,7 +123,16 @@ public class SearchEngineVerifier {
             dnsVerifyExecutor.execute(() -> {
                 UserAgentClassifier.BotVerification verification;
                 try {
-                    verification = verifyRule(rule, ip);
+                    // 限流：超出并发上限的虚拟线程在此排队，避免瞬间打爆 DNS。
+                    dnsVerifyConcurrency.acquire();
+                    try {
+                        verification = verifyRule(rule, ip);
+                    } finally {
+                        dnsVerifyConcurrency.release();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    verification = UserAgentClassifier.BotVerification.unknown(rule.displayName, "DNS验证被中断");
                 } catch (Exception e) {
                     log.warn("搜索引擎IP验证失败: engine={}, ip={}, error={}", rule.displayName, ip, e.getMessage());
                     verification = UserAgentClassifier.BotVerification.error(rule.displayName, "搜索引擎验证异常");
@@ -115,6 +141,7 @@ public class SearchEngineVerifier {
                 recordSpoofIfNeeded(ip, verification);
             });
         } catch (RejectedExecutionException e) {
+            // 仅在 executor 已关闭时抛出，回写未知状态避免持久卡死。
             cacheVerification(rule, ip,
                     UserAgentClassifier.BotVerification.unknown(rule.displayName, "DNS验证队列繁忙"));
         }
@@ -133,23 +160,33 @@ public class SearchEngineVerifier {
         }
     }
 
+    // 每个验证任务一个虚拟线程
+    // 配合 dnsVerifyConcurrency 信号量限流真实并发，避免 DNS 阻塞相互拖累。
     private static ExecutorService createDnsVerifyExecutor() {
-        return new ThreadPoolExecutor(
-                2,
-                4,
-                60L,
-                TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(256),
-                new DaemonThreadFactory("search-bot-dns-verify-"),
-                new ThreadPoolExecutor.AbortPolicy()
-        );
+        ThreadFactory factory = Thread.ofVirtual()
+                .name("search-bot-dns-verify-", 1)
+                .factory();
+        return Executors.newThreadPerTaskExecutor(factory);
     }
 
     private UserAgentClassifier.BotVerification verifyRule(SearchEngineRule rule, String ip) {
+        // 优先使用内置 IP 段（适用于官方不支持反向 DNS 的搜索引擎，如 360 Spider）
+        if (rule.builtinIpPrefixes != null && !rule.builtinIpPrefixes.isEmpty()) {
+            return verifyByBuiltinPrefixes(rule, ip);
+        }
         if (hasText(rule.ipPrefixUrl)) {
             return verifyByIpPrefix(rule, ip);
         }
         return verifyByDns(rule, ip);
+    }
+
+    private UserAgentClassifier.BotVerification verifyByBuiltinPrefixes(SearchEngineRule rule, String ip) {
+        boolean matched = rule.builtinIpPrefixes.stream()
+                .anyMatch(prefix -> ipMatchesPrefix(ip, prefix));
+        if (!matched) {
+            return UserAgentClassifier.BotVerification.failed(rule.displayName, "访问IP不在官方IP段");
+        }
+        return UserAgentClassifier.BotVerification.verified(rule.displayName, "官方IP段验证通过");
     }
 
     private UserAgentClassifier.BotVerification verifyByDns(SearchEngineRule rule, String ip) {
@@ -339,13 +376,22 @@ public class SearchEngineVerifier {
     }
 
     private record SearchEngineRule(String displayName, String cacheName, List<String> allowedHostSuffixes,
-                                    String ipPrefixUrl) {
+                                    String ipPrefixUrl, List<String> builtinIpPrefixes) {
         private SearchEngineRule(String displayName, String cacheName, List<String> allowedHostSuffixes) {
-            this(displayName, cacheName, allowedHostSuffixes, null);
+            this(displayName, cacheName, allowedHostSuffixes, null, List.of());
         }
 
         private SearchEngineRule(String displayName, String cacheName, String ipPrefixUrl) {
-            this(displayName, cacheName, List.of(), ipPrefixUrl);
+            this(displayName, cacheName, List.of(), ipPrefixUrl, List.of());
+        }
+
+        /**
+         * 用于无法反向DNS验证但有官方公开IP段的搜索引擎（如360 Spider官方明确不支持nslookup）。
+         * allowedHostSuffixes 仅作为兜底 DNS 验证后缀，builtinIpPrefixes 为主要验证路径。
+         */
+        private SearchEngineRule(String displayName, String cacheName,
+                                 List<String> allowedHostSuffixes, List<String> builtinIpPrefixes) {
+            this(displayName, cacheName, allowedHostSuffixes, null, builtinIpPrefixes);
         }
 
         private static final SearchEngineRule GOOGLE = new SearchEngineRule(
@@ -368,10 +414,23 @@ public class SearchEngineVerifier {
                 "baiduspider",
                 List.of("baidu.com", "baidu.jp")
         );
+        // 360 Spider 官方声明不支持 nslookup（反向DNS查询），仅提供公开 IP 段。
+        // 来源：https://www.so.com/help/spider_ip.html
         private static final SearchEngineRule QIHOO_360 = new SearchEngineRule(
                 "360 Spider",
                 "360spider",
-                List.of("qhims.com")
+                List.of("qhims.com"),
+                List.of(
+                        "180.153.232.0/24", "180.153.234.0/24", "180.153.236.0/24",
+                        "180.163.220.0/24",
+                        "42.236.10.0/24", "42.236.12.0/24", "42.236.13.0/24",
+                        "42.236.14.0/24", "42.236.15.0/24", "42.236.16.0/24",
+                        "42.236.17.0/24", "42.236.46.0/24", "42.236.48.0/24",
+                        "42.236.49.0/24", "42.236.50.0/24", "42.236.51.0/24",
+                        "42.236.52.0/24", "42.236.53.0/24", "42.236.54.0/24",
+                        "42.236.55.0/24", "42.236.99.0/24", "42.236.101.0/24",
+                        "42.236.102.0/24", "42.236.103.0/24"
+                )
         );
         private static final SearchEngineRule BYTEDANCE = new SearchEngineRule(
                 "Bytespider",
@@ -431,17 +490,48 @@ public class SearchEngineVerifier {
         }
     }
 
+    // InetAddress 的 DNS 查询没有原生超时 API，PTR 不存在时可能阻塞数十秒；
+    // 用虚拟线程包装 + Future.get(timeout) 提前返回，避免拖垮验证线程池。
+    private static final Duration DNS_LOOKUP_TIMEOUT = Duration.ofSeconds(3);
+    private static final ExecutorService DNS_LOOKUP_EXECUTOR = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("dns-lookup-", 1).factory());
+
     private static final class InetAddressDnsResolver implements DnsResolver {
         @Override
         public String reverseLookup(String ip) throws Exception {
-            return InetAddress.getByName(ip).getCanonicalHostName();
+            Future<String> future = DNS_LOOKUP_EXECUTOR.submit(() ->
+                    InetAddress.getByName(ip).getCanonicalHostName());
+            try {
+                return future.get(DNS_LOOKUP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                // 虚拟线程继续在后台跑直到 OS 超时，开销可忽略；上层据 SocketTimeoutException 判定失败。
+                throw new SocketTimeoutException("DNS反向查询超时: " + ip);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof Exception ex) {
+                    throw ex;
+                }
+                throw e;
+            }
         }
 
         @Override
         public List<String> forwardLookup(String host) throws Exception {
-            return Arrays.stream(InetAddress.getAllByName(host))
-                    .map(InetAddress::getHostAddress)
-                    .toList();
+            Future<List<String>> future = DNS_LOOKUP_EXECUTOR.submit(() ->
+                    Arrays.stream(InetAddress.getAllByName(host))
+                            .map(InetAddress::getHostAddress)
+                            .toList());
+            try {
+                return future.get(DNS_LOOKUP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                throw new SocketTimeoutException("DNS正向查询超时: " + host);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof Exception ex) {
+                    throw ex;
+                }
+                throw e;
+            }
         }
     }
 
@@ -504,22 +594,6 @@ public class SearchEngineVerifier {
             if (hasText(prefix)) {
                 prefixes.add(prefix.trim());
             }
-        }
-    }
-
-    private static final class DaemonThreadFactory implements ThreadFactory {
-        private final String prefix;
-        private final AtomicInteger sequence = new AtomicInteger(1);
-
-        private DaemonThreadFactory(String prefix) {
-            this.prefix = prefix;
-        }
-
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, prefix + sequence.getAndIncrement());
-            thread.setDaemon(true);
-            return thread;
         }
     }
 }

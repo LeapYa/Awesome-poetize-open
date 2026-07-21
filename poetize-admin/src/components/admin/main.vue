@@ -842,6 +842,12 @@ export default {
         this.$message({ message: '请输入要忽略的 IP', type: 'warning' });
         return;
       }
+      // IPv4 / IPv6 格式校验，避免无效 IP 进入请求
+      const ipFormat = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$|^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$/;
+      if (!ipFormat.test(ip)) {
+        this.$message({ message: 'IP 格式不正确，请输入合法的 IPv4 或 IPv6 地址', type: 'warning' });
+        return;
+      }
       if (this.addingIgnoreIp) return;
       this.addingIgnoreIp = true;
       this.$http.post(this.$constant.baseURL + "/webInfo/visitIgnoreIp", { ip }, true)
