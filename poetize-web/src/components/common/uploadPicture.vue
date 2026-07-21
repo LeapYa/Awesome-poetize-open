@@ -54,6 +54,9 @@ import { useMainStore } from '@/stores/main'
 
 import upload from '../../utils/ajaxUpload'
 
+// 站长/管理员适用的系统硬上限（MB）：资源 size 以 int 存储（Integer.MAX_VALUE），实际约 2GB
+const STAFF_MAX_UPLOAD_MB = 2048
+
 export default {
   props: {
     isAdmin: {
@@ -99,8 +102,9 @@ export default {
       const userType = this.mainStore.currentUser && this.mainStore.currentUser.userType
       return userType === 0 || userType === 1
     },
+    // 站长/管理员适用系统硬上限 2048MB，普通用户按 maxSize
     effectiveMaxSize() {
-      return this.isBossUser ? 100 : this.maxSize
+      return this.isBossUser ? STAFF_MAX_UPLOAD_MB : this.maxSize
     },
     // 计算属性：获取当前存储类型
     currentStoreType() {
@@ -292,13 +296,13 @@ export default {
     },
 
     getChunkUploadSize(fileSize) {
-      if (fileSize <= 2 * 1024 * 1024) {
-        return 8 * 1024
+      if (fileSize <= 50 * 1024 * 1024) {
+        return 1 * 1024 * 1024
       }
-      if (fileSize <= 30 * 1024 * 1024) {
-        return 64 * 1024
+      if (fileSize <= 500 * 1024 * 1024) {
+        return 5 * 1024 * 1024
       }
-      return 256 * 1024
+      return 10 * 1024 * 1024
     },
 
     createChunkUploadId() {
@@ -430,17 +434,12 @@ export default {
     handleRemove(file, fileList) {},
     // 添加文件、上传成功和上传失败时都会被调用
     handleChange(file, fileList) {
-      let flag = false
-
+      // 站长/管理员上限为系统硬上限 2048MB，普通用户按 maxSize
       if (file.size > this.effectiveMaxSize * 1024 * 1024) {
         this.$message({
-          message: '图片最大为' + this.effectiveMaxSize + 'M！',
+          message: '文件最大为' + this.effectiveMaxSize + 'M！',
           type: 'warning',
         })
-        flag = true
-      }
-
-      if (flag) {
         fileList.splice(fileList.size - 1, 1)
       }
     },

@@ -160,7 +160,7 @@ If web search or article-list access is unavailable, record that limitation in `
 
 ## Image Upload Boundaries
 
-1. **Size Limit**: Nginx/OpenResty allows up to **100MB** per request (aligned with Spring Boot `max-file-size`). Normal user-facing image uploads (comments, love wall) are limited to **5MB** by the frontend; admin uploads (fonts, resources) can use the full 100MB.
+1. **Size Limit**: Nginx/OpenResty allows up to **2048MB** per request (aligned with Spring Boot `max-file-size`). Normal user-facing image uploads (comments, love wall) are limited to **5MB** by the frontend; admin uploads (fonts, resources) can use the full 2048MB.
 2. **Formats**: SVG is strictly forbidden (XSS risk). Use JPEG, PNG, GIF, BMP, WEBP, TIFF, ICO.
 3. **Filenames**: No encoding restrictions (Chinese names fully supported). Server auto-renames to UUIDs.
 

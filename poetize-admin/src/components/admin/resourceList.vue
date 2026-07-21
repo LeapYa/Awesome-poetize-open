@@ -1092,10 +1092,11 @@ export default {
       if (!this.replaceResourceTarget) {
         return false;
       }
-      if (file.size > 100 * 1024 * 1024) {
+      // 系统硬上限约 2GB（资源 size 以 int 存储），超限在前端友好拦截
+      if (file.size > 2048 * 1024 * 1024) {
         if (showMessage) {
           this.$message({
-            message: '替换文件不能超过 100M！',
+            message: '替换文件不能超过 2048M！',
             type: 'error'
           });
         }

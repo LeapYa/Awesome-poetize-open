@@ -31,12 +31,12 @@
       </div>
       <template v-if="listType === 'picture'">
         <div slot="tip" class="el-upload__tip">
-          一次最多上传{{maxNumber}}张图片，且每张图片不超过100M！
+          一次最多上传{{maxNumber}}张图片，且每张图片不超过{{effectiveMaxSize}}M！
         </div>
       </template>
       <template v-else>
         <div slot="tip" class="el-upload__tip">
-          一次最多上传{{maxNumber}}个文件，且每个文件不超过100M！
+          一次最多上传{{maxNumber}}个文件，且每个文件不超过{{effectiveMaxSize}}M！
         </div>
       </template>
 
@@ -54,6 +54,9 @@
     import { useMainStore } from '@/stores/main';
 
 import upload from '../../utils/ajaxUpload';
+
+// 后台（站长/管理员）适用的系统硬上限（MB）：资源 size 以 int 存储（Integer.MAX_VALUE），实际约 2GB
+const STAFF_MAX_UPLOAD_MB = 2048;
 
   export default {
     props: {
@@ -104,6 +107,10 @@ import upload from '../../utils/ajaxUpload';
     computed: {
       mainStore() {
         return useMainStore();
+      },
+      // 后台仅站长/管理员可达，适用系统硬上限 2048MB
+      effectiveMaxSize() {
+        return STAFF_MAX_UPLOAD_MB;
       },
       // 计算属性：获取当前存储类型
       currentStoreType() {
@@ -313,13 +320,13 @@ import upload from '../../utils/ajaxUpload';
       },
 
       getChunkUploadSize(fileSize) {
-        if (fileSize <= 2 * 1024 * 1024) {
-          return 8 * 1024;
+        if (fileSize <= 50 * 1024 * 1024) {
+          return 1 * 1024 * 1024;
         }
-        if (fileSize <= 30 * 1024 * 1024) {
-          return 64 * 1024;
+        if (fileSize <= 500 * 1024 * 1024) {
+          return 5 * 1024 * 1024;
         }
-        return 256 * 1024;
+        return 10 * 1024 * 1024;
       },
 
       createChunkUploadId() {
@@ -528,6 +535,14 @@ import upload from '../../utils/ajaxUpload';
         if (suspiciousPatterns.test(fileName)) {
           if (showMessage) {
             this.showValidationMessage('检测到危险文件类型，禁止上传！');
+          }
+          return false;
+        }
+
+        // 系统硬上限校验（后台 2048MB），超限在前端友好拦截
+        if (file.size > this.effectiveMaxSize * 1024 * 1024) {
+          if (showMessage) {
+            this.showValidationMessage('文件最大为' + this.effectiveMaxSize + 'M！');
           }
           return false;
         }
