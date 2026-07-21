@@ -141,6 +141,9 @@ public class ResourceMediaService {
         String originalName = StringUtils.hasText(resource.getOriginalName())
                 ? resource.getOriginalName().trim()
                 : "resource-" + normalizedPublicId;
+        if ("application/octet-stream".equals(mimeType)) {
+            mimeType = inferMimeTypeFromExtension(originalName, location.getAccessPath());
+        }
 
         return new MediaDescriptor(
                 resource.getId(),
@@ -240,6 +243,56 @@ public class ResourceMediaService {
                 message,
                 cause
         );
+    }
+
+    private String inferMimeTypeFromExtension(String originalName, String accessPath) {
+        String extension = extractExtension(originalName);
+        if (extension == null) {
+            extension = extractExtension(accessPath);
+        }
+        if (extension == null) {
+            return "application/octet-stream";
+        }
+        return switch (extension) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            case "apng" -> "image/apng";
+            case "avif" -> "image/avif";
+            case "svg" -> "image/svg+xml";
+            case "bmp" -> "image/bmp";
+            case "ico" -> "image/x-icon";
+            case "mp4" -> "video/mp4";
+            case "webm" -> "video/webm";
+            case "ogg", "ogv" -> "video/ogg";
+            case "mov" -> "video/quicktime";
+            case "mp3" -> "audio/mpeg";
+            case "wav" -> "audio/wav";
+            case "pdf" -> "application/pdf";
+            case "woff" -> "font/woff";
+            case "woff2" -> "font/woff2";
+            case "ttf" -> "font/ttf";
+            case "otf" -> "font/otf";
+            default -> "application/octet-stream";
+        };
+    }
+
+    private String extractExtension(String filename) {
+        if (!StringUtils.hasText(filename)) {
+            return null;
+        }
+        String clean = filename.replace('\\', '/');
+        int queryIndex = clean.indexOf('?');
+        if (queryIndex >= 0) {
+            clean = clean.substring(0, queryIndex);
+        }
+        int dotIndex = clean.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == clean.length() - 1) {
+            return null;
+        }
+        String ext = clean.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
+        return ext.length() <= 10 ? ext : null;
     }
 
     private void closeQuietly(StorageRangeReadHandle handle) {

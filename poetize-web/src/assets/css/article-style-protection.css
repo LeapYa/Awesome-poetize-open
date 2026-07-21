@@ -554,6 +554,7 @@ html body .entry-content hr {
 /* ========== 图片样式 ========== */
 html body .entry-content img {
   max-width: 100% !important;
+  height: auto !important;
   border-radius: 5px !important;
 }
 
