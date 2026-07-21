@@ -441,6 +441,8 @@ export function detectAndLoadResources() {
   if (loadTasks.length > 0) {
     Promise.all(loadTasks).then(() => {
       refreshToc()
+    }).catch(() => {
+      refreshToc()
     })
   } else {
     refreshToc()

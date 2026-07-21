@@ -823,13 +823,15 @@ public class CacheService {
             return false;
         }
 
-        Set<String> ignoreIps = new LinkedHashSet<>(getVisitIgnoreIps());
-        boolean added = ignoreIps.add(normalizedIp);
-        if (added) {
-            saveVisitIgnoreIpsToRedis(ignoreIps);
-            visitIgnoreIpsCache = Collections.unmodifiableSet(ignoreIps);
+        synchronized (this) {
+            Set<String> ignoreIps = new LinkedHashSet<>(getVisitIgnoreIps());
+            boolean added = ignoreIps.add(normalizedIp);
+            if (added) {
+                saveVisitIgnoreIpsToRedis(ignoreIps);
+                visitIgnoreIpsCache = Collections.unmodifiableSet(ignoreIps);
+            }
+            return added;
         }
-        return added;
     }
 
     /**
@@ -842,13 +844,15 @@ public class CacheService {
             return false;
         }
 
-        Set<String> ignoreIps = new LinkedHashSet<>(getVisitIgnoreIps());
-        boolean removed = ignoreIps.remove(normalizedIp);
-        if (removed) {
-            saveVisitIgnoreIpsToRedis(ignoreIps);
-            visitIgnoreIpsCache = Collections.unmodifiableSet(ignoreIps);
+        synchronized (this) {
+            Set<String> ignoreIps = new LinkedHashSet<>(getVisitIgnoreIps());
+            boolean removed = ignoreIps.remove(normalizedIp);
+            if (removed) {
+                saveVisitIgnoreIpsToRedis(ignoreIps);
+                visitIgnoreIpsCache = Collections.unmodifiableSet(ignoreIps);
+            }
+            return removed;
         }
-        return removed;
     }
 
     /**

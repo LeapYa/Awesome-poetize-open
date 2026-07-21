@@ -5,6 +5,7 @@ import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.provider.Ip2RegionProvider;
 import com.ld.poetry.utils.IpUtil;
 import com.ld.poetry.utils.RedisUtil;
+import com.ld.poetry.utils.UserAgentClassifier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -146,7 +147,9 @@ public class SecurityFilter extends OncePerRequestFilter {
         }
 
         // 拦截自动化工具（UA 中明确声明了自动化工具标识，不依赖前端探针 JS 信号）
-        if (isAutomationToolUa(userAgent)) {
+        // 搜索引擎渲染爬虫可能包含自动化工具关键词（如未来的 HeadlessChrome 渲染bot），
+        // 此时跳过硬拦截，交由 CommonQuery.saveHistory 的 DNS/IP 验证路径判定真伪。
+        if (isAutomationToolUa(userAgent) && UserAgentClassifier.detectSearchEngineName(userAgent) == null) {
             log.info("拦截自动化工具: {} from IP: {}", userAgent, clientIP);
             // 写入封禁缓存，后续同 IP 请求走 isAutomationBlocked 快速路径，无需重复解析 UA
             String blockKey = CacheConstants.buildAutomationBlockKey(clientIP);

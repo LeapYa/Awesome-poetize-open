@@ -83,7 +83,7 @@
     };
     migrate('poetize_guide_step', 'pb_guide_step');
     migrate('poetize_guide_hide', 'pb_guide_hide');
-    migrate('pb_update_check', 'pb_update_check');
+    migrate('poetize_update_check', 'pb_update_check');
   } catch (e) { /* 忽略迁移失败 */ }
   const TOTAL_STEPS = 17;
   const GUIDE_TITLES = [

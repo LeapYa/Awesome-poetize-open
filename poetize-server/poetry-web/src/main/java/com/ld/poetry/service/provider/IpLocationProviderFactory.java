@@ -6,8 +6,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -91,11 +89,6 @@ public class IpLocationProviderFactory {
      * @return 地理位置
      */
     public String resolveLocation(String ipAddress) {
-        // 特殊处理IPv6地址（根据规范要求简化处理）
-        if (isIPv6Address(ipAddress)) {
-            return resolveIPv6Location(ipAddress);
-        }
-        
         List<IpLocationProvider> providers = getAvailableProviders(ipAddress);
         
         if (providers.isEmpty()) {
@@ -124,55 +117,6 @@ public class IpLocationProviderFactory {
         
         log.warn("所有提供者都无法解析IP地址: {}", ipAddress);
         return "未知";
-    }
-    
-    /**
-     * 解析IPv6地址的地理位置
-     * 根据规范要求，使用简化策略
-     * @param ipv6Address IPv6地址
-     * @return 地理位置
-     */
-    private String resolveIPv6Location(String ipv6Address) {
-        // 检查腾讯位置服务是否可用（支持IPv6）
-        String tencentLbsKey = sysConfigService.getConfigValueByKey("tencent.lbs.key");
-        if (StringUtils.hasText(tencentLbsKey)) {
-            tencentLbsProvider.setApiKey(tencentLbsKey);
-            if (tencentLbsProvider.isAvailable()) {
-                try {
-                    String result = tencentLbsProvider.resolveLocation(ipv6Address);
-                    
-                    if (!"未知".equals(result)) {
-                        log.info("IPv6地址 {} 解析成功，提供者: 腾讯位置服务，结果: {}", 
-                                 ipv6Address, result);
-                        return result;
-                    }
-                } catch (Exception e) {
-                    log.warn("腾讯位置服务解析IPv6地址 {} 失败: {}", ipv6Address, e.getMessage());
-                }
-            }
-        }
-        
-        // IPv6简化处理策略
-        return "IPv6地址";
-    }
-    
-    /**
-     * 判断是否为IPv6地址
-     * @param ip IP地址
-     * @return 是否为IPv6
-     */
-    private boolean isIPv6Address(String ip) {
-        if (!StringUtils.hasText(ip)) {
-            return false;
-        }
-        
-        try {
-            InetAddress inetAddress = InetAddress.getByName(ip);
-            return inetAddress instanceof Inet6Address;
-        } catch (Exception e) {
-            // 如果Java解析失败，使用简单的字符串匹配
-            return ip.contains(":") && !ip.contains(".");
-        }
     }
     
     /**

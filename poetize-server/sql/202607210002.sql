@@ -16,7 +16,7 @@ SET `bot_verify_status` = 'verified',
     `ua_type`           = 'search_engine',
     `ua_name`           = '360 Spider'
 WHERE `ua_name` IN ('360 Spider', '疑似伪装 360 Spider')
-  AND `bot_verify_status` != 'verified'
+  AND (`bot_verify_status` != 'verified' OR `bot_verify_status` IS NULL)
   AND SUBSTRING_INDEX(`ip`, '.', 3) IN (
       '180.153.232', '180.153.234', '180.153.236',
       '180.163.220',
@@ -34,4 +34,4 @@ SET `bot_verify_status` = 'unknown',
     `ua_type`           = 'search_engine',
     `ua_name`           = 'YisouSpider'
 WHERE `ua_name` IN ('YisouSpider', '疑似伪装 YisouSpider')
-  AND `bot_verify_status` NOT IN ('verified', 'unknown');
+  AND (`bot_verify_status` NOT IN ('verified', 'unknown') OR `bot_verify_status` IS NULL);

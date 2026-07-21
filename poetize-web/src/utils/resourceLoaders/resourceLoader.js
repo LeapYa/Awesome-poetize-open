@@ -442,7 +442,8 @@ export async function ensureHighlightLanguages(languages) {
       // 空语言或已注册（含别名），无需加载
       return
     }
-    const fileName = languageLoaderMap[normalized]
+    const isDirect = !!languageLoaderMap[normalized]
+    const fileName = isDirect
       ? normalized
       : LANGUAGE_ALIAS_FILES[normalized]
     if (!fileName || !languageLoaderMap[fileName] || loading.has(fileName)) {
@@ -454,6 +455,12 @@ export async function ensureHighlightLanguages(languages) {
         .then((mod) => {
           if (!hljsCore.getLanguage(fileName)) {
             hljsCore.registerLanguage(fileName, mod.default)
+          }
+          // 注册所有指向此文件的别名，使 hljs.getLanguage(alias) 可用
+          for (const [alias, target] of Object.entries(LANGUAGE_ALIAS_FILES)) {
+            if (target === fileName && !hljsCore.getLanguage(alias)) {
+              hljsCore.registerLanguage(alias, mod.default)
+            }
           }
         })
         .catch((error) => {

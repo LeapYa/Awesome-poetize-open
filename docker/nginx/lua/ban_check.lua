@@ -93,7 +93,8 @@ local BLOCKED_AI_CRAWLER_UA = {
 -- 运行时从 ban_rules_snapshot.builtin_automation_ua 读取（由 Java CacheConstants.BUILTIN_AUTOMATION_UA 写入），
 -- 消除双端硬编码同步问题。快照刷新成功后此常量不再生效。
 local AUTOMATION_UA_KEYWORDS_FALLBACK = {
-    "headlesschrome", "playwright", "puppeteer", "selenium", "webdriver", "phantomjs",
+    headlesschrome = true, playwright = true, puppeteer = true,
+    selenium = true, webdriver = true, phantomjs = true,
 }
 
 -- 健康检查路径豁免（避免监控探针被误拦截导致服务假死）
@@ -754,9 +755,9 @@ end
 -- AI 爬虫硬名单检查（token 边界匹配，与 Java isBlockedAiCrawler 逻辑一致）
 -- 不需要 Redis，纯字符串匹配，放在 Redis 连接之前以节省资源
 -- disabled：被管理员禁用的硬名单 set，命中则跳过（实现"内置 UA 弃用后可删除"）
-local function is_ai_crawler(ua, disabled)
-    if not ua or ua == "" then return false end
-    local ua_lower = string.lower(ua)
+-- ua_lower：调用方预先 string.lower 的 UA，避免热路径重复 lower
+local function is_ai_crawler(ua_lower, disabled)
+    if not ua_lower or ua_lower == "" then return false end
     for _, pattern in ipairs(BLOCKED_AI_CRAWLER_UA) do
         -- 管理员已禁用（删除）的内置硬名单跳过
         if not (disabled and disabled[pattern]) then
@@ -804,9 +805,9 @@ end
 -- 自动化工具 UA 检查（简单 contains 匹配，与 Java isAutomationToolUa 逻辑一致）
 -- 不需要 Redis，纯字符串匹配，放在 Redis 连接之前以节省资源
 -- disabled：被管理员禁用的硬名单 set，命中则跳过（实现"内置 UA 弃用后可删除"）
-local function is_automation_tool_ua(ua, disabled)
-    if not ua or ua == "" then return false end
-    local ua_lower = string.lower(ua)
+-- ua_lower：调用方预先 string.lower 的 UA，避免热路径重复 lower
+local function is_automation_tool_ua(ua_lower, disabled)
+    if not ua_lower or ua_lower == "" then return false end
     local keywords = get_automation_ua_keywords()
     -- keywords 为 set（key=关键词, value=true），直接遍历 key
     for keyword, _ in pairs(keywords) do
@@ -870,11 +871,12 @@ local function main()
     end
 
     local ua = ngx.var.http_user_agent
+    local ua_lower = ua and string.lower(ua) or nil
 
     -- AI 爬虫硬名单检查（纯 UA 匹配，不需要 Redis，提前拦截节省连接资源）
     -- 从 shared dict 快照缓存读取被禁用的硬名单（非阻塞），管理员删除的内置 UA 会被跳过
     local disabled_ai_ua = load_disabled_ai_ua()
-    if is_ai_crawler(ua, disabled_ai_ua) then
+    if is_ai_crawler(ua_lower, disabled_ai_ua) then
         ngx.log(ngx.WARN, "ban_check: blocked AI crawler UA=", ua, " IP=", ip)
         return block_403()
     end
@@ -882,7 +884,7 @@ local function main()
     -- 自动化工具 UA 检查（纯 UA 匹配，不需要 Redis，提前拦截节省连接资源）
     -- 从 shared dict 快照缓存读取被禁用的硬名单（非阻塞），管理员删除的内置 UA 会被跳过
     local disabled_automation = load_disabled_automation_ua()
-    if is_automation_tool_ua(ua, disabled_automation) then
+    if is_automation_tool_ua(ua_lower, disabled_automation) then
         ngx.log(ngx.WARN, "ban_check: blocked automation tool UA=", ua, " IP=", ip)
         return block_403()
     end

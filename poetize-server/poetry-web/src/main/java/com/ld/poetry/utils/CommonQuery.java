@@ -714,7 +714,10 @@ public class CommonQuery {
         Map<Integer, Integer> countMap = new HashMap<>();
         try {
             int pageSize = 1000;
-            long total = userService.lambdaQuery().count();
+            long total = userService.lambdaQuery()
+                    .isNotNull(User::getSubscribe)
+                    .ne(User::getSubscribe, "")
+                    .count();
             int pages = (int) Math.ceil((double) total / pageSize);
             for (int pageNum = 1; pageNum <= pages; pageNum++) {
                 List<User> users = userService.lambdaQuery()
