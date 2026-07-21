@@ -2210,8 +2210,8 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     };
   },
   created() {
-    // 预加载语言映射（包含后台管理用的中文映射）
-    preloadLanguageMapping(true);
+    // 预加载语言映射（后台管理用的中文映射）
+    preloadLanguageMapping();
     this.getApiConfig();
     this.checkArticlesExist();
   },
