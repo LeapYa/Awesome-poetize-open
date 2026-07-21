@@ -820,6 +820,10 @@ const uploadPicture = () => import("../common/uploadPicture");
         draftSnapshotVersion: 0,
         suppressNextDraftRouteReload: false,
         suppressNextIdRouteReload: false,
+        // 草稿加载令牌：每次 initializePageData 自增，
+        // 异步加载返回时校验令牌，过期（用户已切走）的结果直接丢弃，
+        // 避免快速切换草稿时旧响应覆盖新草稿的会话。
+        pageDataLoadToken: 0,
         skipDraftSync: false,
         draftSnapshotTimer: null,
         draftPageHideHandler: null,
@@ -1178,6 +1182,8 @@ const uploadPicture = () => import("../common/uploadPicture");
       },
       // 初始化页面数据（优化后的加载流程）
       async initializePageData() {
+        // 自增加载令牌：任何比当前令牌旧的异步加载结果都会被丢弃
+        const loadToken = ++this.pageDataLoadToken;
         this.editorReady = false;
         this.shouldRenderEditor = false;
         this.mainEditor = null;
@@ -1188,19 +1194,23 @@ const uploadPicture = () => import("../common/uploadPicture");
         try {
           const tasks = [this.getSortAndLabel(false)];
           if (this.draftId) {
-            tasks.push(this.ensureDraftSessionCreated());
+            tasks.push(this.ensureDraftSessionCreated(loadToken));
           } else if (this.$common.isEmpty(this.id)) {
             this.article = createDefaultArticle();
             this.skipAiTranslation = getDefaultConfig().skipAiTranslation ?? false;
-            tasks.push(this.ensureDraftSessionCreated());
+            tasks.push(this.ensureDraftSessionCreated(loadToken));
           } else {
             this.destroyDraftSession();
-            tasks.push(this.ensureRevisionDraftSessionCreated());
+            tasks.push(this.ensureRevisionDraftSessionCreated(loadToken));
           }
           tasks.push(this.loadSearchPushAvailability());
           tasks.push(this.loadSummaryGenerationMode());
 
           await Promise.all(tasks);
+          // 加载期间用户可能已切换到其他草稿/文章，此时结果已过期，直接放弃
+          if (loadToken !== this.pageDataLoadToken) {
+            return;
+          }
           if (this.searchPushConfiguredEngines.length === 0) {
             this.article.submitToSearchEngine = false;
           }
@@ -1210,7 +1220,9 @@ const uploadPicture = () => import("../common/uploadPicture");
         } catch (error) {
           console.error('初始化页面数据失败:', error);
           // 即使失败也要显示编辑器
-          this.scheduleEditorMount();
+          if (loadToken === this.pageDataLoadToken) {
+            this.scheduleEditorMount();
+          }
         }
       },
 
@@ -1274,7 +1286,7 @@ const uploadPicture = () => import("../common/uploadPicture");
           }, 900);
         }
       },
-      async ensureDraftSessionCreated() {
+      async ensureDraftSessionCreated(loadToken) {
         let detail = null;
         if (this.draftId) {
           await this.acceptDraftInviteIfNeeded();
@@ -1293,9 +1305,9 @@ const uploadPicture = () => import("../common/uploadPicture");
           this.suppressNextDraftRouteReload = true;
           this.$router.replace({ path: '/postEdit', query: { draftId: detail.id } });
         }
-        await this.initializeDraftSession(detail);
+        await this.initializeDraftSession(detail, loadToken);
       },
-      async ensureRevisionDraftSessionCreated() {
+      async ensureRevisionDraftSessionCreated(loadToken) {
         const res = await this.$http.post(this.$constant.baseURL + `/admin/articleDraft/revision/${this.id}`, {}, true);
         if (res.code !== 200 || !res.data) {
           throw new Error(res.message || '创建修订草稿失败');
@@ -1305,7 +1317,7 @@ const uploadPicture = () => import("../common/uploadPicture");
         this.suppressNextIdRouteReload = true;
         this.suppressNextDraftRouteReload = true;
         this.$router.replace({ path: '/postEdit', query: { draftId: detail.id } });
-        await this.initializeDraftSession(detail);
+        await this.initializeDraftSession(detail, loadToken);
       },
       async acceptDraftInviteIfNeeded() {
         const inviteToken = this.$route.query.inviteToken;
@@ -1330,7 +1342,12 @@ const uploadPicture = () => import("../common/uploadPicture");
           this.draftInviteAccepting = false;
         }
       },
-      async initializeDraftSession(detail) {
+      async initializeDraftSession(detail, loadToken) {
+        // 主校验：若本次加载已过期（用户切到了更新的草稿），直接放弃，
+        // 绝不能执行 destroyDraftSession，否则会销毁掉新草稿的会话。
+        if (loadToken !== this.pageDataLoadToken) {
+          return;
+        }
         this.destroyDraftSession();
         this.draftId = detail.id;
         this.draftType = detail.draftType || 'CREATE';
@@ -1350,6 +1367,10 @@ const uploadPicture = () => import("../common/uploadPicture");
         this.resetTranslationForm();
         this.clearPendingTranslation();
         await this.loadDraftCollaboratorOptions();
+        // await 期间可能有更新的加载取代本次，校验后再继续
+        if (loadToken !== this.pageDataLoadToken) {
+          return;
+        }
         this.draftStatusText = '草稿已加载';
         this.draftStatusType = 'info';
         this.draftOnlineCount = 1;
@@ -1362,6 +1383,10 @@ const uploadPicture = () => import("../common/uploadPicture");
         }
 
         await this.yPersistence.whenSynced;
+        // 同上：IndexedDB 同步期间会话可能已被更新的加载接管
+        if (loadToken !== this.pageDataLoadToken) {
+          return;
+        }
         if (this.isDraftDocEmpty()) {
           this.syncDraftDocFromForm();
         } else {
@@ -1400,6 +1425,11 @@ const uploadPicture = () => import("../common/uploadPicture");
         this.draftMetaMap.observe(this.handleDraftMetaMapChange);
       },
       destroyDraftSession() {
+        // 销毁会话前先把未落库的快照保存到服务端。
+        // SPA 路由跳转离开页面只触发 beforeDestroy（不触发 pagehide），
+        // 若此处不保存，最近一次 5s 定时保存之后的编辑会丢失。
+        // persistDraftSnapshot 内部同步编码快照，ydoc 销毁不影响后续异步上传。
+        this.persistDraftSnapshot();
         this.draftReady = false;
         this.draftEditingUsers = {};
         if (this.draftSnapshotTimer) {
