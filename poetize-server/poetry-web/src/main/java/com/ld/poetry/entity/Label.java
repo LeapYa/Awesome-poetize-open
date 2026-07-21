@@ -51,4 +51,10 @@ public class Label implements Serializable {
 
     @TableField(exist = false)
     private Integer countOfLabel;
+
+    /**
+     * 订阅该标签的用户数
+     */
+    @TableField(exist = false)
+    private Integer countOfSubscribe;
 }

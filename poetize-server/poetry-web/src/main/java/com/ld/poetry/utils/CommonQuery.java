@@ -675,6 +675,9 @@ public class CommonQuery {
         // 缓存未命中：执行 N+1 查询并回填缓存
         List<Sort> sorts = new LambdaQueryChainWrapper<>(sortMapper).list();
         if (!CollectionUtils.isEmpty(sorts)) {
+            // 统计每个标签的订阅用户数
+            Map<Integer, Integer> labelSubscribeCount = buildLabelSubscribeCount();
+
             sorts.forEach(sort -> {
                 LambdaQueryChainWrapper<Article> sortWrapper = new LambdaQueryChainWrapper<>(articleMapper);
                 Long countOfSort = sortWrapper
@@ -693,6 +696,7 @@ public class CommonQuery {
                                 .eq(Article::getDeleted, false)
                                 .count();
                         label.setCountOfLabel(countOfLabel.intValue());
+                        label.setCountOfSubscribe(labelSubscribeCount.getOrDefault(label.getId(), 0));
                     });
                     sort.setLabels(labels);
                 }
@@ -700,5 +704,31 @@ public class CommonQuery {
         }
         cacheService.cacheSortInfo(sorts);
         return sorts;
+    }
+
+    /**
+     * 统计每个标签的订阅用户数
+     * subscribe 字段存储 JSON 数组格式的标签ID列表，如 [1, 3, 5]
+     */
+    private Map<Integer, Integer> buildLabelSubscribeCount() {
+        Map<Integer, Integer> countMap = new HashMap<>();
+        try {
+            List<User> users = userService.lambdaQuery()
+                    .select(User::getSubscribe)
+                    .isNotNull(User::getSubscribe)
+                    .ne(User::getSubscribe, "")
+                    .list();
+            for (User user : users) {
+                List<Integer> labelIds = JsonUtils.parseArray(user.getSubscribe(), Integer.class);
+                if (labelIds != null) {
+                    for (Integer labelId : labelIds) {
+                        countMap.merge(labelId, 1, Integer::sum);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("统计标签订阅数失败", e);
+        }
+        return countMap;
     }
 }

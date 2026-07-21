@@ -44,6 +44,7 @@
       <el-table-column prop="labelName" label="标签名称" align="center"></el-table-column>
       <el-table-column prop="labelDescription" label="标签描述" align="center"></el-table-column>
       <el-table-column prop="countOfLabel" label="文章总数" align="center"></el-table-column>
+      <el-table-column prop="countOfSubscribe" label="订阅用户" align="center"></el-table-column>
       <el-table-column label="操作" width="320" align="center">
         <template slot-scope="scope">
           <el-button type="text" icon="el-icon-edit" @click="editLabel(scope.row)">

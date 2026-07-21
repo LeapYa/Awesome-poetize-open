@@ -1295,6 +1295,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 user.setId(one.getId());
                 user.setSubscribe(JsonUtils.toJsonString(sub));
                 updateById(user);
+                cacheService.evictSortArticleList();
 
                 userVO = new UserVO();
                 BeanUtils.copyProperties(one, userVO);
@@ -1308,6 +1309,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 user.setId(one.getId());
                 user.setSubscribe(JsonUtils.toJsonString(sub));
                 updateById(user);
+                cacheService.evictSortArticleList();
 
                 userVO = new UserVO();
                 BeanUtils.copyProperties(one, userVO);

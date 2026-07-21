@@ -916,6 +916,7 @@ public class WebInfoController {
                         .filter(Objects::nonNull)
                         .collect(Collectors.toList());
                 result.put("username_today", usernameToday);
+                result.put("user_today_visit", usernameToday.size());
 
                 // 设置今日省份统计
                 result.put("province_today", todayStats.get("province_today"));
@@ -932,6 +933,7 @@ public class WebInfoController {
                 log.error("从Redis获取今日访问统计失败，使用默认值", e);
                 result.put("ip_count_today", 0L);
                 result.put("username_today", new ArrayList<>());
+                result.put("user_today_visit", 0);
                 result.put("province_today", new ArrayList<>());
                 result.put("ua_today", new ArrayList<>());
                 result.put("article_today", new ArrayList<>());
@@ -947,6 +949,14 @@ public class WebInfoController {
                 result.put("comment_count", commentMapper.selectCount(null));
                 result.put("tree_hole_count", treeHoleMapper.selectCount(null));
                 result.put("love_count", familyMapper.selectCount(null));
+
+                // 订阅用户数：subscribe 字段非空且非空数组
+                Long subscribeCount = new LambdaQueryChainWrapper<>(userMapper)
+                        .isNotNull(User::getSubscribe)
+                        .ne(User::getSubscribe, "")
+                        .ne(User::getSubscribe, "[]")
+                        .count();
+                result.put("subscribe_user_count", subscribeCount);
             } catch (Exception e) {
                 log.error("获取统计数据失败", e);
             }

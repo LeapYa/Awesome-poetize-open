@@ -77,8 +77,8 @@
               <div class="stat-label">总用户</div>
               <div class="stat-footer">
                 <div class="stat-footer-item">
-                  <span class="stat-footer-value">{{ historyInfo.user_today_new || 0 }}</span>
-                  <span class="stat-footer-label">今日新增用户</span>
+                  <span class="stat-footer-value">{{ historyInfo.subscribe_user_count || 0 }}</span>
+                  <span class="stat-footer-label">订阅用户</span>
                 </div>
                 <div class="stat-footer-item">
                   <span class="stat-footer-value">{{ historyInfo.user_today_visit || 0 }}</span>
