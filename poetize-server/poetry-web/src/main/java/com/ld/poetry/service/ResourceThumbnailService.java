@@ -49,10 +49,12 @@ public class ResourceThumbnailService {
         try {
             sourceImage = ImageIO.read(sourcePath.toFile());
         } catch (IOException e) {
-            throw new ThumbnailException(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, "图片格式暂不支持缩略图预览");
+            sourceImage = null;
         }
         if (sourceImage == null || sourceImage.getWidth() <= 0 || sourceImage.getHeight() <= 0) {
-            throw new ThumbnailException(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, "图片格式暂不支持缩略图预览");
+            // ImageIO 无法解码该格式（如 WEBP），回退返回原图字节（按扩展名推断 MIME），
+            // 前端缩略图容器会自行缩放展示，避免直接报"图片加载失败"
+            return serveOriginalImage(resource, sourcePath);
         }
 
         boolean hasAlpha = sourceImage.getColorModel().hasAlpha();
@@ -71,6 +73,60 @@ public class ResourceThumbnailService {
         }
 
         return new Thumbnail(outputStream.toByteArray(), contentType, buildETag(resource, sourcePath, targetWidth, targetHeight));
+    }
+
+    /**
+     * ImageIO 无法解码时回退返回原图字节。
+     * MIME 按物理文件扩展名推断（与 ResourceMediaService 一致，物理副本扩展名优先），
+     * 保证浏览器拿到与真实格式一致的 Content-Type。
+     */
+    private Thumbnail serveOriginalImage(Resource resource, Path sourcePath) throws ThumbnailException {
+        try {
+            byte[] bytes = Files.readAllBytes(sourcePath);
+            String fileName = sourcePath.getFileName() != null ? sourcePath.getFileName().toString() : null;
+            String contentType = inferMimeTypeByExtension(fileName, resource.getOriginalName());
+            return new Thumbnail(bytes, contentType, buildETag(resource, sourcePath, 0, 0));
+        } catch (IOException e) {
+            throw new ThumbnailException(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "读取原始图片失败");
+        }
+    }
+
+    private String inferMimeTypeByExtension(String fileName, String fallbackName) {
+        String extension = extensionOf(fileName);
+        if (extension == null) {
+            extension = extensionOf(fallbackName);
+        }
+        if (extension == null) {
+            return "application/octet-stream";
+        }
+        return switch (extension) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            case "bmp" -> "image/bmp";
+            case "avif" -> "image/avif";
+            case "svg" -> "image/svg+xml";
+            case "ico" -> "image/x-icon";
+            default -> "application/octet-stream";
+        };
+    }
+
+    private String extensionOf(String name) {
+        if (!StringUtils.hasText(name)) {
+            return null;
+        }
+        String clean = name.replace('\\', '/');
+        int queryIndex = clean.indexOf('?');
+        if (queryIndex >= 0) {
+            clean = clean.substring(0, queryIndex);
+        }
+        int dotIndex = clean.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == clean.length() - 1) {
+            return null;
+        }
+        String extension = clean.substring(dotIndex + 1).toLowerCase();
+        return extension.isEmpty() ? null : extension;
     }
 
     private Resource loadThumbnailResource(Integer id) throws ThumbnailException {

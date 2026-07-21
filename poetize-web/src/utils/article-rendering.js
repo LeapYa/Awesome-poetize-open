@@ -15,6 +15,9 @@ import {
   extractEChartsChartTypes,
 } from '@/utils/echartsOptionParser'
 
+// 跟踪活跃的 ECharts resize 监听器，文章重渲染时统一清理，防止 window 上残留已销毁图表的 handler
+let activeEChartsResizeHandlers = []
+
 async function collectEChartsChartTypesFromMarkdown(content) {
   const chartTypes = new Set()
   const codeBlockRegex = /```echarts[^\n\r]*\r?\n([\s\S]*?)```/g
@@ -161,7 +164,7 @@ export async function highlight() {
 
     const copyButton = document.createElement('a')
     copyButton.className = 'copy-code'
-    copyButton.href = 'javascript:'
+    copyButton.href = '#'
     copyButton.setAttribute('data-clipboard-target', '#hljs-' + i)
     copyButton.innerHTML =
       '<i class="fa fa-clipboard" aria-hidden="true"></i>'
@@ -519,6 +522,12 @@ export async function renderECharts() {
     return
   }
 
+  // 清理上一轮渲染残留的 resize 监听器（文章切换/语言切换时旧 DOM 已移除但 handler 仍在 window 上）
+  activeEChartsResizeHandlers.forEach((handler) =>
+    window.removeEventListener('resize', handler)
+  )
+  activeEChartsResizeHandlers = []
+
   const entryContent = document.querySelector('.entry-content')
   if (!entryContent) return
 
@@ -636,6 +645,7 @@ export async function renderECharts() {
           }
         }
         window.addEventListener('resize', resizeHandler)
+        activeEChartsResizeHandlers.push(resizeHandler)
         container._resizeHandler = resizeHandler
       } catch (renderError) {
         console.error('ECharts渲染失败:', renderError)
@@ -746,9 +756,13 @@ export async function handleThemeChange(themeData) {
 
         if (container._resizeHandler) {
           window.removeEventListener('resize', container._resizeHandler)
+          activeEChartsResizeHandlers = activeEChartsResizeHandlers.filter(
+            (h) => h !== container._resizeHandler
+          )
         }
         const resizeHandler = () => newChart.resize()
         window.addEventListener('resize', resizeHandler)
+        activeEChartsResizeHandlers.push(resizeHandler)
         container._resizeHandler = resizeHandler
       } catch (parseError) {
         console.error('ECharts 配置解析失败:', parseError)

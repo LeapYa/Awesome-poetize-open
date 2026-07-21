@@ -15,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -44,6 +45,9 @@ public class WebmasterVisitRollbackTest {
 
     @Mock
     private ArticleMapper articleMapper;
+
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
 
     @BeforeEach
     public void setUp() {

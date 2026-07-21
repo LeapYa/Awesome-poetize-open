@@ -246,9 +246,12 @@ public class ResourceMediaService {
     }
 
     private String inferMimeTypeFromExtension(String originalName, String accessPath) {
-        String extension = extractExtension(originalName);
+        // 物理副本(accessPath)的扩展名反映真实存储格式，优先采用；
+        // originalName 是用户上传时的文件名，可能与实际存储格式不符（如 .jpg 名存 .webp 内容），
+        // 推断错误叠加 nosniff 会导致浏览器拒绝渲染
+        String extension = extractExtension(accessPath);
         if (extension == null) {
-            extension = extractExtension(accessPath);
+            extension = extractExtension(originalName);
         }
         if (extension == null) {
             return "application/octet-stream";

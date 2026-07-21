@@ -971,7 +971,10 @@ export default {
             const originalWebTitle = webInfo.webTitle || webInfo.webName
             this.mainStore.loadWebInfo(webInfo)
 
-            if (originalWebTitle) {
+            // 文章页/分类页自行管理标题，跳过全局覆盖（防异步竞态覆盖文章标题）
+            const path = this.$route.path
+            const selfManaged = path.startsWith('/article/') || path.startsWith('/sort/')
+            if (originalWebTitle && !selfManaged) {
               document.title = originalWebTitle
               window.OriginTitile = originalWebTitle
             }
@@ -1008,8 +1011,10 @@ export default {
             // 处理网站信息
             this.mainStore.loadWebInfo(res.data)
 
-            // 更新浏览器标签栏标题 - 使用 webTitle
-            if (originalWebTitle) {
+            // 更新浏览器标签栏标题 - 使用 webTitle（文章页/分类页自管理，跳过覆盖）
+            const path = this.$route.path
+            const selfManaged = path.startsWith('/article/') || path.startsWith('/sort/')
+            if (originalWebTitle && !selfManaged) {
               document.title = originalWebTitle
               // 同时更新title.js中保存的原始标题
               window.OriginTitile = originalWebTitle

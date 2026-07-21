@@ -793,6 +793,10 @@
         this.getArticles();
       },
       changeStatus(article, flag) {
+        // 记录旧值，API 失败时回滚开关状态
+        const oldValue = flag === 1 ? !article.viewStatus
+          : flag === 2 ? !article.commentStatus
+          : !article.recommendStatus;
         let param;
         if (flag === 1) {
           param = {
@@ -827,6 +831,10 @@
             }
           })
           .catch((error) => {
+            // 回滚开关到旧值，保持 UI 与后端一致
+            if (flag === 1) article.viewStatus = oldValue;
+            else if (flag === 2) article.commentStatus = oldValue;
+            else if (flag === 3) article.recommendStatus = oldValue;
             this.$message({
               message: error.message,
               type: "error"
@@ -1094,6 +1102,15 @@
         if (fileList.length > 50) {
           this.$message({ message: '最多选择 50 个文件', type: 'warning' });
           fileList.splice(50);
+        }
+        // 限制单个文件大小（10MB）
+        const maxSize = 10 * 1024 * 1024;
+        for (let i = fileList.length - 1; i >= 0; i--) {
+          const rawFile = fileList[i].raw;
+          if (rawFile && rawFile.size > maxSize) {
+            this.$message({ message: `${fileList[i].name} 超过 10MB，已跳过`, type: 'warning' });
+            fileList.splice(i, 1);
+          }
         }
         this.importFileList = fileList;
       },

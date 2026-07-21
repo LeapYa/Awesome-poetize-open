@@ -235,9 +235,9 @@ html body .entry-content i:not(.fa):not([class^="el-icon"]):not([class*=" el-ico
 }
 
 /* ========== 代码块样式保护 ========== */
-/* 行内代码 */
-body .entry-content code:not(.hljs),
-html body .entry-content code:not(.hljs) {
+/* 行内代码（仅匹配 pre 之外的 code，避免误伤无语言标注的块级代码） */
+body .entry-content :not(pre) > code:not(.hljs),
+html body .entry-content :not(pre) > code:not(.hljs) {
   background: #fefac7 !important;
   color: #e67474 !important;
   word-break: break-word !important;
@@ -306,9 +306,9 @@ html body .entry-content .highlight-wrap code {
   border-radius: 0 0 5px 5px !important;
 }
 
-/* hljs样式 */
-body .entry-content pre code.hljs,
-html body .entry-content pre code.hljs {
+/* 块级代码基础样式（含无语言标注的代码块，其无 hljs 类） */
+body .entry-content pre code,
+html body .entry-content pre code {
   color: #a9b7c6 !important;
   background: #1d1f21 !important;
   display: block !important;

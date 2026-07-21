@@ -305,6 +305,59 @@ public class CacheService {
     }
 
     /**
+     * 缓存标签订阅数映射（labelId → 订阅用户数），永久缓存
+     * <p>subscribe/unsubscribe 时通过 {@link #evictSubscribeCount()} 主动清理。
+     */
+    public void cacheLabelSubscribeCount(Map<Integer, Integer> countMap) {
+        if (countMap != null) {
+            redisUtil.set(CacheConstants.LABEL_SUBSCRIBE_COUNT_KEY, countMap, CacheConstants.PERMANENT_EXPIRE_TIME);
+        }
+    }
+
+    /**
+     * 获取缓存的标签订阅数映射
+     * @return 缓存未命中返回 null
+     */
+    @SuppressWarnings("unchecked")
+    public Map<Integer, Integer> getCachedLabelSubscribeCount() {
+        Object cached = redisUtil.get(CacheConstants.LABEL_SUBSCRIBE_COUNT_KEY);
+        if (cached instanceof Map) {
+            return (Map<Integer, Integer>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 缓存订阅用户总数，5 分钟 TTL
+     */
+    public void cacheSubscribeUserCount(Long count) {
+        if (count != null) {
+            redisUtil.set(CacheConstants.SUBSCRIBE_USER_COUNT_KEY, count, CacheConstants.SHORT_EXPIRE_TIME);
+        }
+    }
+
+    /**
+     * 获取缓存的订阅用户总数
+     * @return 缓存未命中返回 null
+     */
+    public Long getCachedSubscribeUserCount() {
+        Object cached = redisUtil.get(CacheConstants.SUBSCRIBE_USER_COUNT_KEY);
+        if (cached instanceof Number) {
+            return ((Number) cached).longValue();
+        }
+        return null;
+    }
+
+    /**
+     * 清理订阅相关缓存（标签订阅数 + 订阅用户总数）
+     * <p>在 subscribe/unsubscribe 时调用。
+     */
+    public void evictSubscribeCount() {
+        redisUtil.del(CacheConstants.LABEL_SUBSCRIBE_COUNT_KEY);
+        redisUtil.del(CacheConstants.SUBSCRIBE_USER_COUNT_KEY);
+    }
+
+    /**
      * 缓存文章分页列表(listArticle 接口的完整 PoetryResult)
      * TTL 为 5 分钟, 写操作会主动清理相关缓存
      */
@@ -2214,10 +2267,7 @@ public class CacheService {
      * 通用缓存获取方法
      */
     public Object get(String key) {
-        Object value = redisUtil.get(key);
-        if (value != null) {
-        }
-        return value;
+        return redisUtil.get(key);
     }
 
     /**

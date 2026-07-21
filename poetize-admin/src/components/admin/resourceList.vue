@@ -1957,7 +1957,7 @@ export default {
     },
     previewMedia(mediaPath, mimeType, fileName) {
       this.previewMediaUrl = mediaPath;
-      this.previewMediaType = mimeType || '';
+      this.previewMediaType = this.resolveEffectiveMimeType(mimeType, fileName || mediaPath);
       this.previewFileName = fileName || '';
 
       if (this.isFont(mimeType, fileName || mediaPath)) {
@@ -1967,6 +1967,22 @@ export default {
       }
 
       this.previewVisible = true;
+    },
+    resolveEffectiveMimeType(mimeType, fileName) {
+      const mt = ((mimeType || '') + '').toLowerCase();
+      // 非 octet-stream（且非空）时后端已给出准确类型，直接采用
+      if (mt && mt !== 'application/octet-stream') {
+        return mt;
+      }
+      // 历史资源 mimeType 缺失时按扩展名推断大类，供预览对话框判断图片/视频
+      const name = ((fileName || '') + '').toLowerCase();
+      if (/\.(png|apng|jpe?g|gif|svg|webp|bmp|avif|ico)(\?.*)?$/.test(name)) {
+        return 'image/*';
+      }
+      if (/\.(mp4|webm|ogg|ogv|mov|m4v)(\?.*)?$/.test(name)) {
+        return 'video/*';
+      }
+      return mt;
     },
     handleVideoThumbnailLoaded(event) {
       const video = event && event.target;

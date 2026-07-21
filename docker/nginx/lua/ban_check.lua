@@ -123,6 +123,8 @@ local cached_disabled_ai_ua = nil
 local cached_disabled_automation_ua = nil
 -- 内置自动化工具 UA 硬名单（从快照读取，nil 时使用 FALLBACK 常量）
 local cached_builtin_automation_ua = nil
+-- 本 worker 模块缓存的填充时间戳，用于检测其他 worker 是否已刷新 shared dict
+local module_cache_ts = 0
 
 -- ========== 工具函数 ==========
 
@@ -644,15 +646,21 @@ local function refresh_rules_if_needed(red)
         if type(v) == "string" then builtin_set[string.lower(v)] = true end
     end
     cached_builtin_automation_ua = builtin_set
+    module_cache_ts = now
 end
 
 -- 从模块级缓存读取规则（fallback 到 shared dict）
 -- 返回 ua_rules, cidr_rules, region_rules（可能为空 table）
 local function load_rules_from_cache()
-    if cached_ua_rules ~= nil then
+    -- 检测其他 worker 是否已刷新 shared dict（本 worker 模块缓存过期）
+    local shared_ts = rules_cache:get("last_refresh") or 0
+    local stale = cached_ua_rules == nil or shared_ts > module_cache_ts
+
+    if not stale then
         return cached_ua_rules, cached_cidr_rules, cached_region_rules
     end
-    -- 冷启动 fallback：从 shared dict 解码
+
+    -- 冷启动或过期：从 shared dict 解码全部规则（含 disabled 列表）
     local function decode(s)
         if not s or s == "" then return {} end
         local t = cjson.decode(s)
@@ -665,6 +673,24 @@ local function load_rules_from_cache()
     cached_ua_rules = ua
     cached_cidr_rules = cidr
     cached_region_rules = region
+
+    -- 同步刷新 disabled 列表缓存，避免各 load_* 函数分别检测过期
+    local function to_set(arr)
+        local set = {}
+        if type(arr) == "table" then
+            for _, v in ipairs(arr) do
+                if type(v) == "string" then set[string.lower(v)] = true end
+            end
+        end
+        return set
+    end
+    cached_disabled_ai_ua = to_set(decode(rules_cache:get("disabled_ai_ua")))
+    cached_disabled_automation_ua = to_set(decode(rules_cache:get("disabled_automation_ua")))
+    local builtin_arr = decode(rules_cache:get("builtin_automation_ua"))
+    cached_builtin_automation_ua = (type(builtin_arr) == "table" and #builtin_arr > 0)
+        and to_set(builtin_arr) or nil
+
+    module_cache_ts = shared_ts
     return ua, cidr, region
 end
 

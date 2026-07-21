@@ -150,13 +150,18 @@ public class SearchEngineVerifier {
     @PreDestroy
     public void shutdown() {
         dnsVerifyExecutor.shutdown();
+        DNS_LOOKUP_EXECUTOR.shutdown();
         try {
             if (!dnsVerifyExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
                 dnsVerifyExecutor.shutdownNow();
             }
+            if (!DNS_LOOKUP_EXECUTOR.awaitTermination(2, TimeUnit.SECONDS)) {
+                DNS_LOOKUP_EXECUTOR.shutdownNow();
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             dnsVerifyExecutor.shutdownNow();
+            DNS_LOOKUP_EXECUTOR.shutdownNow();
         }
     }
 

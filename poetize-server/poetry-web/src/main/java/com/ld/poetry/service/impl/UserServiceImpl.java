@@ -292,8 +292,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 记录管理员登录
         if (isActualAdmin) {
             recordAdminLoginIp(clientIp);
-            // 仅站长(DEV)需要清理登录前的访问记录，普通管理员访问正常统计
-            if (one.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode()) {
+            // 仅站长(ADMIN)需要清理登录前的访问记录，普通管理员访问正常统计
+            if (one.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode()) {
                 handleOwnerVisitIp(clientIp);
             }
             log.info("管理员登录成功 - 账号: {}, IP: {}", account, clientIp);
@@ -1299,6 +1299,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 user.setSubscribe(JsonUtils.toJsonString(sub));
                 updateById(user);
                 cacheService.evictSortArticleList();
+                cacheService.evictSubscribeCount();
 
                 userVO = new UserVO();
                 BeanUtils.copyProperties(one, userVO);
@@ -1313,6 +1314,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 user.setSubscribe(JsonUtils.toJsonString(sub));
                 updateById(user);
                 cacheService.evictSortArticleList();
+                cacheService.evictSubscribeCount();
 
                 userVO = new UserVO();
                 BeanUtils.copyProperties(one, userVO);
@@ -1458,8 +1460,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 根据用户实际权限判断是否为管理员
         boolean isActualAdmin = (existUser.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode() ||
                 existUser.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode());
-        // 仅站长(DEV)需要清理登录前的访问记录
-        if (existUser.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode()) {
+        // 仅站长(ADMIN)需要清理登录前的访问记录
+        if (existUser.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode()) {
             handleOwnerVisitIp(PoetryUtil.getIpAddr(PoetryUtil.getRequest()));
         }
 

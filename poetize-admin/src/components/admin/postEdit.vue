@@ -1439,10 +1439,22 @@ const uploadPicture = () => import("../common/uploadPicture");
         // 销毁会话前先把未落库的快照保存到服务端。
         // SPA 路由跳转离开页面只触发 beforeDestroy（不触发 pagehide），
         // 若此处不保存，最近一次 5s 定时保存之后的编辑会丢失。
-        // persistDraftSnapshot 内部同步编码快照，ydoc 销毁不影响后续异步上传。
-        // 标记会话已销毁，persistDraftSnapshot 的异步回调据此跳过对已卸载状态的访问。
+        // 注意：不能依赖 persistDraftSnapshot()——当 draftSnapshotSaving=true 时
+        // 它只排队不编码，而下方会立即清空队列标志并销毁 ydoc，导致排队丢失。
+        // 因此这里同步编码快照、fire-and-forget 上传，确保 ydoc 销毁前数据已捕获。
         this.draftSessionDestroyed = true;
-        this.persistDraftSnapshot();
+        if (this.isDraftMode && this.draftId && this.ydoc && this.draftSnapshotDirty) {
+          try {
+            const snapshotBase64 = uint8ArrayToBase64(Y.encodeStateAsUpdate(this.ydoc));
+            this.$http.post(
+              this.$constant.baseURL + `/admin/articleDraft/${this.draftId}/snapshot`,
+              { titleCache: this.article.articleTitle || '未命名草稿', snapshotBase64 },
+              true
+            ).catch(() => {});
+          } catch (e) {
+            console.error('销毁草稿会话时快照保存失败:', e);
+          }
+        }
         this.draftReady = false;
         this.draftEditingUsers = {};
         if (this.draftSnapshotTimer) {

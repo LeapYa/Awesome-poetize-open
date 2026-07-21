@@ -229,9 +229,10 @@ public class CommonQuery {
     }
 
     private boolean isVisitStatisticsOwner(User user) {
+        // 站长 = USER_TYPE_ADMIN(0)；USER_TYPE_DEV(1) 是普通管理员，其访问正常统计
         return user != null
                 && user.getUserType() != null
-                && user.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode();
+                && user.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode();
     }
 
     public User getUser(Integer userId) {
@@ -708,9 +709,13 @@ public class CommonQuery {
     /**
      * 统计每个标签的订阅用户数
      * subscribe 字段存储 JSON 数组格式的标签ID列表，如 [1, 3, 5]
-     * 分页批量读取，避免用户量增长后一次性加载全表导致内存压力
+     * 优先读 Redis 缓存（subscribe/unsubscribe 时 evict），未命中才分页全表扫描
      */
     private Map<Integer, Integer> buildLabelSubscribeCount() {
+        Map<Integer, Integer> cached = cacheService.getCachedLabelSubscribeCount();
+        if (cached != null) {
+            return cached;
+        }
         Map<Integer, Integer> countMap = new HashMap<>();
         try {
             int pageSize = 1000;
@@ -738,6 +743,7 @@ public class CommonQuery {
         } catch (Exception e) {
             log.warn("统计标签订阅数失败", e);
         }
+        cacheService.cacheLabelSubscribeCount(countMap);
         return countMap;
     }
 }

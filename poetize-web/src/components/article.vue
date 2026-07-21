@@ -385,6 +385,7 @@ export default {
       },
       articleThemeConfig: null, // 文章主题配置（缓存，供 TOC 使用）
       paymentLoading: false, // 付费按钮加载状态
+      paymentCheckInterval: null, // 支付状态轮询定时器
       verifyingPayment: false, // 验证支付状态
       showImageViewer: false, // 是否显示图片预览
       previewImages: [], // 预览图片列表
@@ -572,6 +573,12 @@ export default {
     })
   },
   unmounted() {
+    // 清理支付状态轮询定时器，防止组件卸载后继续发请求
+    if (this.paymentCheckInterval) {
+      clearInterval(this.paymentCheckInterval)
+      this.paymentCheckInterval = null
+    }
+
     window.removeEventListener('scroll', this.onScrollPage)
     window.removeEventListener('load', this.syncTocPosition)
     window.removeEventListener('pageshow', this.syncTocPosition)
@@ -1029,10 +1036,11 @@ export default {
             duration: 10000
           })
           let checkCount = 0
-          const checkInterval = setInterval(async () => {
+          this.paymentCheckInterval = setInterval(async () => {
             checkCount++
             if (checkCount > 60) { // 5分钟超时
-              clearInterval(checkInterval)
+              clearInterval(this.paymentCheckInterval)
+              this.paymentCheckInterval = null
               return
             }
             try {
@@ -1041,7 +1049,8 @@ export default {
                 { articleId: this.article.id }
               )
               if (checkRes.code === 200 && checkRes.data === true) {
-                clearInterval(checkInterval)
+                clearInterval(this.paymentCheckInterval)
+                this.paymentCheckInterval = null
                 this.$message.success('支付成功！正在刷新文章...')
                 this.getArticle()
               }

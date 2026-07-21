@@ -6,7 +6,7 @@ description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更
 summary: POETIZE 博客运营助手：写文章、发布、管理分类标签与评论、上传图片、翻译管理、切换主题、查看数据、配置 SEO、处理付费文章支付配置。
 license: MIT
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/skills/poetize-blog-automation
-version: 2.1.7
+version: 2.1.8
 primaryEnv: POETIZE_API_KEY
 requires:
   anyBins:

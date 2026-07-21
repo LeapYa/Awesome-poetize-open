@@ -167,6 +167,20 @@ public class CacheConstants {
     public static final String SORT_INFO_KEY = CACHE_PREFIX + "sort:info";
 
     /**
+     * 标签订阅数缓存键（Map&lt;labelId, count&gt;）
+     * <p>数据源 CommonQuery.buildLabelSubscribeCount()，getSortInfo() 缓存未命中时读取。
+     * 永久缓存 + 主动 evict（subscribe/unsubscribe 时清理），避免每次 sortInfo 重建都全表扫描。
+     */
+    public static final String LABEL_SUBSCRIBE_COUNT_KEY = CACHE_PREFIX + "label:subscribe_count";
+
+    /**
+     * 订阅用户总数缓存键
+     * <p>数据源 WebInfoController.getHistoryInfo()，后台仪表盘展示。
+     * 短 TTL 缓存（5 分钟），subscribe/unsubscribe 时主动 evict。
+     */
+    public static final String SUBSCRIBE_USER_COUNT_KEY = CACHE_PREFIX + "subscribe:user_count";
+
+    /**
      * 标签信息缓存键前缀
      * 格式: poetize:label:list:{sortId}
      */

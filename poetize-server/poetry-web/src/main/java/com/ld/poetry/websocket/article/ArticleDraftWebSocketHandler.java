@@ -144,7 +144,11 @@ public class ArticleDraftWebSocketHandler extends TextWebSocketHandler {
             if (!target.isOpen()) {
                 continue;
             }
-            target.sendMessage(textMessage);
+            synchronized (target) {
+                if (target.isOpen()) {
+                    target.sendMessage(textMessage);
+                }
+            }
         }
     }
 }

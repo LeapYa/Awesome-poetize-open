@@ -723,13 +723,12 @@ public class WebInfoController {
             if (!isValidVisitCleanIp(normalizedIp)) {
                 return PoetryResult.fail("IP 格式无效");
             }
-            boolean alreadyIgnored = cacheService.isVisitIpIgnored(normalizedIp);
             boolean added = cacheService.addVisitIgnoreIp(normalizedIp);
 
             Map<String, Object> result = new HashMap<>();
             result.put("ip", normalizedIp);
             result.put("added", added);
-            result.put("alreadyIgnored", alreadyIgnored);
+            result.put("alreadyIgnored", !added);
             return PoetryResult.success(result);
         } catch (Exception e) {
             log.error("新增访问统计忽略IP失败", e);
@@ -1012,12 +1011,16 @@ public class WebInfoController {
                 result.put("tree_hole_count", treeHoleMapper.selectCount(null));
                 result.put("love_count", familyMapper.selectCount(null));
 
-                // 订阅用户数：subscribe 字段非空且非空数组
-                Long subscribeCount = new LambdaQueryChainWrapper<>(userMapper)
-                        .isNotNull(User::getSubscribe)
-                        .ne(User::getSubscribe, "")
-                        .ne(User::getSubscribe, "[]")
-                        .count();
+                // 订阅用户数：优先读缓存（subscribe/unsubscribe 时 evict），未命中再查库
+                Long subscribeCount = cacheService.getCachedSubscribeUserCount();
+                if (subscribeCount == null) {
+                    subscribeCount = new LambdaQueryChainWrapper<>(userMapper)
+                            .isNotNull(User::getSubscribe)
+                            .ne(User::getSubscribe, "")
+                            .ne(User::getSubscribe, "[]")
+                            .count();
+                    cacheService.cacheSubscribeUserCount(subscribeCount);
+                }
                 result.put("subscribe_user_count", subscribeCount);
             } catch (Exception e) {
                 log.error("获取统计数据失败", e);

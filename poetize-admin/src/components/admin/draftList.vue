@@ -99,6 +99,7 @@ export default {
       setAdminContentLoading(loading)
     },
     loadDrafts() {
+      this.setContentLoading(true)
       this.$http.post(this.$constant.baseURL + '/admin/articleDraft/list', this.pagination, true)
         .then((res) => {
           if (res.code !== 200 || !res.data) {

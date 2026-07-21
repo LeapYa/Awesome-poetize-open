@@ -46,7 +46,7 @@ html body .entry-content {
     font-family: FontAwesome;
 }
 
-.entry-content code:not(.hljs) {
+.entry-content :not(pre) > code:not(.hljs) {
     background: #fefac7;
     color: #e67474;
     word-break: break-word;
@@ -280,6 +280,7 @@ html body .entry-content {
 /* 旧版语言标签伪元素（保留但禁用，语言由 .hl-lang 输出） */
 .highlight-wrap code[data-rel]:before { content: none; }
 
+.highlight-wrap pre code,
 .hljs {
     color: #a9b7c6;
     background: #1d1f21;

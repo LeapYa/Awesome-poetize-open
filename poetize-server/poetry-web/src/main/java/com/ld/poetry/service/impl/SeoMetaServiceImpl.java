@@ -97,7 +97,7 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             String description = generateArticleDescription(article, seoConfig, language);
             String keywords = generateArticleKeywords(article, seoConfig, language, sourceLanguage);
 
-            meta.put("title", title);
+            meta.put("title", title + " - " + getSiteTitle());
             meta.put("description", description);
             // 仅在有文章相关关键词时才输出keywords，避免输出空值或无关的全站关键词
             if (StringUtils.hasText(keywords)) {
