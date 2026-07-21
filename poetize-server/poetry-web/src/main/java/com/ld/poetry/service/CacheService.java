@@ -1778,6 +1778,26 @@ public class CacheService {
                     item.put("builtin", true);
                     result.add(item);
                 }
+
+                // 追加内置自动化工具 UA 硬名单（仅展示用；已被禁用的不再显示）
+                Set<String> disabledAutomation = loadDisabledAutomationUa();
+                for (String ua : CacheConstants.BUILTIN_AUTOMATION_UA) {
+                    if (disabledAutomation.contains(ua.toLowerCase(Locale.ROOT))) {
+                        continue;
+                    }
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", "builtin_automation:" + ua);
+                    item.put("type", "ua");
+                    item.put("value", ua);
+                    item.put("matchMode", "contains");
+                    item.put("regionType", null);
+                    item.put("reason", "内置自动化工具硬名单（UA 声明自动化工具，可删除）");
+                    item.put("createdAt", null);
+                    item.put("ttl", -1L);
+                    item.put("permanent", true);
+                    item.put("builtin", true);
+                    result.add(item);
+                }
             }
             return result;
         } catch (Exception e) {
@@ -1810,6 +1830,21 @@ public class CacheService {
                 disabled.add(ua);
                 saveDisabledAiCrawlerUa(disabled);
                 log.warn("禁用内置AI爬虫硬名单: {}", ua);
+                // 刷新快照，让 Nginx Lua 同步禁用集合
+                refreshBanRulesSnapshot();
+                return true;
+            }
+
+            // 内置自动化工具 UA 硬名单：id 形如 builtin_automation:<ua>，删除=写入禁用集合
+            if ("ua".equals(normalizedType) && id.startsWith("builtin_automation:")) {
+                String ua = id.substring("builtin_automation:".length()).trim().toLowerCase(Locale.ROOT);
+                if (ua.isEmpty()) {
+                    return false;
+                }
+                Set<String> disabled = loadDisabledAutomationUa();
+                disabled.add(ua);
+                saveDisabledAutomationUa(disabled);
+                log.warn("禁用内置自动化工具UA硬名单: {}", ua);
                 // 刷新快照，让 Nginx Lua 同步禁用集合
                 refreshBanRulesSnapshot();
                 return true;
@@ -1871,6 +1906,43 @@ public class CacheService {
     }
 
     /**
+     * 读取已被管理员禁用的内置自动化工具 UA 硬名单集合（小写）。
+     * <p>存储为 JSON 字符串数组，异常或不存在时返回空集合。
+     */
+    @SuppressWarnings("unchecked")
+    public Set<String> loadDisabledAutomationUa() {
+        Set<String> set = new HashSet<>();
+        try {
+            String raw = stringRedisTemplate.opsForValue().get(CacheConstants.DISABLED_AUTOMATION_UA_KEY);
+            if (raw != null && !raw.isEmpty()) {
+                List<Object> list = JsonUtils.parseObject(raw, List.class);
+                if (list != null) {
+                    for (Object o : list) {
+                        if (o != null) {
+                            set.add(String.valueOf(o).trim().toLowerCase(Locale.ROOT));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取禁用内置自动化工具UA硬名单失败", e);
+        }
+        return set;
+    }
+
+    /**
+     * 持久化已被管理员禁用的内置自动化工具 UA 硬名单集合（永久有效）。
+     */
+    private void saveDisabledAutomationUa(Set<String> disabled) {
+        try {
+            String json = JsonUtils.toJsonString(new ArrayList<>(disabled == null ? Set.of() : disabled));
+            stringRedisTemplate.opsForValue().set(CacheConstants.DISABLED_AUTOMATION_UA_KEY, json);
+        } catch (Exception e) {
+            log.error("保存禁用内置自动化工具UA硬名单失败", e);
+        }
+    }
+
+    /**
      * 加载全部三类封禁规则到内存缓存（供 SecurityFilter 定期刷新调用）。
      * @return Map 含 "ua"/"cidr"/"region" 三个 key 对应列表，任一类型异常时对应列表为空
      */
@@ -1905,10 +1977,12 @@ public class CacheService {
     public void refreshBanRulesSnapshot() {
         try {
             Map<String, List<Map<String, Object>>> all = loadAllBanRules();
-            // 快照结构：{ua:[], cidr:[], region:[], disabled_ai_ua:[]}
+            // 快照结构：{ua:[], cidr:[], region:[], disabled_ai_ua:[], disabled_automation_ua:[]}
             // disabled_ai_ua 为被管理员禁用的内置 AI 爬虫硬名单，供 Nginx Lua 匹配时跳过。
+            // disabled_automation_ua 为被管理员禁用的内置自动化工具 UA 硬名单，供 Nginx Lua 匹配时跳过。
             Map<String, Object> snapshot = new HashMap<>(all);
             snapshot.put("disabled_ai_ua", new ArrayList<>(loadDisabledAiCrawlerUa()));
+            snapshot.put("disabled_automation_ua", new ArrayList<>(loadDisabledAutomationUa()));
             String json = JsonUtils.toJsonString(snapshot);
             // 必须用 StringRedisTemplate 写原始 JSON 字符串，避免主 RedisTemplate 的
             // defaultTyping 把 String 再包一层 JSON 引号转义，导致 Lua cjson.decode 拿到 string 而非 table。

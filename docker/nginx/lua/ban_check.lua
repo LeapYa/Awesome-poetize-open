@@ -89,6 +89,12 @@ local BLOCKED_AI_CRAWLER_UA = {
     "claudebot", "claude-web", "anthropic-ai", "gptbot",
 }
 
+-- 自动化工具 UA 关键词（与 Java SecurityFilter.AUTOMATION_UA_KEYWORDS 保持同步）
+-- 这些关键词只出现在自动化工具声明的 UA 中，正常浏览器不会包含，简单 contains 匹配
+local AUTOMATION_UA_KEYWORDS = {
+    "headlesschrome", "playwright", "puppeteer", "selenium", "webdriver", "phantomjs",
+}
+
 -- 健康检查路径豁免（避免监控探针被误拦截导致服务假死）
 local HEALTH_CHECK_PATHS_ANY_METHOD = {
     -- Actuator 健康检查可能用 GET 或 HEAD，均豁免
@@ -565,6 +571,7 @@ local function refresh_rules_if_needed(red)
         rules_cache:set("cidr_rules", "")
         rules_cache:set("region_rules", "")
         rules_cache:set("disabled_ai_ua", "")
+        rules_cache:set("disabled_automation_ua", "")
         rules_cache:set("last_refresh", now)
         return
     end
@@ -584,11 +591,14 @@ local function refresh_rules_if_needed(red)
     local region_rules = rules.region or {}
     -- 被管理员禁用的内置 AI 爬虫硬名单（小写字符串数组）
     local disabled_ai_ua = rules.disabled_ai_ua or {}
+    -- 被管理员禁用的内置自动化工具 UA 硬名单（小写字符串数组）
+    local disabled_automation_ua = rules.disabled_automation_ua or {}
 
     rules_cache:set("ua_rules", cjson.encode(ua_rules))
     rules_cache:set("cidr_rules", cjson.encode(cidr_rules))
     rules_cache:set("region_rules", cjson.encode(region_rules))
     rules_cache:set("disabled_ai_ua", cjson.encode(disabled_ai_ua))
+    rules_cache:set("disabled_automation_ua", cjson.encode(disabled_automation_ua))
     rules_cache:set("last_refresh", now)
 end
 
@@ -654,6 +664,22 @@ local function load_disabled_ai_ua()
     return set
 end
 
+-- 读取被禁用的内置自动化工具 UA 硬名单（从 shared dict 快照缓存），返回 set（小写 => true）
+-- 冷启动或快照未刷新时返回空表，此时硬名单全部生效（兜底更安全）
+local function load_disabled_automation_ua()
+    local s = rules_cache:get("disabled_automation_ua")
+    if not s or s == "" then return {} end
+    local t = cjson.decode(s)
+    if not t or type(t) ~= "table" then return {} end
+    local set = {}
+    for _, v in ipairs(t) do
+        if type(v) == "string" then
+            set[string.lower(v)] = true
+        end
+    end
+    return set
+end
+
 -- AI 爬虫硬名单检查（token 边界匹配，与 Java isBlockedAiCrawler 逻辑一致）
 -- 不需要 Redis，纯字符串匹配，放在 Redis 连接之前以节省资源
 -- disabled：被管理员禁用的硬名单 set，命中则跳过（实现"内置 UA 弃用后可删除"）
@@ -676,6 +702,22 @@ local function is_ai_crawler(ua, disabled)
                     return true
                 end
                 idx = string.find(ua_lower, pattern, end_pos, true)
+            end
+        end
+    end
+    return false
+end
+
+-- 自动化工具 UA 检查（简单 contains 匹配，与 Java isAutomationToolUa 逻辑一致）
+-- 不需要 Redis，纯字符串匹配，放在 Redis 连接之前以节省资源
+-- disabled：被管理员禁用的硬名单 set，命中则跳过（实现"内置 UA 弃用后可删除"）
+local function is_automation_tool_ua(ua, disabled)
+    if not ua or ua == "" then return false end
+    local ua_lower = string.lower(ua)
+    for _, keyword in ipairs(AUTOMATION_UA_KEYWORDS) do
+        if not (disabled and disabled[keyword]) then
+            if string.find(ua_lower, keyword, 1, true) then
+                return true
             end
         end
     end
@@ -739,6 +781,14 @@ local function main()
     local disabled_ai_ua = load_disabled_ai_ua()
     if is_ai_crawler(ua, disabled_ai_ua) then
         ngx.log(ngx.WARN, "ban_check: blocked AI crawler UA=", ua, " IP=", ip)
+        return block_403()
+    end
+
+    -- 自动化工具 UA 检查（纯 UA 匹配，不需要 Redis，提前拦截节省连接资源）
+    -- 从 shared dict 快照缓存读取被禁用的硬名单（非阻塞），管理员删除的内置 UA 会被跳过
+    local disabled_automation = load_disabled_automation_ua()
+    if is_automation_tool_ua(ua, disabled_automation) then
+        ngx.log(ngx.WARN, "ban_check: blocked automation tool UA=", ua, " IP=", ip)
         return block_403()
     end
 

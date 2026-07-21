@@ -83,6 +83,10 @@ public class SecurityFilter extends OncePerRequestFilter {
     // 只拦截训练数据采集爬虫，保留搜索索引和用户实时引用爬虫
     private static final Set<String> BLOCKED_AI_CRAWLER_UA = Set.copyOf(CacheConstants.BUILTIN_AI_CRAWLER_UA);
 
+    // 自动化工具 UA 关键词（小写 contains 匹配），单一数据源见 CacheConstants.BUILTIN_AUTOMATION_UA
+    // 这些关键词只会出现在自动化工具声明的 UA 中，正常浏览器 UA 不会包含，无需 token 边界匹配
+    private static final List<String> AUTOMATION_UA_KEYWORDS = CacheConstants.BUILTIN_AUTOMATION_UA;
+
     // ================================ 扩展封禁规则内存缓存 ================================
     // volatile 保证多线程可见性；定期从 Redis 刷新，避免每请求扫描 Redis
     private volatile List<Map<String, Object>> uaRules = List.of();
@@ -90,6 +94,8 @@ public class SecurityFilter extends OncePerRequestFilter {
     private volatile List<Map<String, Object>> regionRules = List.of();
     // 被管理员禁用的内置 AI 爬虫硬名单（小写），命中则在 isBlockedAiCrawler 中跳过
     private volatile Set<String> disabledAiCrawlerUa = Set.of();
+    // 被管理员禁用的内置自动化工具 UA 硬名单（小写），命中则在 isAutomationToolUa 中跳过
+    private volatile Set<String> disabledAutomationUa = Set.of();
     private volatile long lastRefreshAt = 0;
     private static final long REFRESH_INTERVAL_MS = 15000;
 
@@ -136,6 +142,18 @@ public class SecurityFilter extends OncePerRequestFilter {
             log.info("拦截 AI 爬虫: {} from IP: {}", userAgent, clientIP);
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.getWriter().write("403 Forbidden - AI Crawler Blocked");
+            return;
+        }
+
+        // 拦截自动化工具（UA 中明确声明了自动化工具标识，不依赖前端探针 JS 信号）
+        if (isAutomationToolUa(userAgent)) {
+            log.info("拦截自动化工具: {} from IP: {}", userAgent, clientIP);
+            // 写入封禁缓存，后续同 IP 请求走 isAutomationBlocked 快速路径，无需重复解析 UA
+            String blockKey = CacheConstants.buildAutomationBlockKey(clientIP);
+            cacheService.set(blockKey, "UA声明自动化工具",
+                    CacheConstants.AUTOMATION_BLOCK_EXPIRE_TIME);
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("403 Forbidden - Automation Detected");
             return;
         }
 
@@ -366,6 +384,29 @@ public class SecurityFilter extends OncePerRequestFilter {
         return false;
     }
 
+    /**
+     * 检查 UA 是否包含自动化工具标识关键词。
+     * 这些关键词（headlesschrome/playwright/puppeteer/selenium/webdriver/phantomjs）
+     * 只会出现在自动化工具主动声明的 UA 中，正常浏览器不会包含，直接 contains 匹配即可。
+     * 管理员已禁用（删除）的内置硬名单跳过，实现"内置 UA 弃用后可删除"。
+     */
+    private boolean isAutomationToolUa(String userAgent) {
+        if (userAgent == null || userAgent.isEmpty()) {
+            return false;
+        }
+        String lower = userAgent.toLowerCase(Locale.ROOT);
+        Set<String> disabled = disabledAutomationUa;
+        for (String keyword : AUTOMATION_UA_KEYWORDS) {
+            if (disabled != null && disabled.contains(keyword)) {
+                continue;
+            }
+            if (lower.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ================================ 扩展封禁规则缓存与匹配 ================================
 
     /**
@@ -391,6 +432,8 @@ public class SecurityFilter extends OncePerRequestFilter {
                 }
                 Set<String> disabled = cacheService.loadDisabledAiCrawlerUa();
                 disabledAiCrawlerUa = disabled != null ? disabled : Set.of();
+                Set<String> disabledAutomation = cacheService.loadDisabledAutomationUa();
+                disabledAutomationUa = disabledAutomation != null ? disabledAutomation : Set.of();
                 lastRefreshAt = System.currentTimeMillis();
             } catch (Exception e) {
                 log.error("加载封禁规则缓存失败，保留旧缓存", e);

@@ -30,6 +30,23 @@ public class CacheConstants {
     public static final String DISABLED_AI_CRAWLER_UA_KEY = "poetize:security:disabled_ai_crawler_ua";
 
     /**
+     * 内置自动化工具 UA 硬名单（UA 中明确声明了自动化工具标识，直接拦截）。
+     * <p>作为唯一数据源被 {@link com.ld.poetry.config.SecurityFilter} 引用；
+     * Nginx 端 {@code docker/nginx/lua/ban_check.lua} 保留一份等价常量，需手动同步。
+     * <p>这些规则会以内置规则形式展示在封禁列表中（id 形如 {@code builtin_automation:<ua>}），
+     * 管理员可单独删除（删除即写入 {@link #DISABLED_AUTOMATION_UA_KEY} 禁用集合，匹配时跳过）。
+     */
+    public static final List<String> BUILTIN_AUTOMATION_UA = List.of(
+            "headlesschrome", "playwright", "puppeteer", "selenium", "webdriver", "phantomjs");
+
+    /**
+     * 已被管理员禁用的内置自动化工具 UA 硬名单集合缓存键（存 JSON 字符串数组，永久有效）。
+     * <p>命中该集合的内置硬名单在 Java / Nginx 匹配时跳过，并从封禁列表中隐藏。
+     * 格式: poetize:security:disabled_automation_ua
+     */
+    public static final String DISABLED_AUTOMATION_UA_KEY = "poetize:security:disabled_automation_ua";
+
+    /**
      * 缓存键前缀
      */
     public static final String CACHE_PREFIX = "poetize:";
