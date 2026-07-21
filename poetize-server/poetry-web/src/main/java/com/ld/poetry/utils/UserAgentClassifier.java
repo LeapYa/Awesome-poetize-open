@@ -782,6 +782,11 @@ public final class UserAgentClassifier {
         public static BotVerification timeout(String claimedName, String reason) {
             return new BotVerification(claimedName, "timeout", reason);
         }
+
+        /** UA 是否声称自己是搜索引擎（无论验证结果如何）。 */
+        public boolean claimsSearchEngine() {
+            return !"not_applicable".equals(status);
+        }
     }
 
     private static final class UaBucket {

@@ -130,18 +130,18 @@ public class CommonQuery {
                 cacheService.recordVisitToRedis(normalizedIp, userId, nation, province, city,
                         normalizedPageUri, userAgent, referer, acceptLanguage, uaInfo);
 
-                // 高置信度自动化浏览器判定：score >= 70 时写入拦截缓存，
-                // SecurityFilter 后续请求命中则直接 403。
-                // 仅基于 JS 运行时硬证据（webdriver/headless/SwiftShader/JS原生性异常等），
-                // 不依赖 UA 格式判断，避免误伤移动端正常用户。
-                UserAgentClassifier.AutomationVerdict automationVerdict =
-                        UserAgentClassifier.evaluateAutomation(uaSignals);
-                if (automationVerdict.shouldBlock()) {
-                    String blockKey = CacheConstants.buildAutomationBlockKey(normalizedIp);
-                    cacheService.set(blockKey, automationVerdict.reason(),
-                            CacheConstants.AUTOMATION_BLOCK_EXPIRE_TIME);
-                    log.warn("[saveHistory] 自动化浏览器拦截已触发: IP={}, {}",
-                            normalizedIp, automationVerdict.reason());
+                // 搜索引擎流量由其专属验证体系（反向DNS + 伪装计数自动拉黑）管辖，
+                // 自动化封禁仅针对非搜索引擎流量，避免 Google 渲染爬虫因 SwiftShader 被误封。
+                if (!botVerification.claimsSearchEngine()) {
+                    UserAgentClassifier.AutomationVerdict automationVerdict =
+                            UserAgentClassifier.evaluateAutomation(uaSignals);
+                    if (automationVerdict.shouldBlock()) {
+                        String blockKey = CacheConstants.buildAutomationBlockKey(normalizedIp);
+                        cacheService.set(blockKey, automationVerdict.reason(),
+                                CacheConstants.AUTOMATION_BLOCK_EXPIRE_TIME);
+                        log.warn("[saveHistory] 自动化浏览器拦截已触发: IP={}, {}",
+                                normalizedIp, automationVerdict.reason());
+                    }
                 }
 
                 // log.info("[saveHistory] 访问记录已保存到Redis缓存，等待定时同步到数据库: {}", ipUser);
