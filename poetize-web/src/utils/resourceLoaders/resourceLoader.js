@@ -374,110 +374,106 @@ export function isHighlightJsLoaded() {
  * 加载代码高亮资源（按需导入优化）
  * 使用 npm 包动态导入，只加载需要的语言包，实现 Tree Shaking
  */
+// 通过 import.meta.glob 将 highlight.js 全部语言包拆成独立 chunk，
+// 文章代码块实际用到哪种语言时才加载对应的包
+const languageLoaders = import.meta.glob(
+  '../../../node_modules/highlight.js/lib/languages/*.js'
+)
+
+// 语言包文件名（不含 .js）-> 加载器
+const languageLoaderMap = {}
+Object.keys(languageLoaders).forEach((path) => {
+  const fileName = path.substring(path.lastIndexOf('/') + 1)
+  languageLoaderMap[fileName.substring(0, fileName.length - 3)] =
+    languageLoaders[path]
+})
+
+// 常见别名 -> 语言包文件名，仅用于定位要加载哪个文件；
+// registerLanguage 会自动注册语言定义里声明的别名，注册后 getLanguage(别名) 直接命中
+const LANGUAGE_ALIAS_FILES = {
+  js: 'javascript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  html: 'xml',
+  xhtml: 'xml',
+  svg: 'xml',
+  py: 'python',
+  sh: 'bash',
+  zsh: 'bash',
+  md: 'markdown',
+  yml: 'yaml',
+  golang: 'go',
+  rs: 'rust',
+  'c++': 'cpp',
+  cc: 'cpp',
+  hpp: 'cpp',
+  cs: 'csharp',
+  'c#': 'csharp',
+  rb: 'ruby',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  docker: 'dockerfile',
+  ps: 'powershell',
+  ps1: 'powershell',
+  psm1: 'powershell',
+  console: 'shell',
+  toml: 'ini',
+  php7: 'php',
+  php8: 'php',
+}
+
+/**
+ * 按需加载并注册代码块所需的语言包
+ * @param {string[]} languages 语言标识列表（来自代码块的 language-* class）
+ */
+export async function ensureHighlightLanguages(languages) {
+  if (!isHighlightJsLoaded() || !window.hljs) {
+    return
+  }
+  const hljsCore = window.hljs
+  const pending = []
+  const loading = new Set()
+  languages.forEach((lang) => {
+    const normalized = (lang || '').toLowerCase()
+    if (!normalized || hljsCore.getLanguage(normalized)) {
+      // 空语言或已注册（含别名），无需加载
+      return
+    }
+    const fileName = languageLoaderMap[normalized]
+      ? normalized
+      : LANGUAGE_ALIAS_FILES[normalized]
+    if (!fileName || !languageLoaderMap[fileName] || loading.has(fileName)) {
+      return
+    }
+    loading.add(fileName)
+    pending.push(
+      languageLoaderMap[fileName]()
+        .then((mod) => {
+          if (!hljsCore.getLanguage(fileName)) {
+            hljsCore.registerLanguage(fileName, mod.default)
+          }
+        })
+        .catch((error) => {
+          console.error('highlight.js 语言包加载失败:', fileName, error)
+        })
+    )
+  })
+  await Promise.all(pending)
+}
+
 export async function loadHighlightResources() {
   if (isHighlightJsLoaded()) {
     return true
   }
 
   try {
-    // 动态导入 highlight.js 核心
+    // 动态导入 highlight.js 核心（不含语言包，语言由 ensureHighlightLanguages 按需加载）
     const hljs = await import('highlight.js/lib/core')
 
-    // 按需导入常用语言包（并行加载提高速度）
-    const [
-      javascript,
-      typescript,
-      css,
-      xml, // HTML 使用 xml 语言包
-      python,
-      java,
-      sql,
-      bash,
-      json,
-      markdown,
-      yaml,
-      go,
-      rust,
-      cpp,
-      csharp,
-      php,
-      ruby,
-      swift,
-      kotlin,
-      shell,
-      dockerfile,
-      nginx,
-      properties,
-      ini,
-    ] = await Promise.all([
-      import('highlight.js/lib/languages/javascript'),
-      import('highlight.js/lib/languages/typescript'),
-      import('highlight.js/lib/languages/css'),
-      import('highlight.js/lib/languages/xml'),
-      import('highlight.js/lib/languages/python'),
-      import('highlight.js/lib/languages/java'),
-      import('highlight.js/lib/languages/sql'),
-      import('highlight.js/lib/languages/bash'),
-      import('highlight.js/lib/languages/json'),
-      import('highlight.js/lib/languages/markdown'),
-      import('highlight.js/lib/languages/yaml'),
-      import('highlight.js/lib/languages/go'),
-      import('highlight.js/lib/languages/rust'),
-      import('highlight.js/lib/languages/cpp'),
-      import('highlight.js/lib/languages/csharp'),
-      import('highlight.js/lib/languages/php'),
-      import('highlight.js/lib/languages/ruby'),
-      import('highlight.js/lib/languages/swift'),
-      import('highlight.js/lib/languages/kotlin'),
-      import('highlight.js/lib/languages/shell'),
-      import('highlight.js/lib/languages/dockerfile'),
-      import('highlight.js/lib/languages/nginx'),
-      import('highlight.js/lib/languages/properties'),
-      import('highlight.js/lib/languages/ini'),
-    ])
-
     const hljsCore = hljs.default
-
-    // 注册语言包
-    hljsCore.registerLanguage('javascript', javascript.default)
-    hljsCore.registerLanguage('js', javascript.default) // 别名
-    hljsCore.registerLanguage('typescript', typescript.default)
-    hljsCore.registerLanguage('ts', typescript.default) // 别名
-    hljsCore.registerLanguage('css', css.default)
-    hljsCore.registerLanguage('xml', xml.default)
-    hljsCore.registerLanguage('html', xml.default) // HTML 使用 xml
-    hljsCore.registerLanguage('python', python.default)
-    hljsCore.registerLanguage('py', python.default) // 别名
-    hljsCore.registerLanguage('java', java.default)
-    hljsCore.registerLanguage('sql', sql.default)
-    hljsCore.registerLanguage('bash', bash.default)
-    hljsCore.registerLanguage('sh', bash.default) // 别名
-    hljsCore.registerLanguage('json', json.default)
-    hljsCore.registerLanguage('markdown', markdown.default)
-    hljsCore.registerLanguage('md', markdown.default) // 别名
-    hljsCore.registerLanguage('yaml', yaml.default)
-    hljsCore.registerLanguage('yml', yaml.default) // 别名
-    hljsCore.registerLanguage('go', go.default)
-    hljsCore.registerLanguage('golang', go.default) // 别名
-    hljsCore.registerLanguage('rust', rust.default)
-    hljsCore.registerLanguage('rs', rust.default) // 别名
-    hljsCore.registerLanguage('cpp', cpp.default)
-    hljsCore.registerLanguage('c++', cpp.default) // 别名
-    hljsCore.registerLanguage('c', cpp.default) // C 使用 cpp
-    hljsCore.registerLanguage('csharp', csharp.default)
-    hljsCore.registerLanguage('cs', csharp.default) // 别名
-    hljsCore.registerLanguage('php', php.default)
-    hljsCore.registerLanguage('ruby', ruby.default)
-    hljsCore.registerLanguage('rb', ruby.default) // 别名
-    hljsCore.registerLanguage('swift', swift.default)
-    hljsCore.registerLanguage('kotlin', kotlin.default)
-    hljsCore.registerLanguage('kt', kotlin.default) // 别名
-    hljsCore.registerLanguage('shell', shell.default)
-    hljsCore.registerLanguage('dockerfile', dockerfile.default)
-    hljsCore.registerLanguage('docker', dockerfile.default) // 别名
-    hljsCore.registerLanguage('nginx', nginx.default)
-    hljsCore.registerLanguage('properties', properties.default)
-    hljsCore.registerLanguage('ini', ini.default)
 
     // 挂载到 window 对象
     window.hljs = hljsCore

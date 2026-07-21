@@ -4,6 +4,7 @@ import {
   loadEChartsResources,
   loadHighlightResources,
   isHighlightJsLoaded,
+  ensureHighlightLanguages,
   loadClipboardResources,
   isClipboardLoaded,
   loadKatexResources,
@@ -31,7 +32,22 @@ async function collectEChartsChartTypesFromMarkdown(content) {
   return Array.from(chartTypes)
 }
 
-export function highlight() {
+function extractBlockLanguage(preCode) {
+  const classNameStr = preCode.className || ''
+  const classNameArr = classNameStr.split(' ')
+
+  let lang = ''
+  classNameArr.some((className) => {
+    if (className.indexOf('language-') > -1) {
+      lang = className.substring(className.indexOf('-') + 1, className.length)
+      return true
+    }
+    return false
+  })
+  return lang
+}
+
+export async function highlight() {
   if (!isHighlightJsLoaded()) {
     return
   }
@@ -48,6 +64,24 @@ export function highlight() {
   if (!entryContent) return
 
   const preElements = entryContent.querySelectorAll('pre')
+
+  // 先扫描所有未处理代码块用到的语言，按需加载对应语言包后再统一高亮
+  const neededLanguages = []
+  preElements.forEach((item) => {
+    if (item.classList.contains('highlight-wrap')) {
+      return
+    }
+    const preCode = item.querySelector('code')
+    if (!preCode) {
+      return
+    }
+    const lang = extractBlockLanguage(preCode)
+    if (lang && lang !== 'mermaid' && lang !== 'echarts') {
+      neededLanguages.push(lang)
+    }
+  })
+  await ensureHighlightLanguages(neededLanguages)
+
   preElements.forEach((item, i) => {
     if (item.classList.contains('highlight-wrap')) {
       return
@@ -58,52 +92,45 @@ export function highlight() {
       return
     }
 
-    const classNameStr = preCode.className || ''
-    const classNameArr = classNameStr.split(' ')
-
-    let lang = ''
-    classNameArr.some((className) => {
-      if (className.indexOf('language-') > -1) {
-        lang = className.substring(className.indexOf('-') + 1, className.length)
-        return true
-      }
-      return false
-    })
+    const lang = extractBlockLanguage(preCode)
 
     if (lang === 'mermaid' || lang === 'echarts') {
       return
     }
 
     try {
-      const language = hljs.getLanguage(lang.toLowerCase())
+      const language = lang ? hljs.getLanguage(lang.toLowerCase()) : undefined
       // displayName 仅用于 data-rel 标签展示，lang 保留为 CSS-safe 标识符
       let displayName = lang
-      if (language === undefined) {
-        const autoLanguage = hljs.highlightAuto(preCode.textContent)
-        preCode.classList.remove('language-' + lang)
-        lang = autoLanguage.language
-        if (lang === undefined) {
-          lang = 'java'
-        }
-        displayName = lang
-        preCode.classList.add('language-' + lang)
-      } else {
+      let shouldHighlight = false
+      if (!lang) {
+        // 未指定语言：不猜测、不显示语言标签，保持纯代码块
+        displayName = ''
+      } else if (language !== undefined) {
         // language.name 可能含空格（如 "Nginx config"），不能用于 classList
         displayName = language.name
+        shouldHighlight = true
       }
+      // 指定了未注册的语言：按用户原文显示标签，不做高亮
 
       item.classList.remove('code-loading')
       item.classList.add('highlight-wrap')
       Object.keys(attributes).forEach((key) => {
         item.setAttribute(key, attributes[key])
       })
-      preCode.setAttribute('data-rel', displayName.toUpperCase())
-      preCode.classList.add(lang.toLowerCase())
+      if (displayName) {
+        preCode.setAttribute('data-rel', displayName.toUpperCase())
+      }
+      if (lang) {
+        preCode.classList.add(lang.toLowerCase())
+      }
 
-      if (typeof hljs.highlightElement === 'function') {
-        hljs.highlightElement(preCode)
-      } else if (typeof hljs.highlightBlock === 'function') {
-        hljs.highlightBlock(preCode)
+      if (shouldHighlight) {
+        if (typeof hljs.highlightElement === 'function') {
+          hljs.highlightElement(preCode)
+        } else if (typeof hljs.highlightBlock === 'function') {
+          hljs.highlightBlock(preCode)
+        }
       }
 
       this.addLineNumbersWithCSS(preCode)
@@ -113,8 +140,10 @@ export function highlight() {
       Object.keys(attributes).forEach((key) => {
         item.setAttribute(key, attributes[key])
       })
-      preCode.setAttribute('data-rel', lang.toUpperCase())
-      preCode.classList.add(lang.toLowerCase())
+      if (lang) {
+        preCode.setAttribute('data-rel', lang.toUpperCase())
+        preCode.classList.add(lang.toLowerCase())
+      }
       this.addLineNumbersWithCSS(preCode)
     }
   })
