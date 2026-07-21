@@ -118,7 +118,7 @@ public class SysPluginServiceImpl extends ServiceImpl<SysPluginMapper, SysPlugin
             if (SysPlugin.TYPE_EDITOR.equals(pluginType)) {
                 return getPluginByTypeAndKey(SysPlugin.TYPE_EDITOR, "vditor");
             }
-            log.warn("未找到插件类型 {} 的激活记录", pluginType);
+            log.debug("未找到插件类型 {} 的激活记录", pluginType);
             return null;
         }
         
