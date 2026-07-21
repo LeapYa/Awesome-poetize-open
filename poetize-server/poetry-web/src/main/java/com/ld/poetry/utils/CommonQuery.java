@@ -95,6 +95,11 @@ public class CommonQuery {
                 return;
             }
 
+            // 命中忽略名单的 IP 不参与访问统计（由后台管理员维护）
+            if (cacheService.isVisitIpIgnored(normalizedIp)) {
+                return;
+            }
+
             String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
             if (!cacheService.tryMarkPageVisit(normalizedIp, normalizedPageUri, userAgent)) {
                 return;

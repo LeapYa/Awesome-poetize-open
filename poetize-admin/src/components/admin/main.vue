@@ -467,8 +467,66 @@
           </el-alert>
         </el-form>
         <span slot="footer" class="dialog-footer">
+          <el-button v-if="cleanVisitForm.cleanType === 'ip'"
+                     type="text"
+                     class="ignore-list-entry"
+                     @click="openIgnoreIpListDialog">
+            <i class="el-icon-document"></i>
+            忽略IP列表
+          </el-button>
           <el-button @click="cleanDialogVisible = false" :disabled="cleaningVisitData">取消</el-button>
           <el-button type="danger" @click="confirmCleanVisitData" :loading="cleaningVisitData">确认清理</el-button>
+        </span>
+      </el-dialog>
+
+      <el-dialog
+        title="访问统计忽略IP列表"
+        :visible.sync="ignoreIpListVisible"
+        width="560px"
+        :close-on-click-modal="false"
+        append-to-body>
+        <div class="ignore-ip-dialog-body">
+          <div class="ignore-ip-add-row">
+            <el-input
+              v-model.trim="ignoreIpForm.ip"
+              placeholder="输入要忽略的 IP，回车或点击添加"
+              clearable
+              @keyup.enter.native="addIgnoreIp">
+            </el-input>
+            <el-button type="primary"
+                       :loading="addingIgnoreIp"
+                       @click="addIgnoreIp">
+              添加
+            </el-button>
+          </div>
+          <el-alert
+            class="ignore-ip-alert"
+            type="info"
+            show-icon
+            :closable="false"
+            title="列表中的 IP 不参与站点访问统计；移除后将恢复统计。列表持久化在 Redis 中，重启后保留。">
+          </el-alert>
+          <div v-loading="loadingIgnoreIps"
+               class="ignore-ip-list-wrapper">
+            <div v-if="!ignoreIpList.length && !loadingIgnoreIps"
+                 class="ignore-ip-empty">
+              暂无忽略 IP
+            </div>
+            <div v-for="ip in ignoreIpList"
+                 :key="ip"
+                 class="ignore-ip-item">
+              <span class="ignore-ip-value">{{ ip }}</span>
+              <el-button type="text"
+                         class="ignore-ip-remove"
+                         :loading="removingIgnoreIp === ip"
+                         @click="removeIgnoreIp(ip)">
+                移除
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <span slot="footer" class="dialog-footer">
+          <el-button @click="ignoreIpListVisible = false">关闭</el-button>
         </span>
       </el-dialog>
 
@@ -501,6 +559,14 @@ export default {
         ip: '',
         userAgent: '',
         addToIgnore: false
+      },
+      ignoreIpListVisible: false,
+      ignoreIpList: [],
+      loadingIgnoreIps: false,
+      addingIgnoreIp: false,
+      removingIgnoreIp: '',
+      ignoreIpForm: {
+        ip: ''
       }
     }
   },
@@ -745,7 +811,80 @@ export default {
         // 取消操作
       });
     },
-    
+
+    openIgnoreIpListDialog() {
+      this.ignoreIpForm.ip = '';
+      this.ignoreIpListVisible = true;
+      this.fetchIgnoreIpList();
+    },
+
+    fetchIgnoreIpList() {
+      if (this.loadingIgnoreIps) return;
+      this.loadingIgnoreIps = true;
+      this.$http.get(this.$constant.baseURL + "/webInfo/visitIgnoreIps", {}, true)
+        .then((res) => {
+          this.ignoreIpList = Array.isArray(res.data) ? res.data : [];
+        })
+        .catch((error) => {
+          this.$message({
+            message: error.message || '获取忽略IP列表失败',
+            type: 'error'
+          });
+        })
+        .finally(() => {
+          this.loadingIgnoreIps = false;
+        });
+    },
+
+    addIgnoreIp() {
+      const ip = (this.ignoreIpForm.ip || '').trim();
+      if (!ip) {
+        this.$message({ message: '请输入要忽略的 IP', type: 'warning' });
+        return;
+      }
+      if (this.addingIgnoreIp) return;
+      this.addingIgnoreIp = true;
+      this.$http.post(this.$constant.baseURL + "/webInfo/visitIgnoreIp", { ip }, true)
+        .then((res) => {
+          const data = res.data || {};
+          if (data.alreadyIgnored) {
+            this.$message({ message: `IP「${data.ip}」已在忽略列表中`, type: 'info' });
+          } else {
+            this.$message({ message: `已添加 IP「${data.ip}」到忽略列表`, type: 'success' });
+          }
+          this.ignoreIpForm.ip = '';
+          this.fetchIgnoreIpList();
+        })
+        .catch((error) => {
+          this.$message({
+            message: error.message || '添加忽略IP失败',
+            type: 'error'
+          });
+        })
+        .finally(() => {
+          this.addingIgnoreIp = false;
+        });
+    },
+
+    removeIgnoreIp(ip) {
+      if (!ip || this.removingIgnoreIp) return;
+      this.removingIgnoreIp = ip;
+      this.$http.post(this.$constant.baseURL + "/webInfo/visitIgnoreIp/delete", { ip }, true)
+        .then(() => {
+          this.$message({ message: `已移除 IP「${ip}」`, type: 'success' });
+          this.fetchIgnoreIpList();
+        })
+        .catch((error) => {
+          this.$message({
+            message: error.message || '移除忽略IP失败',
+            type: 'error'
+          });
+        })
+        .finally(() => {
+          this.removingIgnoreIp = '';
+        });
+    },
+
     // 更新主题状态
     updateTheme() {
       const theme = localStorage.getItem('theme');
@@ -907,6 +1046,63 @@ export default {
 
   .clean-visit-alert {
     margin-top: 6px;
+  }
+
+  .ignore-list-entry {
+    margin-right: auto;
+  }
+
+  .ignore-ip-dialog-body {
+    padding: 0 4px;
+  }
+
+  .ignore-ip-add-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .ignore-ip-alert {
+    margin-top: 12px;
+  }
+
+  .ignore-ip-list-wrapper {
+    margin-top: 14px;
+    max-height: 340px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color, #ebeef5);
+    border-radius: 6px;
+    padding: 6px 10px;
+    background: var(--card-bg, #fff);
+  }
+
+  .ignore-ip-empty {
+    text-align: center;
+    color: #909399;
+    padding: 18px 0;
+  }
+
+  .ignore-ip-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 4px;
+    border-bottom: 1px dashed var(--border-color, #f0f0f0);
+  }
+
+  .ignore-ip-item:last-child {
+    border-bottom: none;
+  }
+
+  .ignore-ip-value {
+    font-family: Menlo, Consolas, monospace;
+    color: var(--black, #333);
+    word-break: break-all;
+  }
+
+  .ignore-ip-remove {
+    color: #f56c6c;
+    padding: 0;
   }
 
   .history-name {

@@ -36,6 +36,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.HashSet;
@@ -58,10 +59,12 @@ import java.util.UUID;
 @Service
 @Slf4j
 public class CacheService {
-    private static final String VISIT_IGNORE_IP_CONFIG_KEY = "visit.ignore.ips";
-    private static final String VISIT_IGNORE_IP_CONFIG_TYPE = "1";
     private static final int DAILY_VISIT_RECORD_RETENTION_DAYS = 7;
     private static final DateTimeFormatter VISIT_RECORD_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    // 访问统计忽略IP列表内存缓存：单实例部署，启动时从 Redis 加载，写操作时同步更新内存与 Redis。
+    // volatile 保证多线程可见性；Redis 仅用于持久化，重启后能恢复。
+    private volatile Set<String> visitIgnoreIpsCache = null;
 
     @Autowired
     private RedisUtil redisUtil;
@@ -803,7 +806,7 @@ public class CacheService {
     }
 
     /**
-     * 判断访问统计是否应忽略指定IP。
+     * 判断访问统计是否应忽略指定IP（走内存缓存，零 Redis 开销）。
      */
     public boolean isVisitIpIgnored(String ip) {
         String normalizedIp = normalizeVisitIp(ip);
@@ -811,7 +814,7 @@ public class CacheService {
     }
 
     /**
-     * 添加访问统计忽略IP。
+     * 添加访问统计忽略IP，同步更新内存缓存与 Redis 持久化。
      * @return true 表示本次新增，false 表示已存在或IP为空
      */
     public boolean addVisitIgnoreIp(String ip) {
@@ -823,26 +826,90 @@ public class CacheService {
         Set<String> ignoreIps = new LinkedHashSet<>(getVisitIgnoreIps());
         boolean added = ignoreIps.add(normalizedIp);
         if (added) {
-            saveVisitIgnoreIps(ignoreIps);
+            saveVisitIgnoreIpsToRedis(ignoreIps);
+            visitIgnoreIpsCache = Collections.unmodifiableSet(ignoreIps);
         }
         return added;
     }
 
     /**
-     * 获取访问统计忽略IP列表。
-     * 已废弃：站长访问排除改为基于会话的动态判断，不再维护IP列表。
-     * 保留方法签名供现有调用方编译通过，始终返回空集合。
+     * 从忽略IP列表中移除指定IP，同步更新内存缓存与 Redis 持久化。
+     * @return true 表示本次移除成功，false 表示IP为空或不在列表中
+     */
+    public boolean removeVisitIgnoreIp(String ip) {
+        String normalizedIp = normalizeVisitIp(ip);
+        if (normalizedIp.isEmpty()) {
+            return false;
+        }
+
+        Set<String> ignoreIps = new LinkedHashSet<>(getVisitIgnoreIps());
+        boolean removed = ignoreIps.remove(normalizedIp);
+        if (removed) {
+            saveVisitIgnoreIpsToRedis(ignoreIps);
+            visitIgnoreIpsCache = Collections.unmodifiableSet(ignoreIps);
+        }
+        return removed;
+    }
+
+    /**
+     * 获取访问统计忽略IP列表（走内存缓存，首次访问时从 Redis 加载）。
+     * Redis 仅用于持久化，保证重启后能恢复；运行时读操作不访问 Redis。
      */
     public Set<String> getVisitIgnoreIps() {
-        return new LinkedHashSet<>();
+        Set<String> cached = visitIgnoreIpsCache;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            if (visitIgnoreIpsCache == null) {
+                visitIgnoreIpsCache = Collections.unmodifiableSet(loadVisitIgnoreIpsFromRedis());
+            }
+            return visitIgnoreIpsCache;
+        }
     }
 
     /**
      * 获取访问统计忽略IP列表，供动态SQL安全绑定。
-     * 已废弃：始终返回空列表，SQL 中 NOT IN 条件不会生效。
      */
     public List<String> getVisitIgnoreIpList() {
-        return new ArrayList<>();
+        return new ArrayList<>(getVisitIgnoreIps());
+    }
+
+    /**
+     * 从 Redis 读取忽略IP列表（仅在内存缓存未初始化时调用）。
+     */
+    private Set<String> loadVisitIgnoreIpsFromRedis() {
+        Set<String> ignoreIps = new LinkedHashSet<>();
+        try {
+            String raw = stringRedisTemplate.opsForValue().get(CacheConstants.VISIT_IGNORE_IPS_KEY);
+            if (raw == null || raw.isEmpty()) {
+                return ignoreIps;
+            }
+            List<String> parsed = JsonUtils.parseArray(raw, String.class);
+            if (parsed != null) {
+                for (String ip : parsed) {
+                    String normalizedIp = normalizeVisitIp(ip);
+                    if (!normalizedIp.isEmpty()) {
+                        ignoreIps.add(normalizedIp);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取访问统计忽略IP列表失败", e);
+        }
+        return ignoreIps;
+    }
+
+    /**
+     * 持久化忽略IP列表到 Redis（永久有效，仅用于重启后恢复）。
+     */
+    private void saveVisitIgnoreIpsToRedis(Set<String> ignoreIps) {
+        try {
+            String json = JsonUtils.toJsonString(new ArrayList<>(ignoreIps == null ? Set.of() : ignoreIps));
+            stringRedisTemplate.opsForValue().set(CacheConstants.VISIT_IGNORE_IPS_KEY, json);
+        } catch (Exception e) {
+            log.error("保存访问统计忽略IP列表失败", e);
+        }
     }
 
     /**
@@ -1002,58 +1069,6 @@ public class CacheService {
         } catch (Exception e) {
             log.warn("从 token 解析文章 ID 失败: token={}, error={}", token, e.getMessage());
         }
-    }
-
-    private void saveVisitIgnoreIps(Set<String> ignoreIps) {
-        String configValue = JsonUtils.toJsonString(new ArrayList<>(ignoreIps));
-        SysConfig config = sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfig>()
-                .eq(SysConfig::getConfigKey, VISIT_IGNORE_IP_CONFIG_KEY)
-                .eq(SysConfig::getConfigType, VISIT_IGNORE_IP_CONFIG_TYPE)
-                .last("limit 1"));
-
-        if (config == null) {
-            config = new SysConfig();
-            config.setConfigName("访问统计忽略IP列表");
-            config.setConfigKey(VISIT_IGNORE_IP_CONFIG_KEY);
-            config.setConfigValue(configValue);
-            config.setConfigType(VISIT_IGNORE_IP_CONFIG_TYPE);
-            sysConfigMapper.insert(config);
-        } else {
-            config.setConfigValue(configValue);
-            sysConfigMapper.updateById(config);
-        }
-        cacheSysConfig(VISIT_IGNORE_IP_CONFIG_KEY, configValue);
-    }
-
-    private Set<String> parseVisitIgnoreIps(String configValue) {
-        Set<String> ignoreIps = new LinkedHashSet<>();
-        if (configValue == null || configValue.trim().isEmpty()) {
-            return ignoreIps;
-        }
-
-        try {
-            List<String> parsedIps = JsonUtils.parseArray(configValue, String.class);
-            if (parsedIps != null) {
-                for (String ip : parsedIps) {
-                    String normalizedIp = normalizeVisitIp(ip);
-                    if (!normalizedIp.isEmpty()) {
-                        ignoreIps.add(normalizedIp);
-                    }
-                }
-                return ignoreIps;
-            }
-        } catch (Exception e) {
-            log.warn("访问统计忽略IP配置不是JSON数组，尝试按分隔符解析");
-        }
-
-        String[] rawIps = configValue.split("[,;\\r\\n]+");
-        for (String rawIp : rawIps) {
-            String normalizedIp = normalizeVisitIp(rawIp);
-            if (!normalizedIp.isEmpty()) {
-                ignoreIps.add(normalizedIp);
-            }
-        }
-        return ignoreIps;
     }
 
     /**
@@ -2342,6 +2357,7 @@ public class CacheService {
                 return;
             }
 
+            // 忽略IP检查由调用方 saveHistory 在进入本方法前完成，避免重复扫描缓存
             String today = java.time.LocalDate.now().toString();
             String normalizedPageUri = PageVisitUtils.normalizeVisitUri(pageUri);
             String safeCity = normalizeLocationField(city);

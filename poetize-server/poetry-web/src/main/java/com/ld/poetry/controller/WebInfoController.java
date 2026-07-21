@@ -702,6 +702,67 @@ public class WebInfoController {
     }
 
     /**
+     * 获取访问统计忽略IP列表。
+     */
+    @LoginCheck(1)
+    @GetMapping("/visitIgnoreIps")
+    public PoetryResult<List<String>> getVisitIgnoreIps() {
+        return PoetryResult.success(new ArrayList<>(cacheService.getVisitIgnoreIps()));
+    }
+
+    /**
+     * 新增访问统计忽略IP。
+     */
+    @LoginCheck(1)
+    @PostMapping("/visitIgnoreIp")
+    @AuditLog(action = "VISIT_IGNORE_IP_ADD", targetType = "VISIT", targetIdParam = "ip", summary = "新增访问统计忽略IP")
+    public PoetryResult<Map<String, Object>> addVisitIgnoreIp(@RequestBody Map<String, Object> params) {
+        try {
+            String rawIp = params.get("ip") != null ? params.get("ip").toString() : "";
+            String normalizedIp = cacheService.normalizeVisitIp(rawIp);
+            if (!isValidVisitCleanIp(normalizedIp)) {
+                return PoetryResult.fail("IP 格式无效");
+            }
+            boolean alreadyIgnored = cacheService.isVisitIpIgnored(normalizedIp);
+            boolean added = cacheService.addVisitIgnoreIp(normalizedIp);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("ip", normalizedIp);
+            result.put("added", added);
+            result.put("alreadyIgnored", alreadyIgnored);
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("新增访问统计忽略IP失败", e);
+            return PoetryResult.fail("新增忽略IP失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除访问统计忽略IP。
+     */
+    @LoginCheck(1)
+    @PostMapping("/visitIgnoreIp/delete")
+    @AuditLog(action = "VISIT_IGNORE_IP_REMOVE", targetType = "VISIT", targetIdParam = "ip", summary = "移除访问统计忽略IP")
+    public PoetryResult<Map<String, Object>> removeVisitIgnoreIp(@RequestBody Map<String, Object> params) {
+        try {
+            String rawIp = params.get("ip") != null ? params.get("ip").toString() : "";
+            String normalizedIp = cacheService.normalizeVisitIp(rawIp);
+            if (!isValidVisitCleanIp(normalizedIp)) {
+                return PoetryResult.fail("IP 格式无效");
+            }
+            boolean removed = cacheService.removeVisitIgnoreIp(normalizedIp);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("ip", normalizedIp);
+            result.put("removed", removed);
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("移除访问统计忽略IP失败", e);
+            return PoetryResult.fail("移除忽略IP失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 获取网站统计信息
      */
     @LoginCheck(0)
@@ -921,9 +982,10 @@ public class WebInfoController {
                 // 设置今日省份统计
                 result.put("province_today", todayStats.get("province_today"));
                 result.put("ua_today", todayStats.get("ua_today"));
-                result.put("article_today", buildArticleVisitStats(null, cacheService.getDailyVisitRecords(today)));
+                List<Map<String, Object>> todayRecords = cacheService.getDailyVisitRecords(today);
+                result.put("article_today", buildArticleVisitStats(null, todayRecords));
                 try {
-                    result.put("referrer_today", buildReferrerVisitStats(null, cacheService.getDailyVisitRecords(today), siteHost));
+                    result.put("referrer_today", buildReferrerVisitStats(null, todayRecords, siteHost));
                 } catch (Exception e) {
                     log.error("获取今日来源网站统计失败", e);
                     result.put("referrer_today", new ArrayList<>());

@@ -47,6 +47,14 @@ public class CacheConstants {
     public static final String DISABLED_AUTOMATION_UA_KEY = "poetize:security:disabled_automation_ua";
 
     /**
+     * 访问统计忽略 IP 列表缓存键。
+     * <p>存储 JSON 字符串数组（小写已规范化 IP），永久有效，由后台管理接口维护。
+     * 命中该集合的 IP 不参与站点访问统计。
+     * 格式: poetize:visit:ignore_ips
+     */
+    public static final String VISIT_IGNORE_IPS_KEY = "poetize:visit:ignore_ips";
+
+    /**
      * 缓存键前缀
      */
     public static final String CACHE_PREFIX = "poetize:";
