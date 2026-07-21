@@ -10,8 +10,9 @@
         style="width: 300px;"
       ></el-input>
     </div>
-    <el-table :data="filteredConfigList" height="75vh" border class="table" header-cell-class-name="table-header">
-      <el-table-column prop="id" label="ID" width="55" align="center"></el-table-column>
+    <el-table :data="filteredConfigList" height="75vh" border class="table" header-cell-class-name="table-header"
+              :default-sort="{prop: 'id', order: 'ascending'}">
+      <el-table-column prop="id" label="ID" width="55" align="center" sortable></el-table-column>
       <el-table-column prop="configName" label="名称" align="center"></el-table-column>
       <el-table-column prop="configKey" label="键名" align="center"></el-table-column>
       <el-table-column prop="configValue" label="键值" align="center"></el-table-column>

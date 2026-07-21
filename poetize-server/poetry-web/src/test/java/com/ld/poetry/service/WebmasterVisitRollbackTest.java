@@ -75,11 +75,7 @@ public class WebmasterVisitRollbackTest {
         
         when(redisUtil.lGet(anyString(), anyLong(), anyLong())).thenReturn(List.of(recordJson));
 
-        // 3. Mock getCachedSysConfig and sysConfigMapper to avoid null pointer exceptions during config operations
-        when(redisUtil.get(anyString())).thenReturn(null);
-        when(sysConfigMapper.selectOne(any())).thenReturn(null);
-
-        // 4. Call the method under test
+        // 3. Call the method under test
         cacheService.ignoreVisitIpAndCleanRecent(webmasterIp, minutes);
 
         // 5. Verify that decrementViewCount was called for article 123 with a count of 2

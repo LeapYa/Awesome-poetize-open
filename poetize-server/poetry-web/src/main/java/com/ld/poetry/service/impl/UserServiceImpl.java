@@ -141,14 +141,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     /**
-     * 管理员/站长访问不参与站点访问统计。
-     * 登录成功后加入忽略名单，并清理登录前5分钟内未登录状态产生的访问记录。
+     * 站长登录后清理登录前5分钟内未登录状态产生的访问记录。
+     * 仅清理记录，不再将IP加入忽略名单（站长访问通过会话动态识别）。
      */
-    private void handleAdminVisitIp(String ip) {
+    private void handleOwnerVisitIp(String ip) {
         try {
             cacheService.ignoreVisitIpAndCleanRecent(ip, 5);
         } catch (Exception e) {
-            log.warn("处理管理员访问统计忽略IP失败: ip={}, error={}", ip, e.getMessage());
+            log.warn("清理站长登录前访问记录失败: ip={}, error={}", ip, e.getMessage());
         }
     }
 
@@ -292,7 +292,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 记录管理员登录
         if (isActualAdmin) {
             recordAdminLoginIp(clientIp);
-            handleAdminVisitIp(clientIp);
+            // 仅站长(DEV)需要清理登录前的访问记录，普通管理员访问正常统计
+            if (one.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode()) {
+                handleOwnerVisitIp(clientIp);
+            }
             log.info("管理员登录成功 - 账号: {}, IP: {}", account, clientIp);
         } else {
             log.info("用户登录成功 - 账号: {}, IP: {}", account, clientIp);
@@ -1455,8 +1458,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 根据用户实际权限判断是否为管理员
         boolean isActualAdmin = (existUser.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode() ||
                 existUser.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode());
-        if (isActualAdmin) {
-            handleAdminVisitIp(PoetryUtil.getIpAddr(PoetryUtil.getRequest()));
+        // 仅站长(DEV)需要清理登录前的访问记录
+        if (existUser.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode()) {
+            handleOwnerVisitIp(PoetryUtil.getIpAddr(PoetryUtil.getRequest()));
         }
 
         String adminToken = "";

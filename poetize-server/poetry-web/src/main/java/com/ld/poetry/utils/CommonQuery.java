@@ -92,11 +92,6 @@ public class CommonQuery {
 
             User currentUser = PoetryUtil.getCurrentUser();
             if (isVisitStatisticsOwner(currentUser)) {
-                cacheService.addVisitIgnoreIp(normalizedIp);
-                return;
-            }
-
-            if (cacheService.isVisitIpIgnored(normalizedIp)) {
                 return;
             }
 
@@ -231,8 +226,7 @@ public class CommonQuery {
     private boolean isVisitStatisticsOwner(User user) {
         return user != null
                 && user.getUserType() != null
-                && (user.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode()
-                || user.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode());
+                && user.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode();
     }
 
     public User getUser(Integer userId) {

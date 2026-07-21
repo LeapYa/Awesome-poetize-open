@@ -830,42 +830,30 @@ public class CacheService {
 
     /**
      * 获取访问统计忽略IP列表。
+     * 已废弃：站长访问排除改为基于会话的动态判断，不再维护IP列表。
+     * 保留方法签名供现有调用方编译通过，始终返回空集合。
      */
     public Set<String> getVisitIgnoreIps() {
-        try {
-            String configValue = getCachedSysConfig(VISIT_IGNORE_IP_CONFIG_KEY);
-            if (configValue == null) {
-                SysConfig config = sysConfigMapper.selectOne(new LambdaQueryWrapper<SysConfig>()
-                        .eq(SysConfig::getConfigKey, VISIT_IGNORE_IP_CONFIG_KEY)
-                        .eq(SysConfig::getConfigType, VISIT_IGNORE_IP_CONFIG_TYPE)
-                        .last("limit 1"));
-                configValue = config != null ? config.getConfigValue() : "";
-                cacheSysConfig(VISIT_IGNORE_IP_CONFIG_KEY, configValue == null ? "" : configValue);
-            }
-            return parseVisitIgnoreIps(configValue);
-        } catch (Exception e) {
-            log.error("获取访问统计忽略IP失败", e);
-            return new LinkedHashSet<>();
-        }
+        return new LinkedHashSet<>();
     }
 
     /**
      * 获取访问统计忽略IP列表，供动态SQL安全绑定。
+     * 已废弃：始终返回空列表，SQL 中 NOT IN 条件不会生效。
      */
     public List<String> getVisitIgnoreIpList() {
-        return new ArrayList<>(getVisitIgnoreIps());
+        return new ArrayList<>();
     }
 
     /**
-     * 站长/管理员登录成功后，自动把当前IP加入访问统计忽略名单，并清理登录前短时间窗口内的访问记录。
+     * 站长登录成功后，清理登录前短时间窗口内未登录状态产生的访问记录。
+     * 不再自动将IP加入忽略名单——站长访问通过会话动态识别，无需维护IP列表。
      */
     public Map<String, Object> ignoreVisitIpAndCleanRecent(String ip, int minutes) {
         String normalizedIp = normalizeVisitIp(ip);
         Map<String, Object> result = new HashMap<>();
         result.put("ip", normalizedIp);
         result.put("valid", !normalizedIp.isEmpty());
-        result.put("addedToIgnore", false);
-        result.put("alreadyIgnored", false);
         result.put("deletedDbCount", 0);
         result.put("removedRedisCount", 0);
 
@@ -873,8 +861,6 @@ public class CacheService {
             return result;
         }
 
-        boolean wasIgnored = isVisitIpIgnored(normalizedIp);
-        boolean added = addVisitIgnoreIp(normalizedIp);
         int safeMinutes = Math.max(1, minutes);
         LocalDateTime since = LocalDateTime.now().minusMinutes(safeMinutes);
         int deletedDbCount = 0;
@@ -911,17 +897,15 @@ public class CacheService {
             log.warn("清理站长IP最近Redis访问记录失败: ip={}, since={}", normalizedIp, since, e);
         }
 
-        if (added || wasIgnored || deletedDbCount > 0 || removedRedisCount > 0) {
+        if (deletedDbCount > 0 || removedRedisCount > 0) {
             refreshLocationStatisticsCache();
         }
 
-        result.put("addedToIgnore", added);
-        result.put("alreadyIgnored", wasIgnored || !added);
         result.put("deletedDbCount", deletedDbCount);
         result.put("removedRedisCount", removedRedisCount);
         result.put("totalRemovedCount", deletedDbCount + removedRedisCount);
         result.put("windowMinutes", safeMinutes);
-        log.info("站长IP访问统计过滤完成: {}", result);
+        log.info("站长登录前访问记录清理完成: {}", result);
         return result;
     }
 
@@ -2354,7 +2338,7 @@ public class CacheService {
                                    UserAgentClassifier.UaInfo uaInfo) {
         try {
             String normalizedIp = normalizeVisitIp(ip);
-            if (normalizedIp.isEmpty() || isVisitIpIgnored(normalizedIp)) {
+            if (normalizedIp.isEmpty()) {
                 return;
             }
 
