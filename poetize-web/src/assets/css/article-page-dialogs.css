@@ -197,22 +197,26 @@ body.dark-mode .share-card-dialog .el-dialog__footer {
 }
 
 body.dark-mode .share-card-dialog .share-card-preview {
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  background: #3a3a3a !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
 }
 
 body.dark-mode .share-card-dialog .card-date,
 body.dark-mode .share-card-dialog .card-author,
 body.dark-mode .share-card-dialog .card-brand {
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.72) !important;
 }
 
 body.dark-mode .share-card-dialog .card-title {
-  color: #eaeaea;
+  color: #eaeaea !important;
 }
 
 body.dark-mode .share-card-dialog .card-divider {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark-mode .share-card-dialog .card-avatar {
+  border-color: #555 !important;
 }
 
 body.dark-mode .share-card-dialog .el-dialog__title {
