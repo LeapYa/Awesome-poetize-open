@@ -96,7 +96,7 @@ public class SysConfigController {
                 oldValue = oldConfig.getConfigValue();
             }
         } else {
-            // 新增配置时，检查是否已存在相同的 configKey
+            // 未携带 id 时，按 configKey + configType 查找已有记录，自动转为更新
             LambdaQueryChainWrapper<SysConfig> checkWrapper = new LambdaQueryChainWrapper<>(sysConfigService.getBaseMapper());
             SysConfig existingConfig = checkWrapper
                     .eq(SysConfig::getConfigKey, sysConfig.getConfigKey())
@@ -104,7 +104,9 @@ public class SysConfigController {
                     .one();
             
             if (existingConfig != null) {
-                return PoetryResult.fail("配置键 [" + sysConfig.getConfigKey() + "] 已存在，请勿重复添加！如需修改请编辑现有配置。");
+                // 已存在同 key 配置：回填 id，走更新路径
+                sysConfig.setId(existingConfig.getId());
+                oldValue = existingConfig.getConfigValue();
             }
         }
         
