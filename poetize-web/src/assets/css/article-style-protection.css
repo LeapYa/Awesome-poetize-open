@@ -936,14 +936,20 @@ body.dark-mode .entry-content li.task-list-item input[type='checkbox']:checked {
 /* 暗黑模式 */
 body.dark-mode .entry-content .pb-attachment-card,
 .dark-mode .entry-content .pb-attachment-card {
-  background: rgba(22, 119, 255, 0.1) !important;
-  border-color: rgba(22, 119, 255, 0.2) !important;
+  background: rgba(22, 119, 255, 0.08) !important;
+  border-color: rgba(22, 119, 255, 0.25) !important;
+  color: #79bbff !important;
 }
 
 body.dark-mode .entry-content .pb-attachment-card:hover,
 .dark-mode .entry-content .pb-attachment-card:hover {
   background: rgba(22, 119, 255, 0.15) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+body.dark-mode .entry-content .pb-attachment-pill-icon,
+.dark-mode .entry-content .pb-attachment-pill-icon {
+  background: #2b6cb0 !important;
 }
 
 body.dark-mode .entry-content .pb-attachment-pill-name,
@@ -953,7 +959,7 @@ body.dark-mode .entry-content .pb-attachment-pill-name,
 
 body.dark-mode .entry-content .pb-attachment-pill-meta,
 .dark-mode .entry-content .pb-attachment-pill-meta {
-  color: #5c8bba !important;
+  color: #7eb3e0 !important;
   border-left-color: rgba(22, 119, 255, 0.3) !important;
 }
 

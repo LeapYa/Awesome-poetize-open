@@ -805,6 +805,7 @@ public class ResourceController {
 
         response.setHeader("Content-Disposition", FileDownloadUtil.contentDispositionAttachment(downloadName));
         response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("X-Accel-Buffering", "no");
         response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
 
         streamLocalResource(path, response);
