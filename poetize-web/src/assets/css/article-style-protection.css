@@ -558,6 +558,18 @@ html body .entry-content img {
   border-radius: 5px !important;
 }
 
+/* 懒加载图片占位符 */
+html body .entry-content img[data-src]:not([src]) {
+  display: block !important;
+  min-height: 80px !important;
+  background-color: #f0f0f0 !important;
+  border-radius: 5px !important;
+}
+body.dark-mode .entry-content img[data-src]:not([src]),
+html body.dark-mode .entry-content img[data-src]:not([src]) {
+  background-color: #2a2a2a !important;
+}
+
 /* ========== 表格样式保护 ========== */
 body .entry-content table,
 html body .entry-content table {

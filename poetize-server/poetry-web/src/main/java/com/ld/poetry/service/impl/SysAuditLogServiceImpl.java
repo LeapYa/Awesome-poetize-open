@@ -208,7 +208,7 @@ public class SysAuditLogServiceImpl extends ServiceImpl<SysAuditLogMapper, SysAu
 
     private String resolveLocation(String ip) {
         try {
-            return locationService.getLocationByIp(ip);
+            return locationService.getLocationByIpOffline(ip);
         } catch (Exception e) {
             return "未知";
         }

@@ -251,6 +251,7 @@ import {
   toggleImageZoom,
   toggleMermaidZoom,
   processImages,
+  cleanupLazyImageObserver,
   handleGraphicContextMenu,
   closeGraphicContextMenu,
   copyGraphicImage,
@@ -702,6 +703,7 @@ export default {
     // 组件销毁时清理状态，防止影响下一个文章组件
     this.clearComponentState()
     this.teardownCommentIntersectionObserver()
+    cleanupLazyImageObserver()
 
     // 销毁tocbot实例
     if (window.tocbot) {
@@ -784,7 +786,26 @@ export default {
           return match.replace('<img', '<img loading="lazy" decoding="async"')
         }
       )
-      
+
+      // 将图片 src 转为 data-src，由 IntersectionObserver 按需加载
+      // 这样 v-html 插入 HTML 时浏览器不会立即加载所有图片
+      renderedHtml = renderedHtml.replace(
+        /<img\b([^>]*?)>/gi,
+        (match, attrs) => {
+          // 已有 data-src 的不处理
+          if (/\bdata-src=/i.test(attrs)) return match
+          // 提取 src 属性值
+          const srcMatch = attrs.match(/\bsrc=(["'])([^"']*)\1/i)
+          if (!srcMatch) return match
+          const src = srcMatch[2]
+          // data: 和 blob: URL 不做懒加载（内联图片、表情等）
+          if (src.startsWith('data:') || src.startsWith('blob:')) return match
+          // 移除 src 属性，添加 data-src
+          const attrsWithoutSrc = attrs.replace(/\s*\bsrc=(["'])[^"']*\1/i, '')
+          return `<img${attrsWithoutSrc} data-src="${src}">`
+        }
+      )
+
       this.articleContentHtml = renderedHtml
       this.articleContentKey = Date.now()
 
@@ -1545,12 +1566,15 @@ export default {
       if (!targets.length) return
 
       // 收集所有需要查询的路径（绝对 URL 和 attribute 原始值都发过去）
+      // 懒加载图片的 src 可能为空，需要从 data-src 回退读取
       const pathSet = new Set()
       targets.forEach((img) => {
-        const absSrc = img.src
-        const attrSrc = img.getAttribute('src')
+        const absSrc = img.src || ''
+        const attrSrc = img.getAttribute('src') || ''
+        const dataSrc = img.getAttribute('data-src') || ''
         if (absSrc) pathSet.add(absSrc)
         if (attrSrc && attrSrc !== absSrc) pathSet.add(attrSrc)
+        if (dataSrc && dataSrc !== absSrc) pathSet.add(dataSrc)
       })
 
       if (!pathSet.size) return
@@ -1564,9 +1588,10 @@ export default {
         if (!dimMap) return
 
         targets.forEach((img) => {
-          const absSrc = img.src
-          const attrSrc = img.getAttribute('src')
-          const dims = dimMap[absSrc] || dimMap[attrSrc]
+          const absSrc = img.src || ''
+          const attrSrc = img.getAttribute('src') || ''
+          const dataSrc = img.getAttribute('data-src') || ''
+          const dims = dimMap[absSrc] || dimMap[attrSrc] || dimMap[dataSrc]
           if (dims?.width && dims?.height) {
             img.setAttribute('width', dims.width)
             img.setAttribute('height', dims.height)

@@ -1,5 +1,6 @@
 package com.ld.poetry.service;
 
+import com.ld.poetry.service.provider.Ip2RegionProvider;
 import com.ld.poetry.service.provider.IpLocationProviderFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * IP地理位置解析服务
  * 使用工厂模式管理多个IP解析提供者，支持自动降级和优先级选择
+ * <p>
+ * 在线IP服务（腾讯LBS/淘宝）仅用于评论区IP解析（getLocationByIp），
+ * 其他统计场景应使用 getLocationByIpOffline 仅走IP2Region离线库。
  */
 @Slf4j
 @Service
@@ -20,12 +24,17 @@ public class LocationService {
 
     @Autowired
     private IpLocationProviderFactory providerFactory;
+
+    @Autowired
+    private Ip2RegionProvider ip2RegionProvider;
     
     // IP地理位置缓存，避免重复查询
     private final ConcurrentHashMap<String, String> locationCache = new ConcurrentHashMap<>();
 
     /**
-     * 根据IP地址获取地理位置
+     * 根据IP地址获取地理位置（在线优先，用于评论区）
+     * <p>
+     * 按优先级依次尝试：腾讯LBS → 淘宝IP → IP2Region离线库
      * @param ipAddress IP地址
      * @return 地理位置字符串
      */
@@ -53,6 +62,50 @@ public class LocationService {
         // 缓存结果
         locationCache.put(ipAddress, location);
         
+        return location;
+    }
+
+    /**
+     * 仅使用IP2Region离线库解析地理位置（用于审计日志等统计场景）
+     * <p>
+     * 不调用在线IP服务，避免外部API依赖和延迟。
+     * @param ipAddress IP地址
+     * @return 地理位置字符串
+     */
+    public String getLocationByIpOffline(String ipAddress) {
+        if (!StringUtils.hasText(ipAddress) || "unknown".equals(ipAddress)) {
+            return "未知";
+        }
+
+        // 检查缓存
+        String cachedLocation = locationCache.get(ipAddress);
+        if (cachedLocation != null) {
+            return cachedLocation;
+        }
+
+        // 检查是否为内网IP
+        if (isInternalIp(ipAddress)) {
+            String location = "内网IP";
+            locationCache.put(ipAddress, location);
+            return location;
+        }
+
+        // 仅使用IP2Region离线库
+        String location = "未知";
+        if (ip2RegionProvider != null && ip2RegionProvider.isAvailable()) {
+            try {
+                String result = ip2RegionProvider.resolveLocation(ipAddress);
+                if (StringUtils.hasText(result)) {
+                    location = result;
+                }
+            } catch (Exception e) {
+                log.warn("[getLocationByIpOffline] IP2Region解析失败: {}, 错误: {}", ipAddress, e.getMessage());
+            }
+        }
+
+        // 缓存结果
+        locationCache.put(ipAddress, location);
+
         return location;
     }
 

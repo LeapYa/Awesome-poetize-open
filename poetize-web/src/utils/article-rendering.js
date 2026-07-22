@@ -164,7 +164,8 @@ export async function highlight() {
 
     const copyButton = document.createElement('a')
     copyButton.className = 'copy-code'
-    copyButton.href = '#'
+    copyButton.setAttribute('role', 'button')
+    copyButton.setAttribute('tabindex', '0')
     copyButton.setAttribute('data-clipboard-target', '#hljs-' + i)
     copyButton.innerHTML =
       '<i class="fa fa-clipboard" aria-hidden="true"></i>'
@@ -1137,8 +1138,12 @@ export async function copyGraphicImage() {
         }
       })
     } else if (currentType === 'image') {
-      const isBase64 = currentTarget.src.startsWith('data:')
-      const response = await fetch(currentTarget.src)
+      const imgSrc = currentTarget.src || currentTarget.getAttribute('data-src') || ''
+      if (!imgSrc) {
+        this.$message.warning('图片尚未加载，请稍后再试')
+        return
+      }
+      const response = await fetch(imgSrc)
       const blob = await response.blob()
       try {
         const item = new window.ClipboardItem({ [blob.type]: blob })
@@ -1175,9 +1180,14 @@ export async function downloadGraphicImage() {
       document.body.removeChild(downloadLink)
       this.$message.success('PNG 下载已开始')
     } else if (currentType === 'image') {
-      const urlPart = currentTarget.src.split('?')[0]
+      const imgSrc = currentTarget.src || currentTarget.getAttribute('data-src') || ''
+      if (!imgSrc) {
+        this.$message.warning('图片尚未加载，请稍后再试')
+        return
+      }
+      const urlPart = imgSrc.split('?')[0]
       const filename = urlPart.split('/').pop() || `image-${Date.now()}.png`
-      fetch(currentTarget.src)
+      fetch(imgSrc)
         .then(response => response.blob())
         .then(blob => {
           const blobUrl = URL.createObjectURL(blob)
@@ -1191,7 +1201,7 @@ export async function downloadGraphicImage() {
           this.$message.success('下载已开始')
         })
         .catch(() => {
-          window.open(currentTarget.src, '_blank')
+          window.open(imgSrc, '_blank')
         })
     }
   } catch (error) {
@@ -1200,6 +1210,16 @@ export async function downloadGraphicImage() {
   }
 
   this.closeGraphicContextMenu()
+}
+
+// 懒加载 IntersectionObserver 实例，文章切换时自动断开旧实例
+let lazyImageObserver = null
+
+export function cleanupLazyImageObserver() {
+  if (lazyImageObserver) {
+    lazyImageObserver.disconnect()
+    lazyImageObserver = null
+  }
 }
 
 export function processImages() {
@@ -1216,19 +1236,58 @@ export function processImages() {
 
     img.addEventListener('click', (event) => {
       event.stopPropagation()
-      this.toggleImageZoom(img.src, img)
+      this.toggleImageZoom(img.src || img.getAttribute('data-src') || '', img)
     })
 
     img.addEventListener('contextmenu', (event) => {
       this.handleGraphicContextMenu(event, img, 'image')
     })
   })
+
+  // IntersectionObserver 懒加载：将 data-src 还原为 src
+  const lazyImages = entryContent.querySelectorAll('img[data-src]:not([src])')
+  if (lazyImages.length > 0) {
+    // 断开旧 observer（文章切换时旧 DOM 已移除）
+    if (lazyImageObserver) {
+      lazyImageObserver.disconnect()
+    }
+
+    if (typeof IntersectionObserver === 'undefined') {
+      // 不支持 IntersectionObserver 的浏览器直接加载所有图片
+      lazyImages.forEach(img => {
+        const dataSrc = img.getAttribute('data-src')
+        if (dataSrc) {
+          img.src = dataSrc
+          img.removeAttribute('data-src')
+        }
+      })
+    } else {
+      lazyImageObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const img = entry.target
+            const dataSrc = img.getAttribute('data-src')
+            if (dataSrc) {
+              img.src = dataSrc
+              img.removeAttribute('data-src')
+            }
+            lazyImageObserver.unobserve(img)
+          }
+        })
+      }, {
+        rootMargin: '300px',
+        threshold: 0
+      })
+
+      lazyImages.forEach(img => lazyImageObserver.observe(img))
+    }
+  }
 }
 
 export function toggleImageZoom(src, clickedImg) {
   const entryContent = document.querySelector('.entry-content')
   const images = entryContent ? Array.from(entryContent.querySelectorAll('img:not(.pictureReg):not(.emoji)')) : []
-  const urlList = images.map(img => img.src)
+  const urlList = images.map(img => img.src || img.getAttribute('data-src') || '')
 
   let initialIndex = 0
   if (clickedImg) {
