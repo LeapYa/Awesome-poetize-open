@@ -114,6 +114,10 @@ public class QRCodeService {
             SeoConfig seoConfig = seoConfigService.getFullSeoConfig();
             if (seoConfig != null && StringUtils.hasText(seoConfig.getSiteLogo())) {
                 String logoUrl = seoConfig.getSiteLogo();
+                // 相对路径（如 /media/xxx）补全为完整 URL，QRCodeUtil 仅支持 http(s)
+                if (logoUrl.startsWith("/")) {
+                    logoUrl = siteUrl + logoUrl;
+                }
                 return logoUrl;
             }
         } catch (Exception e) {

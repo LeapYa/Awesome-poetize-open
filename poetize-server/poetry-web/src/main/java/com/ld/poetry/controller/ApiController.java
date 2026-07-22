@@ -904,7 +904,7 @@ public class ApiController {
                     : buildApiUploadPath(fileVO.getType(), file.getOriginalFilename()));
 
             ManagedResourceUploadService.ManagedUploadResult saved =
-                    managedResourceUploadService.upload(fileVO, adminUser.getId());
+                    managedResourceUploadService.uploadOrReuse(fileVO, adminUser.getId());
 
             Map<String, Object> data = new HashMap<>();
             data.put("url", saved.stablePath());

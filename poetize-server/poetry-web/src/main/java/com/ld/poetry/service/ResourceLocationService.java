@@ -889,6 +889,14 @@ public class ResourceLocationService {
         return requireLocation(resource.getId(), existing.getId());
     }
 
+    /**
+     * 根据 ID 获取 location 记录（供外部服务校验物理文件存在性）。
+     */
+    public ResourceLocation getActiveLocationById(Long locationId) {
+        if (locationId == null) return null;
+        return resourceLocationMapper.selectById(locationId);
+    }
+
     private ResourceLocation findLocation(String storeType, String accessPath) {
         return resourceLocationMapper.selectOne(
                 Wrappers.<ResourceLocation>lambdaQuery()

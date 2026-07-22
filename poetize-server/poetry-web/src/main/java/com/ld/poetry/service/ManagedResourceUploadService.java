@@ -35,6 +35,98 @@ public class ManagedResourceUploadService {
     private final ResourceStorageSnapshotService snapshotService;
     private final ResourceLocationService resourceLocationService;
     private final FileSecurityValidator fileSecurityValidator;
+    private final ResourceService resourceService;
+
+    @org.springframework.beans.factory.annotation.Value("${local.uploadUrl:/app/static/}")
+    private String localUploadUrl;
+
+    /**
+     * 上传资源，若内容完全相同（SHA-256 一致）的资源已存在，则直接复用已有 URL。
+     * 适用于 Agent/API 上传场景：重复上传不报错，返回已有资源路径。
+     * 防御性编程：若物理文件缺失则重新落盘到原路径，URL 始终不变。
+     */
+    public ManagedUploadResult uploadOrReuse(FileVO request, Integer userId) {
+        try {
+            if (request != null && request.getFile() != null && !request.getFile().isEmpty()) {
+                String sha256;
+                try (InputStream is = request.getFile().getInputStream()) {
+                    sha256 = DigestUtils.sha256Hex(is);
+                }
+                Resource existing = resourceService.lambdaQuery()
+                        .eq(Resource::getResourceHash, sha256)
+                        .eq(Resource::getUserId, userId)
+                        .eq(Resource::getStatus, true)
+                        .last("LIMIT 1")
+                        .one();
+                if (existing != null && StringUtils.hasText(existing.getPublicId())) {
+                    String stablePath = "/media/" + existing.getPublicId();
+                    // 防御性校验：物理文件缺失时重新落盘到原路径
+                    if (!verifyPhysicalFileExists(existing)) {
+                        log.warn("已有资源物理文件缺失，重新落盘: hash={}, publicId={}", sha256, existing.getPublicId());
+                        rewritePhysicalFile(request, existing);
+                    }
+                    log.info("上传复用已有资源: hash={}, publicId={}, path={}", sha256, existing.getPublicId(), stablePath);
+                    return new ManagedUploadResult(existing, null, stablePath, true);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("复用检查失败，走正常上传流程: {}", e.getMessage());
+        }
+        return upload(request, userId);
+    }
+
+    /**
+     * 将上传文件重新写入已有资源的原始物理路径（文件缺失时的防御性落盘）。
+     */
+    private void rewritePhysicalFile(FileVO request, Resource existing) {
+        try {
+            var location = resourceLocationService.getActiveLocationById(existing.getActiveLocationId());
+            if (location == null || !StringUtils.hasText(location.getAccessPath())) {
+                return;
+            }
+            String accessPath = location.getAccessPath();
+            String base = localUploadUrl.endsWith("/") ? localUploadUrl : localUploadUrl + "/";
+            String relativePath = accessPath.startsWith("/") ? accessPath.substring(1) : accessPath;
+            java.io.File targetFile = new java.io.File(base + relativePath);
+            java.io.File parentDir = targetFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs();
+            }
+            try (InputStream is = request.getFile().getInputStream();
+                 java.io.FileOutputStream fos = new java.io.FileOutputStream(targetFile)) {
+                is.transferTo(fos);
+            }
+            log.info("防御性落盘完成: {}", targetFile.getAbsolutePath());
+        } catch (Exception e) {
+            log.warn("防御性落盘失败（不影响URL返回）: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 校验资源对应的物理文件是否确实存在于磁盘。
+     * 仅对本地存储做文件存在性检查；远程存储（七牛等）信任数据库记录。
+     */
+    private boolean verifyPhysicalFileExists(Resource resource) {
+        try {
+            if (resource.getActiveLocationId() == null) {
+                return false;
+            }
+            // 通过 resource_location 获取 accessPath
+            var location = resourceLocationService.getActiveLocationById(resource.getActiveLocationId());
+            if (location == null || !StringUtils.hasText(location.getAccessPath())) {
+                return false;
+            }
+            String accessPath = location.getAccessPath();
+            // 本地存储：检查文件是否存在
+            String base = localUploadUrl.endsWith("/") ? localUploadUrl : localUploadUrl + "/";
+            String relativePath = accessPath.startsWith("/") ? accessPath.substring(1) : accessPath;
+            java.io.File file = new java.io.File(base + relativePath);
+            return file.exists() && file.isFile() && file.length() > 0;
+        } catch (Exception e) {
+            log.debug("校验物理文件存在性失败: {}", e.getMessage());
+            return false;
+        }
+    }
 
     public ManagedUploadResult upload(FileVO request, Integer userId) {
         UploadSource source = inspectSource(request, userId);
