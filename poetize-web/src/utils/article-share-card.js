@@ -141,7 +141,7 @@ export function captureAndDownloadCard(element) {
     html2canvas(element, {
       useCORS: true,
       allowTaint: true,
-      backgroundColor: '#F5EFE6',
+      backgroundColor: null,
       scale: 2,
       logging: false,
       ignoreElements: (target) => {
