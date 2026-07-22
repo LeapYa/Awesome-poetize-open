@@ -2,6 +2,7 @@ package com.ld.poetry.service;
 
 import com.ld.poetry.entity.Resource;
 import com.ld.poetry.entity.ResourceLocation;
+import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import com.ld.poetry.utils.storage.FileStorageService;
 import com.ld.poetry.utils.storage.StorageCapability;
@@ -55,6 +56,9 @@ class ManagedResourceUploadServiceTest {
     private FileSecurityValidator fileSecurityValidator;
 
     @Mock
+    private ResourceService resourceService;
+
+    @Mock
     private StoreService storeService;
 
     @TempDir
@@ -68,7 +72,8 @@ class ManagedResourceUploadServiceTest {
                 fileStorageService,
                 snapshotService,
                 resourceLocationService,
-                fileSecurityValidator
+                fileSecurityValidator,
+                resourceService
         );
     }
 
