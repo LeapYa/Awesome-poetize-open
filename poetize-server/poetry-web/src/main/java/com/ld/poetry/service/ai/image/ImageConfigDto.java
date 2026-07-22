@@ -17,6 +17,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   "size": "1:1 | 16:9 | 9:16 | 4:3 | 3:4",
  *   "resolution": "1024x1024 | 1328x1328 | 1536x1024",  // 像素值，仅 OpenAI/SiliconFlow/DashScope/豆包/custom 等支持像素的 provider 生效
  *   "quality": "auto | low | medium | high",
+ *   "negative_prompt": "低分辨率，低画质，肢体畸形",  // 反向提示词，仅 DashScope/Qwen Image 生效
+ *   "prompt_extend": true,  // 提示词智能改写，仅 Qwen Image 2.0 生效，默认 true
+ *   "watermark": false,  // 是否添加水印，仅 Qwen Image 2.0 生效，默认 false
  *   "timeout": 60,
  *   "cover_template": "object | portrait | felt | cyberpunk | watercolor | ink | pixel | 3d | minimal | collage | custom",  // 封面模板
  *   "custom_refine_prompt": "用户自定义的 LLM 系统提示词",  // 仅 cover_template=custom 时使用
@@ -55,6 +58,12 @@ public class ImageConfigDto {
     /** 像素值，仅支持像素的 provider 生效（OpenAI/SiliconFlow/DashScope/豆包/custom），如 1536x864 */
     private String resolution = "1536x864";
     private String quality = "auto";
+    /** 反向提示词，仅 DashScope/Qwen Image 生效 */
+    private String negativePrompt = "";
+    /** 提示词智能改写，仅 Qwen Image 2.0 生效，默认 true */
+    private boolean promptExtend = true;
+    /** 是否添加水印，仅 Qwen Image 2.0 生效，默认 false */
+    private boolean watermark = false;
 
     /** 封面模板：object=物品类真实感，portrait=人物类真实感，felt=毛毡Q版，cyberpunk=赛博朋克，watercolor=水彩手绘，ink=国风水墨，pixel=像素复古，3d=3D卡通渲染，minimal=极简几何，collage=复古拼贴，custom=自定义 */
     private String coverTemplate = "object";
@@ -78,6 +87,9 @@ public class ImageConfigDto {
             dto.size = textOrDefault(node, "size", "16:9");
             dto.resolution = textOrDefault(node, "resolution", "1536x864");
             dto.quality = textOrDefault(node, "quality", "auto");
+            dto.negativePrompt = textOrDefault(node, "negative_prompt", "");
+            dto.promptExtend = !node.has("prompt_extend") || node.get("prompt_extend").asBoolean(true);
+            dto.watermark = node.has("watermark") && node.get("watermark").asBoolean(false);
 
             dto.coverTemplate = textOrDefault(node, "cover_template", "object");
             // 兼容旧数据：历史上可能存过 none，统一归一化为 object
@@ -129,6 +141,9 @@ public class ImageConfigDto {
     public String getSize() { return size; }
     public String getResolution() { return resolution; }
     public String getQuality() { return quality; }
+    public String getNegativePrompt() { return negativePrompt; }
+    public boolean isPromptExtend() { return promptExtend; }
+    public boolean isWatermark() { return watermark; }
 
     public String getCoverTemplate() { return coverTemplate; }
     public String getCustomRefinePrompt() { return customRefinePrompt; }

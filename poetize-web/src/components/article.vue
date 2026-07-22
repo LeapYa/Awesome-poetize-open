@@ -776,8 +776,8 @@ export default {
       const safeContent = content || ''
       const md = await this.createMarkdownRenderer(safeContent)
       // 使用 markdown-it 渲染标准 markdown
-      let renderedHtml = transformAttachmentLinks(md.render(safeContent))
-      
+      let renderedHtml = md.render(safeContent)
+
       // 额外处理：很多时候文章里会有直接手写的 HTML <img /> 标签，或者 Vditor 插入的 HTML 图片
       // 这里通过正则确保所有图片都被强行加上 loading="lazy"
       renderedHtml = renderedHtml.replace(
@@ -788,7 +788,8 @@ export default {
       )
 
       // 将图片 src 转为 data-src，由 IntersectionObserver 按需加载
-      // 这样 v-html 插入 HTML 时浏览器不会立即加载所有图片
+      // 必须在 transformAttachmentLinks 之前执行，因为该函数内部
+      // 通过 wrapper.innerHTML = html 解析 DOM，浏览器会立即加载所有带 src 的图片
       renderedHtml = renderedHtml.replace(
         /<img\b([^>]*?)>/gi,
         (match, attrs) => {
@@ -805,6 +806,9 @@ export default {
           return `<img${attrsWithoutSrc} data-src="${src}">`
         }
       )
+
+      // 附件链接转卡片（内部通过 innerHTML 解析 DOM，此时图片已无 src，不会触发加载）
+      renderedHtml = transformAttachmentLinks(renderedHtml)
 
       this.articleContentHtml = renderedHtml
       this.articleContentKey = Date.now()

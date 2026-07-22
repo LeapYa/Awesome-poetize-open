@@ -9,10 +9,16 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * 通义万相（DashScope）生图客户端。
+ * 通义万相 / 千问图像（DashScope）生图客户端。
  *
- * <p>使用 wan2.7-image 同步端点（multimodal-generation/generation），
- * 请求格式为 messages 数组，size 用 {@code *} 分隔（如 1280*1280）。
+ * <p>使用 multimodal-generation 同步端点，请求格式为 messages 数组，
+ * size 用 {@code *} 分隔（如 1280*1280）。
+ *
+ * <p>支持两类模型：
+ * <ul>
+ *   <li>千问图像（qwen-image-*）：支持 negative_prompt、prompt_extend、watermark 参数</li>
+ *   <li>通义万相（wan*）：不支持上述参数，仅传 size 和 n</li>
+ * </ul>
  *
  * <p>响应中图片 URL 在 output.choices[0].message.content[0].image。
  */
@@ -22,6 +28,9 @@ public class DashScopeImageClient {
 
     private static final String DEFAULT_API_URL =
             "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+
+    /** 千问图像模型前缀，用于判断是否支持 negative_prompt/prompt_extend/watermark */
+    private static final String QWEN_IMAGE_PREFIX = "qwen-image";
 
     private final JsonMapper objectMapper;
 
@@ -37,7 +46,7 @@ public class DashScopeImageClient {
         String apiKey = config.getApiKey();
         String model = config.getModel();
         if (model == null || model.isBlank()) {
-            model = "wan2.7-image";
+            model = "qwen-image-2.0-pro";
         }
 
         if (apiKey == null || apiKey.isBlank()) {
@@ -63,7 +72,7 @@ public class DashScopeImageClient {
         input.set("messages", messages);
         requestBody.set("input", input);
 
-        // parameters: size（* 分隔）, n
+        // parameters: size（* 分隔）, n, 以及千问图像专属参数
         ObjectNode parameters = objectMapper.createObjectNode();
         // 优先用 resolution 像素，没配则按 size 宽高比推导默认像素
         String pixelSize = resolvePixelSize(config);
@@ -73,6 +82,19 @@ public class DashScopeImageClient {
             parameters.put("size", dashScopeSize);
         }
         parameters.put("n", 1);
+
+        // 千问图像模型支持 negative_prompt / prompt_extend / watermark
+        // 通义万相（wan*）不支持这些参数，传入会报错
+        boolean isQwenImage = model.toLowerCase().startsWith(QWEN_IMAGE_PREFIX);
+        if (isQwenImage) {
+            String negativePrompt = config.getNegativePrompt();
+            if (negativePrompt != null && !negativePrompt.isBlank()) {
+                parameters.put("negative_prompt", negativePrompt);
+            }
+            parameters.put("prompt_extend", config.isPromptExtend());
+            parameters.put("watermark", config.isWatermark());
+        }
+
         requestBody.set("parameters", parameters);
 
         int timeoutSeconds = config.getTimeout() > 0 ? config.getTimeout() : 60;
