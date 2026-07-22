@@ -94,6 +94,7 @@ public class PageViewTrackController {
         putParam(signals, request, "permissionsQueryNative", "pqn");
         putParam(signals, request, "pluginsItemNative", "pin");
         putParam(signals, request, "webdriverDescriptor", "wdd");
+        putParam(signals, request, "chromeNative", "wchrome");
         putParam(signals, request, "webglVendor", "glv");
         putParam(signals, request, "webglRenderer", "glr");
         return signals;

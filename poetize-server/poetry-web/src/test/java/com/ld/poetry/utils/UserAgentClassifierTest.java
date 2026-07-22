@@ -389,14 +389,61 @@ class UserAgentClassifierTest {
     }
 
     @Test
-    void evaluateAutomationBlocksSwiftShader() {
+    void evaluateAutomationDoesNotBlockSwiftShaderAlone() {
+        // SwiftShader = 50分，单独不达阈值70，不拦截（避免误封关闭硬件加速的真实用户）
         UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
                 "automationSignals", "swg",
                 "webglRenderer", "SwiftShader"));
 
-        assertEquals(70, verdict.score());
-        assertTrue(verdict.shouldBlock());
+        assertEquals(50, verdict.score());
+        assertFalse(verdict.shouldBlock());
         assertTrue(verdict.hitHighConfidence().stream().anyMatch(s -> s.contains("SwiftShader")));
+    }
+
+    @Test
+    void evaluateAutomationBlocksSwiftShaderWithLowConfidenceSignals() {
+        // SwiftShader(50) + wchrome(15) + scr0(15) = 80，超过阈值
+        // 真实无头浏览器会同时泄漏多个信号，叠加后触发拦截
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "swg,wchrome,scr0",
+                "webglRenderer", "SwiftShader",
+                "chromeNative", "0"));
+
+        assertEquals(80, verdict.score());
+        assertTrue(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationDoesNotBlockWchromeAlone() {
+        // window.chrome缺失 = 15分，低置信度，单独不拦截
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "wchrome",
+                "chromeNative", "0"));
+
+        assertEquals(15, verdict.score());
+        assertFalse(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationDoesNotBlockNorefAlone() {
+        // 直链无referrer = 10分，低置信度，单独不拦截
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "noref"));
+
+        assertEquals(10, verdict.score());
+        assertFalse(verdict.shouldBlock());
+    }
+
+    @Test
+    void evaluateAutomationBlocksSwiftShaderWithTimezoneAndNoref() {
+        // SwiftShader(50) + wutc(15) + noref(10) = 75，超过阈值
+        // 典型无头浏览器：软件渲染 + UTC时区 + 直链抓取
+        UserAgentClassifier.AutomationVerdict verdict = UserAgentClassifier.evaluateAutomation(Map.of(
+                "automationSignals", "swg,wutc,noref",
+                "webglRenderer", "SwiftShader"));
+
+        assertEquals(75, verdict.score());
+        assertTrue(verdict.shouldBlock());
     }
 
     @Test

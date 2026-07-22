@@ -284,6 +284,7 @@ function appendVisitSignals(params) {
   setVisitSignal(params, 'pqn', automation.permissionsQueryNative)
   setVisitSignal(params, 'pin', automation.pluginsItemNative)
   setVisitSignal(params, 'wdd', automation.webdriverDescriptor)
+  setVisitSignal(params, 'wchrome', automation.chromeNative)
   setVisitSignal(params, 'glv', automation.webglVendor, 128)
   setVisitSignal(params, 'glr', automation.webglRenderer, 128)
   // 传递 document.referrer（真实来源页），SPA 内部跳转时保持不变
@@ -401,7 +402,23 @@ function detectAutomationSignals() {
     result.webglVendor = webglInfo.vendor
     result.webglRenderer = webglInfo.renderer
     if (/SwiftShader/i.test(result.webglRenderer || '')) {
-      addSignal('swg', 70)
+      addSignal('swg', 50)
+    }
+  } catch (e) {}
+
+  try {
+    // window.chrome 在真实 Chrome 桌面浏览器中始终存在
+    // 无头浏览器（即使清除 HeadlessChrome UA）往往缺少此对象
+    result.chromeNative = (typeof window.chrome !== 'undefined' && window.chrome !== null) ? '1' : '0'
+    if (result.chromeNative === '0') {
+      addSignal('wchrome', 15)
+    }
+  } catch (e) {}
+
+  try {
+    // 屏幕尺寸为 0 或 1 是无头环境的典型特征
+    if (typeof screen !== 'undefined' && (screen.width === 0 || screen.height === 0 || screen.width === 1 || screen.height === 1)) {
+      addSignal('scr0', 15)
     }
   } catch (e) {}
 
@@ -451,11 +468,25 @@ function detectAutomationSignals() {
     result.timezone = typeof Intl !== 'undefined' && Intl.DateTimeFormat
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : ''
-    if (result.platform === 'Win32' && result.timezone === 'UTC') {
+    // UTC 时区在任何平台都可疑——真实用户的浏览器会设为本地时区
+    // 无头浏览器跑在服务器上常默认 UTC
+    if (result.timezone === 'UTC') {
       addSignal('wutc', 15)
+    }
+    // 时区为空或 null 可疑——无头环境可能未设置时区
+    if (!result.timezone || result.timezone === '') {
+      addSignal('tznull', 15)
     }
     if (result.platform === 'Win32' && navigator.deviceMemory == null) {
       addSignal('wdm', 15)
+    }
+  } catch (e) {}
+
+  try {
+    // 直链访问（无 referrer）——可能是机器人直接拿到 URL 抓取
+    // 也可能是用户手动输入/书签，所以低分 10 分，仅作叠加贡献
+    if (!document.referrer || document.referrer === '') {
+      addSignal('noref', 10)
     }
   } catch (e) {}
 

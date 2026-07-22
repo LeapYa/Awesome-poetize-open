@@ -447,13 +447,17 @@ public final class UserAgentClassifier {
             new AutomationSignal("wd", 80, true, "webdriver=true(80)"),
             new AutomationSignal("hch", 80, true, "HeadlessChrome(80)"),
             new AutomationSignal("pqn", 75, true, "permissions.query非native(75)"),
-            new AutomationSignal("swg", 70, true, "SwiftShader(70)"),
+            new AutomationSignal("swg", 50, true, "SwiftShader(50)"),
             new AutomationSignal("pin", 60, true, "plugins.item非native(60)"),
             new AutomationSignal("wdprop", 60, true, "webdriver属性异常(60)"),
             new AutomationSignal("gleak", 50, true, "全局变量泄漏(50)"),
-            new AutomationSignal("wutc", 15, false, "时区不一致(15)"),
+            new AutomationSignal("wutc", 15, false, "时区UTC(15)"),
+            new AutomationSignal("tznull", 15, false, "时区为空(15)"),
             new AutomationSignal("wdm", 15, false, "设备内存为null(15)"),
-            new AutomationSignal("wdtype", 15, false, "设备类型矛盾(15)")
+            new AutomationSignal("wdtype", 15, false, "设备类型矛盾(15)"),
+            new AutomationSignal("wchrome", 15, false, "window.chrome缺失(15)"),
+            new AutomationSignal("scr0", 15, false, "屏幕尺寸异常(15)"),
+            new AutomationSignal("noref", 10, false, "直链无referrer(10)")
     );
 
     /**
@@ -466,7 +470,8 @@ public final class UserAgentClassifier {
      * - pin：pluginsItemNative 标志为 false 或信号码 pin
      * - wdprop：webdriverDescriptor==value 或信号码 wdprop
      * - gleak：信号码 gleak
-     * - wutc/wdm/wdtype：仅信号码
+     * - wchrome：chromeNative 标志为 false 或信号码 wchrome
+     * - wutc/tznull/wdm/wdtype/scr0/noref：仅信号码
      */
     private static boolean isSignalHit(Map<String, Object> signals, String code) {
         switch (code) {
@@ -484,6 +489,8 @@ public final class UserAgentClassifier {
             case "wdprop":
                 return "value".equalsIgnoreCase(firstText(signals, "webdriverDescriptor", "wdd"))
                         || hasSignalCode(signals, "wdprop");
+            case "wchrome":
+                return isFalseFlag(signals, "chromeNative", "wchrome") || hasSignalCode(signals, "wchrome");
             default:
                 return hasSignalCode(signals, code);
         }

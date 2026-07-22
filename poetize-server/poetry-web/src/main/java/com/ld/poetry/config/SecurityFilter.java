@@ -345,8 +345,9 @@ public class SecurityFilter extends OncePerRequestFilter {
     /**
      * 检查IP是否因自动化浏览器行为被拦截
      * <p>
-     * 探针上报判定为高置信度自动化（score >= 70，命中 webdriver/headless/SwiftShader/
-     * JS原生性异常/全局变量泄漏等硬证据）时写入缓存，2小时过期。
+     * 探针上报判定为高置信度自动化（score >= 70，命中 webdriver/headless/
+     * JS原生性异常/全局变量泄漏等硬证据，或多个信号叠加超阈值）时写入缓存，2小时过期。
+     * SwiftShader(50) 单独不触发拦截，需配合其他信号叠加。
      */
     private boolean isAutomationBlocked(String ip) {
         String blockKey = CacheConstants.buildAutomationBlockKey(ip);
