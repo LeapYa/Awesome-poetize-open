@@ -10,6 +10,7 @@ import com.ld.poetry.dao.SortMapper;
 import com.ld.poetry.entity.Label;
 import com.ld.poetry.entity.Sort;
 import com.ld.poetry.service.prerender.PrerenderFacade;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.utils.CommonQuery;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +51,9 @@ public class SortLabelController {
 
     @Autowired
     private com.ld.poetry.service.SitemapService sitemapService;
+
+    @Autowired
+    private CacheService cacheService;
 
     /**
      * 获取分类标签信息
@@ -94,6 +98,7 @@ public class SortLabelController {
         sort.setSortDescription(filteredSortDescription);
         
         sortMapper.insert(sort);
+        cacheService.evictSortArticleList();
         log.info("分类新增成功，分类名称: {}", sort.getSortName());
 
         // 分类新增后，清除sitemap缓存并重新渲染首页和分类索引页面
@@ -124,6 +129,7 @@ public class SortLabelController {
     @AuditLog(action = "SORT_DELETE", targetType = "SORT", targetIdParam = "id", summary = "删除分类")
     public PoetryResult deleteSort(@RequestParam("id") Integer id) {
         sortMapper.deleteById(id);
+        cacheService.evictSortArticleList();
         log.info("分类删除成功，分类ID: {}", id);
 
         // 分类删除后，清除sitemap缓存，删除对应分类页面的预渲染文件，并重新渲染首页和分类索引页面
@@ -178,6 +184,7 @@ public class SortLabelController {
         sort.setSortDescription(filteredSortDescription);
         
         sortMapper.updateById(sort);
+        cacheService.evictSortArticleList();
         log.info("分类更新成功，分类ID: {}", sort.getId());
 
         // 分类更新后，清除sitemap缓存并重新渲染对应分类页面、首页和分类索引页面
@@ -237,6 +244,7 @@ public class SortLabelController {
         label.setLabelDescription(filteredLabelDescription);
         
         labelMapper.insert(label);
+        cacheService.evictSortArticleList();
         log.info("标签新增成功，标签名称: {}", label.getLabelName());
 
         // 标签新增后，清除sitemap缓存并重新渲染对应分类页面
@@ -270,6 +278,7 @@ public class SortLabelController {
         Label label = labelMapper.selectById(id);
         
         labelMapper.deleteById(id);
+        cacheService.evictSortArticleList();
         log.info("标签删除成功，标签ID: {}", id);
 
         // 标签删除后，清除sitemap缓存并重新渲染对应分类页面
@@ -325,6 +334,7 @@ public class SortLabelController {
         label.setLabelDescription(filteredLabelDescription);
         
         labelMapper.updateById(label);
+        cacheService.evictSortArticleList();
         log.info("标签更新成功，标签ID: {}", label.getId());
 
         // 标签更新后，清除sitemap缓存并重新渲染对应分类页面

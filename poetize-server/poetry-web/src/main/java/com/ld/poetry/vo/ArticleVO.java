@@ -88,6 +88,9 @@ public class ArticleVO {
     // 分类名称和标签名称（用于API创建文章时自动创建分类和标签）
     private String sortName; // 分类名称
     private String labelName; // 标签名称
+    // 分类/标签描述（API创建时可选传入，避免后端硬编码默认描述）
+    private String sortDescription; // 分类描述
+    private String labelDescription; // 标签描述
 
     // 文章访问链接（动态生成，用于API和MCP工具）
     private String articleUrl;

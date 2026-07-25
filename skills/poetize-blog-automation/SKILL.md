@@ -6,7 +6,7 @@ description: 让 AI 帮你运营 POETIZE 博客：写文章并一键发布、更
 summary: POETIZE 博客运营助手：写文章、发布、管理分类标签与评论、上传图片、翻译管理、切换主题、查看数据、配置 SEO、处理付费文章支付配置。
 license: MIT
 homepage: https://github.com/LeapYa/awesome-poetize-open/tree/main/skills/poetize-blog-automation
-version: 2.1.8
+version: 2.2.0
 primaryEnv: POETIZE_API_KEY
 requires:
   anyBins:
@@ -122,6 +122,8 @@ If web search or article-list access is unavailable, record that limitation in `
    | `title` | Yes | — | Article title; do not repeat it as H1 in body |
    | `sort` / `sortName` / `sortId` | Yes for new | — | Category name or ID |
    | `label` / `labelName` / `labelId` | Yes for new | — | Tag name or ID |
+   | `sortDescription` / `sortDesc` | No | sort name | Description used when auto-creating a category via `--allow-create-sort`; if omitted, the category name is used as the description |
+   | `labelDescription` / `labelDesc` | No | label name | Description used when auto-creating a tag via `--allow-create-label`; if omitted, the tag name is used as the description |
    | `articleSlug` / `slug` | No | auto | SEO-friendly URL slug |
    | `commentStatus` | No | new: `true`; update: unchanged | Enable comments |
    | `recommendStatus` | No | new: `false`; update: unchanged | Feature in recommendations |
@@ -140,8 +142,9 @@ If web search or article-list access is unavailable, record that limitation in `
 6. Write the Markdown file locally, then run `poetize-blog.sh publish --markdown-file <file>`; inline `_brief` removes the need for `--brief-file`.
    `_brief.publishIntent` determines visibility; `--draft` and `--publish` are optional consistency checks and must agree with it. For draft-first creation, start with `taskType: create_article` and `publishIntent: draft`, run with `--draft --wait`, and verify the returned ID. To promote, change the same file to `taskType: refresh_article` and `publishIntent: public`, then rerun with `--article-id <id> --publish --wait`.
    Runtime auth requires `POETIZE_BASE_URL` and `POETIZE_API_KEY`. Referenced local images are uploaded automatically. Paid publishing checks `/api/api/payment/plugin/status` and fails closed if the plugin is not ready; it never silently publishes as free.
-7. Use `manage <subcommand>` for existing content, comments, themes, analytics, and SEO.
+7. Use `manage <subcommand>` for existing content, comments, themes, analytics, SEO, and taxonomy (categories/tags).
    - Use `update-section` for localized source edits, `save-translation` for a manual translation correction, `regenerate-translation` only when all translations are stale, and `publish --article-id` for full rewrites. Article deletion is unsupported; use `hide-article`.
+   - Use `list-sorts`/`list-labels` to inspect taxonomy, and `create-sort`/`update-sort`/`delete-sort`/`create-label`/`update-label`/`delete-label` to manage categories and tags independently of article publishing. When creating taxonomy, always provide a meaningful `--description`.
    - Comment writes are opt-in: run them only when the user requests comment work or accepts a specific proposal. Use `--as-ai` for the configured AI persona; omit it for the Blog Owner.
    - Comment, translation, and section commands require backend `v5.1.0`+. On a version-mismatch error, ask the user to upgrade; other commands remain available.
 8. Return the final result. For async commands, prefer running **without** `--wait` so the CLI returns the task id immediately; then poll status yourself (`manage task-status --task-id <id>` for article tasks, `manage list-translation-languages --article-id <id>` for translation tasks) with a sleep between checks. Reserve `--wait` for simple one-shot waits.
@@ -151,6 +154,7 @@ If web search or article-list access is unavailable, record that limitation in `
 - Free content is the default; never introduce a paywall without an explicit monetization request. New articles default to draft when visibility is unspecified.
 - Strategy-validated commands require a matching, non-contradictory brief. Other writes require explicit user intent but no fabricated brief.
 - Never invent taxonomy IDs or silently accept fuzzy matches. Use names when IDs are unknown; create taxonomy only after confirmation via `--allow-create-*`.
+- When auto-creating taxonomy (`--allow-create-sort`/`--allow-create-label`), always provide `sortDescription`/`labelDescription` in front matter with a meaningful one-sentence description of what the category or tag covers. If omitted, the backend falls back to using the name itself as the description — acceptable but less informative.
 - Preserve unspecified fields on updates. The only exception is `submitToSearchEngine` (see front matter table); hide flows force it to `false`.
 - Every article brief **must** include `alternativesConsidered` — a non-empty list of 1–3 rejected angles. Never submit a `publish` brief without it, even when one angle is clearly preferred.
 - Article deletion is unsupported — use `hide-article`. A requested paid publish fails closed when payment is unavailable; a separate free publish requires fresh user intent and a `free_default` brief.
@@ -273,7 +277,7 @@ poetize-blog.sh manage save-comment --article-id 123 --content "欢迎留言交�
 | `update-article` | Update metadata via raw JSON; use `publish` or `update-section` for content | `--payload-file` / `--stdin-payload`, `--brief-file` / `--stdin-brief`, `--wait` |
 | `hide-article` | Set `viewStatus=false` | `--brief-file` / `--stdin-brief`, `--password`, `--tips`, `--wait` |
 | `article-analytics` | Get article stats | article target only |
-| `site-visits` | Site visit trends | `--days 7` or `--days 30` |
+| `site-visits` | Site visit trends with bot/human split and region breakdown | `--days 7` or `--days 30` |
 | `theme-status` / `activate-theme` | Theme info / switch | `--plugin-key <key>` (required for activate) |
 | `seo-status` / `seo-get-config` / `seo-set-config` | SEO status / read / update config | `--config-file <path>` (required for set) |
 | `sitemap-update` | Refresh sitemap | none |
@@ -285,6 +289,14 @@ poetize-blog.sh manage save-comment --article-id 123 --content "欢迎留言交�
 | `delete-translation` | Delete one translation (v5.1.0+) | article/language, `--brief-file` / `--stdin-brief` |
 | `regenerate-translation` | Delete all translations and re-run AI (v5.1.0+) | article, `--brief-file` / `--stdin-brief`, `--wait` / `--poll-interval` / `--timeout` |
 | `update-section` | Edit one section (v5.1.0+) | article/action, optional heading/content/`--new-heading-level`/`--skip-ai-translation`/`--heading-index`/`--dry-run`, brief, `--wait` / `--poll-interval` / `--timeout` |
+| `list-sorts` | List all categories | none |
+| `list-labels` | List all tags | `--sort-id <id>` (filter by category) |
+| `create-sort` | Create a new category | `--name`, `--description`, `--sort-type 0\|1` (default 1), `--priority` (default 99) |
+| `update-sort` | Update an existing category | `--id`, optional `--name`/`--description`/`--sort-type`/`--priority` |
+| `delete-sort` | Delete a category | `--id` |
+| `create-label` | Create a new tag | `--name`, `--description`, `--sort-id` (required) |
+| `update-label` | Update an existing tag | `--id`, optional `--name`/`--description`/`--sort-id` |
+| `delete-label` | Delete a tag | `--id` |
 
 For `update-article`, do not combine `--stdin-payload` with `--stdin-brief`: both read the same stream sequentially. Put at least one JSON object in a file.
 

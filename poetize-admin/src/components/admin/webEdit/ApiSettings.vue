@@ -211,14 +211,18 @@ X-API-KEY: {{apiConfig.apiKey}}
   "content": "文章内容，支持Markdown格式",
   "cover": "封面图片URL(可选)",
   "sortName": "分类名称(将自动创建不存在的分类)",
+  "sortDescription": "分类描述(可选，自动创建分类时使用)",
   "labelName": "标签名称(将自动创建不存在的标签)",
+  "labelDescription": "标签描述(可选，自动创建标签时使用)",
   "summary": "文章摘要(可选)",
   "password": "文章密码(可选)",
+  "createTime": "2024-01-01 12:00:00",
   "viewStatus": true,
   "commentStatus": true,
   "submitToSearchEngine": true
 }
                   </pre>
+                  <p><strong>说明:</strong> <code>createTime</code> 为可选字段，用于从其他系统迁移文章时回填原发布时间，不传则使用当前时间。</p>
                   <p><strong>响应格式:</strong></p>
                   <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
 {
@@ -519,9 +523,14 @@ X-API-KEY: {{apiConfig.apiKey}}
               </el-collapse-item>
               <el-collapse-item title="获取文章详情 API" name="9">
                 <div style="padding: 10px;">
-                  <p><strong>请求格式:</strong></p>
+                  <p><strong>请求格式（两种方式任选）:</strong></p>
                   <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+# 按URL别名或数字ID（推荐）
 GET {{$constant.baseURL}}/api/article/path/seo-friendly-url
+X-API-KEY: {{apiConfig.apiKey}}
+
+# 按数字ID
+GET {{$constant.baseURL}}/api/article/123
 X-API-KEY: {{apiConfig.apiKey}}
                   </pre>
                   <p><strong>响应格式:</strong></p>
@@ -658,6 +667,73 @@ X-API-KEY: {{apiConfig.apiKey}}
 GET {{$constant.baseURL}}/api/analytics/site/visits?days=7
 X-API-KEY: {{apiConfig.apiKey}}
                   </pre>
+                  <p><strong>参数说明:</strong></p>
+                  <ul>
+                    <li><code>days</code>: 统计天数，仅支持 7 或 30</li>
+                  </ul>
+                  <p><strong>响应格式:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+{
+  "code": 200,
+  "message": null,
+  "data": {
+    "daily": [
+      {
+        "visit_date": "2026-07-25",
+        "unique_visits": 120,      // 独立IP数
+        "total_visits": 340,       // 总访问次数
+        "human_visits": 210,       // UA识别为 PC/移动端浏览器的访问（可能含高仿UA爬虫）
+        "human_unique_visits": 95, // 浏览器UA独立IP
+        "js_verified_visits": 150, // 前端JS上报的访问（真实执行了JS，最硬的真实访客口径）
+        "js_verified_unique_visits": 80, // JS已验证独立IP
+        "browser_no_js_visits": 55, // 浏览器UA但从未执行JS（大概率是高仿UA爬虫）
+        "bot_visits": 100,         // 已识别的爬虫/扫描器/自动化访问
+        "unclassified_visits": 30, // UA类型未能识别的访问
+        "avg_unique_visits": 98.5,
+        "avg_total_visits": 300.2
+      }
+    ],
+    "summary": {                   // 周期汇总：人机分离总量与占比
+      "days": 7,
+      "total_visits": 2380,
+      "human_visits": 1470,
+      "js_verified_visits": 1050,
+      "browser_no_js_visits": 385,
+      "bot_visits": 700,
+      "unclassified_visits": 210,
+      "human_share_percent": 61.76,
+      "js_verified_share_percent": 44.12,
+      "bot_share_percent": 29.41,
+      "unclassified_share_percent": 8.82
+    },
+    "ua_type_breakdown": [ ... ],  // 按UA类型（PC/移动/爬虫/扫描器等）的访问构成
+    "top_uas": [ ... ],            // Top UA聚合，含 bot_verify_status 与 sample_ua
+    "referrer_breakdown": [        // 来源站点 × 人机交叉统计
+      {
+        "referrer_host": "Direct",
+        "visits": 900,
+        "unique_visitors": 300,
+        "human_visits": 320,
+        "js_verified_visits": 180,
+        "browser_no_js_visits": 140,
+        "bot_visits": 450,
+        "unclassified_visits": 130,
+        "suspicious_share_percent": 80.0  // 含 browser_no_js；偏高说明 Direct 增长主要是爬虫噪声
+      }
+    ],
+    "region_breakdown": [          // 地区分布（海外按国家、中国按省份，Top 30）
+      {
+        "region": "广东省",
+        "visits": 320,
+        "unique_visitors": 120,
+        "js_verified_visits": 260   // 接近0说明该地区流量基本是爬虫（常见于数据中心所在地）
+      }
+    ],
+    "agent_guide": { ... }         // 面向自动化工具的流量解读提示
+  }
+}
+                  </pre>
+                  <p><strong>解读建议:</strong> 判断真实流量请优先看 <code>js_verified_visits</code>（执行过JS的真实浏览器，高仿UA爬虫无法伪造）；<code>browser_no_js_visits</code> 是UA像浏览器但不执行JS的访问，大概率是伪装爬虫；若 <code>js_verified_visits</code> 平稳而 <code>total_visits</code> 突增，基本可判定为爬虫活动。</p>
                 </div>
               </el-collapse-item>
               <el-collapse-item title="SEO状态 API" name="16">
@@ -700,6 +776,11 @@ X-API-KEY: {{apiConfig.apiKey}}
                 <div style="padding: 10px;">
                   <p><strong>说明:</strong></p>
                   <p>仅允许修改受控 SEO 字段，不允许通过 API-key 修改 <code>custom_head_code</code>、<code>robots_txt</code> 等高风险配置。</p>
+                  <p><strong>读取当前配置:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+GET {{$constant.baseURL}}/api/seo/config
+X-API-KEY: {{apiConfig.apiKey}}
+                  </pre>
                   <p><strong>请求格式:</strong></p>
                   <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
 POST {{$constant.baseURL}}/api/seo/config
@@ -746,6 +827,208 @@ X-API-KEY: {{apiConfig.apiKey}}
     "message": "sitemap 更新已触发"
   }
 }
+                  </pre>
+                </div>
+              </el-collapse-item>
+              <el-collapse-item title="同步更新文章 API" name="19">
+                <div style="padding: 10px;">
+                  <p><strong>说明:</strong></p>
+                  <p>与异步更新接口参数一致，但同步返回结果，适合不想轮询任务状态的简单场景。同样支持可选的 <code>createTime</code> 回填。</p>
+                  <p><strong>请求格式:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/article/update
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{
+  "id": 123,
+  "title": "更新后的标题",
+  "content": "更新后的Markdown内容"
+}
+                  </pre>
+                </div>
+              </el-collapse-item>
+              <el-collapse-item title="局部更新文章章节 API" name="20">
+                <div style="padding: 10px;">
+                  <p><strong>说明:</strong></p>
+                  <p>按章节标题定位并局部修改文章内容，避免整篇重新提交。<code>action</code> 支持：<code>replace</code>（替换章节）、<code>insert_after</code>（章节后插入）、<code>insert_before</code>（标题前插入）、<code>delete</code>（删除章节）、<code>append</code>（文末追加，无需 heading）。</p>
+                  <p><strong>请求格式:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/article/updateSection
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{
+  "articleId": 123,
+  "heading": "安装步骤",
+  "action": "replace",
+  "content": "## 安装步骤\n新的章节内容...",
+  "skipAiTranslation": false
+}
+                  </pre>
+                </div>
+              </el-collapse-item>
+              <el-collapse-item title="资源上传 API" name="21">
+                <div style="padding: 10px;">
+                  <p><strong>说明:</strong></p>
+                  <p>上传图片等资源文件（multipart/form-data），返回可直接用作文章封面或正文图片的 URL。相同内容的文件会自动复用（<code>reused: true</code>）。</p>
+                  <p><strong>请求格式:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/resource/upload
+Content-Type: multipart/form-data
+X-API-KEY: {{apiConfig.apiKey}}
+
+file: (二进制文件)
+type: articleCover        # 可选，默认 articleCover
+                  </pre>
+                  <p><strong>响应格式:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+{
+  "code": 200,
+  "message": null,
+  "data": {
+    "url": "/upload/articleCover/xxx.webp",
+    "type": "articleCover",
+    "originalName": "cover.png",
+    "size": 102400,
+    "mimeType": "image/webp",
+    "reused": false
+  }
+}
+                  </pre>
+                </div>
+              </el-collapse-item>
+              <el-collapse-item title="评论列表/发表评论 API" name="22">
+                <div style="padding: 10px;">
+                  <p><strong>查询评论列表:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/comment/list
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{
+  "source": 123,            // 文章ID
+  "commentType": "article",
+  "current": 1,
+  "size": 10,
+  "floorCommentId": 456     // 可选，分页某楼层的子回复时传入
+}
+                  </pre>
+                  <p><strong>发表/回复评论（免验证码）:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/comment/save
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{
+  "source": 123,
+  "type": "article",
+  "commentContent": "评论内容",
+  "commentInfo": "{\"aiReply\":true}",  // 可选，标记为AI回复
+  "parentCommentId": 456,               // 可选，回复某条评论
+  "parentUserId": 1,                    // 可选
+  "floorCommentId": 456                 // 可选，所属楼层
+}
+                  </pre>
+                </div>
+              </el-collapse-item>
+              <el-collapse-item title="翻译管理 API" name="23">
+                <div style="padding: 10px;">
+                  <p><strong>获取翻译 / 可用语言列表:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+GET {{$constant.baseURL}}/api/translation/get?articleId=123&amp;language=en
+GET {{$constant.baseURL}}/api/translation/languages?articleId=123
+X-API-KEY: {{apiConfig.apiKey}}
+                  </pre>
+                  <p><strong>手动保存/覆盖翻译:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/translation/save
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{
+  "articleId": 123,
+  "targetLanguage": "en",
+  "translatedTitle": "Translated Title",
+  "translatedContent": "Translated Markdown content...",
+  "translatedSummary": "可选摘要"
+}
+                  </pre>
+                  <p><strong>删除 / 重新生成翻译:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/translation/delete
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{ "articleId": 123, "language": "en" }
+
+POST {{$constant.baseURL}}/api/translation/regenerate?articleId=123
+X-API-KEY: {{apiConfig.apiKey}}
+                  </pre>
+                </div>
+              </el-collapse-item>
+              <el-collapse-item title="分类管理 API" name="24">
+                <div style="padding: 10px;">
+                  <p><strong>创建 / 更新 / 删除分类:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/sort/create
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{
+  "sortName": "技术文章",
+  "sortDescription": "技术类文章",   // 必填
+  "sortType": 1,                     // 可选，默认1（普通分类）
+  "priority": 99                     // 可选，默认99
+}
+
+POST {{$constant.baseURL}}/api/sort/update
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{ "id": 1, "sortName": "新名称", "sortDescription": "新描述" }
+
+GET {{$constant.baseURL}}/api/sort/delete?id=1
+X-API-KEY: {{apiConfig.apiKey}}
+
+-- 或者使用 POST 请求（符合 RESTful 规范） --
+POST {{$constant.baseURL}}/api/sort/delete
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{ "id": 1 }
+                  </pre>
+                </div>
+              </el-collapse-item>
+              <el-collapse-item title="标签管理 API" name="25">
+                <div style="padding: 10px;">
+                  <p><strong>创建 / 更新 / 删除标签:</strong></p>
+                  <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">
+POST {{$constant.baseURL}}/api/label/create
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{
+  "labelName": "Java",
+  "labelDescription": "Java编程语言",  // 必填
+  "sortId": 1                          // 必填，所属分类ID
+}
+
+POST {{$constant.baseURL}}/api/label/update
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{ "id": 1, "labelName": "新名称", "labelDescription": "新描述" }
+
+GET {{$constant.baseURL}}/api/label/delete?id=1
+X-API-KEY: {{apiConfig.apiKey}}
+
+-- 或者使用 POST 请求（符合 RESTful 规范） --
+POST {{$constant.baseURL}}/api/label/delete
+Content-Type: application/json
+X-API-KEY: {{apiConfig.apiKey}}
+
+{ "id": 1 }
                   </pre>
                 </div>
               </el-collapse-item>

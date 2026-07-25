@@ -1169,6 +1169,14 @@ def build_payload(markdown_text: str, args: argparse.Namespace) -> tuple[dict[st
     elif not is_update:
         die("Missing label. Provide front matter 'label' or 'labelId'.")
 
+    # 分类/标签描述（auto-create 时传入，避免后端用硬编码默认值）
+    sort_description = meta_value(meta, "sortDescription") or meta_value(meta, "sortDesc")
+    label_description = meta_value(meta, "labelDescription") or meta_value(meta, "labelDesc")
+    if sort_description is not MISSING:
+        payload["sortDescription"] = sort_description
+    if label_description is not MISSING:
+        payload["labelDescription"] = label_description
+
     if cover is not None:
         payload["cover"] = cover
 

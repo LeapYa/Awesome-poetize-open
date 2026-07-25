@@ -175,8 +175,14 @@
                 message: "删除成功！",
                 type: "success"
               });
-              this.getSortInfo();
-              this.sort = {};
+              this.getSortInfo().then(() => {
+                if (flag === 1) {
+                  this.sort = {};
+                } else if (this.sort && this.sort.id) {
+                  const updatedSort = this.sortInfo.find(s => s.id === this.sort.id);
+                  this.sort = updatedSort || {};
+                }
+              });
             })
             .catch((error) => {
               this.$message({
@@ -215,8 +221,16 @@
               message: "保存成功！",
               type: "success"
             });
-            this.getSortInfo();
+            const sortId = this.sortForHttp.id;
             this.handleClose();
+            this.getSortInfo().then(() => {
+              if (sortId) {
+                const updatedSort = this.sortInfo.find(s => s.id === sortId);
+                if (updatedSort) {
+                  this.sort = updatedSort;
+                }
+              }
+            });
           })
           .catch((error) => {
             this.$message({
@@ -247,9 +261,16 @@
               message: "保存成功！",
               type: "success"
             });
-            this.getSortInfo();
+            const sortId = this.labelForHttp.sortId;
             this.handleClose();
-            this.sort = {};
+            this.getSortInfo().then(() => {
+              if (sortId) {
+                const updatedSort = this.sortInfo.find(s => s.id === sortId);
+                if (updatedSort) {
+                  this.sort = updatedSort;
+                }
+              }
+            });
           })
           .catch((error) => {
             this.$message({
@@ -320,7 +341,7 @@
         });
       },
       getSortInfo() {
-        this.$http.get(this.$constant.baseURL + "/webInfo/getSortInfo")
+        return this.$http.get(this.$constant.baseURL + "/webInfo/getSortInfo")
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
               this.sortInfo = res.data;

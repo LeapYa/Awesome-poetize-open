@@ -43,6 +43,7 @@ import com.ld.poetry.utils.XssFilterUtil;
 import com.ld.poetry.utils.IpUtil;
 import com.ld.poetry.utils.ArticleUrlUtil;
 import com.ld.poetry.utils.PoetryUtil;
+import com.ld.poetry.utils.UserAgentClassifier;
 import com.ld.poetry.utils.security.FileSecurityValidator;
 import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
@@ -565,10 +566,13 @@ public class ApiController {
     }
 
     /**
-     * API获取站点访问趋势
+     * API获取站点访问趋势（含人机分离、UA 构成、来源交叉统计）
+     * <p>
+     * 除每日趋势外，额外返回 UA 分类汇总、Top UA、来源站点×人机交叉等信息，
+     * 帮助 Agent 判断流量增长是真实访客还是爬虫噪声（爬虫无 Referer 会被归入 Direct）。
      */
     @GetMapping("/analytics/site/visits")
-    public PoetryResult<List<Map<String, Object>>> getSiteVisitAnalytics(
+    public PoetryResult<Map<String, Object>> getSiteVisitAnalytics(
             @RequestParam(value = "days", defaultValue = "7") Integer days,
             HttpServletRequest request) {
         try {
@@ -578,12 +582,39 @@ public class ApiController {
                 return PoetryResult.fail("days 仅支持 7 或 30");
             }
 
-            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days, cacheService.getVisitIgnoreIpList());
+            List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
+
+            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days, ignoredIps);
             if (dbStats == null) {
                 dbStats = new ArrayList<>();
             }
 
-            Map<String, Object> todayStats = getTodayVisitStatsFromRedis();
+            // 历史每日人机分离数据，按日期合并进趋势行
+            Map<String, Map<String, Object>> uaDailyMap = new HashMap<>();
+            List<Map<String, Object>> uaDaily = historyInfoMapper.getDailyVisitUaStatsExcludeToday(days, ignoredIps);
+            if (uaDaily != null) {
+                for (Map<String, Object> row : uaDaily) {
+                    String date = valueAsString(row.get("visit_date"));
+                    if (StringUtils.hasText(date)) {
+                        uaDailyMap.put(date, row);
+                    }
+                }
+            }
+            for (Map<String, Object> stat : dbStats) {
+                Map<String, Object> uaRow = uaDailyMap.get(valueAsString(stat.get("visit_date")));
+                stat.put("human_visits", uaRow != null ? asLongValue(uaRow.get("human_visits")) : 0L);
+                stat.put("human_unique_visits", uaRow != null ? asLongValue(uaRow.get("human_unique_visits")) : 0L);
+                stat.put("js_verified_visits", uaRow != null ? asLongValue(uaRow.get("js_verified_visits")) : 0L);
+                stat.put("js_verified_unique_visits", uaRow != null ? asLongValue(uaRow.get("js_verified_unique_visits")) : 0L);
+                stat.put("browser_no_js_visits", uaRow != null ? asLongValue(uaRow.get("browser_no_js_visits")) : 0L);
+                stat.put("bot_visits", uaRow != null ? asLongValue(uaRow.get("bot_visits")) : 0L);
+                stat.put("unclassified_visits", uaRow != null ? asLongValue(uaRow.get("unclassified_visits")) : 0L);
+            }
+
+            // 今日实时记录（已过滤忽略 IP），同时用于趋势行、UA 汇总与来源交叉
+            List<Map<String, Object>> todayRecords = cacheService.getDailyVisitRecords(java.time.LocalDate.now().toString());
+            Map<String, Object> todayStats = buildTodayVisitStats(todayRecords);
+
             List<Map<String, Object>> allStats = new ArrayList<>(dbStats);
             if (todayStats != null) {
                 allStats.add(todayStats);
@@ -591,7 +622,37 @@ public class ApiController {
 
             List<Map<String, Object>> completeStats = fillMissingDates(allStats, days);
             applyVisitAverages(completeStats);
-            return PoetryResult.success(completeStats);
+
+            // UA 类型汇总（历史 + 今日）
+            List<Map<String, Object>> uaTypeBreakdown = buildUaTypeBreakdown(
+                    historyInfoMapper.getUaTypeSummaryExcludeToday(days, ignoredIps), todayRecords);
+
+            // Top UA（复用后台的 UA 聚合逻辑，含 bot 验证状态与样本 UA）
+            List<Map<String, Object>> topUas = UserAgentClassifier.aggregateRawAndVisitRecords(
+                    historyInfoMapper.getHistoryByUserAgentForDays(days, ignoredIps), todayRecords, 15);
+
+            // 来源站点 × 人机交叉（历史 + 今日）
+            String siteHost = resolveSiteHostFromRequest(request);
+            List<Map<String, Object>> referrerBreakdown = buildReferrerBreakdown(
+                    historyInfoMapper.getReferrerUaSplitExcludeToday(days, siteHost, ignoredIps),
+                    todayRecords, siteHost);
+
+            // 地区分布（历史 + 今日，海外按国家、中国按省份）
+            List<Map<String, Object>> regionBreakdown = buildRegionBreakdown(
+                    historyInfoMapper.getProvinceStatsByDays(days, ignoredIps), todayRecords);
+
+            // 周期汇总与解读提示
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("daily", completeStats);
+            data.put("summary", buildVisitSummary(days, completeStats, uaTypeBreakdown));
+            data.put("ua_type_breakdown", uaTypeBreakdown);
+            data.put("top_uas", topUas);
+            data.put("referrer_breakdown", referrerBreakdown);
+            data.put("region_breakdown", regionBreakdown);
+            data.put("agent_guide", buildVisitAgentGuide());
+            log.info("API站点访问趋势已生成: days={}, uaTypes={}, topUas={}, referrers={}, regions={}",
+                    days, uaTypeBreakdown.size(), topUas.size(), referrerBreakdown.size(), regionBreakdown.size());
+            return PoetryResult.success(data);
         } catch (PoetryRuntimeException e) {
             log.error("API获取站点访问趋势失败：{}", e.getMessage());
             return PoetryResult.fail(e.getMessage());
@@ -992,6 +1053,7 @@ public class ApiController {
             articleVO.setUpdateTime(article.getUpdateTime());
             articleVO.setVideoUrl(article.getVideoUrl());
             articleVO.setTips(article.getTips());
+            articleVO.setPassword(article.getPassword());
             articleVO.setArticleUrl(buildArticleUrl(webInfo, request, article.getId()));
             
             // 获取分类和标签信息
@@ -1208,10 +1270,12 @@ public class ApiController {
             if (sort == null) {
                 sort = new Sort();
                 sort.setSortName(articleVO.getSortName());
-                sort.setSortDescription("通过API创建的分类");
+                sort.setSortDescription(StringUtils.hasText(articleVO.getSortDescription())
+                    ? articleVO.getSortDescription() : articleVO.getSortName());
                 sort.setSortType(1);
                 sort.setPriority(99);
                 sortMapper.insert(sort);
+                cacheService.evictSortArticleList();
             }
             articleVO.setSortId(sort.getId());
         }
@@ -1231,9 +1295,11 @@ public class ApiController {
             if (label == null) {
                 label = new Label();
                 label.setLabelName(articleVO.getLabelName());
-                label.setLabelDescription("通过API创建的标签");
+                label.setLabelDescription(StringUtils.hasText(articleVO.getLabelDescription())
+                    ? articleVO.getLabelDescription() : articleVO.getLabelName());
                 label.setSortId(resolveLabelSortId(articleVO.getSortId()));
                 labelMapper.insert(label);
+                cacheService.evictSortArticleList();
             }
             articleVO.setLabelId(label.getId());
         }
@@ -1667,44 +1733,400 @@ public class ApiController {
         }
     }
 
-    private Map<String, Object> getTodayVisitStatsFromRedis() {
-        try {
-            String todayKey = CacheConstants.DAILY_VISIT_RECORDS_PREFIX
-                    + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-            List<Object> todayRecords = redisTemplate.opsForList().range(todayKey, 0, -1);
-            if (todayRecords == null || todayRecords.isEmpty()) {
-                return null;
+    /**
+     * 基于今日 Redis 访问记录构建趋势行（含人机分离计数）。
+     * 记录已由 CacheService.getDailyVisitRecords 过滤掉忽略 IP。
+     */
+    private Map<String, Object> buildTodayVisitStats(List<Map<String, Object>> todayRecords) {
+        if (CollectionUtils.isEmpty(todayRecords)) {
+            return null;
+        }
+
+        Set<String> uniqueIps = new HashSet<>();
+        Set<String> humanUniqueIps = new HashSet<>();
+        Set<String> jsVerifiedUniqueIps = new HashSet<>();
+        long totalVisits = 0;
+        long humanVisits = 0;
+        long jsVerifiedVisits = 0;
+        long browserNoJsVisits = 0;
+        long botVisits = 0;
+        long unclassifiedVisits = 0;
+
+        for (Map<String, Object> record : todayRecords) {
+            if (record == null) {
+                continue;
             }
-
-            Set<String> uniqueIps = new HashSet<>();
-            int totalVisits = 0;
-            Set<String> ignoredIps = cacheService.getVisitIgnoreIps();
-
-            for (Object record : todayRecords) {
-                try {
-                    Object visitRecordObject = JsonUtils.parseObject(String.valueOf(record), Map.class);
-                    Map<String, Object> visitRecord = toObjectMap(visitRecordObject);
-                    String ip = cacheService.normalizeVisitIp(valueAsString(visitRecord.get("ip")));
-                    if (ignoredIps.contains(ip)) {
-                        continue;
+            String ip = valueAsString(record.get("ip"));
+            if (!StringUtils.hasText(ip)) {
+                continue;
+            }
+            uniqueIps.add(ip);
+            totalVisits++;
+            String uaKind = classifyUaKind(valueAsString(record.get("uaType")));
+            switch (uaKind) {
+                case "human" -> {
+                    humanVisits++;
+                    humanUniqueIps.add(ip);
+                    // JS 验证口径：track 渠道说明真实执行了 JS；nginx 渠道说明从未执行 JS
+                    String source = valueAsString(record.get("visitSource"));
+                    if ("track".equals(source)) {
+                        jsVerifiedVisits++;
+                        jsVerifiedUniqueIps.add(ip);
+                    } else if ("nginx".equals(source)) {
+                        browserNoJsVisits++;
                     }
-                    if (StringUtils.hasText(ip)) {
-                        uniqueIps.add(ip);
-                        totalVisits++;
-                    }
-                } catch (Exception e) {
-                    log.warn("解析Redis访问记录失败: {}", record, e);
+                }
+                case "bot" -> botVisits++;
+                default -> unclassifiedVisits++;
+            }
+        }
+
+        if (totalVisits == 0) {
+            return null;
+        }
+
+        Map<String, Object> todayStats = new LinkedHashMap<>();
+        todayStats.put("visit_date", java.time.LocalDate.now().toString());
+        todayStats.put("unique_visits", uniqueIps.size());
+        todayStats.put("total_visits", totalVisits);
+        todayStats.put("human_visits", humanVisits);
+        todayStats.put("human_unique_visits", (long) humanUniqueIps.size());
+        todayStats.put("js_verified_visits", jsVerifiedVisits);
+        todayStats.put("js_verified_unique_visits", (long) jsVerifiedUniqueIps.size());
+        todayStats.put("browser_no_js_visits", browserNoJsVisits);
+        todayStats.put("bot_visits", botVisits);
+        todayStats.put("unclassified_visits", unclassifiedVisits);
+        return todayStats;
+    }
+
+    /** ua_type 归并为 human/bot/unclassified 三类 */
+    private String classifyUaKind(String uaType) {
+        if (!StringUtils.hasText(uaType) || "unknown".equals(uaType)) {
+            return "unclassified";
+        }
+        return ("pc".equals(uaType) || "mobile".equals(uaType)) ? "human" : "bot";
+    }
+
+    /**
+     * 合并历史与今日的 UA 类型汇总，输出各类型访问次数、独立 IP 与占比。
+     */
+    private List<Map<String, Object>> buildUaTypeBreakdown(List<Map<String, Object>> dbRows,
+                                                           List<Map<String, Object>> todayRecords) {
+        Map<String, long[]> agg = new LinkedHashMap<>();
+        Map<String, Set<String>> todayIpsByType = new HashMap<>();
+
+        if (dbRows != null) {
+            for (Map<String, Object> row : dbRows) {
+                if (row == null) {
+                    continue;
+                }
+                String type = valueAsString(row.get("ua_type"));
+                if (!StringUtils.hasText(type)) {
+                    type = "unknown";
+                }
+                long[] acc = agg.computeIfAbsent(type, k -> new long[2]);
+                acc[0] += asLongValue(row.get("visits"));
+                acc[1] += asLongValue(row.get("unique_ips"));
+            }
+        }
+
+        if (todayRecords != null) {
+            for (Map<String, Object> record : todayRecords) {
+                if (record == null) {
+                    continue;
+                }
+                String type = valueAsString(record.get("uaType"));
+                if (!StringUtils.hasText(type)) {
+                    type = "unknown";
+                }
+                long[] acc = agg.computeIfAbsent(type, k -> new long[2]);
+                acc[0] += 1;
+                String ip = valueAsString(record.get("ip"));
+                if (StringUtils.hasText(ip)
+                        && todayIpsByType.computeIfAbsent(type, k -> new HashSet<>()).add(ip)) {
+                    acc[1] += 1;
                 }
             }
+        }
 
-            Map<String, Object> todayStats = new LinkedHashMap<>();
-            todayStats.put("visit_date", java.time.LocalDate.now().toString());
-            todayStats.put("unique_visits", uniqueIps.size());
-            todayStats.put("total_visits", totalVisits);
-            return todayStats;
-        } catch (Exception e) {
-            log.error("从Redis获取今日访问统计失败", e);
+        long total = agg.values().stream().mapToLong(a -> a[0]).sum();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        agg.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                .forEach(e -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("ua_type", e.getKey());
+                    row.put("ua_type_label", UserAgentClassifier.typeLabelOf(e.getKey()));
+                    row.put("kind", classifyUaKind(e.getKey()));
+                    row.put("visits", e.getValue()[0]);
+                    row.put("unique_ips", e.getValue()[1]);
+                    row.put("percentage", total > 0
+                            ? Math.round(e.getValue()[0] * 10000.0 / total) / 100.0
+                            : 0.0);
+                    rows.add(row);
+                });
+        return rows;
+    }
+
+    /**
+     * 合并历史与今日的来源站点 × 人机交叉统计。
+     * 爬虫通常不携带 Referer，因此 Direct 行的 bot/unclassified 占比是判断爬虫噪声的关键信号。
+     */
+    private List<Map<String, Object>> buildReferrerBreakdown(List<Map<String, Object>> dbRows,
+                                                             List<Map<String, Object>> todayRecords,
+                                                             String siteHost) {
+        // host -> [visits, uniqueVisitors, humanVisits, botVisits, unclassifiedVisits, jsVerifiedVisits, browserNoJsVisits]
+        Map<String, long[]> agg = new LinkedHashMap<>();
+        Map<String, Set<String>> todayIpsByHost = new HashMap<>();
+
+        if (dbRows != null) {
+            for (Map<String, Object> row : dbRows) {
+                if (row == null) {
+                    continue;
+                }
+                String host = valueAsString(row.get("referrer_host"));
+                if (!StringUtils.hasText(host)) {
+                    host = "Direct";
+                }
+                long[] acc = agg.computeIfAbsent(host, k -> new long[7]);
+                acc[0] += asLongValue(row.get("visits"));
+                acc[1] += asLongValue(row.get("unique_visitors"));
+                acc[2] += asLongValue(row.get("human_visits"));
+                acc[3] += asLongValue(row.get("bot_visits"));
+                acc[4] += asLongValue(row.get("unclassified_visits"));
+                acc[5] += asLongValue(row.get("js_verified_visits"));
+                acc[6] += asLongValue(row.get("browser_no_js_visits"));
+            }
+        }
+
+        if (todayRecords != null) {
+            for (Map<String, Object> record : todayRecords) {
+                if (record == null) {
+                    continue;
+                }
+                String host = extractRefererHost(valueAsString(record.get("referer")));
+                if (host == null || (siteHost != null && host.equals(siteHost))) {
+                    host = "Direct";
+                }
+                long[] acc = agg.computeIfAbsent(host, k -> new long[7]);
+                acc[0] += 1;
+                String ip = valueAsString(record.get("ip"));
+                if (StringUtils.hasText(ip)
+                        && todayIpsByHost.computeIfAbsent(host, k -> new HashSet<>()).add(ip)) {
+                    acc[1] += 1;
+                }
+                String uaKind = classifyUaKind(valueAsString(record.get("uaType")));
+                switch (uaKind) {
+                    case "human" -> {
+                        acc[2] += 1;
+                        String source = valueAsString(record.get("visitSource"));
+                        if ("track".equals(source)) {
+                            acc[5] += 1;
+                        } else if ("nginx".equals(source)) {
+                            acc[6] += 1;
+                        }
+                    }
+                    case "bot" -> acc[3] += 1;
+                    default -> acc[4] += 1;
+                }
+            }
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        agg.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                .limit(30)
+                .forEach(e -> {
+                    long visits = e.getValue()[0];
+                    // 可疑量 = 已识别爬虫 + UA未识别 + 浏览器UA但从未执行JS（高仿爬虫）
+                    long suspicious = e.getValue()[3] + e.getValue()[4] + e.getValue()[6];
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("referrer_host", e.getKey());
+                    row.put("visits", visits);
+                    row.put("unique_visitors", e.getValue()[1]);
+                    row.put("human_visits", e.getValue()[2]);
+                    row.put("js_verified_visits", e.getValue()[5]);
+                    row.put("browser_no_js_visits", e.getValue()[6]);
+                    row.put("bot_visits", e.getValue()[3]);
+                    row.put("unclassified_visits", e.getValue()[4]);
+                    row.put("suspicious_share_percent", visits > 0
+                            ? Math.round(suspicious * 10000.0 / visits) / 100.0
+                            : 0.0);
+                    rows.add(row);
+                });
+        return rows;
+    }
+
+    /**
+     * 合并历史与今日的地区访客统计（海外按国家、中国按省份）。
+     * 输出访问次数、独立IP与JS已验证真实访客，供 Agent 判断地域分布与爬虫聚集地。
+     */
+    private List<Map<String, Object>> buildRegionBreakdown(List<Map<String, Object>> dbRows,
+                                                           List<Map<String, Object>> todayRecords) {
+        // region -> [visits, uniqueVisitors, jsVerified]
+        Map<String, long[]> agg = new LinkedHashMap<>();
+        Map<String, Set<String>> todayIpsByRegion = new HashMap<>();
+
+        if (dbRows != null) {
+            for (Map<String, Object> row : dbRows) {
+                if (row == null) {
+                    continue;
+                }
+                String region = valueAsString(row.get("province"));
+                if (!StringUtils.hasText(region) || "未知".equals(region)) {
+                    continue;
+                }
+                long[] acc = agg.computeIfAbsent(region, k -> new long[3]);
+                acc[0] += asLongValue(row.get("num"));
+                acc[1] += asLongValue(row.get("unique_visitors"));
+                acc[2] += asLongValue(row.get("js_verified_visits"));
+            }
+        }
+
+        if (todayRecords != null) {
+            for (Map<String, Object> record : todayRecords) {
+                if (record == null) {
+                    continue;
+                }
+                String region = com.ld.poetry.utils.VisitRegionNormalizer.resolveProvinceOrCountry(
+                        record.get("nation"), record.get("province"), record.get("city"));
+                if (!StringUtils.hasText(region)) {
+                    continue;
+                }
+                long[] acc = agg.computeIfAbsent(region, k -> new long[3]);
+                acc[0] += 1;
+                String ip = valueAsString(record.get("ip"));
+                if (StringUtils.hasText(ip)
+                        && todayIpsByRegion.computeIfAbsent(region, k -> new HashSet<>()).add(ip)) {
+                    acc[1] += 1;
+                }
+                String uaType = valueAsString(record.get("uaType"));
+                if (("pc".equals(uaType) || "mobile".equals(uaType))
+                        && "track".equals(valueAsString(record.get("visitSource")))) {
+                    acc[2] += 1;
+                }
+            }
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        agg.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                .limit(30)
+                .forEach(e -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("region", e.getKey());
+                    row.put("visits", e.getValue()[0]);
+                    row.put("unique_visitors", e.getValue()[1]);
+                    row.put("js_verified_visits", e.getValue()[2]);
+                    rows.add(row);
+                });
+        return rows;
+    }
+
+    /** 周期汇总：全周期人机分离总量与占比（含JS验证口径） */
+    private Map<String, Object> buildVisitSummary(int days,
+                                                  List<Map<String, Object>> daily,
+                                                  List<Map<String, Object>> uaTypeBreakdown) {
+        long total = 0;
+        long human = 0;
+        long jsVerified = 0;
+        long browserNoJs = 0;
+        long bot = 0;
+        long unclassified = 0;
+        for (Map<String, Object> row : daily) {
+            total += asLongValue(row.get("total_visits"));
+            human += asLongValue(row.get("human_visits"));
+            jsVerified += asLongValue(row.get("js_verified_visits"));
+            browserNoJs += asLongValue(row.get("browser_no_js_visits"));
+            bot += asLongValue(row.get("bot_visits"));
+            unclassified += asLongValue(row.get("unclassified_visits"));
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("days", days);
+        summary.put("total_visits", total);
+        summary.put("human_visits", human);
+        summary.put("js_verified_visits", jsVerified);
+        summary.put("browser_no_js_visits", browserNoJs);
+        summary.put("bot_visits", bot);
+        summary.put("unclassified_visits", unclassified);
+        summary.put("human_share_percent", total > 0 ? Math.round(human * 10000.0 / total) / 100.0 : 0.0);
+        summary.put("js_verified_share_percent", total > 0 ? Math.round(jsVerified * 10000.0 / total) / 100.0 : 0.0);
+        summary.put("bot_share_percent", total > 0 ? Math.round(bot * 10000.0 / total) / 100.0 : 0.0);
+        summary.put("unclassified_share_percent", total > 0 ? Math.round(unclassified * 10000.0 / total) / 100.0 : 0.0);
+        summary.put("ua_type_count", uaTypeBreakdown.size());
+        return summary;
+    }
+
+    /** 面向 Agent 的流量解读提示，避免把爬虫噪声误判为真实流量暴涨 */
+    private Map<String, Object> buildVisitAgentGuide() {
+        Map<String, Object> guide = new LinkedHashMap<>();
+        guide.put("message", "判断真实流量请优先看 js_verified_visits（执行过JS的真实浏览器），其次 human_visits，最后才是 total_visits。");
+        guide.put("notes", List.of(
+                "js_verified_visits 是最硬的真实访客口径：记录由前端 JS 上报（visit_source=track），说明访客真实执行了 JS；不执行 JS 的高仿爬虫无法伪造此标记。",
+                "browser_no_js_visits 是 UA 像浏览器但从未执行 JS 的访问（仅被 Nginx 日志补录），大概率是伪装正常 UA 的爬虫，不应计入真实访客。",
+                "human_visits 仅基于 UA 判断（pc/mobile），会被高仿 UA 爬虫污染；human_visits 远大于 js_verified_visits + browser_no_js_visits 时，差值部分是存量无渠道标记的历史数据（visit_source 为空）。",
+                "爬虫通常不携带 Referer，会被归入 Direct。referrer_breakdown 中 Direct 行的 suspicious_share_percent（含 browser_no_js）偏高时，Direct 增长大概率是爬虫噪声。",
+                "region_breakdown 是地区分布（海外按国家、中国按省份）：若某地区 visits 很高但 js_verified_visits 接近 0，说明该地区流量基本是爬虫（常见于数据中心所在地）。",
+                "top_uas 中 bot_verify_status=failed 表示自称搜索引擎但 DNS 反查失败，属于伪装爬虫；verified 才是经过验证的官方搜索引擎。",
+                "若 daily 中 js_verified_visits 平稳而 total_visits 或 human_visits 突增，基本可判定为爬虫/扫描活动，不应报告为流量暴涨。"
+        ));
+        return guide;
+    }
+
+    /** 解析站点自身 host（去端口、小写），用于识别站内跳转 */
+    private String resolveSiteHostFromRequest(HttpServletRequest request) {
+        if (request == null) {
             return null;
+        }
+        String host = request.getHeader("Host");
+        if (host == null || host.isEmpty()) {
+            return null;
+        }
+        int colon = host.indexOf(':');
+        if (colon >= 0) {
+            host = host.substring(0, colon);
+        }
+        return host.toLowerCase();
+    }
+
+    /** 从 Referer 字符串提取 host（去协议、去端口、小写） */
+    private String extractRefererHost(String referer) {
+        if (referer == null || referer.isBlank()) {
+            return null;
+        }
+        try {
+            String s = referer.trim();
+            int schemeIdx = s.indexOf("://");
+            if (schemeIdx >= 0) {
+                s = s.substring(schemeIdx + 3);
+            }
+            int slash = s.indexOf('/');
+            if (slash >= 0) {
+                s = s.substring(0, slash);
+            }
+            int colon = s.indexOf(':');
+            if (colon >= 0) {
+                s = s.substring(0, colon);
+            }
+            s = s.trim();
+            return s.isEmpty() ? null : s.toLowerCase();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private long asLongValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return 0L;
         }
     }
 
@@ -1729,6 +2151,13 @@ public class ApiController {
                 dayStats.put("visit_date", dateStr);
                 dayStats.put("unique_visits", 0);
                 dayStats.put("total_visits", 0);
+                dayStats.put("human_visits", 0);
+                dayStats.put("human_unique_visits", 0);
+                dayStats.put("js_verified_visits", 0);
+                dayStats.put("js_verified_unique_visits", 0);
+                dayStats.put("browser_no_js_visits", 0);
+                dayStats.put("bot_visits", 0);
+                dayStats.put("unclassified_visits", 0);
             }
             completeStats.add(dayStats);
         }
@@ -2291,4 +2720,144 @@ public class ApiController {
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }
-} 
+
+    // ================================ 分类管理 API ================================
+
+    @PostMapping("/sort/create")
+    public PoetryResult createSort(@RequestBody Sort sort, HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            if (!StringUtils.hasText(sort.getSortName()) || !StringUtils.hasText(sort.getSortDescription())) {
+                return PoetryResult.fail("分类名称和分类描述不能为空");
+            }
+            if (sort.getSortType() == null) sort.setSortType(1);
+            if (sort.getPriority() == null) sort.setPriority(99);
+            sortMapper.insert(sort);
+            cacheService.evictSortArticleList();
+            if (sitemapService != null) {
+                sitemapService.updateSitemapAndPush("API分类创建 (ID=" + sort.getId() + ")");
+            }
+            log.info("API分类创建成功: {}", sort.getSortName());
+            return PoetryResult.success(sort);
+        } catch (PoetryRuntimeException e) {
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API创建分类失败", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    @PostMapping("/sort/update")
+    public PoetryResult updateSort(@RequestBody Sort sort, HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            if (sort.getId() == null) {
+                return PoetryResult.fail("分类ID不能为空");
+            }
+            sortMapper.updateById(sort);
+            cacheService.evictSortArticleList();
+            if (sitemapService != null) {
+                sitemapService.updateSitemapAndPush("API分类更新 (ID=" + sort.getId() + ")");
+            }
+            log.info("API分类更新成功: {}", sort.getId());
+            return PoetryResult.success();
+        } catch (PoetryRuntimeException e) {
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API更新分类失败", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    @PostMapping("/sort/delete")
+    public PoetryResult deleteSort(@RequestBody Map<String, Integer> payload, HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            Integer id = payload.get("id");
+            if (id == null) {
+                return PoetryResult.fail("分类 ID 不能为空");
+            }
+            sortMapper.deleteById(id);
+            cacheService.evictSortArticleList();
+            if (sitemapService != null) {
+                sitemapService.updateSitemapAndPush("API 分类删除 (ID=" + id + ")");
+            }
+            log.info("API 分类删除成功：{}", id);
+            return PoetryResult.success();
+        } catch (PoetryRuntimeException e) {
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API 删除分类失败", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    // ================================ 标签管理 API ================================
+
+    @PostMapping("/label/create")
+    public PoetryResult createLabel(@RequestBody Label label, HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            if (!StringUtils.hasText(label.getLabelName()) || !StringUtils.hasText(label.getLabelDescription()) || label.getSortId() == null) {
+                return PoetryResult.fail("标签名称、标签描述和分类ID不能为空");
+            }
+            labelMapper.insert(label);
+            cacheService.evictSortArticleList();
+            if (sitemapService != null) {
+                sitemapService.clearSitemapCache();
+            }
+            log.info("API标签创建成功: {}", label.getLabelName());
+            return PoetryResult.success(label);
+        } catch (PoetryRuntimeException e) {
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API创建标签失败", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    @PostMapping("/label/update")
+    public PoetryResult updateLabel(@RequestBody Label label, HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            if (label.getId() == null) {
+                return PoetryResult.fail("标签ID不能为空");
+            }
+            labelMapper.updateById(label);
+            cacheService.evictSortArticleList();
+            if (sitemapService != null) {
+                sitemapService.clearSitemapCache();
+            }
+            log.info("API标签更新成功: {}", label.getId());
+            return PoetryResult.success();
+        } catch (PoetryRuntimeException e) {
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API更新标签失败", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+
+    @PostMapping("/label/delete")
+    public PoetryResult deleteLabel(@RequestBody Map<String, Integer> payload, HttpServletRequest request) {
+        try {
+            validateApiKey(request);
+            Integer id = payload.get("id");
+            if (id == null) {
+                return PoetryResult.fail("标签 ID 不能为空");
+            }
+            labelMapper.deleteById(id);
+            cacheService.evictSortArticleList();
+            if (sitemapService != null) {
+                sitemapService.clearSitemapCache();
+            }
+            log.info("API 标签删除成功：{}", id);
+            return PoetryResult.success();
+        } catch (PoetryRuntimeException e) {
+            return PoetryResult.fail(e.getMessage());
+        } catch (Exception e) {
+            log.error("API 删除标签失败", e);
+            return PoetryResult.fail("服务器内部错误");
+        }
+    }
+}

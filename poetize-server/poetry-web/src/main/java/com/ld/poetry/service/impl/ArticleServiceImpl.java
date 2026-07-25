@@ -1701,7 +1701,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 .set(Article::getArticleTitle, articleVO.getArticleTitle())
                 .set(Article::getArticleSlug, articleSlug)
                 .set(Article::getUpdateBy, updateBy)
-                .set(Article::getUpdateTime, LocalDateTime.now())
+                .set(Article::getUpdateTime, articleVO.getUpdateTime() != null ? articleVO.getUpdateTime() : LocalDateTime.now())
                 .set(Article::getVideoUrl,
                         StringUtils.hasText(articleVO.getVideoUrl()) ? articleVO.getVideoUrl() : null)
                 .set(Article::getArticleContent, articleVO.getArticleContent())
@@ -1735,6 +1735,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
         if (!shouldAutoGenerateSummary(articleVO)) {
             updateChainWrapper.set(Article::getSummary, normalizeManualSummary(articleVO));
+        }
+        if (articleVO.getCreateTime() != null) {
+            updateChainWrapper.set(Article::getCreateTime, articleVO.getCreateTime());
         }
 
         // ========== 步骤1：在短事务中更新文章 ==========
@@ -2159,7 +2162,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (article == null) {
             return PoetryResult.success();
         }
-        if (!article.getViewStatus() && (!StringUtils.hasText(password) || !password.equals(article.getPassword()))) {
+        Integer currentUserId = PoetryUtil.getUserId();
+        boolean isAuthorOrAdmin = (currentUserId != null && currentUserId.equals(article.getUserId()))
+                || PoetryUtil.isBoss();
+        if (!article.getViewStatus() && !isAuthorOrAdmin
+                && (!StringUtils.hasText(password) || !password.equals(article.getPassword()))) {
             return PoetryResult
                     .fail("密码错误" + (StringUtils.hasText(article.getTips()) ? article.getTips() : "请联系作者获取密码"));
         }
@@ -3071,7 +3078,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         .set(Article::getArticleTitle, articleVO.getArticleTitle())
                         .set(Article::getArticleSlug, articleSlug)
                         .set(Article::getUpdateBy, finalUsername)
-                        .set(Article::getUpdateTime, LocalDateTime.now())
+                        .set(Article::getUpdateTime, articleVO.getUpdateTime() != null ? articleVO.getUpdateTime() : LocalDateTime.now())
                         .set(Article::getVideoUrl,
                                 StringUtils.hasText(articleVO.getVideoUrl()) ? articleVO.getVideoUrl() : null)
                         .set(Article::getArticleContent, articleVO.getArticleContent())
@@ -3106,6 +3113,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 }
                 if (!shouldAutoGenerateSummary(articleVO)) {
                     updateChainWrapper.set(Article::getSummary, normalizeManualSummary(articleVO));
+                }
+                if (articleVO.getCreateTime() != null) {
+                    updateChainWrapper.set(Article::getCreateTime, articleVO.getCreateTime());
                 }
 
                 // 更新状态：正在更新数据库
@@ -3494,6 +3504,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setPayType(articleVO.getPayType() != null ? articleVO.getPayType() : 0);
         article.setPayAmount(articleVO.getPayAmount());
         article.setFreePercent(articleVO.getFreePercent() != null ? articleVO.getFreePercent() : 30);
+
+        // 支持调用方指定发布时间，未提供时使用数据库默认值
+        if (articleVO.getCreateTime() != null) {
+            article.setCreateTime(articleVO.getCreateTime());
+        }
 
         // 保存到数据库
         boolean result = save(article);

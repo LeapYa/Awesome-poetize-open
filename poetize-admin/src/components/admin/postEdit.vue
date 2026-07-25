@@ -1030,7 +1030,7 @@ const uploadPicture = () => import("../common/uploadPicture");
 
     watch: {
       'article.sortId'(newVal, oldVal) {
-        if (oldVal !== null) {
+        if (oldVal) {
           this.article.labelId = null;
         }
         if (!this.$common.isEmpty(newVal) && !this.$common.isEmpty(this.labels)) {
@@ -2286,6 +2286,11 @@ const uploadPicture = () => import("../common/uploadPicture");
           autoGenerateCover: this.imageGenEnabled && article.autoGenerateCover === true
         };
 
+        // 时间字段由后端统一维护：详情接口回传的旧 createTime/updateTime 不能原样回写，
+        // 否则会覆盖后端的本次更新时间（回填能力仅保留给 API/CLI 显式传入）
+        delete payload.createTime;
+        delete payload.updateTime;
+
         if (this.hasPendingTranslationContent) {
           payload.pendingTranslationTitle = this.pendingTranslation.title;
           payload.pendingTranslationContent = this.pendingTranslation.content;
@@ -2565,6 +2570,11 @@ const uploadPicture = () => import("../common/uploadPicture");
                 summary: res.data.summary || '',
                 autoSummary: this.summaryAutoDisabledByConfig ? false : res.data.autoSummary !== false
               };
+              // 显式填充标签列表，不依赖 watcher 的触发时序
+              // 修复编辑旧文章时标签偶尔显示 ID、下拉列表为空的问题
+              if (!this.$common.isEmpty(this.article.sortId) && !this.$common.isEmpty(this.labels)) {
+                this.labelsTemp = this.labels.filter(l => l.sortId === this.article.sortId);
+              }
               // 编辑已有文章：若已有封面，默认关闭 AI 自动生成（避免覆盖）；若为空，沿用默认配置
               this.article.autoGenerateCover = !this.$common.isEmpty(this.article.articleCover)
                 ? false
