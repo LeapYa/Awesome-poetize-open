@@ -13,7 +13,7 @@ public final class PageVisitUtils {
     private static final Map<Character, String[]> EXCLUDED_PREFIX_BUCKETS;
 
     private static final Set<String> EXCLUDED_EXACT = Set.of(
-            "/favicon.ico", "/robots.txt", "/manifest.json", "/sw.js", "/sitemap.xml"
+            "/favicon.ico", "/robots.txt", "/manifest.json", "/sw.js", "/sitemap.xml", "/rss.xml", "/feed", "/feed.xml"
     );
 
     private static final Set<String> API_ROUTE_SEGMENTS = Set.of(

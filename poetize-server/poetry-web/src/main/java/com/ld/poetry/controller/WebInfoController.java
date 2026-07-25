@@ -1460,13 +1460,36 @@ public class WebInfoController {
         }
 
         try {
+            List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
+
             // 1. 获取数据库中的历史数据（不包括今天）
-            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days, cacheService.getVisitIgnoreIpList());
+            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days, ignoredIps);
             if (dbStats == null) {
                 dbStats = new ArrayList<>();
             }
 
-            // 2. 获取Redis中今天的实时数据
+            // 1.1 历史每日人机分离数据（含JS验证口径），按日期合并进趋势行
+            Map<String, Map<String, Object>> uaDailyMap = new HashMap<>();
+            List<Map<String, Object>> uaDaily = historyInfoMapper.getDailyVisitUaStatsExcludeToday(days, ignoredIps);
+            if (uaDaily != null) {
+                for (Map<String, Object> row : uaDaily) {
+                    String date = row.get("visit_date") != null ? row.get("visit_date").toString() : null;
+                    if (date != null && !date.isBlank()) {
+                        uaDailyMap.put(date, row);
+                    }
+                }
+            }
+            for (Map<String, Object> stat : dbStats) {
+                Object dateObj = stat.get("visit_date");
+                Map<String, Object> uaRow = dateObj != null ? uaDailyMap.get(dateObj.toString()) : null;
+                stat.put("js_verified_visits", uaRow != null ? toLong(uaRow.get("js_verified_visits")) : 0L);
+                stat.put("js_verified_unique_visits", uaRow != null ? toLong(uaRow.get("js_verified_unique_visits")) : 0L);
+                stat.put("browser_no_js_visits", uaRow != null ? toLong(uaRow.get("browser_no_js_visits")) : 0L);
+                stat.put("bot_visits", uaRow != null ? toLong(uaRow.get("bot_visits")) : 0L);
+                stat.put("unclassified_visits", uaRow != null ? toLong(uaRow.get("unclassified_visits")) : 0L);
+            }
+
+            // 2. 获取Redis中今天的实时数据（含人机分离）
             Map<String, Object> todayStats = getTodayVisitStatsFromRedis();
 
             // 3. 合并数据
@@ -1685,7 +1708,12 @@ public class WebInfoController {
 
             // 统计今日数据
             Set<String> uniqueIps = new HashSet<>();
-            int totalVisits = 0;
+            Set<String> jsVerifiedUniqueIps = new HashSet<>();
+            long totalVisits = 0;
+            long jsVerifiedVisits = 0;
+            long browserNoJsVisits = 0;
+            long botVisits = 0;
+            long unclassifiedVisits = 0;
             Set<String> ignoredIps = cacheService.getVisitIgnoreIps();
 
             for (Object record : todayRecords) {
@@ -1700,6 +1728,24 @@ public class WebInfoController {
                     if (ip != null && !ip.isEmpty()) {
                         uniqueIps.add(ip);
                         totalVisits++;
+
+                        // 人机分离：UA类型 + 采集渠道（track=执行过JS，nginx=从未执行JS）
+                        Object uaTypeValue = visitRecord.get("uaType");
+                        String uaType = uaTypeValue != null ? uaTypeValue.toString() : null;
+                        Object sourceValue = visitRecord.get("visitSource");
+                        String source = sourceValue != null ? sourceValue.toString() : null;
+                        if ("pc".equals(uaType) || "mobile".equals(uaType)) {
+                            if ("track".equals(source)) {
+                                jsVerifiedVisits++;
+                                jsVerifiedUniqueIps.add(ip);
+                            } else if ("nginx".equals(source)) {
+                                browserNoJsVisits++;
+                            }
+                        } else if (uaType != null && !uaType.isBlank() && !"unknown".equals(uaType)) {
+                            botVisits++;
+                        } else {
+                            unclassifiedVisits++;
+                        }
                     }
                 } catch (Exception e) {
                     log.warn("解析Redis访问记录失败: {}", record, e);
@@ -1710,13 +1756,103 @@ public class WebInfoController {
             todayStats.put("visit_date", java.time.LocalDate.now().toString());
             todayStats.put("unique_visits", uniqueIps.size());
             todayStats.put("total_visits", totalVisits);
+            todayStats.put("js_verified_visits", jsVerifiedVisits);
+            todayStats.put("js_verified_unique_visits", (long) jsVerifiedUniqueIps.size());
+            todayStats.put("browser_no_js_visits", browserNoJsVisits);
+            todayStats.put("bot_visits", botVisits);
+            todayStats.put("unclassified_visits", unclassifiedVisits);
 
-            log.info("今日实时统计 - 独立访客: {}, 总访问量: {}", uniqueIps.size(), totalVisits);
+            log.info("今日实时统计 - 独立访客: {}, 总访问量: {}, JS已验证: {}, 浏览器UA无JS: {}, 爬虫: {}, 未识别: {}",
+                    uniqueIps.size(), totalVisits, jsVerifiedVisits, browserNoJsVisits, botVisits, unclassifiedVisits);
             return todayStats;
 
         } catch (Exception e) {
             log.error("从Redis获取今日访问统计失败", e);
             return null;
+        }
+    }
+
+    /**
+     * 获取指定天数的省份/国家访客统计（历史数据库 + 今日 Redis 实时）
+     * <p>
+     * 每行返回 province（海外为国家名，中国为省份名）、num（访问次数）、
+     * unique_visitors（独立IP）、js_verified_visits（执行过JS的真实访客口径）。
+     *
+     * @param days 查询天数(1-365)，默认7
+     */
+    @LoginCheck(0)
+    @GetMapping("/getProvinceVisitStats")
+    public PoetryResult<List<Map<String, Object>>> getProvinceVisitStats(
+            @RequestParam(value = "days", defaultValue = "7") Integer days) {
+        if (days == null || days <= 0) {
+            days = 7;
+        } else if (days > 365) {
+            days = 365;
+        }
+
+        try {
+            List<String> ignoredIps = cacheService.getVisitIgnoreIpList();
+
+            // region -> [num, uniqueVisitors, jsVerified]
+            Map<String, long[]> agg = new LinkedHashMap<>();
+            Map<String, Set<String>> todayIpsByRegion = new HashMap<>();
+
+            // 1. 历史数据（排除今天）
+            List<Map<String, Object>> dbStats = historyInfoMapper.getProvinceStatsByDays(days, ignoredIps);
+            if (dbStats != null) {
+                for (Map<String, Object> row : dbStats) {
+                    if (row == null) continue;
+                    String region = row.get("province") != null ? row.get("province").toString() : null;
+                    if (region == null || region.isBlank() || "未知".equals(region)) continue;
+                    long[] acc = agg.computeIfAbsent(region, k -> new long[3]);
+                    acc[0] += toLong(row.get("num"));
+                    acc[1] += toLong(row.get("unique_visitors"));
+                    acc[2] += toLong(row.get("js_verified_visits"));
+                }
+            }
+
+            // 2. 今日 Redis 实时记录
+            List<Map<String, Object>> todayRecords = cacheService.getDailyVisitRecords(java.time.LocalDate.now().toString());
+            if (todayRecords != null) {
+                for (Map<String, Object> record : todayRecords) {
+                    if (record == null) continue;
+                    String region = com.ld.poetry.utils.VisitRegionNormalizer.resolveProvinceOrCountry(
+                            record.get("nation"), record.get("province"), record.get("city"));
+                    if (region == null || region.isBlank()) continue;
+                    long[] acc = agg.computeIfAbsent(region, k -> new long[3]);
+                    acc[0] += 1;
+                    String ip = record.get("ip") != null ? record.get("ip").toString() : null;
+                    if (ip != null && !ip.isBlank()
+                            && todayIpsByRegion.computeIfAbsent(region, k -> new HashSet<>()).add(ip)) {
+                        acc[1] += 1;
+                    }
+                    Object uaTypeValue = record.get("uaType");
+                    String uaType = uaTypeValue != null ? uaTypeValue.toString() : null;
+                    Object sourceValue = record.get("visitSource");
+                    if (("pc".equals(uaType) || "mobile".equals(uaType)) && "track".equals(sourceValue != null ? sourceValue.toString() : null)) {
+                        acc[2] += 1;
+                    }
+                }
+            }
+
+            // 3. 转换为行并按访问量降序
+            List<Map<String, Object>> result = new ArrayList<>();
+            agg.entrySet().stream()
+                    .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                    .forEach(e -> {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("province", e.getKey());
+                        row.put("num", e.getValue()[0]);
+                        row.put("unique_visitors", e.getValue()[1]);
+                        row.put("js_verified_visits", e.getValue()[2]);
+                        result.add(row);
+                    });
+
+            log.info("省份访客统计已生成: days={}, 地区数={}", days, result.size());
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("获取省份访客统计失败", e);
+            return PoetryResult.fail("获取省份访客统计失败: " + e.getMessage());
         }
     }
 
@@ -1749,6 +1885,11 @@ public class WebInfoController {
                 dayStats.put("visit_date", dateStr);
                 dayStats.put("unique_visits", 0);
                 dayStats.put("total_visits", 0);
+                dayStats.put("js_verified_visits", 0);
+                dayStats.put("js_verified_unique_visits", 0);
+                dayStats.put("browser_no_js_visits", 0);
+                dayStats.put("bot_visits", 0);
+                dayStats.put("unclassified_visits", 0);
             }
 
             completeStats.add(dayStats);

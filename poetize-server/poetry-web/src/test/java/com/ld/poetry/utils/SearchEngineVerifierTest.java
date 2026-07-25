@@ -135,6 +135,18 @@ class SearchEngineVerifierTest {
     }
 
     @Test
+    void failsYisouSpiderWhenIpIsNotInBuiltinPrefixes() throws Exception {
+        // 伪装 YisouSpider 的非官方 IP 应直接判 failed，不触发任何 DNS 查询。
+        FakeRedisUtil redisUtil = new FakeRedisUtil();
+        SearchEngineVerifier verifier = newVerifier(redisUtil, new FakeDnsResolver());
+
+        UserAgentClassifier.BotVerification result = awaitStatus(
+                verifier, "203.0.113.99", YISOU_UA, "failed");
+        assertEquals("YisouSpider", result.claimedName());
+        assertEquals("failed", result.status());
+    }
+
+    @Test
     void failsGooglebotWhenPtrUsesNonOfficialDomain() throws Exception {
         FakeRedisUtil redisUtil = new FakeRedisUtil();
         FakeDnsResolver dnsResolver = new FakeDnsResolver()
@@ -197,13 +209,11 @@ class SearchEngineVerifierTest {
     }
 
     @Test
-    void verifiesYisouAndPetalWhenReverseAndForwardDnsMatch() throws Exception {
-        // YisouSpider
+    void verifiesYisouByBuiltinPrefixesAndPetalByDns() throws Exception {
+        // YisouSpider 无 PTR 记录，反向 DNS 必然超时，验证器必须走内置官方 IP 段，不依赖 DNS。
         FakeRedisUtil redisUtil1 = new FakeRedisUtil();
-        FakeDnsResolver dnsResolver1 = new FakeDnsResolver()
-                .reverse("106.11.155.10", "crawler.sm.cn")
-                .forward("crawler.sm.cn", List.of("106.11.155.10"));
-        SearchEngineVerifier verifier1 = newVerifier(redisUtil1, dnsResolver1);
+        // dnsResolver 不提供任何 PTR 记录，确保走 IP 段路径
+        SearchEngineVerifier verifier1 = newVerifier(redisUtil1, new FakeDnsResolver());
         UserAgentClassifier.BotVerification result1 = awaitStatus(verifier1, "106.11.155.10", YISOU_UA, "verified");
         assertEquals("YisouSpider", result1.claimedName());
         assertEquals("verified", result1.status());

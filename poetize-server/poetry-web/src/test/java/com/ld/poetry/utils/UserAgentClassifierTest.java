@@ -139,6 +139,35 @@ class UserAgentClassifierTest {
     }
 
     @Test
+    void classifiesSelfIdentifyingCompatibleUaAsCrawler() {
+        UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
+                "Mozilla/5.0 (compatible; CMS-Checker/1.0; +https://example.com)");
+
+        assertEquals("crawler", info.type());
+        assertEquals("爬虫", info.typeLabel());
+        assertEquals("CMS-Checker", info.name());
+    }
+
+    @Test
+    void classifiesCompatibleUaWithoutBrowserEngineAsCrawler() {
+        // 无 +http 但带 compatible 且无浏览器引擎标识，也应归类为爬虫
+        UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
+                "Mozilla/5.0 (compatible; SiteAudit/2.3)");
+
+        assertEquals("crawler", info.type());
+        assertEquals("SiteAudit", info.name());
+    }
+
+    @Test
+    void keepsLegacyIeCompatibleUaAsDesktopBrowser() {
+        UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
+                "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)");
+
+        assertEquals("pc", info.type());
+        assertEquals("Internet Explorer", info.name());
+    }
+
+    @Test
     void classifiesFailedSearchEngineVerificationAsSpoofedSearchEngine() {
         UserAgentClassifier.UaInfo info = UserAgentClassifier.classify(
                 "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",

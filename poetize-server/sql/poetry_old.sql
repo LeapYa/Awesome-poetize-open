@@ -469,11 +469,13 @@ CREATE TABLE `poetize`.`history_info` (
   `ua_name` varchar(128) DEFAULT NULL COMMENT 'User-Agent聚合名称',
   `bot_verify_status` varchar(32) DEFAULT NULL COMMENT '搜索引擎真实性验证状态',
   `bot_verify_reason` varchar(255) DEFAULT NULL COMMENT '搜索引擎真实性验证原因',
+  `visit_source` varchar(16) DEFAULT NULL COMMENT '访问采集渠道 [track:前端JS上报, nginx:Nginx日志补录]',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_history_create_time` (`create_time`),
   KEY `idx_history_ua_type_time` (`ua_type`, `create_time`),
-  KEY `idx_history_ua_type_name` (`ua_type`, `ua_name`)
+  KEY `idx_history_ua_type_name` (`ua_type`, `ua_name`),
+  KEY `idx_history_visit_source_time` (`visit_source`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='历史信息';
 
 DROP TABLE IF EXISTS `poetize`.`sys_audit_log`;

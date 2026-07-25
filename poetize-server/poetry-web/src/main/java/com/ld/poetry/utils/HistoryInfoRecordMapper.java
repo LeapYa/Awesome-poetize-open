@@ -35,6 +35,7 @@ public final class HistoryInfoRecordMapper {
         historyInfo.setUaName(text(firstNonNull(record.get("uaName"), record.get("ua_name"))));
         historyInfo.setBotVerifyStatus(text(firstNonNull(record.get("botVerifyStatus"), record.get("bot_verify_status"))));
         historyInfo.setBotVerifyReason(text(firstNonNull(record.get("botVerifyReason"), record.get("bot_verify_reason"))));
+        historyInfo.setVisitSource(text(firstNonNull(record.get("visitSource"), record.get("visit_source"))));
 
         String createTimeStr = text(record.get("createTime"));
         if (createTimeStr != null) {

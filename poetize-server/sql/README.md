@@ -148,10 +148,17 @@ CREATE TABLE `table_name` (
 #### 添加字段
 
 ```sql
--- MariaDB 支持 IF NOT EXISTS（可选，增加安全性）
+-- MariaDB 10.3+ / MySQL 8.0+ 支持 IF NOT EXISTS（推荐）
 ALTER TABLE `table_name`
-ADD COLUMN `new_field` VARCHAR(100) NULL COMMENT '字段说明' AFTER `existing_field`;
+ADD COLUMN IF NOT EXISTS `new_field` VARCHAR(100) NULL COMMENT '字段说明' AFTER `existing_field`;
+
+-- 索引同样支持 IF NOT EXISTS
+CREATE INDEX IF NOT EXISTS idx_field ON table_name(field_name);
 ```
+
+**注意**: 
+- `ADD COLUMN IF NOT EXISTS`、`ADD INDEX IF NOT EXISTS` 在 **MariaDB 10.3+** 和 **MySQL 8.0+** 中完全支持
+- 本项目使用 MariaDB，推荐使用 IF NOT EXISTS 实现脚本幂等性
 
 #### 修改字段
 
@@ -316,6 +323,7 @@ done
 | 202607210001.sql | 2026-07-21 00:01 | 清理废弃的访问统计忽略IP列表配置     |
 | 202607210002.sql | 2026-07-21 00:02 | 修复 360/Yisou 旧记录验证状态        |
 | 202607210003.sql | 2026-07-21 00:03 | 清理文章正文旧版 poetize-* 标记      |
+| 202607250001.sql | 2026-07-25 00:01 | 修复 Yisou 旧记录验证状态（IP段补录）|
 
 ## 版本控制规范
 

@@ -132,8 +132,11 @@ public class CommonQuery {
                 // 搜索引擎UA先验证IP真实性，再把分类结果写入Redis待同步记录。
                 UserAgentClassifier.BotVerification botVerification = searchEngineVerifier.verify(normalizedIp, userAgent);
                 UserAgentClassifier.UaInfo uaInfo = UserAgentClassifier.classify(userAgent, uaSignals, botVerification);
+                // 采集渠道（track=前端JS上报 / nginx=日志补录）随记录落库，用于人机分离的JS验证口径
+                String visitSource = uaSignals != null && uaSignals.get("visitSource") != null
+                        ? String.valueOf(uaSignals.get("visitSource")) : null;
                 cacheService.recordVisitToRedis(normalizedIp, userId, nation, province, city,
-                        normalizedPageUri, userAgent, referer, acceptLanguage, uaInfo);
+                        normalizedPageUri, userAgent, referer, acceptLanguage, uaInfo, visitSource);
 
                 // 搜索引擎流量由其专属验证体系（反向DNS + 伪装计数自动拉黑）管辖，
                 // 自动化封禁仅针对非搜索引擎流量，避免 Google 渲染爬虫因 SwiftShader 被误封。

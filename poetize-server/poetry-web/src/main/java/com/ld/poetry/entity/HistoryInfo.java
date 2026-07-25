@@ -107,6 +107,12 @@ public class HistoryInfo implements Serializable {
     private String botVerifyReason;
 
     /**
+     * 访问采集渠道 [track:前端JS上报, nginx:Nginx日志补录]
+     */
+    @TableField("visit_source")
+    private String visitSource;
+
+    /**
      * 创建时间
      */
     @TableField("create_time")

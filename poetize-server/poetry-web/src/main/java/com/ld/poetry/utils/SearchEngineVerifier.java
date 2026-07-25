@@ -188,6 +188,7 @@ public class SearchEngineVerifier {
     private UserAgentClassifier.BotVerification verifyByBuiltinPrefixes(SearchEngineRule rule, String ip) {
         boolean matched = rule.builtinIpPrefixes.stream()
                 .anyMatch(prefix -> ipMatchesPrefix(ip, prefix));
+        log.info("搜索引擎内置IP段验证（跳过DNS）: engine={}, ip={}, matched={}", rule.displayName, ip, matched);
         if (!matched) {
             return UserAgentClassifier.BotVerification.failed(rule.displayName, "访问IP不在官方IP段");
         }
@@ -462,10 +463,22 @@ public class SearchEngineVerifier {
                 "applebot",
                 List.of("applebot.apple.com")
         );
+        // YisouSpider（神马搜索）的 IP 无 PTR 记录，反向 DNS 查询必然超时（每次浪费 3 秒），
+        // 与 360 Spider 一样走内置官方 IP 段验证，跳过 DNS。IP 段均为阿里云出口，
+        // 来源：神马站长平台及公开抓取日志整理（42.120.x / 42.156.x / 106.11.15x）。
         private static final SearchEngineRule YISOU = new SearchEngineRule(
                 "YisouSpider",
                 "yisouspider",
-                List.of("sm.cn")
+                List.of("sm.cn"),
+                List.of(
+                        "42.120.160.0/24", "42.120.161.0/24",
+                        "42.120.234.0/24", "42.120.235.0/24", "42.120.236.0/24",
+                        "42.156.136.0/24", "42.156.137.0/24", "42.156.138.0/24",
+                        "42.156.139.0/24", "42.156.254.0/24",
+                        "106.11.152.0/24", "106.11.153.0/24", "106.11.154.0/24",
+                        "106.11.155.0/24", "106.11.156.0/24", "106.11.157.0/24",
+                        "106.11.158.0/24", "106.11.159.0/24"
+                )
         );
         private static final SearchEngineRule PETAL = new SearchEngineRule(
                 "PetalBot",

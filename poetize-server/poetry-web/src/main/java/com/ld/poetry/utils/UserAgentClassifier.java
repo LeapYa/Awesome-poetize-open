@@ -7,6 +7,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * User-Agent 分类与聚合工具。
@@ -57,6 +59,11 @@ public final class UserAgentClassifier {
         String crawler = crawlerName(lower);
         if (crawler != null) {
             return new UaInfo("crawler", "爬虫", crawler);
+        }
+
+        String genericBot = genericBotName(ua, lower);
+        if (genericBot != null) {
+            return new UaInfo("crawler", "爬虫", genericBot);
         }
 
         String disguisedClient = disguisedBrowserClientName(lower, signals);
@@ -346,6 +353,44 @@ public final class UserAgentClassifier {
         if (lower.contains("crawler")) return "Crawler";
         if (lower.contains("slurp")) return "Slurp";
         return null;
+    }
+
+    /** 自报身份式爬虫 UA 的名称提取：compatible; 后的产品标识（如 CMS-Checker/1.0） */
+    private static final Pattern GENERIC_BOT_NAME_PATTERN =
+            Pattern.compile("compatible;\\s*([A-Za-z0-9_.\\-]{2,60})(?:[/ ]|;|\\))", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 识别自报身份式爬虫 UA，形如 "Mozilla/5.0 (compatible; CMS-Checker/1.0; +https://example.com)"。
+     * <p>判定依据：
+     * <ul>
+     * <li>UA 中含 "+http" 自报主页链接 —— 这是 bot 自报家门的事实标准，真实浏览器从不携带；</li>
+     * <li>或 UA 含 "compatible;" 但不带任何浏览器引擎标识（chrome/safari/firefox 等）。</li>
+     * </ul>
+     * 旧 IE（MSIE/Trident）和 KHTML 系浏览器也使用 compatible 标记，需要排除。
+     * 必须在 crawlerName 之后调用，作为兜底识别，避免此类 UA 落入桌面浏览器分类。
+     */
+    private static String genericBotName(String ua, String lower) {
+        // 空指针保护
+        if (ua == null || lower == null) {
+            return null;
+        }
+        if (lower.contains("msie") || lower.contains("trident/") || lower.contains("khtml")) {
+            return null;
+        }
+        boolean selfIdentifyingUrl = lower.contains("+http");
+        boolean compatibleToken = lower.contains("compatible;") || lower.contains("compatible ;");
+        if (!selfIdentifyingUrl && !compatibleToken) {
+            return null;
+        }
+        // 仅有 compatible 标记时，若 UA 同时带浏览器引擎标识则不作爬虫处理，避免误伤真实浏览器
+        if (!selfIdentifyingUrl && looksLikeBrowserUa(lower)) {
+            return null;
+        }
+        Matcher matcher = GENERIC_BOT_NAME_PATTERN.matcher(ua);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return selfIdentifyingUrl ? "自报身份爬虫" : null;
     }
 
     private static String automationName(String lower, Map<String, Object> signals) {
@@ -664,6 +709,11 @@ public final class UserAgentClassifier {
             }
         }
         return null;
+    }
+
+    /** 对外暴露的 UA 类型中文标签查询 */
+    public static String typeLabelOf(String type) {
+        return typeLabel(type);
     }
 
     private static String typeLabel(String type) {

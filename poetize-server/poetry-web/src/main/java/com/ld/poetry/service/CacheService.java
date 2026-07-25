@@ -2407,6 +2407,17 @@ public class CacheService {
     public void recordVisitToRedis(String ip, Integer userId, String nation, String province, String city,
                                    String pageUri, String userAgent, String referer, String acceptLanguage,
                                    UserAgentClassifier.UaInfo uaInfo) {
+        recordVisitToRedis(ip, userId, nation, province, city, pageUri, userAgent, referer, acceptLanguage,
+                uaInfo, null);
+    }
+
+    /**
+     * 记录访问信息到Redis（带UA分类结果与采集渠道，不立即写数据库）
+     * @param visitSource 访问采集渠道 [track:前端JS上报, nginx:Nginx日志补录]，可为null
+     */
+    public void recordVisitToRedis(String ip, Integer userId, String nation, String province, String city,
+                                   String pageUri, String userAgent, String referer, String acceptLanguage,
+                                   UserAgentClassifier.UaInfo uaInfo, String visitSource) {
         try {
             String normalizedIp = normalizeVisitIp(ip);
             if (normalizedIp.isEmpty()) {
@@ -2464,6 +2475,10 @@ public class CacheService {
                 if (safeUaInfo.botVerifyReason() != null && !safeUaInfo.botVerifyReason().isEmpty()) {
                     visitRecord.put("botVerifyReason", limitText(safeUaInfo.botVerifyReason(), 255));
                 }
+            }
+            // 采集渠道：track 说明访客真实执行了 JS，nginx 说明仅服务端可见（用于识别不执行JS的伪装爬虫）
+            if (visitSource != null && !visitSource.isBlank()) {
+                visitRecord.put("visitSource", limitText(visitSource, 16));
             }
             
             // 将记录序列化为JSON字符串并添加到Redis List中
