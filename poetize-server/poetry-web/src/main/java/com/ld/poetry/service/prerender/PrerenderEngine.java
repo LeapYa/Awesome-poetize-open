@@ -52,7 +52,7 @@ public class PrerenderEngine {
             Pattern.compile("<meta\\s+[^>]*property\\s*=\\s*[\"']structured_data[\"'][^>]*>", Pattern.CASE_INSENSITIVE),
             Pattern.compile("<script\\s+[^>]*type\\s*=\\s*[\"']application/ld\\+json[\"'][^>]*data-prerender-structured-data\\s*=\\s*[\"']true[\"'][^>]*>[\\s\\S]*?</script>", Pattern.CASE_INSENSITIVE),
             Pattern.compile("<link\\s+[^>]*rel\\s*=\\s*[\"']canonical[\"'][^>]*>", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("<link\\s+[^>]*rel\\s*=\\s*[\"']alternate[\"'][^>]*>", Pattern.CASE_INSENSITIVE));
+            Pattern.compile("<link\\s+[^>]*rel\\s*=\\s*[\"']alternate[\"'][^>]*hreflang\\s*=[^>]*>", Pattern.CASE_INSENSITIVE));
 
     private static final Set<String> SPECIAL_META_KEYS = Set.of(
             "structured_data", "title", "custom_head_code", "robots",

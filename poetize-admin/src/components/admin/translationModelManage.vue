@@ -1353,6 +1353,23 @@
                 </div>
               </el-form-item>
 
+              <!-- 提示词详细度（仅 LLM 提炼模式生效） -->
+              <el-form-item v-if="apiConfig.imageMode === 'global' || apiConfig.imageMode === 'dedicated'" label="提示词详细度">
+                <el-select v-model="apiConfig.imagePromptDetail" placeholder="请选择提示词详细度" class="full-width">
+                  <el-option label="标准（约50-80词）" value="standard">
+                    <span class="option-content">标准（约50-80词）</span>
+                  </el-option>
+                  <el-option label="详细（约200-400词）" value="detailed">
+                    <span class="option-content">详细（约200-400词）</span>
+                  </el-option>
+                </el-select>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  <span v-if="apiConfig.imagePromptDetail === 'standard'">LLM 生成约50-80词的精炼 prompt（≈77 token），适配 qwen-image-2.0-pro 等输入受限的模型</span>
+                  <span v-else>LLM 生成约200-400词的详细 prompt，充分展开材质/光影/构图细节，适配 qwen-image-3 等支持大输入的模型</span>
+                </div>
+              </el-form-item>
+
 
 
               <!-- 使用全局AI模型 -->
@@ -2038,6 +2055,8 @@ export default {
         coverTemplate: 'object',  // object | portrait | felt | cyberpunk | custom
         // 自定义模板的 LLM 系统提示词（仅 coverTemplate=custom 时使用）
         customRefinePrompt: '',
+        // 提示词详细度：standard=约50-80词（适配 qwen-image-2.0-pro 等），detailed=约200-400词（适配 qwen-image-3 等大输入模型）
+        imagePromptDetail: 'standard',
         imageTimeout: 120,
         imageResolutionError: '',
         hasExistingImageKey: false,
@@ -3142,6 +3161,8 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.coverTemplate = imageConfig.cover_template || 'object';
             // 自定义模板的 LLM 系统提示词回显
             this.apiConfig.customRefinePrompt = imageConfig.custom_refine_prompt || '';
+            // 提示词详细度回显
+            this.apiConfig.imagePromptDetail = imageConfig.prompt_detail || 'standard';
             this.apiConfig.imageTimeout = imageConfig.timeout || 120;
             this.apiConfig.hasExistingImageKey = !!(imageConfig.api_key && imageConfig.api_key !== '' && imageConfig.api_key !== 'null');
             this.apiConfig.imageApiKey = '';
@@ -4294,6 +4315,7 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         quality: this.apiConfig.imageQuality || 'auto',
         cover_template: this.apiConfig.coverTemplate || 'object',
         custom_refine_prompt: this.apiConfig.customRefinePrompt || '',
+        prompt_detail: this.apiConfig.imagePromptDetail || 'standard',
         timeout: this.apiConfig.imageTimeout || 120
       };
       // 生图API密钥

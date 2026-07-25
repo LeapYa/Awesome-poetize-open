@@ -72,7 +72,7 @@
           </div>
         </div>
         <div id="provinceMap" class="map-area"></div>
-        <div v-if="mapLoadFailed" class="map-fallback">地图加载失败，请检查 /map/world-cn.json 是否存在后刷新重试</div>
+        <div v-if="mapLoadFailed" class="map-fallback">地图加载失败，请检查 map/world-cn.json 是否存在后刷新重试</div>
         <p class="chart-hint">世界底图 + 中国省级细分：默认按“真实访客（JS已验证）”着色，可切换为全部访问；支持拖拽与滚轮缩放，悬停查看具体数据。</p>
 
         <!-- 海外地区条形列表 -->
@@ -490,11 +490,11 @@
         }
       },
 
-      // 加载并注册“世界底图 + 中国省级细分”合并地图（仅加载一次）
+      // 加载并注册”世界底图 + 中国省级细分”合并地图（仅加载一次）
       async ensureChinaMapRegistered() {
         if (this.chinaMapRegistered) return true;
         try {
-          const response = await fetch('/map/world-cn.json');
+          const response = await fetch(`${import.meta.env.BASE_URL}map/world-cn.json`);
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
