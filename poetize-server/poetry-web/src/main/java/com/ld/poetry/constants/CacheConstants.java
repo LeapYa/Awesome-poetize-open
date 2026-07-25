@@ -507,6 +507,16 @@ public class CacheConstants {
      * Sitemap过期时间（秒）- 1小时
      */
     public static final long SITEMAP_EXPIRE_TIME = 3600;
+
+    /**
+     * RSS订阅源缓存键
+     */
+    public static final String RSS_KEY = CACHE_PREFIX + "seo:rss";
+
+    /**
+     * RSS过期时间（秒）- 1小时
+     */
+    public static final long RSS_EXPIRE_TIME = 3600;
     
     /**
      * manifest.json 缓存键

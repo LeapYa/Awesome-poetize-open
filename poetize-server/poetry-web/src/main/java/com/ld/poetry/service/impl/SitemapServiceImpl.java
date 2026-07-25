@@ -389,6 +389,8 @@ public class SitemapServiceImpl implements SitemapService {
     @Override
     public void clearSitemapCache() {
         cacheService.deleteKey(CacheConstants.SITEMAP_KEY);
+        // RSS 与 sitemap 同源（可见文章列表），内容变化时一并失效
+        cacheService.deleteKey(CacheConstants.RSS_KEY);
     }
 
     private void recordSitemapUpdateTime() {
