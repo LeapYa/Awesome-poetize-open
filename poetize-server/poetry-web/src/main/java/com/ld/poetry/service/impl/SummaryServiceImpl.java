@@ -22,7 +22,6 @@ import java.util.*;
 
 /**
  * 异步摘要生成服务实现
- * 使用 LlmTranslationService 替代 Python 后端调用
  */
 @Service
 @Slf4j
@@ -270,6 +269,11 @@ public class SummaryServiceImpl implements SummaryService {
         }
 
         throw new IllegalStateException(getSummaryTaskName() + "生成失败");
+    }
+
+    @Override
+    public int getConfiguredSummaryMaxLength() {
+        return resolveConfiguredSummaryMaxLength();
     }
 
     private int resolveConfiguredSummaryMaxLength() {

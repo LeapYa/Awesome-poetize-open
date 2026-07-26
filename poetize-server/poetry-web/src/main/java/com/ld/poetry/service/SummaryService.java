@@ -56,4 +56,10 @@ public interface SummaryService {
      * @return 生成的摘要
      */
     String generateSummarySync(String content);
+
+    /**
+     * 获取配置的摘要最大长度（summary.max_length，缺省 150）。
+     * 所有涉及摘要长度的下游（RSS 描述、手动生成接口默认值等）应统一取此口径。
+     */
+    int getConfiguredSummaryMaxLength();
 } 

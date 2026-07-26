@@ -282,6 +282,7 @@ public class SmartSummaryGenerator {
         String[] sentences = SENTENCE_PATTERN.split(content);
         
         StringBuilder result = new StringBuilder();
+        boolean lengthLimited = false;
         
         for (String sentence : sentences) {
             sentence = sentence.trim();
@@ -291,6 +292,7 @@ public class SmartSummaryGenerator {
             
             // 如果加上这个句子会超过目标长度
             if (result.length() + sentence.length() > targetLength) {
+                lengthLimited = true;
                 // 如果当前结果太短，尝试截取部分句子
                 if (result.length() < MIN_SUMMARY_LENGTH) {
                     int remainingLength = targetLength - result.length();
@@ -315,7 +317,18 @@ public class SmartSummaryGenerator {
             }
         }
         
-        return result.toString();
+        // 句子被长度限制丢弃时补省略号标记，避免下游无法区分“完整”与“被截断”
+        String summaryText = result.toString();
+        return lengthLimited ? appendEllipsis(summaryText) : summaryText;
+    }
+    
+    /** 截断时统一补省略号；若末尾是拼句补的句号则替换掉，避免出现“。...” */
+    private static String appendEllipsis(String text) {
+        if (!StringUtils.hasText(text) || text.endsWith("...")) {
+            return text;
+        }
+        String cleaned = text.endsWith("。") ? text.substring(0, text.length() - 1) : text;
+        return cleaned + "...";
     }
     
     /**

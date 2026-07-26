@@ -299,11 +299,13 @@ public class TextRankSummaryGenerator {
         selectedSentences.sort(Comparator.comparingInt(s -> s.originalIndex));
         
         StringBuilder summary = new StringBuilder();
+        boolean lengthLimited = false;
         
         for (SentenceScore sentenceScore : selectedSentences) {
             String sentence = sentenceScore.sentence;
             
             if (summary.length() + sentence.length() + 1 > maxLength) {
+                lengthLimited = true;
                 if (summary.length() < maxLength * 0.6) {
                     int remainingLength = maxLength - summary.length() - 3;
                     if (remainingLength > 20) {
@@ -324,7 +326,18 @@ public class TextRankSummaryGenerator {
             }
         }
         
-        return summary.toString().trim();
+        // 句子被长度限制丢弃时补省略号标记，避免下游无法区分“完整”与“被截断”
+        String result = summary.toString().trim();
+        return lengthLimited ? appendEllipsis(result) : result;
+    }
+    
+    /** 截断时统一补省略号；若末尾是拼句补的句号则替换掉，避免出现“。...” */
+    private static String appendEllipsis(String text) {
+        if (text == null || text.isEmpty() || text.endsWith("...")) {
+            return text;
+        }
+        String cleaned = text.endsWith("。") ? text.substring(0, text.length() - 1) : text;
+        return cleaned + "...";
     }
     
     /**

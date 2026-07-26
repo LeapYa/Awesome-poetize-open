@@ -365,7 +365,7 @@ public class TranslationApiController {
             if (customPromptTemplate != null && !customPromptTemplate.isBlank()) {
                 // 使用自定义提示词，支持占位符替换
                 prompt = customPromptTemplate
-                        .replace("{max_length}", String.valueOf(maxLength))
+                        .replace("{max_length}", com.ld.poetry.service.ai.LlmTranslationService.summaryLengthRange(maxLength))
                         .replace("{style_desc}", styleDesc)
                         .replace("{content_text}", sourceContent)
                         .replace("{source_content}", sourceContent)

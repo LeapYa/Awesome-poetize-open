@@ -34,9 +34,6 @@ import java.util.regex.Pattern;
 
 /**
  * LLM 翻译与摘要服务
- * 使用 Spring AI ChatClient 替代 Python HTTP 调用
- *
- * 替代 Python 端: translation_api.py 中的 LLM 翻译和摘要生成逻辑
  *
  * 支持的翻译方式：
  * - llm: 使用全局 AI 模型（article_ai 配置的 llmConfig）
@@ -65,7 +62,7 @@ public class LlmTranslationService {
     // ==================== 翻译功能 ====================
 
     /**
-     * LLM 翻译文章（标题 + 内容），替代 Python 端的 TOON 翻译
+     * LLM 翻译文章（标题 + 内容）
      *
      * @param title      文章标题
      * @param content    文章内容
@@ -243,28 +240,29 @@ public class LlmTranslationService {
             String prompt;
 
             if (customPromptTemplate != null && !customPromptTemplate.isBlank()) {
-                // 使用自定义提示词，支持占位符替换（与 Python 原版一致）
+                // 使用自定义提示词，支持占位符替换
                 prompt = customPromptTemplate
-                        .replace("{max_length}", String.valueOf(maxLength))
+                        .replace("{max_length}", summaryLengthRange(maxLength))
                         .replace("{style_desc}", styleDesc)
                         .replace("{content_text}", content)
                         .replace("{source_content}", content)
                         .replace("{languages}", "auto")
                         .replace("{source_lang}", "auto");
             } else {
-                // 默认提示词（兜底）
+                // 默认提示词（兜底）：长度给区间目标，模型对字数无精确感知，
+                // 瞄准区间中部可降低超限被硬切的概率
                 prompt = String.format("""
                         请为以下文章生成一段简洁的摘要。
 
                         要求：
-                        - 摘要长度不超过 %d 个字符
+                        - 摘要长度控制在 %d-%d 个字符以内
                         - 提取文章的核心要点
                         - 使用与原文相同的语言
                         - 只返回摘要内容，不要添加标题或其他格式
 
                         文章内容：
                         %s
-                        """, maxLength, content);
+                        """, targetSummaryMinLength(maxLength), maxLength, content);
             }
 
             String response = RetryUtil.executeWithRetry(() -> {
@@ -341,7 +339,7 @@ public class LlmTranslationService {
                 }
             }
 
-            // 生成 TOON 格式示例（与 Python 原版 toon_encode 一致）
+            // 生成 TOON 格式示例
             Map<String, Object> exampleSummaries = new LinkedHashMap<>();
             for (String langCode : languageContents.keySet()) {
                 exampleSummaries.put(langCode, getLanguageName(langCode) + "摘要内容");
@@ -368,7 +366,7 @@ public class LlmTranslationService {
             if (customPromptTemplate != null && !customPromptTemplate.isBlank()) {
                 // 使用自定义提示词，支持占位符替换
                 prompt = customPromptTemplate
-                        .replace("{max_length}", String.valueOf(maxLength))
+                        .replace("{max_length}", summaryLengthRange(maxLength))
                         .replace("{style_desc}", styleDesc)
                         .replace("{content_text}", sourceContent)
                         .replace("{source_content}", sourceContent)
@@ -379,7 +377,7 @@ public class LlmTranslationService {
                         .replace("{lang_json_example}", jsonExample)
                         .replace("{csv_example}", csvExample);
             } else {
-                // 默认提示词：使用 TOON 格式（与 Python 原版一致）
+                // 默认提示词：使用 TOON 格式
                 prompt = String.format("""
                         请为以下%s文章生成多语言摘要，要求：
                         1. 生成语言：%s
@@ -567,7 +565,6 @@ public class LlmTranslationService {
 
     /**
      * 从 summaryConfig JSON 中提取自定义 prompt 模板
-     * 对应 Python 原版: summary_config.get('prompt')
      */
     private String getSummaryCustomPrompt(SysAiConfig config) {
         if (config.getSummaryConfig() == null)
@@ -583,7 +580,6 @@ public class LlmTranslationService {
 
     /**
      * 从 summaryConfig JSON 中获取摘要风格描述
-     * 对应 Python 原版: style_prompts.get(request.style)
      */
     private String getSummaryStyleDesc(SysAiConfig config) {
         String style = "concise";
@@ -1682,7 +1678,16 @@ public class LlmTranslationService {
         return summary.length() < minLength;
     }
 
-    private int targetSummaryMinLength(int maxLength) {
+    /**
+     * {max_length} 占位符的注入值：区间形式 "下限-上限"（如 128-150）。
+     * 模型对字数无精确感知，给区间比给单一上限更不容易超限；
+     * 模板文本与占位符集合不变，用户自定义模板自动获得区间表述。
+     */
+    public static String summaryLengthRange(int maxLength) {
+        return targetSummaryMinLength(maxLength) + "-" + maxLength;
+    }
+
+    public static int targetSummaryMinLength(int maxLength) {
         if (maxLength <= 0) {
             return 0;
         }
@@ -1693,7 +1698,12 @@ public class LlmTranslationService {
     private String clampSummaryLength(String summary, int maxLength) {
         String normalized = summary == null ? "" : summary.trim();
         if (maxLength > 0 && normalized.length() > maxLength) {
-            return normalized.substring(0, maxLength).trim();
+            // 超限硬切时为省略号预留空间并打截断标记，避免下游无法区分“完整”与“被截断”
+            int cut = Math.max(1, maxLength - 3);
+            if (Character.isHighSurrogate(normalized.charAt(cut - 1))) {
+                cut--;
+            }
+            return normalized.substring(0, cut).trim() + "...";
         }
         return normalized;
     }
@@ -1712,13 +1722,13 @@ public class LlmTranslationService {
 
     /**
      * 解析多语言摘要 LLM 响应
-     * 先尝试 TOON 格式解析（与 Python 原版一致），再 JSON 兜底
+     * 先尝试 TOON 格式解析，再 JSON 兜底
      */
     @SuppressWarnings("unchecked")
     private Map<String, String> parseMultiLangSummaryResponse(
             String response, Map<String, Map<String, String>> languageContents, int maxLength) {
 
-        // 1. 先尝试 TOON 格式解析（Python 原版默认格式）
+        // 1. 先尝试 TOON 格式解析
         try {
             Map<String, Object> toonDecoded = ToonFormatter.decode(response);
             if (toonDecoded != null) {
