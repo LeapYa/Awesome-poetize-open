@@ -126,6 +126,7 @@ public class WebInfoController {
             Integer id = (Integer) params.get("id");
             String webName = (String) params.get("webName");
             String webTitle = (String) params.get("webTitle");
+            String logoImage = (String) params.get("logoImage");
             String homeTitle = (String) params.get("homeTitle");
             // 空白字符串归一化为 null，保证清空时数据库写入 NULL（与"为空回退 webTitle"语义一致）
             if (homeTitle != null && homeTitle.trim().isEmpty()) {
@@ -160,7 +161,7 @@ public class WebInfoController {
             log.info("开始更新网站基本信息 - ID: {}, webName: {}, webTitle: {}", id, webName, webTitle);
 
             // 调用专门的基本信息更新方法
-            int updateResult = webInfoMapper.updateWebInfoById(id, webName, webTitle, siteAddress, footer,
+            int updateResult = webInfoMapper.updateWebInfoById(id, webName, webTitle, logoImage, siteAddress, footer,
                     backgroundImage,
                     avatar, waifuJson, status, enableWaifu, waifuDisplayMode, homePagePullUpHeight, apiEnabled, apiKey,
                     apiIpWhitelist,

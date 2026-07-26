@@ -7,6 +7,7 @@
         <id column="id" property="id"/>
         <result column="web_name" property="webName"/>
         <result column="web_title" property="webTitle"/>
+        <result column="logo_image" property="logoImage"/>
         <result column="home_title" property="homeTitle"/>
         <result column="notices" property="notices"/>
         <result column="footer" property="footer"/>
@@ -39,7 +40,7 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, web_name, web_title, home_title, notices, footer, background_image, avatar, random_avatar, random_name, random_cover,
+        id, web_name, web_title, logo_image, home_title, notices, footer, background_image, avatar, random_avatar, random_name, random_cover,
         waifu_json, status, enable_waifu, waifu_display_mode, home_page_pull_up_height, api_enabled, api_key, api_ip_whitelist, nav_config,
         footer_background_image, footer_background_config, email, minimal_footer, enable_auto_night,
         auto_night_start, auto_night_end, enable_gray_mode, enable_dynamic_title, mouse_click_effect_config, mobile_drawer_config
@@ -55,6 +56,10 @@
             </if>
             <if test="webTitle != null and webTitle != ''">
                 web_title = #{webTitle},
+            </if>
+            <!-- Logo图片：允许空值覆盖（只要不是null就更新，空字符串表示清空Logo回退为显示网站名称） -->
+            <if test="logoImage != null">
+                logo_image = #{logoImage},
             </if>
             home_title = #{homeTitle},
             <if test="siteAddress != null">

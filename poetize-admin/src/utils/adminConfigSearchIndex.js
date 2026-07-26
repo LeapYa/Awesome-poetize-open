@@ -183,9 +183,19 @@ export const adminConfigSearchIndex = [
     route: '/webEdit',
     pageTitle: '基础设置',
     sectionTitle: '基础信息',
-    fieldLabel: '网站名称',
-    keywords: ['网站名称', '站点名称'],
+    fieldLabel: '站点名称',
+    keywords: ['站点名称', '网站名称', '站长昵称', '导航栏名称'],
     aliases: ['webName']
+  },
+  {
+    id: 'field-logo-image',
+    type: 'field',
+    route: '/webEdit',
+    pageTitle: '基础设置',
+    sectionTitle: '基础信息',
+    fieldLabel: '站点Logo',
+    keywords: ['站点Logo', '网站Logo', 'Logo图片', '导航栏Logo', '商标'],
+    aliases: ['logoImage', 'logo']
   },
   {
     id: 'field-site-address',

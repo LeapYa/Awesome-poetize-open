@@ -33,11 +33,18 @@
           <path d="M512 224a288 288 0 1 0 288 288 288 288 0 0 0-288-288z m0 512a224 224 0 1 1 224-224 224 224 0 0 1-224 224z m0-640a32 32 0 0 0 32-32V32a32 32 0 0 0-64 0v32a32 32 0 0 0 32 32z m0 832a32 32 0 0 0-32 32v32a32 32 0 0 0 64 0v-32a32 32 0 0 0-32-32zM195.2 195.2a32 32 0 0 0 0-45.248l-22.624-22.624a32 32 0 0 0-45.248 45.248l22.624 22.624a32 32 0 0 0 45.248 0z m701.472 678.656a32 32 0 0 0-45.248 0l-22.624 22.624a32 32 0 0 0 45.248 45.248l22.624-22.624a32 32 0 0 0 0-45.248zM96 512a32 32 0 0 0-32-32H32a32 32 0 0 0 0 64h32a32 32 0 0 0 32-32z m896 0a32 32 0 0 0-32-32h-32a32 32 0 0 0 0 64h32a32 32 0 0 0 32-32zM195.2 828.8a32 32 0 0 0-45.248 0l-22.624 22.624a32 32 0 0 0 45.248 45.248l22.624-22.624a32 32 0 0 0 0-45.248z m678.656-678.656a32 32 0 0 0 0-45.248l-22.624-22.624a32 32 0 0 0-45.248 45.248l22.624 22.624a32 32 0 0 0 45.248 0z" fill="currentColor"></path>
         </svg>
       </div>
-      <div class="header-user-con">
+      <div class="header-user-con" @mouseenter="showMask = true" @mouseleave="showMask = false">
         <el-avatar class="user-avatar" :size="40"
+                  @click="logout"
                   :src="$common.getAvatarUrl(mainStore.currentAdmin.avatar)">
           <img :src="$getDefaultAvatar()" />
         </el-avatar>
+        <!-- 头像遮罩 -->
+        <transition name="fade">
+          <div v-if="showMask" class="avatar-mask" @click="logout" @mouseenter="showMask = true">
+            <span class="mask-text">退出</span>
+          </div>
+        </transition>
       </div>
     </div>
   </div>
@@ -59,6 +66,12 @@ export default {
     }
   },
 
+  data() {
+    return {
+      showMask: false
+    };
+  },
+
   computed: {
     mainStore() {
       return useMainStore();
@@ -75,6 +88,11 @@ export default {
         .then(() => {
           this.mainStore.loadCurrentUser({});
           this.mainStore.loadCurrentAdmin({});
+          // 清除 localStorage 中的缓存
+          localStorage.removeItem('currentUser');
+          localStorage.removeItem('currentAdmin');
+          localStorage.removeItem('token');
+          // 跳转到登录页面
           this.$router.push({ path: '/' });
         })
         .catch((error) => {
@@ -165,6 +183,25 @@ export default {
 .header-user-con {
   display: flex;
   align-items: center;
+  position: relative;
+}
+
+.avatar-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 1000;
+  border-radius: 50%;
 }
 
 .theme-toggle {
@@ -202,10 +239,48 @@ export default {
   color: #b0b0b0;
 }
 
-.header-dark .theme-toggle:hover {
+.theme-dark .header-user-con .el-avatar.user-avatar:hover {
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 头像遮罩过渡动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.logout-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  color: #606266;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.logout-item:hover {
+  background-color: #f5f7fa;
   color: #409EFF;
 }
+
+.logout-item i {
+  font-size: 16px;
+}
+
+.mask-text {
+  font-size: 14px;
+  line-height: 1;
+}
+
+
 </style>
 
 <style>

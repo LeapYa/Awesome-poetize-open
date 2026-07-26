@@ -184,7 +184,13 @@ public class PrerenderService {
         // 首页 og:site_name 优先使用 homeTitle，其次回退到 webTitle
         meta.put("og:site_name", firstNonBlank(webInfo.getHomeTitle(), getSiteName(webInfo)));
 
-        String homeContent = "<div class=\"home-prerender\"><div class=\"home-hero\"><h1>" + text(firstNonBlank(webInfo.getWebName(), webInfo.getWebTitle(), siteName))
+        // 配置了站点Logo时在 h1 上方输出带 alt 的Logo图；h1 文字保留以免损失 SEO 权重
+        String logoImageUrl = ensureAbsoluteImageUrl(webInfo.getLogoImage(), baseUrl);
+        String logoImg = StringUtils.hasText(logoImageUrl)
+                ? "<img class=\"home-logo\" src=\"" + attr(logoImageUrl) + "\" alt=\""
+                        + attr(firstNonBlank(webInfo.getWebName(), siteName)) + "\" height=\"40\" loading=\"lazy\">"
+                : "";
+        String homeContent = "<div class=\"home-prerender\"><div class=\"home-hero\">" + logoImg + "<h1>" + text(firstNonBlank(webInfo.getWebName(), webInfo.getWebTitle(), siteName))
                 + "</h1><p>" + text(description)
                 + "</p></div><div class=\"home-categories\"><h2>文章分类</h2><ul>"
                 + sortInfo.stream()

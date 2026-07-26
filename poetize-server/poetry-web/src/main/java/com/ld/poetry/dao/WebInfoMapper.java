@@ -22,6 +22,7 @@ public interface WebInfoMapper extends BaseMapper<WebInfo> {
     int updateWebInfoById(@Param("id") Integer id,
                          @Param("webName") String webName,
                          @Param("webTitle") String webTitle,
+                         @Param("logoImage") String logoImage,
                          @Param("siteAddress") String siteAddress,
                          @Param("footer") String footer,
                          @Param("backgroundImage") String backgroundImage,

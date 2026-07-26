@@ -14,8 +14,25 @@
       </el-tag>
       <el-form :model="webInfo" :rules="rules" ref="ruleForm" label-width="100px"
                class="demo-ruleForm">
-        <el-form-item id="field-web-name" label="网站名称" prop="webName">
+        <el-form-item id="field-web-name" label="站点名称" prop="webName">
           <el-input v-model="webInfo.webName"></el-input>
+          <span class="tip">显示于前台导航栏左侧与侧边栏名片（头像下方），类似站长昵称；与用于浏览器标签页/SEO的「网站标题」不同。</span>
+        </el-form-item>
+
+        <el-form-item id="field-logo-image" label="站点Logo" prop="logoImage">
+          <div style="display: flex">
+            <el-input v-model="webInfo.logoImage" placeholder="Logo图片URL，留空则前台导航栏显示站点名称"></el-input>
+            <el-image lazy class="table-td-thumb"
+                      style="margin-left: 10px"
+                      :preview-src-list="webInfo.logoImage ? [webInfo.logoImage] : []"
+                      :src="webInfo.logoImage"
+                      fit="contain"></el-image>
+          </div>
+          <uploadPicture :isAdmin="true" :prefix="'webLogo'" style="margin-top: 15px"
+                         @addPicture="addLogoImage"
+                         :maxSize="10"
+                         :maxNumber="1"></uploadPicture>
+          <span class="tip">配置后前台导航栏左侧优先显示Logo图片，留空则显示站点名称。建议使用透明背景的PNG或SVG图片。</span>
         </el-form-item>
 
         <el-form-item id="field-web-title" label="网站标题" prop="webTitle">
@@ -324,6 +341,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
           id: null,
           webName: "",
           webTitle: "",
+          logoImage: "",
           homeTitle: "",
           siteAddress: "",
           footer: "",
@@ -345,7 +363,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
 
         rules: {
           webName: [
-            {required: true, message: '请输入网站名称', trigger: 'blur'},
+            {required: true, message: '请输入站点名称', trigger: 'blur'},
             {min: 1, max: 10, message: '长度在 1 到 10 个字符', trigger: 'change'}
           ],
           webTitle: [
@@ -498,6 +516,9 @@ const uploadPicture = () => import( "../common/uploadPicture");
       addAvatar(res) {
         this.webInfo.avatar = res;
       },
+addLogoImage(res) {
+        this.webInfo.logoImage = res;
+      },
       changeWebStatus() {
         this.$http.post(this.$constant.baseURL + "/webInfo/updateWebInfo", {
           id: this.webInfo.id,
@@ -567,6 +588,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
               this.webInfo.id = res.data.id;
               this.webInfo.webName = res.data.webName;
               this.webInfo.webTitle = res.data.webTitle;
+              this.webInfo.logoImage = res.data.logoImage || "";
               this.webInfo.homeTitle = res.data.homeTitle;
               this.webInfo.siteAddress = res.data.siteAddress || "";
               this.webInfo.footer = res.data.footer;
@@ -616,6 +638,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
               id: this.webInfo.id,
               webName: this.webInfo.webName,
               webTitle: this.webInfo.webTitle,
+              logoImage: this.webInfo.logoImage,
               homeTitle: this.webInfo.homeTitle,
               siteAddress: this.webInfo.siteAddress,
               footer: this.webInfo.footer,

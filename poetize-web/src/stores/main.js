@@ -72,6 +72,7 @@ export const useMainStore = defineStore('main', {
     webInfo: getFromLocalStorage('webInfo', {
       webName: '',
       webTitle: '',
+      logoImage: '', // 网站Logo图片URL，非空时导航栏优先显示Logo
       homeTitle: '',
       notices: [],
       randomCover: [],

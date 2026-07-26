@@ -23,9 +23,17 @@
         ]"
         class="toolbar-content myBetween"
       >
-        <!-- 网站名称 -->
+        <!-- 网站名称（配置了Logo图片时优先显示Logo） -->
         <div class="toolbar-title">
-          <h2 @click="$router.push({ path: '/' })">
+          <img
+            v-if="mainStore.webInfo.logoImage"
+            class="toolbar-logo"
+            :src="mainStore.webInfo.logoImage"
+            :alt="mainStore.webInfo.webName"
+            :title="mainStore.webInfo.webName"
+            @click="$router.push({ path: '/' })"
+          >
+          <h2 v-else @click="$router.push({ path: '/' })">
             {{ mainStore.webInfo.webName }}
           </h2>
         </div>
@@ -1710,6 +1718,19 @@ if (nextLang) {
   margin-left: 30px;
   cursor: pointer;
   font-family: 'MyAwesomeFont', serif;
+}
+.toolbar-logo {
+  height: 40px;
+  width: auto;
+  max-width: 200px;
+  display: block;
+  object-fit: contain;
+}
+@media screen and (max-width: 768px) {
+  .toolbar-logo {
+    height: 32px;
+    max-width: 140px;
+  }
 }
 .toolbar-mobile-menu {
   font-size: 30px;
