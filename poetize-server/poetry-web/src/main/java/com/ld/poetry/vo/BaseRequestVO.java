@@ -46,4 +46,13 @@ public class BaseRequestVO extends Page {
     private Boolean status;
 
     private String classify;
+
+    // 时间段筛选：每个元素格式为 start~end（两端均可省略其一），
+    // 同一字段的多个区间之间为 OR，不同字段之间为 AND，重复传参组合多个区间
+    private List<String> createTimeRange;
+
+    private List<String> updateTimeRange;
+
+    // 首次公开发布时间（publish_time，RSS pubDate 口径）
+    private List<String> publishTimeRange;
 }

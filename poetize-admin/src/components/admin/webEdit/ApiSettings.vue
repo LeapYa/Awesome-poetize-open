@@ -490,7 +490,11 @@ X-API-KEY: {{apiConfig.apiKey}}
                     <li><code>size</code>: 每页大小，默认为10</li>
                     <li><code>sortId</code>: 分类ID，可选</li>
                     <li><code>labelId</code>: 标签ID，可选</li>
-                    <li><code>searchKey</code>: 搜索关键词，可选</li>
+                    <li><code>searchKey</code>: 标题搜索关键词，可选</li>
+                    <li><code>articleSearch</code>: 标题+正文全文搜索，<code>/pattern/</code> 写法为正则匹配，可选</li>
+                    <li><code>recommendStatus</code>: 传 <code>true</code> 时仅返回推荐文章，可选</li>
+                    <li><code>createTimeRange</code> / <code>updateTimeRange</code> / <code>publishTimeRange</code>: 时间段筛选，格式 <code>start~end</code>（两端可省略其一，支持 <code>yyyy-MM-dd</code> 或 <code>yyyy-MM-dd HH:mm:ss</code>，纯日期为闭区间整天）；重复传参组合多个区间，同字段区间间为 OR、不同字段间为 AND；publishTimeRange 按首次公开发布时间筛选，可选（v5.2.0+）</li>
+                    <li><code>order</code>: 排序字段，可选 <code>create_time</code> / <code>update_time</code> / <code>publish_time</code>，默认 <code>create_time</code>；配合 <code>desc</code>（默认 <code>true</code> 降序）使用，可选（v5.2.0+）</li>
                     <li><code>orphanOnly</code>: 仅返回分类/标签缺失或已失效的孤儿文章，用于排查数据异常，可选，默认 false</li>
                   </ul>
                   <p><strong>响应格式:</strong></p>

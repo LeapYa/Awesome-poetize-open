@@ -2,6 +2,8 @@ package com.ld.poetry.service.impl;
 
 import cn.hutool.crypto.SecureUtil;
 import com.ld.poetry.utils.JsonUtils;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -1835,6 +1837,48 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         return listArticle(baseRequestVO, false);
     }
 
+    /**
+     * 将解析后的时间区间应用到查询条件：区间内 start/end 为闭区间 AND，
+     * 多个区间之间为 OR，整体与其他查询条件为 AND
+     */
+    private void applyTimeRanges(LambdaQueryChainWrapper<Article> lambdaQuery,
+                                 SFunction<Article, LocalDateTime> field,
+                                 List<TimeRangeUtil.TimeRange> ranges) {
+        if (CollectionUtils.isEmpty(ranges)) {
+            return;
+        }
+        lambdaQuery.and(wrapper -> {
+            boolean first = true;
+            for (TimeRangeUtil.TimeRange range : ranges) {
+                Consumer<LambdaQueryWrapper<Article>> condition = nested -> {
+                    nested.ge(range.start() != null, field, range.start());
+                    nested.le(range.end() != null, field, range.end());
+                };
+                if (first) {
+                    wrapper.nested(condition);
+                    first = false;
+                } else {
+                    wrapper.or(condition);
+                }
+            }
+        });
+    }
+
+    /**
+     * 排序字段白名单解析：仅支持 create_time / update_time / publish_time
+     * （兼容驼峰写法），其余取值回退默认 create_time
+     */
+    private SFunction<Article, LocalDateTime> resolveOrderField(String order) {
+        if (!StringUtils.hasText(order)) {
+            return Article::getCreateTime;
+        }
+        return switch (order.trim()) {
+            case "updateTime", "update_time" -> Article::getUpdateTime;
+            case "publishTime", "publish_time" -> Article::getPublishTime;
+            default -> Article::getCreateTime;
+        };
+    }
+
     @Override
     public PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden) {
         return listArticle(baseRequestVO, includeHidden, false);
@@ -1853,13 +1897,27 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             }
         }
 
+        // 时间段筛选：解析失败直接抛异常，避免筛选条件被静默忽略后返回未过滤结果
+        List<TimeRangeUtil.TimeRange> createTimeRanges = TimeRangeUtil.parseRanges(
+                baseRequestVO.getCreateTimeRange(), "createTimeRange");
+        List<TimeRangeUtil.TimeRange> updateTimeRanges = TimeRangeUtil.parseRanges(
+                baseRequestVO.getUpdateTimeRange(), "updateTimeRange");
+        List<TimeRangeUtil.TimeRange> publishTimeRanges = TimeRangeUtil.parseRanges(
+                baseRequestVO.getPublishTimeRange(), "publishTimeRange");
+        boolean hasTimeFilter = !createTimeRanges.isEmpty() || !updateTimeRanges.isEmpty()
+                || !publishTimeRanges.isEmpty();
+
         // 仅对不含搜索条件的常规分页请求启用缓存
         // 搜索条件可能改变结果集，直接查询数据库，避免复用不匹配的分页缓存
         // includeHidden（管理入口）与公开缓存共用 key 维度，必须绕开缓存，
         // 否则含隐藏文章的结果会污染公开分页缓存，造成未公开文章泄露
         // orphanOnly（孤儿文章排查）同理绕开缓存，避免污染常规分页结果
+        // 时间段筛选与自定义排序不在缓存 key 维度内，同样绕开缓存
         boolean cacheable = !includeHidden
                 && !orphanOnly
+                && !hasTimeFilter
+                && !StringUtils.hasText(baseRequestVO.getOrder())
+                && baseRequestVO.isDesc()
                 && !StringUtils.hasText(baseRequestVO.getArticleSearch())
                 && !StringUtils.hasText(baseRequestVO.getSearchKey());
         if (cacheable) {
@@ -1912,7 +1970,19 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             lambdaQuery.eq(Article::getSortId, baseRequestVO.getSortId());
         }
 
-        lambdaQuery.orderByDesc(Article::getCreateTime);
+        // 时间段筛选：同一字段多个区间之间为 OR，不同字段之间为 AND
+        applyTimeRanges(lambdaQuery, Article::getCreateTime, createTimeRanges);
+        applyTimeRanges(lambdaQuery, Article::getUpdateTime, updateTimeRanges);
+        applyTimeRanges(lambdaQuery, Article::getPublishTime, publishTimeRanges);
+
+        // 排序字段白名单：create_time / update_time / publish_time，
+        // 未指定或不在白名单内时保持默认 create_time，避免任意字段注入排序
+        SFunction<Article, LocalDateTime> orderField = resolveOrderField(baseRequestVO.getOrder());
+        if (baseRequestVO.isDesc()) {
+            lambdaQuery.orderByDesc(orderField);
+        } else {
+            lambdaQuery.orderByAsc(orderField);
+        }
 
         Page<Article> page = new Page<>(baseRequestVO.getCurrent(), baseRequestVO.getSize());
         lambdaQuery.page(page);

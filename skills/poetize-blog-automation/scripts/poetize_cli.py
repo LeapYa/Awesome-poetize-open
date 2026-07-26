@@ -34,6 +34,7 @@ from manage_blog import (
     post_async_update,
     read_json_file as manage_read_json_file,
     resolve_article_id,
+    validate_time_ranges,
 )
 from manage_blog import apply_ops_strategy
 from publish_post import (
@@ -391,6 +392,22 @@ def add_manage_subparsers(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--label-id", type=int, help="Filter by tag ID.")
     p.add_argument("--label-name", help="Filter by tag name (resolved to ID).")
     p.add_argument("--exact-title", help="Filter to a single exact title match.")
+    p.add_argument("--recommend-only", action="store_true",
+                   help="Only articles featured in recommendations.")
+    p.add_argument("--article-search",
+                   help="Full-text search over title + content; wrap in /.../ for case-insensitive regex (e.g. \"/^Vue 3/\").")
+    p.add_argument("--created-between", action="append", metavar="START~END",
+                   help="Filter by create time, format START~END (either side omittable; "
+                        "yyyy-MM-dd or yyyy-MM-dd HH:mm:ss). Repeat to OR-combine multiple ranges. Backend v5.2.0+.")
+    p.add_argument("--updated-between", action="append", metavar="START~END",
+                   help="Filter by last-update time; same format as --created-between. Backend v5.2.0+.")
+    p.add_argument("--published-between", action="append", metavar="START~END",
+                   help="Filter by first-public-publish time (RSS pubDate semantics; drafts never published are excluded); "
+                        "same format as --created-between. Backend v5.2.0+.")
+    p.add_argument("--order", choices=["create-time", "update-time", "publish-time"],
+                   help="Sort field (default: create-time). Backend v5.2.0+ for non-default values.")
+    p.add_argument("--asc", action="store_true",
+                   help="Sort ascending (default: descending). Backend v5.2.0+.")
     p.add_argument("--orphan-only", action="store_true",
                    help="Only list broken articles whose category/tag is missing or was deleted (data-repair aid).")
 
@@ -712,6 +729,13 @@ def cmd_manage(args: argparse.Namespace) -> None:
                 label_id=args.label_id,
                 label_name=args.label_name,
                 orphan_only=args.orphan_only,
+                recommend_only=args.recommend_only,
+                article_search=args.article_search,
+                create_time_ranges=validate_time_ranges(args.created_between, "--created-between"),
+                update_time_ranges=validate_time_ranges(args.updated_between, "--updated-between"),
+                publish_time_ranges=validate_time_ranges(args.published_between, "--published-between"),
+                order=args.order.replace("-", "_") if args.order else None,
+                asc=args.asc,
             )
             if args.exact_title:
                 records = [

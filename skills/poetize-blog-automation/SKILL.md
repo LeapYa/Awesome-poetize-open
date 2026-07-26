@@ -272,7 +272,7 @@ poetize-blog.sh manage save-comment --article-id 123 --content "欢迎留言交�
 
 | Subcommand | Purpose | Key flags |
 |---|---|---|
-| `list-articles` | List/filter articles | `--search-key`, `--sort-name`, `--label-name`, `--exact-title`, `--current`, `--size`, `--orphan-only` (only broken articles with missing/deleted category or tag, for data repair) |
+| `list-articles` | List/filter articles | `--search-key` (title fragment), `--article-search` (title+content full-text; `/.../` = regex), `--sort-name`, `--label-name`, `--exact-title`, `--recommend-only`, `--created-between` / `--updated-between` / `--published-between` (repeatable `START~END` time ranges, see note below), `--order` / `--asc` (sort by create-time/update-time/publish-time), `--current`, `--size`, `--orphan-only` (only broken articles with missing/deleted category or tag, for data repair) |
 | `get-article` | Fetch one article | `--article-id` / `--article-slug` / `--article-title-exact` |
 | `update-article` | Update metadata via raw JSON; use `publish` or `update-section` for content | `--payload-file` / `--stdin-payload`, `--brief-file` / `--stdin-brief`, `--wait` |
 | `hide-article` | Set `viewStatus=false` | `--brief-file` / `--stdin-brief`, `--password`, `--tips`, `--wait` |
@@ -299,6 +299,8 @@ poetize-blog.sh manage save-comment --article-id 123 --content "欢迎留言交�
 | `delete-label` | Delete a tag | `--id` |
 
 For `update-article`, do not combine `--stdin-payload` with `--stdin-brief`: both read the same stream sequentially. Put at least one JSON object in a file.
+
+> **Time-range filters (`--created-between` / `--updated-between` / `--published-between`).** Each value is `START~END` with either side omittable (`~2024-05-01` = before, `2024-05-01~` = after); time points accept `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, or `yyyy-MM-dd HH:mm:ss`, and date-only values are inclusive whole days. Repeat a flag to OR-combine multiple ranges of the same field; different fields AND-combine. `--published-between` uses the first-public-publish time (RSS pubDate semantics; never-published drafts are excluded). These filters, `--order`, and `--asc` require backend `v5.2.0`+ — **older backends silently ignore them and return unfiltered results**, so verify the backend version before trusting filtered output. Example: `manage list-articles --created-between "2024-01-01~2024-03-31" --created-between "2025-01-01~" --recommend-only --order publish-time --asc`.
 
 > `--floor-comment-id` behaves differently across commands. In `list-comments` it is a real query filter that selects which floor's replies to page through. In `save-comment` it is a no-op: the backend always recomputes `floorCommentId` from `parentCommentId` server-side and only logs a warning if the client value disagrees. Omit it when replying — just pass `--parent-comment-id` and `--parent-user-id`.
 

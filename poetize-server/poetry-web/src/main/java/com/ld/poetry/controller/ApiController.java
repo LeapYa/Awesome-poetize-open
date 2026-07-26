@@ -987,6 +987,14 @@ public class ApiController {
     
     /**
      * API查询文章列表
+     *
+     * 除分页/分类/标签/标题关键词外，还支持：
+     * - recommendStatus=true 仅看推荐文章
+     * - articleSearch 标题+正文全文搜索（/pattern/ 写法为正则）
+     * - createTimeRange / updateTimeRange / publishTimeRange 时间段筛选，
+     *   每个参数值为 start~end（两端可省略其一），重复传参组合多个区间，
+     *   同字段区间间为 OR、不同字段间为 AND（解析见 TimeRangeUtil）
+     * - order=create_time|update_time|publish_time 配合 desc 排序
      */
     @GetMapping("/article/list")
     public PoetryResult getArticleList(BaseRequestVO baseRequestVO,
