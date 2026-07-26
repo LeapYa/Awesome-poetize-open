@@ -187,7 +187,7 @@ public interface SysAiConfigService {
     
     /**
      * 将配置对象转换为Map，JSON字符串字段解析为对象
-     * 用于内部服务调用，方便Python等语言使用
+     * 用于内部服务调用，以结构化形式取用嵌套配置
      *
      * @param config AI配置对象
      * @return 转换后的Map，JSON字段已解析为对象

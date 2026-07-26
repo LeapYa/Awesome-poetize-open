@@ -40,7 +40,6 @@ import com.ld.poetry.service.impl.ArticleServiceImpl;
 import org.springframework.web.client.RestTemplate;
 import com.ld.poetry.event.ArticleSavedEvent;
 import org.springframework.context.ApplicationEventPublisher;
-import com.ld.poetry.service.MailTemplateService;
 import com.ld.poetry.service.QRCodeService;
 import com.ld.poetry.service.SysPluginService;
 import com.ld.poetry.entity.SysPlugin;
@@ -97,9 +96,6 @@ public class ArticleController {
     
     @Autowired
     private QRCodeService qrCodeService;
-
-    @Autowired
-    private MailTemplateService mailTemplateService;
 
     @Autowired
     private SysPluginService sysPluginService;
@@ -701,89 +697,6 @@ public class ArticleController {
     }
 
     /**
-     * 接收SEO推送结果并发送邮件通知
-     * 此接口由Python SEO模块调用
-     */
-    @PostMapping("/notifySeoResult")
-    public PoetryResult notifySeoResult(@RequestBody Map<String, Object> notificationData) {
-        try {
-            log.info("收到SEO推送结果通知: {}", notificationData);
-            
-            // 1. 提取所需数据
-            Integer articleId = null;
-            if (notificationData.containsKey("articleId") && notificationData.get("articleId") != null) {
-                articleId = Integer.parseInt(notificationData.get("articleId").toString());
-            }
-            
-            String title = notificationData.containsKey("title") ? notificationData.get("title").toString() : "未知文章";
-            String url = notificationData.containsKey("url") ? notificationData.get("url").toString() : "";
-            boolean success = notificationData.containsKey("success") && Boolean.parseBoolean(notificationData.get("success").toString());
-            String timestamp = notificationData.containsKey("timestamp") ? notificationData.get("timestamp").toString() : 
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> results = notificationData.containsKey("results") ? 
-                (Map<String, Object>) notificationData.get("results") : new HashMap<>();
-            
-            // 确定收件人列表
-            List<String> recipients = new ArrayList<>();
-            
-            // 直接使用文章作者的邮箱（移除了独立的通知邮箱字段）
-            if (articleId != null) {
-                // 查询文章信息以获取作者ID
-                ArticleVO article = articleService.getArticleById(articleId, null).getData();
-                if (article == null) {
-                    log.warn("未找到文章信息，文章ID: {}", articleId);
-                    return PoetryResult.success("已接收SEO推送结果，但未找到文章信息");
-                }
-                
-                Integer authorId = article.getUserId();
-                if (authorId == null) {
-                    log.warn("无法确定文章作者，文章ID: {}", articleId);
-                    return PoetryResult.success("已接收SEO推送结果，但无法确定文章作者");
-                }
-                
-                // 查询作者信息
-                User author = userService.getById(authorId);
-                if (author == null) {
-                    log.warn("未找到文章作者信息，作者ID: {}", authorId);
-                    return PoetryResult.success("已接收SEO推送结果，但未找到作者信息");
-                }
-                
-                // 如果作者有邮箱，添加到收件人列表
-                if (author.getEmail() != null && !author.getEmail().isEmpty()) {
-                    recipients.add(author.getEmail());
-                    log.info("使用文章作者邮箱: {}", author.getEmail());
-                }
-            }
-            
-            // 如果没有收件人，不发送邮件
-            if (recipients.isEmpty()) {
-                log.info("没有有效的收件人，不发送SEO推送结果通知");
-                return PoetryResult.success("已接收SEO推送结果，但无法发送通知");
-            }
-            
-            // 4. 使用模板服务生成邮件内容
-            String emailContent = mailTemplateService.generateSeoNotificationEmail(title, url, success, timestamp, results);
-            
-            // 5. 发送邮件通知
-            String subject = (success ? "SEO推送成功: " : "SEO推送失败: ") + title;
-            boolean mailSent = mailService.sendMail(recipients, subject, emailContent, true, null);
-            
-            if (mailSent) {
-                log.info("SEO推送结果通知邮件发送成功，收件人: {}", recipients);
-                return PoetryResult.success("SEO推送结果通知已发送");
-            } else {
-                log.warn("SEO推送结果通知邮件发送失败，收件人: {}", recipients);
-                return PoetryResult.fail("SEO推送结果通知邮件发送失败");
-            }
-        } catch (Exception e) {
-            log.error("处理SEO推送结果通知出错", e);
-            return PoetryResult.fail("处理SEO推送结果通知出错: " + e.getMessage());
-        }
-    }
-    
-    /**
      * 手动保存文章翻译
      */
     @PostMapping("/saveManualTranslation")
@@ -824,23 +737,6 @@ public class ArticleController {
         } catch (Exception e) {
             log.error("保存手动翻译失败", e);
             return PoetryResult.fail("保存翻译失败：" + e.getMessage());
-        }
-    }
-
-    /**
-     * 生成文章摘要 - 供Python端调用
-     */
-    @PostMapping("/generateSummary")
-    public PoetryResult<String> generateSummary(@RequestBody Map<String, Object> request) {
-        try {
-            String content = (String) request.get("content");
-            Integer maxLength = request.get("maxLength") != null ?
-                Integer.parseInt(request.get("maxLength").toString()) : 150;
-
-            return articleService.generateSummary(content, maxLength);
-        } catch (Exception e) {
-            log.error("摘要生成API调用失败", e);
-            return PoetryResult.fail("摘要生成失败: " + e.getMessage());
         }
     }
 

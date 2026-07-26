@@ -19,8 +19,6 @@ import java.util.stream.Collectors;
 /**
  * 文章相关 @Tool 工具
  * 
- * 对应 Python 端 MCP 工具：search_and_summarize, get_article_content,
- * get_hot_articles, list_categories
  */
 @Service
 public class ArticleTools {

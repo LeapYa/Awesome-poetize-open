@@ -18,7 +18,6 @@ import java.util.Map;
 
 /**
  * AI 记忆管理控制器
- * 替代 Python 端 ai_chat_api.py 中的记忆管理 API
  *
  * 端点对照：
  * GET /ai/memory/list → get_user_memories

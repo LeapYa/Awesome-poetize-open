@@ -2799,31 +2799,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     /**
-     * 为Python端提供的摘要生成API
-     */
-    @Override
-    public PoetryResult<String> generateSummary(String content, Integer maxLength) {
-        try {
-            if (!StringUtils.hasText(content)) {
-                return PoetryResult.fail("内容不能为空");
-            }
-
-            int targetLength = (maxLength != null && maxLength > 0) ? maxLength : 150;
-            String summary = SmartSummaryGenerator.generateAdvancedSummary(content, targetLength);
-
-            if (StringUtils.hasText(summary)) {
-                return PoetryResult.success(summary);
-            } else {
-                return PoetryResult.fail("摘要生成失败");
-            }
-
-        } catch (Exception e) {
-            log.error("摘要生成失败", e);
-            return PoetryResult.fail("摘要生成异常: " + e.getMessage());
-        }
-    }
-
-    /**
      * 安全地将对象转换为Integer类型
      * 处理Redis序列化导致的类型转换问题
      * 
@@ -2865,7 +2840,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
 
         try {
-            String aiSummary = llmTranslationService.generateSummary(content, 150);
+            String aiSummary = llmTranslationService.generateSummary(content, summaryService.getConfiguredSummaryMaxLength());
             if (StringUtils.hasText(aiSummary)) {
                 log.info("使用AI生成文章摘要成功，长度: {}", aiSummary.length());
                 return aiSummary;

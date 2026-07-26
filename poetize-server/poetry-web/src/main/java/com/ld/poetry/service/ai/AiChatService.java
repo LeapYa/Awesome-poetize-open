@@ -54,8 +54,6 @@ import java.util.stream.Collectors;
 /**
  * AI 聊天编排服务
  * 负责消息验证、历史管理、系统指令构建、Tool Calling、Memory 集成、流式响应编排
- *
- * 对应 Python 端: ai_chat_api.py 的核心逻辑
  */
 @Service
 @Slf4j

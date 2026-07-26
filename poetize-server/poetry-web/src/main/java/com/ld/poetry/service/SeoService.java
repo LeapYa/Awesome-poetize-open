@@ -34,8 +34,6 @@ public class SeoService {
     @Autowired
     private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
-    // [已迁移] Python 后端已合并到 Java，不再需要 PYTHON_SERVICE_URL
-
     /**
      * 将文章提交到搜索引擎
      *

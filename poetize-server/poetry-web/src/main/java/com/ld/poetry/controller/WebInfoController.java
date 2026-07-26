@@ -1271,7 +1271,6 @@ public class WebInfoController {
 
     /**
      * 获取看板娘状态
-     * 替代Python端的getWaifuStatus端点，统一架构设计
      */
     @GetMapping("/getWaifuStatus")
     public PoetryResult<Map<String, Object>> getWaifuStatus() {

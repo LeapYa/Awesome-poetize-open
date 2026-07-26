@@ -35,7 +35,7 @@ public class TwitterOAuthProvider extends OAuth1Provider {
 
     @Override
     public String getProviderName() {
-        return "x";  // 使用x作为provider名称，与Python保持一致
+        return "x";  // 使用x作为provider名称
     }
 
     @Override

@@ -24,8 +24,6 @@ import java.util.stream.Collectors;
 
 /**
  * 翻译服务实现类
- * 使用 Spring AI (LlmTranslationService) 和百度翻译 (BaiduTranslationProvider) 替代
- * Python 后端
  */
 @Service
 @Slf4j
@@ -224,7 +222,7 @@ public class TranslationServiceImpl implements TranslationService {
                 return null;
             }
 
-            // 4. 根据翻译类型选择翻译方式（本地调用，不再依赖 Python 后端）
+            // 4. 根据翻译类型选择翻译方式
             String translationType = aiConfig != null ? aiConfig.getTranslationType() : "llm";
             log.info("使用翻译方式: {}", translationType);
 

@@ -13,8 +13,6 @@ import java.util.Locale;
 /**
  * 时间相关 @Tool 工具
  *
- * 对应 Python 端 MCP 工具：get_current_time, convert_timezone,
- * is_holiday, get_lunar_date, countdown_to
  */
 @Service
 public class TimeTools {

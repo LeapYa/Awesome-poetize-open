@@ -137,7 +137,6 @@ public class AdminController {
 
     /**
      * 获取管理员网站详细信息（包含敏感配置）
-     * 替代Python端的getAdminWebInfoDetails端点
      */
     @GetMapping("/webInfo/getAdminWebInfoDetails")
     @LoginCheck(0)
@@ -179,7 +178,6 @@ public class AdminController {
 
     /**
      * 刷新管理员缓存
-     * 替代Python端的refreshAdminWebInfoCache端点
      */
     @PostMapping("/webInfo/refreshCache")
     @LoginCheck(0)
@@ -525,7 +523,6 @@ public class AdminController {
 
     /**
      * 更新看板娘状态
-     * 替代Python端的updateWaifuStatus端点
      */
     @PostMapping("/webInfo/updateWaifuStatus")
     @LoginCheck(0)

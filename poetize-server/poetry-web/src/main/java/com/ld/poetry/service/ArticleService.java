@@ -62,14 +62,6 @@ public interface ArticleService extends IService<Article> {
     PoetryResult<Map<Integer, List<ArticleVO>>> listSortArticle();
 
     /**
-     * 生成文章摘要
-     * @param content 文章内容
-     * @param maxLength 最大长度
-     * @return 摘要结果
-     */
-    PoetryResult<String> generateSummary(String content, Integer maxLength);
-
-    /**
      * 获取热门文章列表（智能热度算法排序）
      * 综合考虑浏览量、点赞数、评论数、发布时间、互动率等多个因素
      * @return 热门文章列表

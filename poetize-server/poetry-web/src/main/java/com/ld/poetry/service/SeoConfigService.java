@@ -25,7 +25,7 @@ public interface SeoConfigService extends IService<SeoConfig> {
     boolean saveFullSeoConfig(SeoConfig seoConfig);
     
     /**
-     * 获取兼容Python的JSON格式配置
+      * 获取SEO配置的JSON格式
      */
     Map<String, Object> getSeoConfigAsJson();
     

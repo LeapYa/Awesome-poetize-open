@@ -222,7 +222,6 @@ public class SysConfigController {
             "SEARCH_ENGINE_PING_ENABLED",  // 搜索引擎推送启用状态
             "SEARCH_ENGINE_PING_MIN_INTERVAL",  // 搜索引擎推送最小间隔
             "ENABLED_SEARCH_ENGINES"  // 启用的搜索引擎列表
-            // 注意：网站URL现在从Python SEO配置或环境变量获取，不再依赖Java数据库配置
         };
         
         for (String key : sitemapAffectingKeys) {

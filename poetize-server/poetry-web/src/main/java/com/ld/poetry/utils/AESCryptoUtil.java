@@ -15,7 +15,6 @@ import java.security.SecureRandom;
 /**
  * AES加密工具类
  * 用于API密钥等敏感信息的加密存储
- * 与Python端Fernet加密保持兼容
  * 
  * @author LeapYa
  * @since 2025-10-18
@@ -25,7 +24,7 @@ import java.security.SecureRandom;
 public class AESCryptoUtil {
 
     /**
-     * AES加密密钥（从环境变量获取，默认值与Python端保持一致）
+     * AES加密密钥（从环境变量获取）
      */
     @Value("${poetize.aes.key:sarasarasarasara}")
     private String secretKey;

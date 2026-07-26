@@ -25,7 +25,6 @@ import java.util.Map;
 
 /**
  * AI 聊天控制器
- * 替代 Python 端 ai_chat_api.py 中的聊天 API 路由
  *
  * 端点对照：
  * GET  /ai/chat/checkStatus        → check_ai_chat_status_route

@@ -63,7 +63,7 @@ public class SeoConfigController {
     }
 
     /**
-     * 获取SEO配置（JSON格式，兼容Python）
+     * 获取SEO配置（JSON格式）
      */
     @GetMapping("/getConfigAsJson")
     @LoginCheck(1)
@@ -78,7 +78,7 @@ public class SeoConfigController {
     }
 
     /**
-     * 更新SEO配置（JSON格式，兼容Python）
+     * 更新SEO配置（JSON格式）
      */
     @PostMapping("/updateConfigFromJson")
     @LoginCheck(1)
@@ -108,20 +108,6 @@ public class SeoConfigController {
         } catch (Exception e) {
             log.error("初始化默认SEO配置失败", e);
             return PoetryResult.fail("初始化SEO配置失败");
-        }
-    }
-
-    /**
-     * 供Python端调用的API（无权限验证）
-     */
-    @GetMapping("/config")
-    public PoetryResult<Map<String, Object>> getSeoConfigForPython() {
-        try {
-            Map<String, Object> config = seoConfigService.getSeoConfigAsJson();
-            return PoetryResult.success(config);
-        } catch (Exception e) {
-            log.error("Python端获取SEO配置失败", e);
-            return PoetryResult.fail("获取SEO配置失败");
         }
     }
 

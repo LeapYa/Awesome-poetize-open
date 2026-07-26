@@ -8,7 +8,6 @@ import java.util.*;
 /**
  * 农历 + 节假日工具类
  * <p>
- * 移植 Python 端的农历日期计算和中国节假日判断逻辑。
  * 使用查表法实现 1900-2100 年的农历转换。
  */
 public class LunarCalendarUtil {

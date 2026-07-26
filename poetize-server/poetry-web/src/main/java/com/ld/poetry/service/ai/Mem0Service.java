@@ -12,7 +12,6 @@ import java.util.*;
  * Mem0 记忆管理服务
  * 通过 HTTP API 与 Mem0 交互
  *
- * 对应 Python 端: memory_manager.py
  */
 @Service
 public class Mem0Service {

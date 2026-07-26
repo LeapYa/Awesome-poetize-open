@@ -1106,7 +1106,7 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 config.setJinaApiKey(decrypted);
             }
 
-            // 解密JSON字段（不脱敏，供Python服务使用）
+            // 解密JSON字段（不脱敏，供内部服务调用）
             decryptJsonFieldsForInternal(config);
             applyDefaultCommentSkill(config);
         }

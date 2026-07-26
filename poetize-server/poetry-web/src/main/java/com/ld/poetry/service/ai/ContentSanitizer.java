@@ -11,8 +11,6 @@ import java.util.regex.Pattern;
 /**
  * 内容净化器 — 防止提示词注入攻击
  * 
- * 对应 Python 端: content_sanitizer.py
- * 
  * 功能：
  * - 用户输入验证
  * - 页面上下文净化（移除潜在注入指令）
