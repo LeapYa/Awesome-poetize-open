@@ -16,11 +16,27 @@ public interface RssService {
     String generateRss();
 
     /**
+     * 生成指定语言的RSS 2.0订阅源内容（优先使用缓存）
+     *
+     * @param language 目标语言代码（null/空表示源语言基础版）
+     * @return rss.xml内容
+     */
+    String generateRss(String language);
+
+    /**
      * 生成RSS 2.0订阅源内容（不使用缓存）
      *
      * @return rss.xml内容
      */
     String generateRssDirect();
+
+    /**
+     * 生成指定语言的RSS 2.0订阅源内容（不使用缓存）
+     *
+     * @param language 目标语言代码（null/空表示源语言基础版）
+     * @return rss.xml内容
+     */
+    String generateRssDirect(String language);
 
     /**
      * 清除RSS缓存

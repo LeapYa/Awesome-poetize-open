@@ -176,6 +176,8 @@ services:
       - /etc/timezone:/etc/timezone:ro
     environment:
       - TZ=Asia/Shanghai
+      # 项目版本号（供 RSS generator 等软件标识使用，与前端 VITE_APP_VERSION 同源）
+      - APP_VERSION=${APP_VERSION:-dev}
       # Java配置
       - JAVA_OPTS=${JAVA_OPTS:--Xmx1024m -Xms512m -XX:MaxMetaspaceSize=256m -XX:CompressedClassSpaceSize=128m -Xss512k -XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+ExitOnOutOfMemoryError -XX:MaxRAMPercentage=80.0 -XX:+DisableExplicitGC -XX:ReservedCodeCacheSize=128m -XX:MaxDirectMemorySize=192m -XX:ZUncommitDelay=120 -XX:CICompilerCount=2}
       # 数据库配置

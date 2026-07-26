@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -29,11 +30,12 @@ public class RssController {
     /**
      * 获取RSS订阅源
      * 访问路径：/rss.xml（/feed、/feed.xml 为别名，兼容各类阅读器的路径惯例）
+     * 可选参数：lang=xx 输出该语言翻译版订阅源（条目链接指向 /article/xx/id 翻译页）
      */
     @GetMapping(value = {"/rss.xml", "/feed", "/feed.xml"}, produces = "application/rss+xml;charset=UTF-8")
-    public ResponseEntity<String> getRss() {
+    public ResponseEntity<String> getRss(@RequestParam(value = "lang", required = false) String lang) {
         try {
-            String rssContent = rssService.generateRss();
+            String rssContent = rssService.generateRss(lang);
 
             if (StringUtils.hasText(rssContent)) {
                 HttpHeaders headers = new HttpHeaders();
