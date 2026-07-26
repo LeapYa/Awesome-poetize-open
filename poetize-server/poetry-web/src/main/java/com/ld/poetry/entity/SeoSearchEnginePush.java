@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
  * 搜索引擎推送配置表
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-26
  */
 @Data
 @EqualsAndHashCode(callSuper = false)

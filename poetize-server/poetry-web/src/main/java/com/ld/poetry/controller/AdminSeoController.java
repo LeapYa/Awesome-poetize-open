@@ -40,8 +40,8 @@ import java.util.concurrent.CompletableFuture;
  * 提供管理员专用的SEO配置和管理功能
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-21
  */
 @RestController
 @RequestMapping("/admin/seo")

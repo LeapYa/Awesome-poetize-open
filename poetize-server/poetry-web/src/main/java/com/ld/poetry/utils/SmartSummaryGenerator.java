@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
  * 智能摘要生成器
  * 实现基于内容结构化分析的摘要提取
  * 
- * @author sara
+ * @author LeapYa
  */
 @Slf4j
 public class SmartSummaryGenerator {

@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  * - 避免选择孤立的句子
  * - 数学基础扎实，效果稳定
  * 
- * @author sara
+ * @author LeapYa
  */
 @Slf4j
 public class TextRankSummaryGenerator {

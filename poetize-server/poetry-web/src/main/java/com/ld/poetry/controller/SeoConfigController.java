@@ -16,8 +16,8 @@ import java.util.Map;
  * SEO配置管理控制器
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-26
  */
 @RestController
 @RequestMapping("/admin/seo")

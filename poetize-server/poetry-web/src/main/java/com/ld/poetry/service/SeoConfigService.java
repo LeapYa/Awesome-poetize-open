@@ -9,8 +9,8 @@ import java.util.Map;
  * SEO配置服务接口
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-26
  */
 public interface SeoConfigService extends IService<SeoConfig> {
     

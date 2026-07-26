@@ -9,8 +9,8 @@ import org.apache.ibatis.annotations.Mapper;
  * PWA配置表 Mapper 接口
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-26
  */
 @Mapper
 public interface SeoPwaConfigMapper extends BaseMapper<SeoPwaConfig> {
