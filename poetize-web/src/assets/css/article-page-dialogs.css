@@ -357,14 +357,23 @@ body.dark-mode .el-dialog__footer {
   border-top-color: #404040 !important;
 }
 
-body.dark-mode .el-dialog .el-input__inner {
+body.dark-mode .el-dialog .el-input__wrapper {
   background-color: #404040 !important;
+  box-shadow: 0 0 0 1px #505050 inset !important;
+}
+
+body.dark-mode .el-dialog .el-input__inner {
+  background-color: transparent !important;
   border-color: #505050 !important;
   color: #e0e0e0 !important;
 }
 
 body.dark-mode .el-dialog .el-input__inner::placeholder {
   color: #888888 !important;
+}
+
+body.dark-mode .el-dialog .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px #409eff inset !important;
 }
 
 body.dark-mode .el-dialog .el-input__inner:focus {
