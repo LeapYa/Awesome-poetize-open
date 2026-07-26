@@ -122,7 +122,7 @@
                          :maxNumber="1"></uploadPicture>
         </el-form-item>
 
-        <el-form-item id="field-site-avatar" label="头像" prop="avatar">
+        <el-form-item id="field-site-avatar" label="站长头像" prop="avatar">
           <div style="display: flex">
             <el-input v-model="webInfo.avatar"></el-input>
             <el-image lazy class="table-td-thumb"
@@ -133,6 +133,7 @@
           </div>
           <uploadPicture :isAdmin="true" :prefix="'webAvatar'" style="margin-top: 15px" @addPicture="addAvatar"
                          :maxNumber="1"></uploadPicture>
+          <span class="tip">站长个人头像，显示于前台侧边栏名片、文章作者署名等处；与浏览器标签页图标无关（后者在「SEO优化 → 网站图标」配置）。</span>
         </el-form-item>
         
         <!-- 极简页脚开关 -->
@@ -386,7 +387,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
             {required: true, message: '请设置网站状态', trigger: 'change'}
           ],
           avatar: [
-            {required: true, message: '请上传头像', trigger: 'change'}
+            {required: true, message: '请上传站长头像', trigger: 'change'}
           ]
         },
         isMobileDevice: false,

@@ -505,7 +505,7 @@ public class AdminSeoController {
         }
 
         if (!StringUtils.hasText(getStringConfig(seoConfig, "site_logo"))) {
-            seoScore = addSuggestion(suggestions, seoScore, 3, "info", "网站 Logo 未设置，建议补充站点标识以完善品牌展示");
+            seoScore = addSuggestion(suggestions, seoScore, 3, "info", "品牌标识未设置，建议补充以完善搜索引擎富摘要的品牌展示");
         }
 
         if (!hasAnyText(seoConfig, "site_icon", "apple_touch_icon", "site_icon_192", "site_icon_512")) {

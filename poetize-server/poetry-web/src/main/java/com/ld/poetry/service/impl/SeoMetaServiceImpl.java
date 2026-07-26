@@ -586,7 +586,12 @@ public class SeoMetaServiceImpl implements SeoMetaService {
         meta.put("og:title", title);
         meta.put("og:description", description);
         meta.put("og:site_name", getSiteTitle());
-        meta.put("og:image", seoConfig.get("og_image"));
+        String ogImage = seoConfig.get("og_image") != null ? seoConfig.get("og_image").toString() : null;
+        if (StringUtils.hasText(ogImage)) {
+            meta.put("og:image", toAbsoluteUrl(ogImage));
+        } else {
+            meta.put("og:image", null);
+        }
 
         // Twitter Card
         meta.put("twitter:card", seoConfig.get("twitter_card"));

@@ -233,9 +233,9 @@ export const adminConfigSearchIndex = [
     route: '/webEdit',
     pageTitle: '基础设置',
     sectionTitle: '基础信息',
-    fieldLabel: '网站头像',
-    keywords: ['网站头像', '站点头像', '头像'],
-    aliases: ['avatar', '站点头像']
+    fieldLabel: '站长头像',
+    keywords: ['站长头像', '网站头像', '站点头像', '头像', '个人头像'],
+    aliases: ['avatar', '名片头像']
   },
   {
     id: 'field-footer',
@@ -453,8 +453,8 @@ export const adminConfigSearchIndex = [
     route: '/seoConfig',
     pageTitle: 'SEO优化',
     sectionTitle: '通用设置',
-    fieldLabel: '网站Logo',
-    keywords: ['网站Logo', 'Logo', '站点Logo'],
+    fieldLabel: '品牌标识',
+    keywords: ['品牌标识', '网站Logo', '结构化数据Logo', '富摘要Logo'],
     aliases: ['site_logo', 'logo图片']
   },
   {

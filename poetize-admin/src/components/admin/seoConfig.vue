@@ -153,10 +153,10 @@
               <span class="tip">当文章无封面图时使用的默认图片，建议尺寸1200×630像素</span>
             </el-form-item>
             
-            <el-form-item id="field-seo-logo" label="网站Logo">
+            <el-form-item id="field-seo-logo" label="品牌标识">
               <div class="icon-upload-container">
                 <div style="display: flex">
-                  <el-input v-model="seoConfig.site_logo" placeholder="输入Logo URL或点击上传"></el-input>
+                  <el-input v-model="seoConfig.site_logo" placeholder="输入品牌标识图片URL或点击上传"></el-input>
                   <el-image lazy class="table-td-thumb"
                             style="margin-left: 10px"
                             v-if="seoConfig.site_logo"
@@ -172,7 +172,7 @@
                   class="upload-btn">
                 </uploadPicture>
               </div>
-              <span class="tip">在某些社交平台上显示为网站标识，建议为正方形，至少300×300像素</span>
+              <span class="tip">仅用于搜索引擎结构化数据（富摘要品牌标识）与PWA图标，不会显示在前台页面上；建议为正方形，至少300×300像素。前台导航栏的Logo请到「网站设置 → 站点Logo」配置。</span>
             </el-form-item>
           </el-tab-pane>
           
@@ -293,8 +293,8 @@
                    <span>标签页图标</span>
                  </div>
                  <div class="preview-item" v-if="seoConfig.site_logo">
-                   <img :src="seoConfig.site_logo" class="icon-preview-64" alt="网站Logo">
-                   <span>网站Logo</span>
+                   <img :src="seoConfig.site_logo" class="icon-preview-64" alt="品牌标识">
+                   <span>品牌标识</span>
                  </div>
                  <div class="preview-item" v-if="seoConfig.apple_touch_icon">
                    <img :src="seoConfig.apple_touch_icon" class="icon-preview-48" alt="Apple Touch图标">
@@ -1774,7 +1774,7 @@ export default {
 
     addSiteLogo(pictureUrl) {
       this.seoConfig.site_logo = pictureUrl;
-      this.$message.success('网站Logo上传成功');
+      this.$message.success('品牌标识上传成功');
     },
 
     addSiteIcon(pictureUrl) {
@@ -1983,7 +1983,7 @@ export default {
             'apple-touch-icon': 'Apple Touch图标',
             'icon-192': 'PWA图标(192x192)',
             'icon-512': 'PWA图标(512x512)',
-            'logo': '网站Logo',
+            'logo': '品牌标识',
             'poetize-jpg': '默认静态图标(poetize.jpg)'
           };
           const successNames = successDetails.map(type => iconTypeMap[type] || type).join('、');
