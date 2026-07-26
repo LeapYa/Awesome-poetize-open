@@ -85,7 +85,7 @@
       </el-table-column>
       <el-table-column prop="commentCount" label="评论数" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
       <el-table-column prop="createTime" label="创建时间" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
-      <el-table-column prop="updateTime" label="最终修改时间" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
+      <el-table-column prop="updateTime" label="修改时间" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
       <el-table-column label="操作" width="220" align="center">
         <template slot-scope="scope">
           <div>
