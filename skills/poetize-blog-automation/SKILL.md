@@ -272,7 +272,7 @@ poetize-blog.sh manage save-comment --article-id 123 --content "欢迎留言交�
 
 | Subcommand | Purpose | Key flags |
 |---|---|---|
-| `list-articles` | List/filter articles | `--search-key`, `--sort-name`, `--label-name`, `--exact-title`, `--current`, `--size` |
+| `list-articles` | List/filter articles | `--search-key`, `--sort-name`, `--label-name`, `--exact-title`, `--current`, `--size`, `--orphan-only` (only broken articles with missing/deleted category or tag, for data repair) |
 | `get-article` | Fetch one article | `--article-id` / `--article-slug` / `--article-title-exact` |
 | `update-article` | Update metadata via raw JSON; use `publish` or `update-section` for content | `--payload-file` / `--stdin-payload`, `--brief-file` / `--stdin-brief`, `--wait` |
 | `hide-article` | Set `viewStatus=false` | `--brief-file` / `--stdin-brief`, `--password`, `--tips`, `--wait` |

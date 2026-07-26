@@ -491,6 +491,7 @@ X-API-KEY: {{apiConfig.apiKey}}
                     <li><code>sortId</code>: 分类ID，可选</li>
                     <li><code>labelId</code>: 标签ID，可选</li>
                     <li><code>searchKey</code>: 搜索关键词，可选</li>
+                    <li><code>orphanOnly</code>: 仅返回分类/标签缺失或已失效的孤儿文章，用于排查数据异常，可选，默认 false</li>
                   </ul>
                   <p><strong>响应格式:</strong></p>
                   <pre style="background-color: #f5f7fa; padding: 10px; border-radius: 4px; overflow: auto;">

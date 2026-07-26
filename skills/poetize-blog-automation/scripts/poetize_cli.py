@@ -391,6 +391,8 @@ def add_manage_subparsers(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--label-id", type=int, help="Filter by tag ID.")
     p.add_argument("--label-name", help="Filter by tag name (resolved to ID).")
     p.add_argument("--exact-title", help="Filter to a single exact title match.")
+    p.add_argument("--orphan-only", action="store_true",
+                   help="Only list broken articles whose category/tag is missing or was deleted (data-repair aid).")
 
     # get-article
     p = sub.add_parser("get-article", help="Get article content by ID, slug, or exact title.")
@@ -700,7 +702,17 @@ def cmd_manage(args: argparse.Namespace) -> None:
 
     try:
         if mc == "list-articles":
-            response = list_articles(args)
+            response = list_articles(
+                args,
+                search_key=args.search_key,
+                current=args.current,
+                size=args.size,
+                sort_id=args.sort_id,
+                sort_name=args.sort_name,
+                label_id=args.label_id,
+                label_name=args.label_name,
+                orphan_only=args.orphan_only,
+            )
             if args.exact_title:
                 records = [
                     item for item in extract_records(response)
@@ -716,8 +728,16 @@ def cmd_manage(args: argparse.Namespace) -> None:
                     if first_id:
                         next_steps.append(f"Fetch article details (content/metadata): python poetize_cli.py manage get-article --article-id {first_id}")
                 next_steps.append("Fetch details of any article: python poetize_cli.py manage get-article --article-id <id>")
+                if args.orphan_only:
+                    if records:
+                        next_steps.append("Repair a broken article: python poetize_cli.py manage update-article --article-id <id> --payload-file payload.json with valid sortId/labelId (see manage list-sorts / list-labels).")
+                        message = f"Found {len(records)} orphan article(s) with missing or deleted category/tag. These are invisible to visitors and normal category/tag navigation."
+                    else:
+                        message = "No orphan articles found. All articles reference a valid category and tag."
+                else:
+                    message = "Articles listed successfully."
                 response["agent_guide"] = {
-                    "message": "Articles listed successfully.",
+                    "message": message,
                     "next_steps": next_steps
                 }
             print(json.dumps(response, ensure_ascii=False, indent=2))

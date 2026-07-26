@@ -117,8 +117,14 @@ export const useMainStore = defineStore('main', {
     },
     /**
      * 文章总数
+     * 优先使用后端 webInfo.articleCount（访客口径：仅公开且分类/标签有效的文章），
+     * 避免 sortInfo.countOfSort 求和把隐藏文章也计入；旧缓存无该字段时回退到求和口径
      */
     articleTotal: (state) => {
+      const publicCount = state.webInfo && state.webInfo.articleCount
+      if (typeof publicCount === 'number') {
+        return publicCount
+      }
       if (state.sortInfo !== null && state.sortInfo.length !== 0) {
         if (state.sortInfo.length === 1) {
           return state.sortInfo[0].countOfSort

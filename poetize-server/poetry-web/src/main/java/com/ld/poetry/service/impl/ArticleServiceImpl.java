@@ -1837,6 +1837,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden) {
+        return listArticle(baseRequestVO, includeHidden, false);
+    }
+
+    @Override
+    public PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden, boolean orphanOnly) {
         List<Integer> ids = null;
         List<List<Integer>> idList = null;
         if (StringUtils.hasText(baseRequestVO.getArticleSearch())) {
@@ -1852,7 +1857,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         // 搜索条件可能改变结果集，直接查询数据库，避免复用不匹配的分页缓存
         // includeHidden（管理入口）与公开缓存共用 key 维度，必须绕开缓存，
         // 否则含隐藏文章的结果会污染公开分页缓存，造成未公开文章泄露
+        // orphanOnly（孤儿文章排查）同理绕开缓存，避免污染常规分页结果
         boolean cacheable = !includeHidden
+                && !orphanOnly
                 && !StringUtils.hasText(baseRequestVO.getArticleSearch())
                 && !StringUtils.hasText(baseRequestVO.getSearchKey());
         if (cacheable) {
@@ -1889,6 +1896,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         // 添加对可见文章的过滤，确保预渲染和前端只获取可见的文章
         // 管理入口（API Key 认证）传 includeHidden=true 跳过过滤，可列出隐藏文章
         lambdaQuery.eq(!includeHidden, Article::getViewStatus, true);
+
+        // 孤儿文章过滤：仅保留分类/标签缺失或引用已删除分类/标签的文章，
+        // 供管理入口排查数据异常（此类文章无法通过分类/标签导航触达）
+        if (orphanOnly) {
+            lambdaQuery.and(w -> w.isNull(Article::getSortId)
+                    .or().isNull(Article::getLabelId)
+                    .or().notInSql(Article::getSortId, "SELECT id FROM sort")
+                    .or().notInSql(Article::getLabelId, "SELECT id FROM label"));
+        }
 
         if (baseRequestVO.getLabelId() != null) {
             lambdaQuery.eq(Article::getLabelId, baseRequestVO.getLabelId());

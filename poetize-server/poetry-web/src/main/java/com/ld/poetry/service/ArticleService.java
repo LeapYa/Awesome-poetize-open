@@ -47,6 +47,13 @@ public interface ArticleService extends IService<Article> {
      */
     PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden);
 
+    /**
+     * 查询文章列表（可控制是否仅返回孤儿文章）
+     * @param orphanOnly true 时仅返回分类/标签缺失或已失效的孤儿文章，
+     *                   供管理入口排查数据异常（正常流程不会产生此类文章）
+     */
+    PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden, boolean orphanOnly);
+
     PoetryResult<ArticleVO> getArticleById(Integer id, String password);
 
     PoetryResult<ArticleVO> getArticleByPath(String path, String password);

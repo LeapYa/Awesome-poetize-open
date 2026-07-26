@@ -989,7 +989,9 @@ public class ApiController {
      * API查询文章列表
      */
     @GetMapping("/article/list")
-    public PoetryResult getArticleList(BaseRequestVO baseRequestVO, HttpServletRequest request) {
+    public PoetryResult getArticleList(BaseRequestVO baseRequestVO,
+                                       @RequestParam(value = "orphanOnly", required = false, defaultValue = "false") Boolean orphanOnly,
+                                       HttpServletRequest request) {
         try {
             // 验证API密钥
             validateApiKey(request);
@@ -1005,7 +1007,8 @@ public class ApiController {
             // 调用文章列表服务
             // 管理语义：API Key + IP 白名单认证的入口默认返回全部文章（含隐藏），
             // 每条记录自带 viewStatus 供调用方区分；公开接口不受影响
-            return articleService.listArticle(baseRequestVO, true);
+            // orphanOnly=true 时仅返回分类/标签缺失或已失效的孤儿文章，供排查数据异常
+            return articleService.listArticle(baseRequestVO, true, Boolean.TRUE.equals(orphanOnly));
         } catch (PoetryRuntimeException e) {
             log.error("API查询文章列表失败：{}", e.getMessage());
             return PoetryResult.fail(e.getMessage());

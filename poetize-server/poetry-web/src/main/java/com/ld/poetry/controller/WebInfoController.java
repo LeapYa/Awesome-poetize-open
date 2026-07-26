@@ -429,9 +429,13 @@ public class WebInfoController {
                     });
 
                     // Fork 文章总数查询
+                    // 访客口径：仅统计公开且分类/标签仍有效的文章，
+                    // 隐藏文章与分类/标签失效的孤儿文章访客不可见，不计入总数
                     var articleCountTask = scope.fork(() -> {
                         Long count = new LambdaQueryChainWrapper<>(articleMapper)
                                 .eq(Article::getViewStatus, true)
+                                .inSql(Article::getSortId, "SELECT id FROM sort")
+                                .inSql(Article::getLabelId, "SELECT id FROM label")
                                 .count();
                         return count != null ? count.intValue() : 0;
                     });

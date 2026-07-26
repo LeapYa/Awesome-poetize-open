@@ -44,6 +44,7 @@ def list_articles(
     sort_name: str | None = None,
     label_id: int | None = None,
     label_name: str | None = None,
+    orphan_only: bool = False,
 ) -> dict[str, Any]:
     resolved_sort_id = resolve_sort_id(args, sort_id, sort_name)
     resolved_label_id = resolve_label_id(args, label_id, label_name, resolved_sort_id)
@@ -54,6 +55,11 @@ def list_articles(
         params["sortId"] = resolved_sort_id
     if resolved_label_id is not None:
         params["labelId"] = resolved_label_id
+    if orphan_only:
+        # Only return articles whose sort/label is missing or references a
+        # deleted sort/label, so agents can spot broken data. Older backends
+        # without this filter ignore the param and return the regular list.
+        params["orphanOnly"] = "true"
     return request_json("GET", build_url(args.base_url, "/api/api/article/list", params), args.api_key)
 
 
