@@ -29,12 +29,12 @@
         </svg>
         <div>拖拽上传 / 点击上传</div>
       </div>
-      <template v-if="listType === 'picture'">
+      <template v-if="showTip && listType === 'picture'">
         <div slot="tip" class="el-upload__tip">
           一次最多上传{{maxNumber}}张图片，且每张图片不超过{{effectiveMaxSize}}M！
         </div>
       </template>
-      <template v-else>
+      <template v-else-if="showTip">
         <div slot="tip" class="el-upload__tip">
           一次最多上传{{maxNumber}}个文件，且每个文件不超过{{effectiveMaxSize}}M！
         </div>
@@ -87,6 +87,10 @@ const STAFF_MAX_UPLOAD_MB = 2048;
       maxNumber: {
         type: Number,
         default: 5
+      },
+      showTip: {
+        type: Boolean,
+        default: true
       }
     },
 

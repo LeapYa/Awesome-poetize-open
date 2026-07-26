@@ -21,7 +21,7 @@
 
         <el-form-item id="field-logo-image" label="站点Logo" prop="logoImage">
           <div style="display: flex">
-            <el-input v-model="webInfo.logoImage" placeholder="Logo图片URL，留空则前台导航栏显示站点名称"></el-input>
+            <el-input v-model="webInfo.logoImage" placeholder="Logo图片URL"></el-input>
             <el-image lazy class="table-td-thumb"
                       style="margin-left: 10px"
                       :preview-src-list="webInfo.logoImage ? [webInfo.logoImage] : []"
@@ -31,8 +31,9 @@
           <uploadPicture :isAdmin="true" :prefix="'webLogo'" style="margin-top: 15px"
                          @addPicture="addLogoImage"
                          :maxSize="10"
-                         :maxNumber="1"></uploadPicture>
-          <span class="tip">配置后前台导航栏左侧优先显示Logo图片，留空则显示站点名称。建议使用透明背景的PNG或SVG图片。</span>
+                         :maxNumber="1"
+                         :showTip="false"></uploadPicture>
+          <span class="tip">显示于前台导航栏左侧，留空则显示站点名称；建议使用透明背景的PNG或SVG。</span>
         </el-form-item>
 
         <el-form-item id="field-web-title" label="网站标题" prop="webTitle">
@@ -119,7 +120,8 @@
           <uploadPicture :isAdmin="true" :prefix="'webBackgroundImage'" style="margin-top: 15px"
                          @addPicture="addBackgroundImage"
                          :maxSize="10"
-                         :maxNumber="1"></uploadPicture>
+                         :maxNumber="1"
+                         :showTip="false"></uploadPicture>
         </el-form-item>
 
         <el-form-item id="field-site-avatar" label="站长头像" prop="avatar">
@@ -132,8 +134,9 @@
                       fit="cover"></el-image>
           </div>
           <uploadPicture :isAdmin="true" :prefix="'webAvatar'" style="margin-top: 15px" @addPicture="addAvatar"
-                         :maxNumber="1"></uploadPicture>
-          <span class="tip">站长个人头像，显示于前台侧边栏名片、文章作者署名等处；与浏览器标签页图标无关（后者在「SEO优化 → 网站图标」配置）。</span>
+                         :maxNumber="1"
+                         :showTip="false"></uploadPicture>
+          <span class="tip">显示于前台侧边栏名片、文章作者署名等处；浏览器标签页图标请到「SEO优化 → 网站图标」配置。</span>
         </el-form-item>
         
         <!-- 极简页脚开关 -->
@@ -171,7 +174,8 @@
           <uploadPicture :isAdmin="true" :prefix="'footerBackground'" style="margin-top: 15px"
                          @addPicture="addFooterBackgroundImage"
                          :maxSize="10"
-                         :maxNumber="1"></uploadPicture>
+                         :maxNumber="1"
+                         :showTip="false"></uploadPicture>
           
           <!-- 背景图片配置选项 -->
           <div v-if="webInfo.footerBackgroundImage" style="margin-top: 15px;">
@@ -288,9 +292,6 @@
         <!-- 页脚友链（服务提供商展示） -->
         <el-form-item id="field-footer-friend-links" label="页脚友链">
           <div style="width: 100%;">
-            <p style="font-size: 12px; color: #909399; margin: 0 0 10px 0;">
-              在页脚展示 CDN / 云服务等提供商链接（如"本站由 XX 提供加速"），留空则不显示。
-            </p>
             <div v-for="(link, index) in footerFriendLinks" :key="index"
                  style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <el-input v-model="link.name" placeholder="名称（如：又拍云）" style="width: 25%;" size="small"></el-input>
@@ -303,6 +304,7 @@
                        @click="footerFriendLinks.push({ name: '', url: '', logo: '' })">
               添加友链
             </el-button>
+            <span class="tip">在页脚展示 CDN / 云服务等提供商链接（如“本站由 XX 提供加速”），留空则不显示。</span>
           </div>
         </el-form-item>
 
