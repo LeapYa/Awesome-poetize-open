@@ -170,25 +170,26 @@ public class SeoMetaServiceImpl implements SeoMetaService {
         try {
             Map<String, Object> seoConfig = seoConfigService.getSeoConfigAsJson();
             Map<String, Object> meta = new HashMap<>();
-
-            // 检查SEO是否启用
+    
+            // 检查 SEO 是否启用
             if (!Boolean.TRUE.equals(seoConfig.get("enable"))) {
                 return createDisabledMeta();
             }
-
+    
             // 基础站点信息
             meta.put("title", getHomeTitle());
             meta.put("description", seoConfig.get("site_description"));
             meta.put("keywords", seoConfig.get("site_keywords"));
             meta.put("author", seoConfig.get("default_author"));
             meta.put("site_name", getSiteTitle());
-
+    
             // 网站图标
             addIconMeta(meta, seoConfig);
-
-            // OpenGraph和Twitter Card（首页 og:title/twitter:title 与 <title> 一致，使用 getHomeTitle）
+    
+            // OpenGraph 和 Twitter Card（首页 og:title/twitter:title 不应使用 homeTitle（备案名），
+            // 应与 site_name 一致使用 webTitle；仅 title 字段（用于 <title> 标签）保留 homeTitle
             addSocialMediaMeta(meta, seoConfig,
-                    getHomeTitle(),
+                    getSiteTitle(),
                     seoConfig.get("site_description").toString());
 
             // Canonical URL (规范链接)

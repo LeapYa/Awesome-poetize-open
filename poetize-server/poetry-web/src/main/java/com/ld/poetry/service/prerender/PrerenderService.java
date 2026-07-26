@@ -168,8 +168,10 @@ public class PrerenderService {
 
         String siteName = getSiteName(webInfo);
         String baseUrl = getBaseUrl(webInfo);
-        // 首页 <title> 使用 homeTitle，为空时回退到 webTitle
-        String title = firstNonBlank(webInfo.getHomeTitle(), webInfo.getWebTitle());
+        // 首页 <title> 标签使用 homeTitle（备案名），为空时回退到 webTitle
+        String titleForTag = firstNonBlank(webInfo.getHomeTitle(), webInfo.getWebTitle());
+        // OpenGraph/Twitter meta 标签的 og:title/twitter:title 使用 webTitle（网站标题），不使用 homeTitle
+        String titleForMeta = firstNonBlank(webInfo.getWebTitle(), webInfo.getWebName(), siteName);
         String description = firstNonBlank(stringValue(seoConfig.get("site_description")),
                 siteName + " - 个人博客网站，分享技术文章、生活感悟。");
         String keywords = firstNonBlank(stringValue(seoConfig.get("site_keywords")), "博客,个人网站,技术分享");
@@ -177,12 +179,13 @@ public class PrerenderService {
 
         Map<String, Object> meta = new LinkedHashMap<>(seoMetaService.generateSiteMeta(sourceLanguage));
         if (meta.isEmpty() || meta.containsKey("error") || !meta.containsKey("title")) {
-            meta = createWebsiteMeta(title, description, keywords, baseUrl, "", "website", ogImage, webInfo, seoConfig);
+            // 使用 titleForMeta（webTitle）而非 titleForTag（homeTitle）构建 meta 标签
+            meta = createWebsiteMeta(titleForMeta, description, keywords, baseUrl, "", "website", ogImage, webInfo, seoConfig);
         } else {
             meta.putIfAbsent("twitter:card", firstNonBlank(stringValue(seoConfig.get("twitter_card")), "summary_large_image"));
         }
-        // 首页 og:site_name 优先使用 homeTitle，其次回退到 webTitle
-        meta.put("og:site_name", firstNonBlank(webInfo.getHomeTitle(), getSiteName(webInfo)));
+        // 首页 og:site_name 使用 webTitle（网站标题），而不是 homeTitle（备案名）
+        meta.put("og:site_name", getSiteName(webInfo));
 
         // 配置了站点Logo时在 h1 上方输出带 alt 的Logo图；h1 文字保留以免损失 SEO 权重
         String logoImageUrl = ensureAbsoluteImageUrl(webInfo.getLogoImage(), baseUrl);
@@ -222,7 +225,7 @@ public class PrerenderService {
                 + buildFooterHtml(webInfo);
 
         writePage("home", PrerenderPageData.builder()
-                .title(title)
+                .title(titleForTag)
                 .meta(meta)
                 .content(homeContent)
                 .lang(sourceLanguage)
