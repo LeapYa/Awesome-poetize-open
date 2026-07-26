@@ -36,21 +36,6 @@ public interface SeoMetaService {
     Map<String, Object> generateCategoryMeta(Integer categoryId, String language);
     
     /**
-     * 生成标签页面SEO元数据
-     * @param tagId 标签ID
-     * @param language 语言代码
-     * @return SEO元数据Map
-     */
-    Map<String, Object> generateTagMeta(Integer tagId, String language);
-    
-    /**
-     * 生成IM站点SEO元数据
-     * @param language 语言代码
-     * @return SEO元数据Map
-     */
-    Map<String, Object> generateImSiteMeta(String language);
-    
-    /**
      * 检测当前站点URL
      * @param request HTTP请求
      * @return 检测到的URL信息
