@@ -1729,6 +1729,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
         if (articleVO.getViewStatus() != null) {
             updateChainWrapper.set(Article::getViewStatus, articleVO.getViewStatus());
+            // 首次公开时补记发布时间（RSS pubDate 口径），再次隐藏/公开不刷新
+            if (articleVO.getViewStatus() && existingArticle != null && existingArticle.getPublishTime() == null) {
+                updateChainWrapper.set(Article::getPublishTime, LocalDateTime.now());
+                log.info("文章首次公开，记录发布时间，文章ID: {}", articleVO.getId());
+            }
         }
         if (articleVO.getSubmitToSearchEngine() != null) {
             updateChainWrapper.set(Article::getSubmitToSearchEngine, articleVO.getSubmitToSearchEngine());
@@ -3107,6 +3112,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 }
                 if (articleVO.getViewStatus() != null) {
                     updateChainWrapper.set(Article::getViewStatus, articleVO.getViewStatus());
+                    // 首次公开时补记发布时间（RSS pubDate 口径），再次隐藏/公开不刷新
+                    if (articleVO.getViewStatus() && existingArticle != null && existingArticle.getPublishTime() == null) {
+                        updateChainWrapper.set(Article::getPublishTime, LocalDateTime.now());
+                        log.info("文章首次公开，记录发布时间，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
+                    }
                 }
                 if (articleVO.getSubmitToSearchEngine() != null) {
                     updateChainWrapper.set(Article::getSubmitToSearchEngine, articleVO.getSubmitToSearchEngine());
@@ -3508,6 +3518,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         // 支持调用方指定发布时间，未提供时使用数据库默认值
         if (articleVO.getCreateTime() != null) {
             article.setCreateTime(articleVO.getCreateTime());
+        }
+
+        // 创建即公开时立刻记录首次发布时间；隐藏稿留空，待首次公开时补记
+        if (Boolean.TRUE.equals(articleVO.getViewStatus())) {
+            article.setPublishTime(articleVO.getCreateTime() != null ? articleVO.getCreateTime() : LocalDateTime.now());
         }
 
         // 保存到数据库

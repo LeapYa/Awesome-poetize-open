@@ -71,12 +71,14 @@ CREATE TABLE `poetize`.`article` (
   `free_percent` int DEFAULT 30 COMMENT '免费预览百分比(0-100)',
 
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `publish_time` datetime DEFAULT NULL COMMENT '首次公开发布时间（RSS pubDate 口径，再次隐藏/公开不刷新）',
   `update_time` datetime  DEFAULT CURRENT_TIMESTAMP COMMENT '最终修改时间',
   `update_by` varchar(32) DEFAULT NULL COMMENT '最终修改人',
   `deleted` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否启用[0:未删除，1:已删除]',
 
   PRIMARY KEY (`id`),
-  UNIQUE KEY `idx_article_slug` (`article_slug`)
+  UNIQUE KEY `idx_article_slug` (`article_slug`),
+  KEY `idx_article_publish_time` (`publish_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章表';
 
 DROP TABLE IF EXISTS `poetize`.`comment`;
@@ -487,7 +489,7 @@ DROP TABLE IF EXISTS `poetize`.`sys_audit_log`;
 
 CREATE TABLE `poetize`.`sys_audit_log` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `log_type` varchar(32) NOT NULL COMMENT '日志类型 LOGIN/SECURITY/OPERATION',
+  `log_type` varchar(32) NOT NULL COMMENT '日志类型 LOGIN/SECURITY/OPERATION/AI',
   `action` varchar(64) NOT NULL COMMENT '操作动作',
   `success` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否成功[0:否,1:是]',
   `masked_account` varchar(128) DEFAULT NULL COMMENT '脱敏账号',

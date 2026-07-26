@@ -19,6 +19,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -86,6 +88,13 @@ public class RssServiceImpl implements RssService {
             String siteDescription = resolveSiteDescription(webInfo, siteName);
 
             List<Article> articles = sitemapService.getVisibleArticles();
+            // getVisibleArticles 为 sitemap 按更新时间排序，RSS 改按首次发布时间降序，
+            // 与 pubDate 口径一致，避免“先建隐藏稿、后发布”或编辑老文导致顺序错乱
+            if (!CollectionUtils.isEmpty(articles)) {
+                articles = new ArrayList<>(articles);
+                articles.sort(Comparator.comparing(this::resolvePubTime,
+                        Comparator.nullsLast(Comparator.reverseOrder())));
+            }
 
             StringBuilder xml = new StringBuilder(8192);
             xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -136,11 +145,19 @@ public class RssServiceImpl implements RssService {
         xml.append("<link>").append(escapeXml(link)).append("</link>\n");
         xml.append("<guid isPermaLink=\"true\">").append(escapeXml(link)).append("</guid>\n");
         xml.append("<description>").append(escapeXml(buildDescription(article))).append("</description>\n");
-        LocalDateTime pubTime = article.getCreateTime() != null ? article.getCreateTime() : article.getUpdateTime();
+        LocalDateTime pubTime = resolvePubTime(article);
         if (pubTime != null) {
             xml.append("<pubDate>").append(formatRfc1123(pubTime)).append("</pubDate>\n");
         }
         xml.append("</item>\n");
+    }
+
+    /** 发布时间口径：首次公开时间优先，存量数据降级为创建时间/更新时间 */
+    private LocalDateTime resolvePubTime(Article article) {
+        if (article.getPublishTime() != null) {
+            return article.getPublishTime();
+        }
+        return article.getCreateTime() != null ? article.getCreateTime() : article.getUpdateTime();
     }
 
     /** 优先使用文章摘要，否则从正文提取纯文本片段 */

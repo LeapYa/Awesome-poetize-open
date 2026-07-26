@@ -132,6 +132,12 @@ public class Article implements Serializable {
     private LocalDateTime createTime;
 
     /**
+     * 首次公开发布时间（RSS pubDate 口径，再次隐藏/公开不刷新）
+     */
+    @TableField("publish_time")
+    private LocalDateTime publishTime;
+
+    /**
      * 最终修改时间
      */
     @TableField("update_time")

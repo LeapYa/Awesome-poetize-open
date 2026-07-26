@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
@@ -83,6 +84,14 @@ public class AdminArticleController {
                 .eq(Article::getUserId, PoetryUtil.getUserId());
         if (viewStatus != null) {
             updateChainWrapper.set(Article::getViewStatus, viewStatus);
+            // 首次公开时补记发布时间（RSS pubDate 口径），再次隐藏/公开不刷新
+            if (viewStatus) {
+                Article current = articleService.getById(articleId);
+                if (current != null && current.getPublishTime() == null) {
+                    updateChainWrapper.set(Article::getPublishTime, LocalDateTime.now());
+                    log.info("文章首次公开，记录发布时间，文章ID: {}", articleId);
+                }
+            }
         }
         if (commentStatus != null) {
             updateChainWrapper.set(Article::getCommentStatus, commentStatus);
