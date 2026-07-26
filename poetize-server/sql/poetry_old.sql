@@ -192,6 +192,9 @@ CREATE TABLE `poetize`.`web_info` (
   `mobile_drawer_config` TEXT NULL COMMENT '移动端侧边栏配置(JSON格式)',
   `mouse_click_effect` VARCHAR(20) DEFAULT 'none' COMMENT '鼠标点击效果类型 [none:无, text:文字, firework:烟花]',
   `mouse_click_effect_config` TEXT COMMENT '鼠标点击特效配置JSON',
+  `login_style` varchar(20) DEFAULT 'classic' COMMENT '登录页样式 [classic:经典双滑块, card:简约卡片, glass:毛玻璃卡片, split:左右分栏, minimal:极简纯色, terminal:终端极客风, immersive:沉浸式大字排版, frosted:磨砂典雅]',
+  `login_accent_color` varchar(20) DEFAULT NULL COMMENT '登录页主题色（#rrggbb，空为默认中性色；仅现代登录样式生效）',
+  `login_third_position` varchar(10) DEFAULT 'top' COMMENT '卡片系登录样式的第三方按钮位置 [top:表单上方, bottom:表单下方]',
 
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='网站信息表';

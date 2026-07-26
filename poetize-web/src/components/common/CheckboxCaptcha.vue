@@ -653,7 +653,8 @@ export default {
 }
 .captcha-icon {
   font-size: 18px;
-  color: #ff6b95;
+  /* 登录页现代样式下跟随主题色，其他场景回退原版粉色 */
+  color: var(--loginAccent, #ff6b95);
   margin-right: 8px;
 }
 .captcha-title {
@@ -679,8 +680,8 @@ export default {
   z-index: 10;
 }
 .captcha-close:hover {
-  color: #ff4778;
-  background-color: #fff5f7;
+  color: #606266;
+  background-color: #f2f3f5;
 }
 .checkbox-captcha::before {
   content: '';
@@ -689,11 +690,13 @@ export default {
   left: 0;
   width: 100%;
   height: 5px;
-  background: linear-gradient(90deg, #ff9a9e, #fad0c4);
+  /* 登录页现代样式下跟随主题色，其他场景回退原版粉色 */
+  background: var(--loginAccent, linear-gradient(90deg, #ff9a9e, #fad0c4));
   border-radius: 10px 10px 0 0;
 }
 .checkbox-captcha:hover {
-  border-color: #ff9a9e;
+  /* 悬停边框保持中性，主题色只落在顶部色条与复选框上 */
+  border-color: #dcdfe6;
   transform: translateY(-3px);
   box-shadow: 0 12px 25px rgba(0, 0, 0, 0.12);
 }
@@ -748,11 +751,11 @@ export default {
   transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 .custom-checkbox-label:hover .checkmark {
-  border-color: #ff9a9e;
+  border-color: var(--loginAccent, #ff9a9e);
 }
 .custom-checkbox-label input:checked ~ .checkmark {
-  background-color: #ff9a9e;
-  border-color: #ff9a9e;
+  background-color: var(--loginAccent, #ff9a9e);
+  border-color: var(--loginAccent, #ff9a9e);
 }
 .checkmark:after {
   content: '';
@@ -778,7 +781,7 @@ export default {
   transition: color 0.3s ease;
 }
 .custom-checkbox-label:hover .checkbox-text {
-  color: #ff9a9e;
+  color: var(--loginAccent, #ff9a9e);
 }
 .captcha-info {
   font-size: 14px;
@@ -827,8 +830,8 @@ export default {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
 }
 .refresh-btn:hover {
-  color: #ff9a9e;
-  background-color: #fef0f0;
+  color: var(--loginAccent, #ff9a9e);
+  background-color: #f2f3f5;
   transform: rotate(180deg);
 }
 .captcha-brand {

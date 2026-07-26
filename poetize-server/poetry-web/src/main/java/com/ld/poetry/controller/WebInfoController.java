@@ -156,6 +156,9 @@ public class WebInfoController {
             Boolean enableDynamicTitle = (Boolean) params.get("enableDynamicTitle");
             String mobileDrawerConfig = (String) params.get("mobileDrawerConfig");
             String mouseClickEffectConfig = (String) params.get("mouseClickEffectConfig");
+            String loginStyle = (String) params.get("loginStyle");
+            String loginAccentColor = (String) params.get("loginAccentColor");
+            String loginThirdPosition = (String) params.get("loginThirdPosition");
 
             // 记录更新前的详细信息
             log.info("开始更新网站基本信息 - ID: {}, webName: {}, webTitle: {}", id, webName, webTitle);
@@ -167,7 +170,8 @@ public class WebInfoController {
                     apiIpWhitelist,
                     navConfig, footerBackgroundImage, footerBackgroundConfig, email, minimalFooter,
                     enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode, enableDynamicTitle,
-                    mouseClickEffectConfig, mobileDrawerConfig, homeTitle);
+                    mouseClickEffectConfig, mobileDrawerConfig, homeTitle, loginStyle, loginAccentColor,
+                    loginThirdPosition);
 
             log.info("网站基本信息数据库更新结果: {} 行受影响, ID: {}", updateResult, id);
 
@@ -516,7 +520,41 @@ public class WebInfoController {
             log.warn("bootstrap 获取语言配置失败", e);
         }
 
+        try {
+            // 登录页第三方图标依赖此状态，并入聚合接口后登录页无需再单独请求 getThirdLoginStatus
+            result.put("thirdLoginStatus", buildThirdLoginStatusCached());
+        } catch (Exception e) {
+            log.warn("bootstrap 获取第三方登录状态失败", e);
+        }
+
         return PoetryResult.success(result);
+    }
+
+    /**
+     * 获取全量第三方登录状态（优先 Redis 缓存，未命中时构建并回填）。
+     * 供 getThirdLoginStatus 与 bootstrap 复用，仅含启用状态等公开信息，不含密钥。
+     */
+    private Map<String, Object> buildThirdLoginStatusCached() {
+        Map<String, Object> cached = cacheService.getCachedThirdLoginStatus();
+        if (cached != null) {
+            return cached;
+        }
+
+        List<ThirdPartyOauthConfig> allConfigs = thirdPartyOauthConfigService.getAllConfigs();
+        Map<String, Boolean> platformsStatus = thirdPartyOauthConfigService.getAllPlatformsStatus();
+
+        Map<String, Object> status = new HashMap<>();
+        status.put("enable", platformsStatus.values().stream().anyMatch(Boolean::booleanValue));
+        for (ThirdPartyOauthConfig config : allConfigs) {
+            Map<String, Object> platformStatus = new HashMap<>();
+            platformStatus.put("enabled", platformsStatus.getOrDefault(config.getPlatformType(), false));
+            platformStatus.put("platformName", config.getPlatformName());
+            platformStatus.put("sortOrder", config.getSortOrder());
+            status.put(config.getPlatformType(), platformStatus);
+        }
+
+        cacheService.cacheThirdLoginStatus(status);
+        return status;
     }
 
     private Map<String, String> listPublicSysConfig() {
@@ -1983,42 +2021,17 @@ public class WebInfoController {
     @GetMapping("/getThirdLoginStatus")
     public PoetryResult<Object> getThirdLoginStatus(@RequestParam(required = false) String provider) {
         try {
-
-            // 获取所有配置
-            List<ThirdPartyOauthConfig> allConfigs = thirdPartyOauthConfigService.getAllConfigs();
-
-            // 使用并行方法检查所有平台状态
-            Map<String, Boolean> platformsStatus = thirdPartyOauthConfigService.getAllPlatformsStatus();
-
-            // 构建状态响应
-            Map<String, Object> status = new HashMap<>();
-
-            // 检查是否有任何平台可用
-            boolean globalEnabled = platformsStatus.values().stream().anyMatch(Boolean::booleanValue);
-            status.put("enable", globalEnabled);
-
-            // 如果指定了平台，检查该平台状态
+            // 指定平台的定向查询走实时检查（低频，保持原语义）
             if (provider != null && !provider.trim().isEmpty()) {
-                Boolean platformEnabled = platformsStatus.getOrDefault(provider, false);
-                status.put(provider, Map.of("enabled", platformEnabled));
-            } else {
-                // 返回所有平台状态（包括未启用的）
-                for (ThirdPartyOauthConfig config : allConfigs) {
-                    Map<String, Object> platformStatus = new HashMap<>();
-
-                    // 使用并行检查的结果
-                    Boolean enabled = platformsStatus.getOrDefault(config.getPlatformType(), false);
-                    platformStatus.put("enabled", enabled);
-
-                    // 添加平台基本信息
-                    platformStatus.put("platformName", config.getPlatformName());
-                    platformStatus.put("sortOrder", config.getSortOrder());
-
-                    status.put(config.getPlatformType(), platformStatus);
-                }
+                Map<String, Boolean> platformsStatus = thirdPartyOauthConfigService.getAllPlatformsStatus();
+                Map<String, Object> status = new HashMap<>();
+                status.put("enable", platformsStatus.values().stream().anyMatch(Boolean::booleanValue));
+                status.put(provider, Map.of("enabled", platformsStatus.getOrDefault(provider, false)));
+                return PoetryResult.success(status);
             }
 
-            return PoetryResult.success(status);
+            // 全量状态走 Redis 缓存（配置写入时主动失效）
+            return PoetryResult.success(buildThirdLoginStatusCached());
         } catch (Exception e) {
             log.error("获取第三方登录状态失败", e);
             return PoetryResult.fail("获取第三方登录状态失败: " + e.getMessage());

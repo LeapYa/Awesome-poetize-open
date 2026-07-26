@@ -233,4 +233,22 @@ public class WebInfo implements Serializable {
      */
     @TableField(value = "mobile_drawer_config", exist = true)
     private String mobileDrawerConfig;
+
+    /**
+     * 登录页样式 [classic:经典双滑块, card:简约卡片, glass:毛玻璃卡片, split:左右分栏, minimal:极简纯色, terminal:终端极客风, immersive:沉浸式大字排版, frosted:磨砂典雅]
+     */
+    @TableField(value = "login_style", exist = true)
+    private String loginStyle;
+
+    /**
+     * 登录页主题色（#rrggbb，空为默认中性色；仅现代登录样式生效）
+     */
+    @TableField(value = "login_accent_color", exist = true)
+    private String loginAccentColor;
+
+    /**
+     * 卡片系登录样式的第三方按钮位置 [top:表单上方, bottom:表单下方]
+     */
+    @TableField(value = "login_third_position", exist = true)
+    private String loginThirdPosition;
 }

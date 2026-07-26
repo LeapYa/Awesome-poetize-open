@@ -648,6 +648,40 @@ public class CacheService {
     }
 
     /**
+     * 缓存第三方登录状态（永久缓存，配置写入时主动 evict）
+     */
+    public void cacheThirdLoginStatus(Map<String, Object> status) {
+        if (status != null) {
+            redisUtil.set(CacheConstants.THIRD_LOGIN_STATUS_KEY, status, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存第三方登录状态(永久): {} 项", status.size());
+        }
+    }
+
+    /**
+     * 获取缓存的第三方登录状态
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getCachedThirdLoginStatus() {
+        Object cached = redisUtil.get(CacheConstants.THIRD_LOGIN_STATUS_KEY);
+        if (cached instanceof Map) {
+            return (Map<String, Object>) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除第三方登录状态缓存
+     */
+    public void evictThirdLoginStatus() {
+        try {
+            redisUtil.del(CacheConstants.THIRD_LOGIN_STATUS_KEY);
+            log.info("删除第三方登录状态缓存成功 - Key: {}", CacheConstants.THIRD_LOGIN_STATUS_KEY);
+        } catch (Exception e) {
+            log.error("删除第三方登录状态缓存失败 - Key: {}", CacheConstants.THIRD_LOGIN_STATUS_KEY, e);
+        }
+    }
+
+    /**
      * 删除公开系统配置 Map 缓存
      */
     public void evictPublicSysConfigMap() {

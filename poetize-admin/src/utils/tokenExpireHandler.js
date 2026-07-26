@@ -146,13 +146,34 @@ export function redirectToLogin(router, options = {}) {
 }
 
 /**
+ * 归一化后台应用内的重定向路径
+ * redirect 参数携带 /admin 前缀（供生产环境主站登录页做跨应用跳转使用），
+ * 但后台 router 配置了 base: '/admin/'，应用内 router 跳转必须剥掉该前缀，
+ * 否则 vue-router 会再拼一次 base，产生 /admin/admin/xxx 的错误路径。
+ * @param {string} path - 原始重定向路径
+ * @returns {string} - 相对后台 base 的路径
+ */
+export function normalizeAdminRedirect(path) {
+  if (!path) {
+    return path;
+  }
+  if (path === '/admin' || path === '/admin/') {
+    return '/';
+  }
+  if (path.startsWith('/admin/')) {
+    return path.slice('/admin'.length);
+  }
+  return path;
+}
+
+/**
  * 处理登录成功后的重定向
  * @param {Object} route - 当前路由对象
  * @param {Object} router - 路由器对象
  * @param {Object} options - 额外选项
  */
 export function handleLoginRedirect(route, router, options = {}) {
-  const redirect = route.query.redirect;
+  const redirect = normalizeAdminRedirect(route.query.redirect);
   const hasComment = route.query.hasComment;
   const hasReplyAction = route.query.hasReplyAction;
 
@@ -178,6 +199,7 @@ export default {
   isTokenValid,
   getValidToken,
   isLoggedIn,
+  normalizeAdminRedirect,
   handleLoginRedirect,
   redirectToLogin
 }

@@ -287,6 +287,68 @@
           </div>
         </el-form-item>
 
+        <!-- 登录页配置分组开始 -->
+        <el-divider content-position="left">
+          <span style="color: #409EFF; font-weight: 500;">登录页配置</span>
+        </el-divider>
+
+        <!-- 登录页样式 -->
+        <el-form-item id="field-login-style" label="登录页样式">
+          <el-select v-model="webInfo.loginStyle" placeholder="请选择登录页样式">
+            <el-option
+              v-for="style in loginStyleOptions"
+              :key="style.value"
+              :label="style.label"
+              :value="style.value">
+              <span>{{ style.label }}</span>
+              <span style="color: #909399; font-size: 12px; margin-left: 8px;">（{{ style.description }}）</span>
+            </el-option>
+          </el-select>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            前台登录/注册页的展示样式，保存后刷新前台生效
+          </div>
+        </el-form-item>
+
+        <!-- 登录页主题色（仅现代样式生效；classic 保持原版配色） -->
+        <el-form-item
+          v-if="webInfo.loginStyle && webInfo.loginStyle !== 'classic'"
+          id="field-login-accent"
+          label="登录页主题色">
+          <el-color-picker
+            v-model="webInfo.loginAccentColor"
+            :predefine="loginAccentPresets">
+          </el-color-picker>
+          <span style="margin-left: 10px; font-size: 12px; color: #909399;">
+            {{ webInfo.loginAccentColor || (webInfo.loginStyle === 'frosted' ? '默认玫粉' : '默认中性色') }}
+          </span>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            卡片系主按钮、磨砂典雅装饰条/聚焦线与所有现代样式下的账号弹窗、验证码滑块跟随此色；清空后磨砂典雅默认玫粉、其余默认中性色；经典双滑块保持原版配色
+          </div>
+        </el-form-item>
+
+        <!-- 第三方登录按钮位置（仅卡片系样式生效） -->
+        <el-form-item
+          v-if="['card', 'glass', 'minimal', 'split'].includes(webInfo.loginStyle)"
+          id="field-login-third-position"
+          label="第三方位置">
+          <el-radio-group v-model="webInfo.loginThirdPosition">
+            <el-radio label="top">
+              <span>表单上方</span>
+              <span style="color: #909399; font-size: 12px; margin-left: 8px;">（带平台名大按钮，下接"或"分隔线）</span>
+            </el-radio>
+            <el-radio label="bottom">
+              <span>表单下方</span>
+              <span style="color: #909399; font-size: 12px; margin-left: 8px;">（账号密码在前，纯图标行在后）</span>
+            </el-radio>
+          </el-radio-group>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            第三方登录按钮的展示位置，仅对简约卡片/毛玻璃/极简纯色/左右分栏生效，其余样式的第三方位置为各自设计的一部分
+          </div>
+        </el-form-item>
+
+        <!-- 登录页配置分组结束 -->
+        <el-divider></el-divider>
+
         <!-- 移动端侧边栏配置 -->
         <el-form-item id="field-mobile-drawer" label="移动端侧边栏">
           <el-button @click="mobileDrawerDialogVisible = true" type="primary" size="small">
@@ -692,6 +754,9 @@ export default {
         avatar: '',
         enableWaifu: false,
         waifuDisplayMode: 'live2d',
+        loginStyle: 'classic',
+        loginAccentColor: null,
+        loginThirdPosition: 'top',
         enableAutoNight: false,
         autoNightStart: 23,
         autoNightEnd: 7,
@@ -700,6 +765,19 @@ export default {
         mouseClickEffect: 'none',
         homePagePullUpHeight: 50
       },
+      // 登录页主题色预设色板（中性黑/玫粉/经典粉/蓝/绿/紫/橙）
+      loginAccentPresets: ['#1f1f1f', '#f04494', '#ff416c', '#409eff', '#67c23a', '#722ed1', '#fa8c16'],
+      // 登录页样式候选项
+      loginStyleOptions: [
+        { value: 'classic', label: '经典双滑块', description: '原版样式，存量用户无感' },
+        { value: 'card', label: '简约卡片', description: '背景大图 + 中性黑白灰卡片' },
+        { value: 'glass', label: '毛玻璃卡片', description: '背景大图 + 磨砂半透明卡片' },
+        { value: 'split', label: '左右分栏', description: '左侧封面图+站点Logo/站名 + 右侧表单区，未配置Logo时显示网站名称' },
+        { value: 'minimal', label: '极简纯色', description: '无背景图，纯色底居中窄表单' },
+        { value: 'terminal', label: '终端极客风', description: '仿命令行界面，技术博客彩蛋' },
+        { value: 'immersive', label: '沉浸式大字排版', description: '无卡片容器，全屏封面+超大标题+下划线表单' },
+        { value: 'frosted', label: '磨砂典雅', description: '磨砂玻璃卡+下划线输入+蓝绿渐变胶囊按钮' }
+      ],
       // 移动端侧边栏配置
       mobileDrawerDialogVisible: false,
       drawerConfig: {
@@ -1025,6 +1103,9 @@ export default {
           this.webInfo.id = res.data.id;
           this.webInfo.enableWaifu = res.data.enableWaifu;
           this.webInfo.waifuDisplayMode = res.data.waifuDisplayMode || 'live2d';
+          this.webInfo.loginStyle = res.data.loginStyle || 'classic';
+          this.webInfo.loginAccentColor = res.data.loginAccentColor || null;
+          this.webInfo.loginThirdPosition = res.data.loginThirdPosition || 'top';
           this.webInfo.enableAutoNight = res.data.enableAutoNight ?? false;
           this.webInfo.autoNightStart = res.data.autoNightStart ?? 23;
           this.webInfo.autoNightEnd = res.data.autoNightEnd ?? 7;
@@ -1162,6 +1243,10 @@ export default {
         id: this.webInfo.id,
         enableWaifu: this.webInfo.enableWaifu,
         waifuDisplayMode: this.webInfo.waifuDisplayMode,
+        loginStyle: this.webInfo.loginStyle,
+        // 主题色清空时提交空串覆盖旧值（后端仅跳过 null）
+        loginAccentColor: this.webInfo.loginAccentColor || '',
+        loginThirdPosition: this.webInfo.loginThirdPosition || 'top',
         enableAutoNight: this.webInfo.enableAutoNight,
         autoNightStart: this.webInfo.autoNightStart,
         autoNightEnd: this.webInfo.autoNightEnd,

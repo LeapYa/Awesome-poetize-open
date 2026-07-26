@@ -264,7 +264,7 @@
 const proButton = () => import( "./common/proButton");
   const uploadPicture = () => import( "./common/uploadPicture");
   import { checkCaptchaWithCache } from '@/utils/captchaUtil';
-  import { handleLoginRedirect } from '../utils/tokenExpireHandler';
+  import { normalizeAdminRedirect } from '../utils/tokenExpireHandler';
 
   export default {
     components: {
@@ -641,7 +641,8 @@ const proButton = () => import( "./common/proButton");
               } else {
                 // 正常情况下的重定向处理
                 // 如果有redirect参数且不是/user或/verify，则跳转到该地址
-                const redirect = this.$route.query.redirect;
+                // redirect 可能带 /admin 前缀，router 已配置 base，需先剥掉前缀
+                const redirect = normalizeAdminRedirect(this.$route.query.redirect);
                 if (redirect && redirect !== '/user' && redirect !== '/verify') {
                   this.$router.replace(redirect);
                 } else {
@@ -728,8 +729,8 @@ const proButton = () => import( "./common/proButton");
                 this.email = "";
                 this.code = "";
                 
-                // 检查是否有重定向URL
-                const redirect = this.$route.query.redirect;
+                // 检查是否有重定向URL（redirect 可能带 /admin 前缀，需先剥掉）
+                const redirect = normalizeAdminRedirect(this.$route.query.redirect);
                 const hasComment = this.$route.query.hasComment;
                 const hasReplyAction = this.$route.query.hasReplyAction;
 

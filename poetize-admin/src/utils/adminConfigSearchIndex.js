@@ -328,6 +328,36 @@ export const adminConfigSearchIndex = [
     aliases: ['titleChange', '标题动画']
   },
   {
+    id: 'field-login-style',
+    type: 'field',
+    route: '/webAppearance',
+    pageTitle: '外观个性化',
+    sectionTitle: '外观开关',
+    fieldLabel: '登录页样式',
+    keywords: ['登录页样式', '登录页', '双滑块', '简约卡片', '毛玻璃', '左右分栏', '极简', '终端风', '沉浸式', '磨砂典雅', '登录页面'],
+    aliases: ['loginStyle', '登录风格', '注册页样式']
+  },
+  {
+    id: 'field-login-accent',
+    type: 'field',
+    route: '/webAppearance',
+    pageTitle: '外观个性化',
+    sectionTitle: '外观开关',
+    fieldLabel: '登录页主题色',
+    keywords: ['登录页主题色', '登录页颜色', '主题色', '取色器', '登录按钮颜色'],
+    aliases: ['loginAccentColor', '登录配色', '登录主色调']
+  },
+  {
+    id: 'field-login-third-position',
+    type: 'field',
+    route: '/webAppearance',
+    pageTitle: '外观个性化',
+    sectionTitle: '外观开关',
+    fieldLabel: '第三方位置',
+    keywords: ['第三方位置', '第三方按钮位置', '第三方登录位置', '登录按钮排版', '表单上方', '表单下方'],
+    aliases: ['loginThirdPosition', '第三方排版', '第三方登录排序']
+  },
+  {
     id: 'field-mobile-drawer',
     type: 'field',
     route: '/webAppearance',

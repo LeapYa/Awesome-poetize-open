@@ -4,282 +4,135 @@
     <div
       v-if="$common.isEmpty(currentUser)"
       class="myCenter in-up-container my-animation-hideToShow"
+      :class="{
+        'in-up-container--boxed':
+          loginStyle !== 'immersive' && loginStyle !== 'split',
+      }"
     >
-      <!-- 背景图片 -->
+      <!-- 背景图片（minimal 样式不需要；split 样式自行渲染左栏封面） -->
       <el-image
+        v-if="showLoginBackground"
         class="my-el-image"
         style="position: absolute"
         v-once
         lazy
-        :src="
-          mainStore.webInfo.randomCover &&
-          mainStore.webInfo.randomCover.length > 0
-            ? mainStore.webInfo.randomCover[
-                Math.floor(Math.random() * mainStore.webInfo.randomCover.length)
-              ]
-            : '/assets/backgroundPicture.jpg'
-        "
+        :src="randomCoverUrl"
         fit="cover"
       >
         <template v-slot:error>
           <div class="image-slot"></div>
         </template>
       </el-image>
-      <div class="in-up" id="loginAndRegist">
-        <div class="form-container sign-up-container">
-          <div class="myCenter">
-            <h1>注册</h1>
-            <input
-              v-model="username"
-              type="text"
-              maxlength="30"
-              placeholder="用户名"
-            />
-            <div class="password-field">
-              <input
-                v-model="password"
-                :type="showRegisterPassword ? 'text' : 'password'"
-                maxlength="30"
-                placeholder="密码"
-              />
-              <span
-                v-show="password"
-                role="button"
-                tabindex="0"
-                class="password-toggle"
-                :aria-label="showRegisterPassword ? '隐藏密码' : '显示密码'"
-                :title="showRegisterPassword ? '隐藏密码' : '显示密码'"
-                @click="showRegisterPassword = !showRegisterPassword"
-                @keydown.enter.prevent="showRegisterPassword = !showRegisterPassword"
-                @keydown.space.prevent="showRegisterPassword = !showRegisterPassword"
-              >
-                <svg
-                  v-if="showRegisterPassword"
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M3 3L21 21M10.58 10.58A2 2 0 0 0 13.41 13.41M9.88 5.09A9.77 9.77 0 0 1 12 4.8c5 0 9.27 3.11 11 7.2a11.83 11.83 0 0 1-4.05 5.19M6.61 6.61A11.8 11.8 0 0 0 1 12c1.73 4.09 6 7.2 11 7.2a9.6 9.6 0 0 0 4.24-.93M14.12 14.12A3 3 0 0 1 9.88 9.88"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.8"
-                  />
-                </svg>
-                <svg
-                  v-else
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M1 12C2.73 7.91 7 4.8 12 4.8S21.27 7.91 23 12C21.27 16.09 17 19.2 12 19.2S2.73 16.09 1 12Z"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.8"
-                  />
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="3"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                  />
-                </svg>
-              </span>
-            </div>
-            <input v-model="email" type="email" placeholder="邮箱" />
-            <input
-              v-model="code"
-              type="text"
-              placeholder="验证码"
-              disabled
-              @keyup.enter="showRegistVerify()"
-            />
-            <a style="margin: 0" href="#" @click="changeDialog('邮箱验证码')"
-              >获取验证码</a
-            >
-            <el-button
-              type="primary"
-              round
-              class="auth-button"
-              @click="showRegistVerify()"
-              >注册</el-button
-            >
-          </div>
-        </div>
-        <div class="form-container sign-in-container">
-          <form
-            ref="loginForm"
-            class="myCenter login-credential-form"
-            autocomplete="on"
-            @submit.prevent="showLoginVerify"
-          >
-            <h1>登录</h1>
-            <input
-              ref="accountInput"
-              v-model="account"
-              type="text"
-              name="username"
-              placeholder="用户名/邮箱/手机号"
-            />
-            <div class="password-field">
-              <input
-                ref="passwordInput"
-                v-model="password"
-                :type="showLoginPassword ? 'text' : 'password'"
-                name="password"
-                placeholder="密码"
-              />
-              <span
-                v-show="password"
-                role="button"
-                tabindex="0"
-                class="password-toggle"
-                :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'"
-                :title="showLoginPassword ? '隐藏密码' : '显示密码'"
-                @click="showLoginPassword = !showLoginPassword"
-                @keydown.enter.prevent="showLoginPassword = !showLoginPassword"
-                @keydown.space.prevent="showLoginPassword = !showLoginPassword"
-              >
-                <svg
-                  v-if="showLoginPassword"
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M3 3L21 21M10.58 10.58A2 2 0 0 0 13.41 13.41M9.88 5.09A9.77 9.77 0 0 1 12 4.8c5 0 9.27 3.11 11 7.2a11.83 11.83 0 0 1-4.05 5.19M6.61 6.61A11.8 11.8 0 0 0 1 12c1.73 4.09 6 7.2 11 7.2a9.6 9.6 0 0 0 4.24-.93M14.12 14.12A3 3 0 0 1 9.88 9.88"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.8"
-                  />
-                </svg>
-                <svg
-                  v-else
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M1 12C2.73 7.91 7 4.8 12 4.8S21.27 7.91 23 12C21.27 16.09 17 19.2 12 19.2S2.73 16.09 1 12Z"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.8"
-                  />
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="3"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                  />
-                </svg>
-              </span>
-            </div>
-            <a href="#" @click="changeDialog('找回密码')">忘记密码？</a>
-            <el-button
-              type="primary"
-              round
-              class="auth-button"
-              native-type="submit"
-              >登 录</el-button
-            >
+      <!-- webInfo 就绪前不渲染样式面板，避免首次访问时先闪 classic 再切换到配置样式 -->
+      <template v-if="loginStyleReady">
+      <!-- 经典双滑块样式（login_style = classic） -->
+      <ClassicLoginPanel
+        v-if="loginStyle === 'classic'"
+        v-model:account="account"
+        v-model:password="password"
+        v-model:username="username"
+        v-model:email="email"
+        v-model:code="code"
+        :providers="thirdPartyLoginConfig.enable ? enabledThirdPartyProviders : []"
+        @login="showLoginVerify"
+        @register="showRegistVerify"
+        @forgot="changeDialog('找回密码')"
+        @email-code="changeDialog('邮箱验证码')"
+        @third-party="showThirdPartyLoginVerify"
+      ></ClassicLoginPanel>
 
-            <!-- 第三方登录区域 - 根据配置动态显示 -->
-            <div
-              v-if="
-                thirdPartyLoginConfig.enable &&
-                enabledThirdPartyProviders.length > 0
-              "
-            >
-              <p
-                style="
-                  text-align: center;
-                  margin-top: 20px;
-                  margin-bottom: 10px;
-                  font-size: 14px;
-                  color: var(--articleGreyFontColor);
-                "
-              >
-                第三方账号登录
-              </p>
+      <!-- 左右分栏样式（login_style = split） -->
+      <SplitLoginPanel
+        v-else-if="loginStyle === 'split'"
+        v-model:account="account"
+        v-model:password="password"
+        v-model:username="username"
+        v-model:email="email"
+        v-model:code="code"
+        :logo-image="mainStore.webInfo.logoImage"
+        :site-title="loginSiteTitle"
+        :cover-image="randomCoverUrl"
+        :providers="thirdPartyLoginConfig.enable ? enabledThirdPartyProviders : []"
+        :third-position="loginThirdPosition"
+        @login="showLoginVerify"
+        @register="showRegistVerify"
+        @forgot="changeDialog('找回密码')"
+        @email-code="changeDialog('邮箱验证码')"
+        @third-party="showThirdPartyLoginVerify"
+      ></SplitLoginPanel>
 
-              <div
-                class="third-party-login-container"
-                style="
-                  padding: 0;
-                  position: relative;
-                  height: 50px;
-                  width: 100%;
-                  text-align: center;
-                  overflow: visible;
-                "
-              >
-                <a
-                  v-for="provider in enabledThirdPartyProviders"
-                  :key="provider.key"
-                  href="javascript:void(0)"
-                  @click="showThirdPartyLoginVerify(provider.key)"
-                  :title="provider.title"
-                  class="third-party-login-btn"
-                  style="
-                    display: inline-block;
-                    width: 40px;
-                    height: 40px;
-                    margin: 0 10px;
-                    border-radius: 50%;
-                    vertical-align: middle;
-                    position: relative;
-                    transition: transform 0.3s ease, opacity 0.3s ease;
-                    transform: translateZ(0);
-                  "
-                >
-                  <img
-                    :src="provider.icon"
-                    :alt="provider.name"
-                    height="25"
-                    style="
-                      position: absolute;
-                      top: 50%;
-                      left: 50%;
-                      transform: translate(-50%, -50%);
-                    "
-                  />
-                </a>
-              </div>
-            </div>
-          </form>
-        </div>
-        <div class="overlay-container">
-          <div class="overlay">
-            <div class="overlay-panel myCenter overlay-left">
-              <h1>已有帐号？</h1>
-              <p>请登录🚀</p>
-              <button class="ghost" @click="signIn()">登录</button>
-            </div>
-            <div class="overlay-panel myCenter overlay-right">
-              <h1>没有帐号？</h1>
-              <p>立即注册吧😃</p>
-              <button class="ghost" @click="signUp()">注册</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- 终端极客风样式（login_style = terminal） -->
+      <TerminalLoginPanel
+        v-else-if="loginStyle === 'terminal'"
+        v-model:account="account"
+        v-model:password="password"
+        v-model:username="username"
+        v-model:email="email"
+        v-model:code="code"
+        :site-title="loginSiteTitle"
+        :providers="thirdPartyLoginConfig.enable ? enabledThirdPartyProviders : []"
+        @login="showLoginVerify"
+        @register="showRegistVerify"
+        @forgot="changeDialog('找回密码')"
+        @email-code="changeDialog('邮箱验证码')"
+        @third-party="showThirdPartyLoginVerify"
+      ></TerminalLoginPanel>
+
+      <!-- 磨砂典雅样式（login_style = frosted） -->
+      <FrostedLoginPanel
+        v-else-if="loginStyle === 'frosted'"
+        v-model:account="account"
+        v-model:password="password"
+        v-model:username="username"
+        v-model:email="email"
+        v-model:code="code"
+        :logo-image="mainStore.webInfo.logoImage"
+        :site-title="loginSiteTitle"
+        :providers="thirdPartyLoginConfig.enable ? enabledThirdPartyProviders : []"
+        @login="showLoginVerify"
+        @register="showRegistVerify"
+        @forgot="changeDialog('找回密码')"
+        @email-code="changeDialog('邮箱验证码')"
+        @third-party="showThirdPartyLoginVerify"
+      ></FrostedLoginPanel>
+
+      <!-- 沉浸式大字排版样式（login_style = immersive） -->
+      <ImmersiveLoginPanel
+        v-else-if="loginStyle === 'immersive'"
+        v-model:account="account"
+        v-model:password="password"
+        v-model:username="username"
+        v-model:email="email"
+        v-model:code="code"
+        :site-title="loginSiteTitle"
+        :providers="thirdPartyLoginConfig.enable ? enabledThirdPartyProviders : []"
+        @login="showLoginVerify"
+        @register="showRegistVerify"
+        @forgot="changeDialog('找回密码')"
+        @email-code="changeDialog('邮箱验证码')"
+        @third-party="showThirdPartyLoginVerify"
+      ></ImmersiveLoginPanel>
+
+      <!-- 卡片系样式（login_style = card / glass / minimal） -->
+      <LoginCard
+        v-else
+        :variant="loginStyle"
+        v-model:account="account"
+        v-model:password="password"
+        v-model:username="username"
+        v-model:email="email"
+        v-model:code="code"
+        :logo-image="mainStore.webInfo.logoImage"
+        :site-title="loginSiteTitle"
+        :providers="thirdPartyLoginConfig.enable ? enabledThirdPartyProviders : []"
+        :third-position="loginThirdPosition"
+        @login="showLoginVerify"
+        @register="showRegistVerify"
+        @forgot="changeDialog('找回密码')"
+        @email-code="changeDialog('邮箱验证码')"
+        @third-party="showThirdPartyLoginVerify"
+      ></LoginCard>
+      </template>
     </div>
 
     <!-- 用户信息 -->
@@ -304,252 +157,33 @@
           <div class="image-slot"></div>
         </template>
       </el-image>
-      <div class="shadow-box-mini user-info" style="display: flex">
-        <div class="user-left">
-          <div>
-            <el-avatar
-              class="user-avatar"
-              @click="changeDialog('修改头像')"
-              :size="60"
-              :src="$common.getAvatarUrl(currentUser.avatar)"
-            >
-              <img :src="$getDefaultAvatar()" />
-            </el-avatar>
-          </div>
-          <div class="myCenter" style="margin-top: 12px">
-            <div class="user-title">
-              <div>用户名：</div>
-              <div>手机号：</div>
-              <div>邮箱：</div>
-              <div v-if="!isThirdPartyUser">密码：</div>
-              <div>性别：</div>
-              <div>简介：</div>
-            </div>
-            <div class="user-content">
-              <div>
-                <el-input
-                  maxlength="30"
-                  v-model="currentUser.username"
-                ></el-input>
-              </div>
-              <div>
-                <div v-if="!$common.isEmpty(currentUser.phoneNumber)">
-                  {{ currentUser.phoneNumber }}
-                  <span class="changeInfo" @click="changeDialog('修改手机号')"
-                    >修改（功能未接入）</span
-                  >
-                </div>
-                <div v-else>
-                  <span class="changeInfo" @click="changeDialog('绑定手机号')"
-                    >绑定手机号（功能未接入）</span
-                  >
-                </div>
-              </div>
-              <div>
-                <div v-if="!$common.isEmpty(currentUser.email)">
-                  {{ currentUser.email }}
-                  <span class="changeInfo" @click="changeDialog('修改邮箱')"
-                    >修改</span
-                  >
-                </div>
-                <div v-else>
-                  <span class="changeInfo" @click="changeDialog('绑定邮箱')"
-                    >绑定邮箱</span
-                  >
-                </div>
-              </div>
-              <div v-if="!isThirdPartyUser">
-                <div>
-                  <span>******</span>
-                  <span class="changeInfo" @click="changeDialog('修改密码')" style="margin-left: 10px;"
-                    >修改</span
-                  >
-                </div>
-              </div>
-              <div>
-                <el-radio-group v-model="currentUser.gender">
-                  <el-radio :label="0" style="margin-right: 10px"
-                    >薛定谔的猫</el-radio
-                  >
-                  <el-radio :label="1" style="margin-right: 10px">男</el-radio>
-                  <el-radio :label="2">女</el-radio>
-                </el-radio-group>
-              </div>
-              <div>
-                <el-input
-                  v-model="currentUser.introduction"
-                  maxlength="60"
-                  type="textarea"
-                  show-word-limit
-                ></el-input>
-              </div>
-            </div>
-          </div>
-          <div style="margin-top: 20px">
-            <proButton
-              :info="'提交'"
-              @click="submitUserInfo()"
-              :before="'var(--gradualRed)'"
-              :after="'var(--gradualRed)'"
-            >
-            </proButton>
-          </div>
-        </div>
-        <div class="user-right"></div>
-      </div>
+      <UserProfile
+        :user="currentUser"
+        @change-dialog="changeDialog"
+        @submit="submitUserInfo"
+      ></UserProfile>
     </div>
 
-    <el-dialog
+    <!-- 账号相关多用途弹窗（改手机/邮箱/密码/头像、找回密码、邮箱验证码） -->
+    <AccountDialog
+      :visible="showDialog"
       :title="dialogTitle"
-      v-model="showDialog"
-      width="30%"
-      :before-close="closeDialog"
-      :append-to-body="true"
-      class="centered-dialog"
-      :close-on-click-modal="false"
-      center
-    >
-      <div class="myCenter" style="flex-direction: column">
-        <div>
-          <div
-            v-if="dialogTitle === '修改手机号' || dialogTitle === '绑定手机号'"
-          >
-            <div style="margin-bottom: 5px">手机号：</div>
-            <el-input v-model="phoneNumber" placeholder="请输入手机号"></el-input>
-            <div style="margin-top: 10px; margin-bottom: 5px">验证码：</div>
-            <el-input v-model="code" placeholder="请输入验证码"></el-input>
-            <!-- 只有普通注册用户才需要输入密码，第三方登录用户没有密码 -->
-            <div v-if="!isThirdPartyUser">
-              <div style="margin-top: 10px; margin-bottom: 5px">密码：</div>
-              <el-input
-                type="password"
-                v-model="password"
-                show-password
-                placeholder="请输入当前密码"
-              ></el-input>
-            </div>
-          </div>
-          <div
-            v-else-if="dialogTitle === '修改邮箱' || dialogTitle === '绑定邮箱'"
-          >
-            <div style="margin-bottom: 5px">邮箱：</div>
-            <el-input v-model="email" placeholder="请输入邮箱"></el-input>
-            <div style="margin-top: 10px; margin-bottom: 5px">验证码：</div>
-            <el-input v-model="code" placeholder="请输入验证码"></el-input>
-            <!-- 只有普通注册用户才需要输入密码，第三方登录用户没有密码 -->
-            <div v-if="!isThirdPartyUser">
-              <div style="margin-top: 10px; margin-bottom: 5px">密码：</div>
-              <el-input
-                type="password"
-                v-model="password"
-                show-password
-                placeholder="请输入当前密码"
-              ></el-input>
-            </div>
-          </div>
-          <div v-else-if="dialogTitle === '修改密码'">
-            <div style="margin-bottom: 5px">旧密码：</div>
-            <el-input
-              type="password"
-              v-model="oldPassword"
-              show-password
-              placeholder="请输入旧密码"
-            ></el-input>
-            <div style="margin-top: 10px; margin-bottom: 5px">新密码：</div>
-            <el-input
-              type="password"
-              v-model="newPassword"
-              show-password
-              placeholder="请输入新密码"
-            ></el-input>
-            <div style="margin-top: 10px; margin-bottom: 5px">确认新密码：</div>
-            <el-input
-              type="password"
-              v-model="confirmPassword"
-              show-password
-              placeholder="请在此输入新密码"
-            ></el-input>
-            <div style="margin-top: 10px; margin-bottom: 5px">验证码：</div>
-            <el-input v-model="code" placeholder="请输入验证码"></el-input>
-          </div>
-          <div v-else-if="dialogTitle === '修改头像'">
-            <uploadPicture
-              :prefix="'userAvatar'"
-              @addPicture="addPicture"
-              :maxSize="1"
-              :maxNumber="1"
-            ></uploadPicture>
-          </div>
-          <div v-else-if="dialogTitle === '找回密码'">
-            <div class="myCenter" style="margin-bottom: 12px">
-              <el-radio-group v-model="passwordFlag">
-                <el-radio :label="1" style="margin-right: 10px"
-                  >手机号</el-radio
-                >
-                <el-radio :label="2">邮箱</el-radio>
-              </el-radio-group>
-            </div>
-            <div v-if="passwordFlag === 1">
-              <div style="margin-bottom: 5px">用户名：</div>
-              <el-input v-model="username" placeholder="请输入绑定的用户名"></el-input>
-              <div style="margin-top: 10px; margin-bottom: 5px">手机号：</div>
-              <el-input v-model="phoneNumber" placeholder="请输入绑定的手机号"></el-input>
-              <div style="margin-top: 10px; margin-bottom: 5px">验证码：</div>
-              <el-input v-model="code" placeholder="请输入验证码"></el-input>
-              <div style="margin-top: 10px; margin-bottom: 5px">新密码：</div>
-              <el-input maxlength="30" type="password" show-password v-model="password" placeholder="请输入新密码"></el-input>
-            </div>
-            <div v-else-if="passwordFlag === 2">
-              <div style="margin-bottom: 5px">用户名：</div>
-              <el-input v-model="username" placeholder="请输入绑定的用户名"></el-input>
-              <div style="margin-top: 10px; margin-bottom: 5px">邮箱：</div>
-              <el-input v-model="email" placeholder="请输入绑定的邮箱"></el-input>
-              <div style="margin-top: 10px; margin-bottom: 5px">验证码：</div>
-              <el-input v-model="code" placeholder="请输入验证码"></el-input>
-              <div style="margin-top: 10px; margin-bottom: 5px">新密码：</div>
-              <el-input maxlength="30" type="password" show-password v-model="password" placeholder="请输入新密码"></el-input>
-            </div>
-          </div>
-          <div v-else-if="dialogTitle === '邮箱验证码'">
-            <div>
-              <div style="margin-bottom: 5px">邮箱：</div>
-              <el-input v-model="email" placeholder="请输入邮箱"></el-input>
-              <div style="margin-top: 10px; margin-bottom: 5px">验证码：</div>
-              <el-input v-model="code" placeholder="请输入验证码"></el-input>
-            </div>
-          </div>
-        </div>
-        <div
-          style="display: flex; margin-top: 30px"
-          v-show="dialogTitle !== '修改头像'"
-        >
-          <proButton
-            :info="codeString"
-            v-show="
-              dialogTitle === '修改手机号' ||
-              dialogTitle === '绑定手机号' ||
-              dialogTitle === '修改邮箱' ||
-              dialogTitle === '绑定邮箱' ||
-              dialogTitle === '修改密码' ||
-              dialogTitle === '找回密码' ||
-              dialogTitle === '邮箱验证码'
-            "
-            @click="getCode()"
-            :before="'var(--gradualRed)'"
-            :after="'var(--gradualRed)'"
-            style="margin-right: 20px"
-          >
-          </proButton>
-          <proButton
-            :info="'提交'"
-            @click="submitDialog()"
-            :before="'var(--gradualRed)'"
-            :after="'var(--gradualRed)'"
-          >
-          </proButton>
-        </div>
-      </div>
-    </el-dialog>
+      :code-string="codeString"
+      :is-third-party-user="Boolean(isThirdPartyUser)"
+      v-model:phoneNumber="phoneNumber"
+      v-model:email="email"
+      v-model:code="code"
+      v-model:password="password"
+      v-model:oldPassword="oldPassword"
+      v-model:newPassword="newPassword"
+      v-model:confirmPassword="confirmPassword"
+      v-model:username="username"
+      v-model:passwordFlag="passwordFlag"
+      @get-code="getCode"
+      @submit="submitDialog"
+      @close="closeDialog"
+      @add-picture="addPicture"
+    ></AccountDialog>
 
     <!-- 添加滑动验证组件 -->
     <component
@@ -577,8 +211,26 @@ import { handleLoginRedirect } from '../utils/tokenExpireHandler'
 
 export default {
   components: {
-    proButton: defineAsyncComponent(() => import('./common/proButton')),
-    uploadPicture: defineAsyncComponent(() => import('./common/uploadPicture')),
+    ClassicLoginPanel: defineAsyncComponent(() =>
+      import('./user/ClassicLoginPanel.vue')
+    ),
+    LoginCard: defineAsyncComponent(() => import('./user/LoginCard.vue')),
+    SplitLoginPanel: defineAsyncComponent(() =>
+      import('./user/SplitLoginPanel.vue')
+    ),
+    TerminalLoginPanel: defineAsyncComponent(() =>
+      import('./user/TerminalLoginPanel.vue')
+    ),
+    ImmersiveLoginPanel: defineAsyncComponent(() =>
+      import('./user/ImmersiveLoginPanel.vue')
+    ),
+    FrostedLoginPanel: defineAsyncComponent(() =>
+      import('./user/FrostedLoginPanel.vue')
+    ),
+    UserProfile: defineAsyncComponent(() => import('./user/UserProfile.vue')),
+    AccountDialog: defineAsyncComponent(() =>
+      import('./user/AccountDialog.vue')
+    ),
   },
   data() {
     return {
@@ -586,8 +238,6 @@ export default {
       username: '',
       account: '',
       password: '',
-      showRegisterPassword: false,
-      showLoginPassword: false,
       oldPassword: '',
       newPassword: '',
       confirmPassword: '',
@@ -607,6 +257,9 @@ export default {
       captchaWrapperComponent: null,
       captchaWrapperLoadingPromise: null,
       hasShownExpiredMessage: false,
+      // webInfo 未就绪时的兜底标记（防止 bootstrap 异常导致登录页长期空白）
+      loginStyleFallbackReady: false,
+      loginStyleFallbackTimer: null,
       thirdPartyLoginConfig: {
         enable: false,
       },
@@ -620,6 +273,42 @@ export default {
     // 判断当前用户是否为第三方登录用户
     isThirdPartyUser() {
       return this.currentUser && this.currentUser.platformType
+    },
+    // 登录页样式：classic/card/glass/split/minimal/terminal/immersive/frosted，异常值回退 classic
+    loginStyle() {
+      const style = this.mainStore.webInfo.loginStyle
+      const validStyles = ['classic', 'card', 'glass', 'split', 'minimal', 'terminal', 'immersive', 'frosted']
+      return validStyles.includes(style) ? style : 'classic'
+    },
+    // minimal 纯色底不需要背景图；split 由组件自行渲染左栏封面
+    showLoginBackground() {
+      return this.loginStyle !== 'minimal' && this.loginStyle !== 'split'
+    },
+    // webInfo 是否已就绪（来自接口或本地缓存，默认空对象无 id）；超时兜底后强制渲染
+    loginStyleReady() {
+      return !!this.mainStore.webInfo.id || this.loginStyleFallbackReady
+    },
+    // 登录页展示的网站标题：直接使用 webTitle（必填字段，面板在 webInfo 就绪后才渲染）
+    loginSiteTitle() {
+      return this.mainStore.webInfo.webTitle || ''
+    },
+    // 登录页主题色（仅接受合法 #rrggbb，否则视为未配置）
+    loginAccentColor() {
+      const color = this.mainStore.webInfo.loginAccentColor
+      return /^#[0-9a-fA-F]{6}$/.test(color || '') ? color : ''
+    },
+    // 卡片系第三方按钮位置：top 表单上方 / bottom 表单下方，异常值回退 top
+    loginThirdPosition() {
+      return this.mainStore.webInfo.loginThirdPosition === 'bottom'
+        ? 'bottom'
+        : 'top'
+    },
+    // 随机封面图（背景与分栏左栏共用）
+    randomCoverUrl() {
+      const covers = this.mainStore.webInfo.randomCover
+      return covers && covers.length > 0
+        ? covers[Math.floor(Math.random() * covers.length)]
+        : '/assets/backgroundPicture.jpg'
     },
   },
   created() {
@@ -644,10 +333,25 @@ export default {
     '$route.query.expired': function () {
       this.showExpiredSessionNotice()
     },
+    // 样式或主题色变化时同步登录主题色 CSS 变量
+    loginStyle() {
+      this.applyLoginAccentVars()
+    },
+    loginAccentColor() {
+      this.applyLoginAccentVars()
+    },
   },
   mounted() {
     // 获取第三方登录配置
     this.loadThirdPartyLoginConfig()
+
+    // 注入登录主题色 CSS 变量（挂根节点以穿透 teleport 弹窗/验证码）
+    this.applyLoginAccentVars()
+
+    // 3 秒兜底：bootstrap 异常时也要渲染登录面板（按当前已知样式回退）
+    this.loginStyleFallbackTimer = setTimeout(() => {
+      this.loginStyleFallbackReady = true
+    }, 3000)
 
     // 监听第三方登录配置变更事件
     $on(
@@ -660,8 +364,30 @@ export default {
     this.$watch('mainStore.currentUser', () => {
       this.updatePageSEO()
     })
+
+    // bootstrap 晚于本组件挂载时，状态到达后刷新第三方登录图标
+    this.$watch('mainStore.thirdLoginStatus', (status) => {
+      if (status) {
+        this.applyThirdPartyLoginConfig(status)
+      }
+    })
   },
   beforeUnmount() {
+    // 离开页面时清除主题色变量，避免影响评论区等其他场景的验证码配色
+    this.clearLoginAccentVars()
+
+    // 清理验证码倒计时，避免卸载后间隔器继续持有组件引用
+    if (this.intervalCode) {
+      clearInterval(this.intervalCode)
+      this.intervalCode = null
+    }
+
+    // 清理兜底定时器
+    if (this.loginStyleFallbackTimer) {
+      clearTimeout(this.loginStyleFallbackTimer)
+      this.loginStyleFallbackTimer = null
+    }
+
     // 移除事件监听
     $off(
       this.$bus,
@@ -670,6 +396,59 @@ export default {
     )
   },
   methods: {
+    // 计算 #rrggbb 的相对亮度（0~1，用于暗色安全色阈值判断）
+    hexLuminance(hex) {
+      const r = parseInt(hex.slice(1, 3), 16)
+      const g = parseInt(hex.slice(3, 5), 16)
+      const b = parseInt(hex.slice(5, 7), 16)
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    },
+    // 暗色安全色：主题色过暗时向白混合提亮，避免在暗色卡片上"隐身"；亮度足够则原样保留
+    toDarkModeSafe(hex) {
+      const lum = this.hexLuminance(hex)
+      if (lum >= 0.35) {
+        return hex
+      }
+      const ratio = (0.6 - lum) / (1 - lum)
+      const mixed = [1, 3, 5].map((i) => {
+        const c = parseInt(hex.slice(i, i + 2), 16)
+        return Math.round(c + (255 - c) * ratio)
+          .toString(16)
+          .padStart(2, '0')
+      })
+      return '#' + mixed.join('')
+    },
+    // 注入登录主题色 CSS 变量：现代样式下弹窗按钮/验证码滑块/卡片主按钮跟随此色；
+    // classic 不设置变量（回退原版配色）；frosted 默认主题色为其原版玫粉 #f04494
+    applyLoginAccentVars() {
+      const root = document.documentElement
+      if (this.loginStyle === 'classic') {
+        this.clearLoginAccentVars()
+        return
+      }
+
+      const accent =
+        this.loginAccentColor ||
+        (this.loginStyle === 'frosted' ? '#f04494' : '')
+      root.style.setProperty('--loginAccent', accent || '#1f1f1f')
+      // 主按钮专用：不参与暗色重映射，两种模式保持原色（黑底白字在暗色卡上成立）
+      root.style.setProperty('--loginAccentButton', accent || '#1f1f1f')
+      // 柔和变体：验证码轨道/聚焦光晕等浅色背景使用（#rrggbb + 40 透明度）
+      root.style.setProperty('--loginAccentSoft', (accent || '#1f1f1f') + '40')
+      // 暗色安全色变量族：登录卡片内的链接/聚焦描边等细小元素在暗色模式下重映射为此组值，
+      // 配置过暗时自动提亮；主按钮已豁免，不受影响
+      const darkAccent = accent ? this.toDarkModeSafe(accent) : '#f5f5f5'
+      root.style.setProperty('--loginAccentDark', darkAccent)
+      root.style.setProperty('--loginAccentSoftDark', darkAccent + '40')
+    },
+    clearLoginAccentVars() {
+      const root = document.documentElement
+      root.style.removeProperty('--loginAccent')
+      root.style.removeProperty('--loginAccentButton')
+      root.style.removeProperty('--loginAccentSoft')
+      root.style.removeProperty('--loginAccentDark')
+      root.style.removeProperty('--loginAccentSoftDark')
+    },
     ensureCaptchaWrapperLoaded() {
       if (this.captchaWrapperComponent) {
         return Promise.resolve(this.captchaWrapperComponent)
@@ -780,20 +559,6 @@ export default {
     addPicture(res) {
       this.avatar = res
       this.submitDialog()
-    },
-    signUp() {
-      document
-        .querySelector('#loginAndRegist')
-        .classList.add('right-panel-active')
-    },
-    signIn() {
-      if (this.$common.isEmpty(this.account) && !this.$common.isEmpty(this.username)) {
-        this.account = this.username.trim()
-      }
-
-      document
-        .querySelector('#loginAndRegist')
-        .classList.remove('right-panel-active')
     },
     showLoginVerify() {
       if (
@@ -1650,8 +1415,6 @@ export default {
     },
     clearDialog() {
       this.password = ''
-      this.showRegisterPassword = false
-      this.showLoginPassword = false
       this.oldPassword = ''
       this.newPassword = ''
       this.confirmPassword = ''
@@ -1710,14 +1473,27 @@ export default {
       this.loadThirdPartyLoginConfig()
     },
 
-    // 加载第三方登录配置
+    // 加载第三方登录配置（优先复用 bootstrap 已写入 store 的状态，避免单独请求）
     loadThirdPartyLoginConfig() {
-      this.getThirdPartyLoginConfig().then((config) => {
-        this.thirdPartyLoginConfig = config
+      const cachedStatus = this.mainStore.thirdLoginStatus
+      if (cachedStatus && typeof cachedStatus === 'object') {
+        this.applyThirdPartyLoginConfig(cachedStatus)
+        return
+      }
 
-        // 提取启用的第三方登录提供商列表
-        this.enabledThirdPartyProviders = []
-        if (config.enable) {
+      // store 无缓存（首次访问且 bootstrap 未返回）时回退旧接口
+      this.getThirdPartyLoginConfig().then((config) => {
+        this.applyThirdPartyLoginConfig(config)
+      })
+    },
+
+    // 根据状态配置提取启用的提供商列表
+    applyThirdPartyLoginConfig(config) {
+      this.thirdPartyLoginConfig = config
+
+      // 提取启用的第三方登录提供商列表
+      this.enabledThirdPartyProviders = []
+      if (config.enable) {
           // 定义支持的第三方登录平台及其显示信息
           const supportedProviders = [
             {
@@ -1778,8 +1554,7 @@ export default {
               this.enabledThirdPartyProviders.push(provider)
             }
           })
-        }
-      })
+      }
     },
 
     // 获取第三方登录配置
@@ -1811,712 +1586,19 @@ export default {
 
 <style scoped>
 .in-up-container {
-  height: 100vh;
+  /* 卡片超过视口高度（小屏 + 多第三方 + 注册面板）时容器随内容增高，
+     flex 居中不再裁剪顶部，页面自然滚动，背景图（height:100%）跟随铺满 */
+  min-height: 100vh;
   position: relative;
 }
-.in-up {
-  opacity: 0.9;
-  border-radius: 10px;
-  box-shadow: 0 15px 30px var(--miniMask), 0 10px 10px var(--miniMask);
-  position: relative;
-  overflow: hidden;
-  width: 750px;
-  max-width: 100%;
-  min-height: 450px;
-  margin: 10px;
-}
-.in-up p {
-  font-size: 14px;
-  letter-spacing: 1px;
-  margin: 20px 0 30px 0;
-  color: var(--articleGreyFontColor);
-}
-.in-up a {
-  color: var(--fontColor);
-  font-size: 14px;
-  text-decoration: none;
-  margin: 15px 0;
-}
-.form-container {
-  position: absolute;
-  height: 100%;
-  transition: transform 0.5s ease-in-out, left 0.5s ease-in-out;
-  will-change: transform, left;
-  transform: translateZ(0);
-}
-.sign-in-container {
-  left: 0;
-  width: 50%;
-  z-index: 2;
-  visibility: visible;
-  transition: all 0.5s ease-in-out;
-}
-.sign-up-container {
-  left: 0;
-  width: 50%;
-  opacity: 0;
-  z-index: 1;
-  visibility: hidden;
-  transition: all 0.5s ease-in-out;
-}
-.form-container > div,
-.form-container > form {
-  background: var(--background);
-  flex-direction: column;
-  padding: 10px 20px;
-  height: 100%;
-  color: var(--fontColor);
-}
-.login-credential-form {
-  width: 100%;
-}
-.form-container input {
-  background: var(--inputBackground);
-  border-radius: 3px;
-  border: none;
-  padding: 12px 15px;
-  margin: 10px 0;
-  width: 90%;
-  height: 40px;
-  outline: none;
-  color: var(--fontColor);
-  line-height: 1.5;
+/* 盒状样式（卡片/终端/磨砂等）保留上下呼吸空间；全屏样式（immersive/split）不加 */
+.in-up-container--boxed {
+  padding: 28px 0;
   box-sizing: border-box;
-}
-.password-field {
-  position: relative;
-  width: 90%;
-  height: 40px;
-  margin: 10px 0;
-}
-.password-field input {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding-right: 42px;
-  box-sizing: border-box;
-}
-.password-toggle {
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--articleGreyFontColor);
-  cursor: pointer;
-  z-index: 2;
-  line-height: 1;
-  user-select: none;
-}
-.password-toggle:hover {
-  color: var(--fontColor);
-  transform: translateY(-50%);
-}
-.password-toggle:focus {
-  outline: none;
-  color: var(--fontColor);
-}
-.form-container input::placeholder {
-  color: var(--articleGreyFontColor);
-}
-.in-up button {
-  border-radius: 2rem;
-  border: none;
-  background: var(--gradualRed);
-  color: var(--white);
-  font-size: 16px;
-  font-weight: bold;
-  padding: 12px 45px;
-  letter-spacing: 2px;
-  cursor: pointer;
-  box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask);
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
-  transform: translateZ(0);
-}
-.in-up button:hover {
-  background: var(--gradualRed);
-  box-shadow: 4px 4px 8px var(--mask), -2px -2px 6px var(--miniWhiteMask);
-  transform: translateY(-3px);
-}
-@keyframes glow {
-  0% {
-    box-shadow: 0 0 5px rgba(255, 99, 71, 0.6);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(255, 99, 71, 0.8);
-  }
-  100% {
-    box-shadow: 0 0 5px rgba(255, 99, 71, 0.6);
-  }
-}
-.in-up button:active {
-  transform: translateY(1px);
-  box-shadow: 2px 2px 4px var(--mask);
-}
-.in-up button.ghost {
-  background: linear-gradient(145deg, var(--miniWhiteMask), var(--transparent));
-  border: 1px solid var(--miniWhiteMask);
-  box-shadow: 3px 3px 6px var(--mask), -1px -1px 4px var(--miniWhiteMask);
-}
-.in-up button.ghost:hover {
-  background: linear-gradient(145deg, var(--whiteMask), var(--miniWhiteMask));
-  box-shadow: 4px 4px 8px var(--translucent), -2px -2px 6px var(--miniWhiteMask);
-  transform: translateY(-3px);
-}
-.in-up button.ghost:active {
-  transform: translateY(1px);
-  box-shadow: 2px 2px 4px var(--mask);
-}
-.sign-up-container button {
-  margin-top: 20px;
-}
-
-/* 登录/注册按钮样式 */
-.auth-button {
-  border-radius: 10px !important;
-  width: 90% !important;
-  height: 40px !important;
-  background: var(--gradualRed) !important;
-  border: none !important;
-  box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask) !important;
-  transition: transform 0.3s ease, box-shadow 0.3s ease !important;
-  padding: 12px 30px !important;
-  font-weight: 600 !important;
-  letter-spacing: 1px !important;
-  transform: translateZ(0);
-  line-height: 1.5 !important;
-}
-
-.auth-button:hover {
-  background: var(--gradualRed) !important;
-  box-shadow: 4px 4px 8px var(--mask), -2px -2px 6px var(--miniWhiteMask) !important;
-  transform: translateY(-3px) !important;
-}
-
-.auth-button:active {
-  transform: translateY(1px) !important;
-  box-shadow: 2px 2px 4px var(--mask) !important;
-}
-
-.overlay-container {
-  position: absolute;
-  left: 50%;
-  width: 50%;
-  height: 100%;
-  overflow: hidden;
-  transition: transform 0.5s ease-in-out, left 0.5s ease-in-out;
-  will-change: transform, left;
-}
-.overlay {
-  background: var(--gradualRed);
-  color: var(--white);
-  position: relative;
-  left: -100%;
-  height: 100%;
-  width: 200%;
-}
-.overlay-panel {
-  position: absolute;
-  top: 0;
-  flex-direction: column;
-  height: 100%;
-  width: 50%;
-  transition: transform 0.5s ease-in-out, left 0.5s ease-in-out;
-  will-change: transform, left;
-}
-.overlay-panel p,
-.overlay-panel h1 {
-  color: var(--white);
-}
-.overlay-right {
-  right: 0;
-  transform: translateY(0);
-  background: var(--gradualRed);
-  box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
-}
-.overlay-left {
-  transform: translateY(-20%);
-}
-.in-up.right-panel-active .sign-in-container {
-  transform: translateY(100%);
-  opacity: 0;
-  visibility: hidden;
-  z-index: 1;
-}
-.in-up.right-panel-active .overlay-container {
-  transform: translateX(-100%);
-}
-.in-up.right-panel-active .sign-up-container {
-  transform: translateX(100%);
-  opacity: 1;
-  z-index: 5;
-  visibility: visible;
-}
-.in-up.right-panel-active .overlay {
-  transform: translateX(50%);
-}
-.in-up.right-panel-active .overlay-left {
-  transform: translateY(0);
-}
-.in-up.right-panel-active .overlay-right {
-  transform: translateY(20%);
 }
 .user-container {
   width: 100vw;
   height: 100vh;
   position: relative;
-}
-.user-info {
-  width: 80%;
-  z-index: 10;
-  margin-top: 70px;
-  height: calc(100vh - 90px);
-  margin-bottom: 20px;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.user-left {
-  width: 50%;
-  background: var(--maxMaxWhiteMask);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  overflow-y: auto;
-  padding: 20px;
-}
-.user-right {
-  width: 50%;
-  background: var(--maxWhiteMask);
-  padding: 20px;
-}
-.user-title {
-  text-align: right;
-  user-select: none;
-}
-.user-content {
-  text-align: left;
-}
-.user-title div {
-  min-height: 55px;
-  line-height: 55px;
-  text-align: center;
-}
-.user-content > div {
-  min-height: 55px;
-  display: flex;
-  align-items: center;
-}
-.user-content :deep(.el-input__wrapper),
-.user-content :deep(.el-textarea__inner){
-  border: none;
-  background: var(--whiteMask) !important;
-  color: var(--fontColor);
-  box-shadow: none !important;
-}
-
-body.dark-mode .user-content :deep(.el-input__wrapper),
-body.dark-mode .user-content :deep(.el-textarea__inner){
-  background: #2d2d2d !important;
-}
-
-.user-content :deep(.el-input__inner) {
-  background: transparent !important;
-  color: var(--fontColor);
-  border: none;
-}
-.user-content :deep(.el-input__count){
-  background: var(--transparent);
-  user-select: none;
-}
-.changeInfo {
-  color: var(--white);
-  font-size: 0.75rem;
-  cursor: pointer;
-  background: var(--themeBackground);
-  padding: 3px;
-  border-radius: 0.2rem;
-  user-select: none;
-}
-@media screen and (max-width: 920px) {
-  .user-info {
-    width: 90%;
-  }
-  .user-left {
-    width: 100%;
-  }
-  .user-right {
-    display: none;
-  }
-}
-@media screen and (max-width: 480px) {
-  .user-info {
-    width: 95%;
-    margin-top: 60px;
-  }
-  .user-left {
-    padding: 15px;
-  }
-  .myCenter {
-    flex-direction: column !important;
-  }
-  .user-title {
-    display: none;
-  }
-  .user-content {
-    width: 100%;
-  }
-  .user-content > div {
-    margin-bottom: 15px;
-    flex-direction: column;
-    align-items: flex-start;
-    height: auto;
-    min-height: 40px;
-  }
-  .user-content > div:nth-child(1):before {
-    content: '用户名：';
-    font-size: 0.85rem;
-    margin-bottom: 5px;
-    color: var(--fontColor);
-    font-weight: 500;
-  }
-  .user-content > div:nth-child(2):before {
-    content: '手机号：';
-    font-size: 0.85rem;
-    margin-bottom: 5px;
-    color: var(--fontColor);
-    font-weight: 500;
-  }
-  .user-content > div:nth-child(3):before {
-    content: '邮箱：';
-    font-size: 0.85rem;
-    margin-bottom: 5px;
-    color: var(--fontColor);
-    font-weight: 500;
-  }
-  .user-content > div:nth-child(4):before {
-    content: '性别：';
-    font-size: 0.85rem;
-    margin-bottom: 5px;
-    color: var(--fontColor);
-    font-weight: 500;
-  }
-  .user-content > div:nth-child(5):before {
-    content: '简介：';
-    font-size: 0.85rem;
-    margin-bottom: 5px;
-    color: var(--fontColor);
-    font-weight: 500;
-  }
-  .user-content :deep(.el-input__inner){
-    font-size: 0.85rem;
-    padding: 8px 10px;
-  }
-  .user-content :deep(.el-textarea__inner){
-    font-size: 0.85rem;
-    padding: 8px 10px;
-  }
-  .changeInfo {
-    font-size: 0.7rem;
-    padding: 2px 4px;
-    white-space: nowrap;
-    margin-left: 8px;
-  }
-  .user-content > div > div {
-    word-break: break-all;
-    overflow-wrap: break-word;
-    line-height: 1.3;
-    max-width: 100%;
-  }
-  .user-content :deep(.el-radio-group){
-    flex-wrap: wrap;
-  }
-  .user-content :deep(.el-radio){
-    margin-right: 8px;
-    margin-bottom: 5px;
-    font-size: 0.85rem;
-  }
-}
-@media screen and (max-width: 360px) {
-  .user-info {
-    width: 98%;
-    margin-top: 50px;
-  }
-  .user-left {
-    padding: 10px;
-  }
-  .user-content > div:before {
-    font-size: 0.8rem !important;
-  }
-  .user-content > div {
-    margin-bottom: 12px;
-    min-height: 40px;
-  }
-  .user-content :deep(.el-input__inner),
-  .user-content :deep(.el-textarea__inner){
-    font-size: 0.8rem;
-    padding: 6px 8px;
-  }
-  .changeInfo {
-    font-size: 0.65rem;
-    padding: 1px 3px;
-    margin-left: 6px;
-  }
-  .user-content :deep(.el-radio){
-    font-size: 0.8rem;
-    margin-right: 6px;
-  }
-  .user-avatar {
-    width: 50px !important;
-    height: 50px !important;
-  }
-}
-@media screen and (max-width: 768px) {
-  .el-dialog__body {
-    padding: 15px 20px;
-  }
-}
-.third-party-login {
-  margin-top: 20px;
-  width: 100%;
-}
-.divider {
-  position: relative;
-  margin: 15px 0;
-  text-align: center;
-}
-.divider:before,
-.divider:after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  width: 35%;
-  height: 1px;
-  background-color: var(--borderColor);
-}
-.divider:before {
-  left: 0;
-}
-.divider:after {
-  right: 0;
-}
-.divider span {
-  display: inline-block;
-  padding: 0 10px;
-  background-color: var(--background);
-  color: var(--articleGreyFontColor);
-  position: relative;
-  z-index: 1;
-  font-size: 12px;
-}
-.login-buttons {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-.login-button {
-  margin: 5px;
-  padding: 8px 12px;
-  border: 1px solid var(--borderColor);
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  transition: background-color 0.3s ease, box-shadow 0.3s ease,
-    transform 0.3s ease;
-  background-color: var(--background);
-  box-shadow: 0 2px 5px var(--miniMask);
-  transform: translateZ(0);
-  font-size: 12px;
-}
-.login-button:hover {
-  box-shadow: 0 4px 12px var(--borderHoverColor);
-  transform: translateY(-2px);
-}
-.login-button i {
-  margin-right: 6px;
-  font-size: 16px;
-}
-.login-button span {
-  font-size: 12px;
-}
-.login-circle-btn {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 45px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
-  box-shadow: 0 2px 5px var(--mask);
-  transform: translateZ(0);
-}
-.login-circle-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px var(--borderHoverColor);
-}
-div > a[href='javascript:void(0)'] {
-  overflow: hidden;
-}
-div > a[href='javascript:void(0)']:hover {
-  transform: scale(1.1);
-  box-shadow: 0 0 10px var(--borderHoverColor);
-}
-div > a[href='javascript:void(0)']:hover::before {
-  content: '';
-  position: absolute;
-  top: -10px;
-  left: -10px;
-  right: -10px;
-  bottom: -10px;
-  border-radius: 50%;
-  animation: pulse 1s infinite;
-  z-index: -1;
-}
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 var(--borderHoverColor);
-  }
-  70% {
-    box-shadow: 0 0 0 5px var(--transparent);
-  }
-  100% {
-    box-shadow: 0 0 0 0 var(--transparent);
-  }
-}
-.pro-btn {
-  box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask) !important;
-  border-radius: 2rem !important;
-  font-weight: 600 !important;
-  letter-spacing: 1px !important;
-}
-.pro-btn:hover {
-  box-shadow: 4px 4px 8px var(--mask), -2px -2px 6px var(--miniWhiteMask) !important;
-  transform: translateY(-3px) !important;
-}
-.pro-btn:active {
-  box-shadow: 2px 2px 4px var(--miniMask) !important;
-  transform: translateY(1px) !important;
-}
-.form-container .submit {
-  background: var(--gradualRed);
-  border: none;
-  border-radius: 4px;
-  color: var(--white);
-  width: 90%;
-  padding: 15px 20px;
-  margin: 15px 10px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-.form-container .submit:hover {
-  background: var(--gradualRed);
-  border: none;
-}
-@media screen and (max-width: 768px) {
-  .third-party-login-container {
-    height: auto !important;
-    min-height: 50px !important;
-    padding: 10px 5px !important;
-    display: flex !important;
-    flex-wrap: wrap !important;
-    justify-content: center !important;
-    align-items: center !important;
-    gap: 8px !important;
-    flex-direction: row !important;
-  }
-  .third-party-login-btn {
-    width: 35px !important;
-    height: 35px !important;
-    margin: 4px !important;
-    flex-shrink: 0 !important;
-  }
-  .third-party-login-btn img {
-    height: 20px !important;
-  }
-}
-@media screen and (max-width: 480px) {
-  .third-party-login-container {
-    padding: 8px 2px !important;
-    gap: 4px !important;
-    max-width: 100% !important;
-    overflow: hidden !important;
-    flex-direction: row !important;
-  }
-  .third-party-login-btn {
-    width: 30px !important;
-    height: 30px !important;
-    margin: 2px !important;
-  }
-  .third-party-login-btn img {
-    height: 17px !important;
-  }
-}
-@media screen and (max-width: 420px) {
-  .third-party-login-container {
-    padding: 6px 1px !important;
-    gap: 3px !important;
-    flex-direction: row !important;
-  }
-  .third-party-login-btn {
-    width: 28px !important;
-    height: 28px !important;
-    margin: 1px !important;
-  }
-  .third-party-login-btn img {
-    height: 16px !important;
-  }
-}
-@media screen and (max-width: 360px) {
-  .third-party-login-container {
-    padding: 4px 1px !important;
-    gap: 2px !important;
-  }
-  .third-party-login-btn {
-    width: 26px !important;
-    height: 26px !important;
-    margin: 1px !important;
-  }
-  .third-party-login-btn img {
-    height: 15px !important;
-  }
-}
-@media screen and (max-width: 320px) {
-  .third-party-login-container {
-    padding: 3px 1px !important;
-    gap: 1px !important;
-    max-width: 100% !important;
-  }
-  .third-party-login-btn {
-    width: 24px !important;
-    height: 24px !important;
-    margin: 1px !important;
-  }
-  .third-party-login-btn img {
-    height: 13px !important;
-  }
-}
-</style>
-
-<style>
-/* 个人中心页面头像旋转动画 */
-.user-info .el-avatar.user-avatar {
-  cursor: pointer;
-  transition: transform 0.6s ease;
-  will-change: transform;
-  transform: translateZ(0);
-}
-
-.user-info .el-avatar.user-avatar:hover {
-  transform: rotate(360deg);
 }
 </style>

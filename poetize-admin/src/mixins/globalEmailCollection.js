@@ -1,5 +1,6 @@
 import { mapStores } from 'pinia'
 import { useMainStore } from '../stores/main'
+import { normalizeAdminRedirect } from '../utils/tokenExpireHandler'
 
 export default {
   data() {
@@ -69,8 +70,8 @@ export default {
           this.$message.success(`欢迎通过 ${platformName} 登录！邮箱已保存。`)
         }
         
-        // 获取原始重定向路径并跳转
-        const redirectPath = this.$route.query.redirect || sessionStorage.getItem('oauthRedirectPath') || '/'
+        // 获取原始重定向路径并跳转（redirect 可能带 /admin 前缀，router 已配置 base，需先剥掉）
+        const redirectPath = normalizeAdminRedirect(this.$route.query.redirect || sessionStorage.getItem('oauthRedirectPath')) || '/'
         sessionStorage.removeItem('oauthRedirectPath')
         
         if (redirectPath !== this.$route.path) {

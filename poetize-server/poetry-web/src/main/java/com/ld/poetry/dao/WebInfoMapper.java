@@ -47,7 +47,10 @@ public interface WebInfoMapper extends BaseMapper<WebInfo> {
                          @Param("enableDynamicTitle") Boolean enableDynamicTitle,
                          @Param("mouseClickEffectConfig") String mouseClickEffectConfig,
                          @Param("mobileDrawerConfig") String mobileDrawerConfig,
-                         @Param("homeTitle") String homeTitle);
+                         @Param("homeTitle") String homeTitle,
+                         @Param("loginStyle") String loginStyle,
+                         @Param("loginAccentColor") String loginAccentColor,
+                         @Param("loginThirdPosition") String loginThirdPosition);
 
     /**
      * 只更新公告

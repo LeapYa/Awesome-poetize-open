@@ -974,6 +974,11 @@ export default {
           const sysConfig = data.sysConfig
           const sortInfo = data.sortInfo
 
+          // 第三方登录状态随聚合接口下发，写入 store 供登录页直接复用
+          if (!this.$common.isEmpty(data.thirdLoginStatus)) {
+            this.mainStore.loadThirdLoginStatus(data.thirdLoginStatus)
+          }
+
           if (!this.$common.isEmpty(webInfo)) {
             // 浏览器标签仅使用 webTitle（回退 webName）；homeTitle 是备案名，不显示在标签上
             const originalWebTitle = webInfo.webTitle || webInfo.webName

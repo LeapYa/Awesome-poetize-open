@@ -90,6 +90,9 @@ export const useMainStore = defineStore('main', {
     // 访问量统计
     visitCounts: {},
 
+    // 第三方登录状态（由 bootstrap 聚合接口注入，登录页优先读此处避免单独请求）
+    thirdLoginStatus: getFromLocalStorage('thirdLoginStatus', null),
+
     // 侧边栏首屏聚合缓存（contactList/quickEntryList/asideBackground）
     // 由 myAside 首次加载后注入，路由切换回首页时复用，避免重复请求
     // asideBootstrapExpireAt 记录缓存过期时间戳，TTL 由 ASIDE_BOOTSTRAP_TTL_MS 控制
@@ -305,6 +308,20 @@ export const useMainStore = defineStore('main', {
 
       // 单独存储访问量数据，不做持久化缓存
       this.visitCounts = visitCounts
+    },
+
+    /**
+     * 加载第三方登录状态（来自 bootstrap 聚合接口）
+     */
+    loadThirdLoginStatus(status) {
+      if (!status || typeof status !== 'object') {
+        return
+      }
+      this.thirdLoginStatus = status
+      localStorage.setItem(
+        'thirdLoginStatus',
+        JSON.stringify({ timestamp: Date.now(), data: status })
+      )
     },
 
     /**

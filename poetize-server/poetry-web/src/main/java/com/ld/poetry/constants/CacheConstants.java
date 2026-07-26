@@ -210,6 +210,14 @@ public class CacheConstants {
     public static final String PUBLIC_SYS_CONFIG_MAP_KEY = CACHE_PREFIX + "config:public:map";
 
     /**
+     * 第三方登录状态缓存键
+     * <p>数据源 third_party_oauth_config 表聚合出的平台启用状态 Map（不含密钥），
+     * 供 /webInfo/getThirdLoginStatus 与 /webInfo/bootstrap 读取。永久缓存 + 主动 evict。
+     * <p>evict 触发点: ThirdPartyOauthConfigServiceImpl 各配置写入方法成功后
+     */
+    public static final String THIRD_LOGIN_STATUS_KEY = CACHE_PREFIX + "third_login:status";
+
+    /**
      * 前台侧边栏首屏聚合缓存键
      * <p>数据源 resource_path 表中 CONTACT / QUICK_ENTRY / ASIDE_BACKGROUND 三类记录聚合，
      * 供 /webInfo/asideBootstrap 高频接口读取。永久缓存 + 主动 evict。

@@ -6,6 +6,7 @@ import tools.jackson.databind.json.JsonMapper;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.dao.ThirdPartyOauthConfigMapper;
 import com.ld.poetry.entity.ThirdPartyOauthConfig;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,9 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
     @Autowired
     private JsonMapper objectMapper;
 
+    @Autowired
+    private CacheService cacheService;
+
     @Override
     public ThirdPartyOauthConfig getByPlatformType(String platformType) {
         if (!StringUtils.hasText(platformType)) {
@@ -67,6 +71,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             int result = configMapper.updateGlobalEnabled(globalEnabled);
             if (result > 0) {
                 log.info("全局启用状态更新成功: {}", globalEnabled);
+                cacheService.evictThirdLoginStatus();
                 return PoetryResult.success(true);
             } else {
                 log.warn("全局启用状态更新失败，没有记录被更新");
@@ -97,6 +102,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
 
             if (result) {
                 log.info("平台启用状态更新成功: {} -> {}", platformType, enabled);
+                cacheService.evictThirdLoginStatus();
                 return PoetryResult.success(true);
             } else {
                 log.warn("平台启用状态更新失败: {}", platformType);
@@ -123,6 +129,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             boolean result = updateBatchById(configs);
             if (result) {
                 log.info("批量更新配置成功，共更新 {} 条记录", configs.size());
+                cacheService.evictThirdLoginStatus();
                 return PoetryResult.success(true);
             } else {
                 log.warn("批量更新配置失败");
@@ -200,6 +207,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             }
 
             log.info("第三方登录配置更新完成");
+            cacheService.evictThirdLoginStatus();
             return PoetryResult.success(true);
         } catch (Exception e) {
             log.error("更新第三方登录配置失败", e);

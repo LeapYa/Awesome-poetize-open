@@ -91,7 +91,7 @@
             >
               <path
                 d="M727 676.05a36.11 36.11 0 0 1 0 50.95 36.11 36.11 0 0 1-50.91 0L512 562.91 348 727a36.11 36.11 0 0 1-51 0 36.11 36.11 0 0 1 0-50.91l164-164L297 348a36.11 36.11 0 0 1 0-51 36.11 36.11 0 0 1 51 0l164 164.09 164-164a36.11 36.11 0 0 1 51-0.09 36.11 36.11 0 0 1 0 51L562.91 512z"
-                fill="#ff6b95"
+                fill="currentColor"
                 p-id="7630"
               ></path>
             </svg>
@@ -654,7 +654,8 @@ export default {
 .slide-captcha-title {
   font-size: 20px;
   font-weight: 600;
-  color: #ff6b95;
+  /* 标题用中性深色，主题色只落在滑块等交互主体上 */
+  color: #303133;
   flex-grow: 1;
 }
 .slide-captcha-close {
@@ -674,8 +675,8 @@ export default {
   z-index: 10;
 }
 .slide-captcha-close:hover {
-  color: #ff4778;
-  background-color: #fff5f7;
+  color: #606266;
+  background-color: #f2f3f5;
 }
 .slide-captcha-subtitle {
   font-size: 14px;
@@ -696,18 +697,20 @@ export default {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: #fff5f7;
+  /* 轨道用中性浅灰，让主题色填充与滑块成为唯一焦点 */
+  background-color: #f7f8fa;
   border-radius: 23px;
-  box-shadow: inset 0 2px 8px rgba(255, 107, 149, 0.1);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.04);
   overflow: hidden;
-  border: 2px solid #ffd6e0;
+  border: 2px solid #e4e7ed;
 }
 .slide-track-fill {
   position: absolute;
   top: 0;
   left: 0;
   height: 100%;
-  background: linear-gradient(90deg, #ffd6e0, #ffb6c1);
+  /* 登录页现代样式下跟随主题色柔和变体，其他场景回退原版粉色 */
+  background: var(--loginAccentSoft, linear-gradient(90deg, #ffd6e0, #ffb6c1));
   border-radius: 23px;
   transition: background-color 0.3s;
 }
@@ -752,7 +755,8 @@ export default {
   transition: opacity 0.2s;
 }
 .slide-track-text.success {
-  color: #ff6b95;
+  /* 成功文案与成功态滑块同为语义绿 */
+  color: #67c23a;
   font-weight: 500;
 }
 .slide-track-text.success i {
@@ -765,9 +769,10 @@ export default {
   left: 0;
   width: 44px;
   height: 44px;
-  background: linear-gradient(135deg, #ff758c, #ff7eb3);
+  /* 登录页现代样式下跟随主题色，其他场景回退原版粉色 */
+  background: var(--loginAccent, linear-gradient(135deg, #ff758c, #ff7eb3));
   border-radius: 50%;
-  box-shadow: 0 4px 10px rgba(255, 118, 140, 0.4);
+  box-shadow: 0 4px 10px var(--loginAccentSoft, rgba(255, 118, 140, 0.4));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -778,8 +783,9 @@ export default {
   will-change: transform;
 }
 .slide-button.active {
-  box-shadow: 0 6px 16px rgba(255, 118, 140, 0.6);
-  background: linear-gradient(135deg, #ff5277, #ff6897);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  background: var(--loginAccent, linear-gradient(135deg, #ff5277, #ff6897));
+  filter: brightness(1.1);
 }
 .slide-button.success {
   background: linear-gradient(135deg, #b5ed5f, #75e075);
@@ -827,9 +833,10 @@ export default {
   transition: color 0.3s ease, background-color 0.3s ease;
 }
 .slide-message.error {
-  color: #ff6b95;
-  background-color: #fff5f7;
-  border: 1px solid #ffd6e0;
+  /* 错误提示回归语义红，不跟随主题色 */
+  color: #f56c6c;
+  background-color: #fef0f0;
+  border: 1px solid #fde2e2;
 }
 .slide-message-icon {
   font-style: normal;
@@ -845,15 +852,15 @@ export default {
   align-items: center;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px dashed #ffd6e0;
+  border-top: 1px dashed #ebeef5;
 }
 .slide-captcha-refresh {
   display: flex;
   align-items: center;
-  color: #ff6b95;
+  color: #909399;
   font-size: 13px;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: color 0.2s, transform 0.2s;
 }
 .slide-refresh-icon {
   font-style: normal;
@@ -861,7 +868,7 @@ export default {
   font-size: 14px;
 }
 .slide-captcha-refresh:hover {
-  color: #ff4778;
+  color: var(--loginAccent, #ff6b95);
   transform: scale(1.05);
 }
 .slide-captcha-powered {
