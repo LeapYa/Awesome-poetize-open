@@ -33,13 +33,15 @@
       <el-button type="success" icon="el-icon-upload2" @click="openImportDialog">导入文章</el-button>
       <el-button type="warning" icon="el-icon-download" @click="exportAllArticles" :loading="exportAllLoading">导出所有文章</el-button>
     </div>
-    <el-table :data="articles" border class="table" header-cell-class-name="table-header" empty-text="暂无文章">
-      <el-table-column prop="id" label="ID" width="55" align="center"></el-table-column>
+    <el-table :data="articles" border class="table" header-cell-class-name="table-header" empty-text="暂无文章"
+              :default-sort="{ prop: pagination.order, order: pagination.desc ? 'descending' : 'ascending' }"
+              @sort-change="handleSortChange">
+      <el-table-column prop="id" label="ID" width="55" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
       <el-table-column prop="username" label="作者" align="center"></el-table-column>
-      <el-table-column prop="articleTitle" label="文章标题" align="center"></el-table-column>
+      <el-table-column prop="articleTitle" label="文章标题" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
       <el-table-column prop="sort.sortName" label="分类" align="center"></el-table-column>
       <el-table-column prop="label.labelName" label="标签" align="center"></el-table-column>
-      <el-table-column prop="viewCount" label="浏览量" align="center"></el-table-column>
+      <el-table-column prop="viewCount" label="浏览量" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
       <el-table-column label="是否可见" align="center">
         <template slot-scope="scope">
           <el-tag :type="scope.row.viewStatus === false ? 'danger' : 'success'"
@@ -81,9 +83,9 @@
           <el-switch @click.native="changeStatus(scope.row, 3)" v-model="scope.row.recommendStatus"></el-switch>
         </template>
       </el-table-column>
-      <el-table-column prop="commentCount" label="评论数" align="center"></el-table-column>
-      <el-table-column prop="createTime" label="创建时间" align="center"></el-table-column>
-      <el-table-column prop="updateTime" label="最终修改时间" align="center"></el-table-column>
+      <el-table-column prop="commentCount" label="评论数" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
+      <el-table-column prop="createTime" label="创建时间" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
+      <el-table-column prop="updateTime" label="最终修改时间" align="center" sortable="custom" :sort-orders="tableSortOrders"></el-table-column>
       <el-table-column label="操作" width="220" align="center">
         <template slot-scope="scope">
           <div>
@@ -504,8 +506,11 @@
           searchKey: "",
           recommendStatus: null,
           sortId: null,
-          labelId: null
+          labelId: null,
+          order: 'createTime',
+          desc: true
         },
+        tableSortOrders: ['descending', 'ascending'],
         articles: [],
         // 页面内容加载状态（驱动全局"页面加载中"遮罩）
         loading: false,
@@ -743,7 +748,9 @@
           searchKey: '',
           recommendStatus: null,
           sortId: null,
-          labelId: null
+          labelId: null,
+          order: 'createTime',
+          desc: true
         }
         if (this.globalSearchKeyword) {
           this.clearGlobalSearchFilter();
@@ -785,6 +792,13 @@
       },
       handlePageChange(val) {
         this.pagination.current = val;
+        this.getArticles();
+      },
+      handleSortChange({ prop, order }) {
+        const sortProp = prop || 'createTime';
+        this.pagination.order = order ? sortProp : 'createTime';
+        this.pagination.desc = order ? order === 'descending' : true;
+        this.pagination.current = 1;
         this.getArticles();
       },
       searchArticles() {

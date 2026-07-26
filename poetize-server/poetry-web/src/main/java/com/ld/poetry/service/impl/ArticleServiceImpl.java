@@ -1879,6 +1879,25 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         };
     }
 
+    /**
+     * 管理端文章列表排序字段白名单解析：仅支持 id / articleTitle / viewCount /
+     * createTime / updateTime（兼容下划线写法），
+     * 其余取值回退默认 createTime，避免任意字段注入排序。
+     * commentCount 为 comment 表关联统计，在 listAdminArticle 内单独分支处理
+     */
+    private SFunction<Article, ?> resolveAdminArticleOrderField(String order) {
+        if (!StringUtils.hasText(order)) {
+            return Article::getCreateTime;
+        }
+        return switch (order.trim()) {
+            case "id" -> Article::getId;
+            case "articleTitle", "article_title" -> Article::getArticleTitle;
+            case "viewCount", "view_count" -> Article::getViewCount;
+            case "updateTime", "update_time" -> Article::getUpdateTime;
+            default -> Article::getCreateTime;
+        };
+    }
+
     @Override
     public PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO, boolean includeHidden) {
         return listArticle(baseRequestVO, includeHidden, false);
@@ -2406,8 +2425,24 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             lambdaQuery.eq(Article::getSortId, baseRequestVO.getSortId());
         }
 
+        // 排序字段白名单：未指定或不在白名单内时保持默认 createTime 倒序，
+        // 排序字段相同时按 id 同向排序，保证分页顺序稳定
+        boolean adminOrderDesc = baseRequestVO.isDesc();
+        String adminOrderKey = baseRequestVO.getOrder() == null ? "" : baseRequestVO.getOrder().trim();
         Page<Article> page = new Page<>(baseRequestVO.getCurrent(), baseRequestVO.getSize());
-        lambdaQuery.orderByDesc(Article::getCreateTime).page(page);
+        if ("commentCount".equals(adminOrderKey) || "comment_count".equals(adminOrderKey)) {
+            // 评论数是 comment 表的关联统计，非文章表字段，用关联子查询作为排序表达式；
+            // 评论为物理删除，COUNT(*) 即真实值；方向由布尔值拼接、
+            // type 取自枚举常量，均非用户输入，无注入风险
+            String direction = adminOrderDesc ? "DESC" : "ASC";
+            lambdaQuery.last("ORDER BY (SELECT COUNT(*) FROM comment c WHERE c.source = article.id AND c.type = '"
+                    + CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode() + "') " + direction + ", id " + direction);
+        } else {
+            SFunction<Article, ?> adminOrderField = resolveAdminArticleOrderField(adminOrderKey);
+            lambdaQuery.orderBy(true, adminOrderDesc, adminOrderField)
+                    .orderBy(true, adminOrderDesc, Article::getId);
+        }
+        lambdaQuery.page(page);
         baseRequestVO.setTotal(page.getTotal());
 
         List<Article> records = page.getRecords();
