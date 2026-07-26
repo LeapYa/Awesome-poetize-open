@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # pre-push hook: 推送前对 Java 改动执行编译校验，避免编译错误进入远程
+#               并校验 poetry.sql / poetry_old.sql 一致性，避免两份 schema 漂移
 # 启用方式: git config core.hooksPath .githooks
 
 set -u
 
 POM="poetize-server/poetry-web/pom.xml"
+SQL_MAIN="poetize-server/sql/poetry.sql"
+SQL_OLD="poetize-server/sql/poetry_old.sql"
 ZERO="0000000000000000000000000000000000000000"
+
+# 把 poetry.sql 内容变换为 poetry_old.sql 的预期内容（与 sync-poetry-old.ps1 同一规则）
+transform_to_old() {
+    sed -e 's/ENGINE=Aria /ENGINE=InnoDB /g' \
+        -e 's/ENGINE=RocksDB /ENGINE=InnoDB /g' \
+        -e 's/-- RAG 知识文档元数据表（MariaDB 向量检索）/-- RAG 知识文档元数据表（兼容初始化；MySQL 场景默认关闭向量检索）/'
+}
 
 while read -r local_ref local_sha remote_ref remote_sha; do
     # 只校验 main / master 分支
@@ -24,6 +34,20 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         range="$local_sha"
     else
         range="${remote_sha}..${local_sha}"
+    fi
+
+    # 校验 poetry.sql / poetry_old.sql 一致性（任一文件有改动时）
+    if git diff --name-only "$range" -- "$SQL_MAIN" "$SQL_OLD" | grep -q 'poetry'; then
+        echo "[pre-push] 检测到 poetry.sql/poetry_old.sql 改动，校验两份 schema 一致性..."
+        if ! diff -q <(git show "$local_sha:$SQL_MAIN" | transform_to_old) \
+                     <(git show "$local_sha:$SQL_OLD") >/dev/null 2>&1; then
+            echo "[pre-push] poetry_old.sql 与 poetry.sql 不同步，推送已阻断。"
+            echo "[pre-push] 请运行同步脚本后重新提交："
+            echo "[pre-push]   Windows:   pwsh poetize-server/scripts/sync-poetry-old.ps1"
+            echo "[pre-push]   Mac/Linux: bash poetize-server/scripts/sync-poetry-old.sh"
+            exit 1
+        fi
+        echo "[pre-push] schema 一致性校验通过。"
     fi
 
     # 仅当存在 .java 改动时才触发编译

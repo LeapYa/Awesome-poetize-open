@@ -9,6 +9,25 @@
 - **poetry.sql** - 当前完整数据库建表脚本（MariaDB 11+，当前包含 37 张表）
 - **poetry_old.sql** - 兼容 MySQL / 低版本 MariaDB 的完整建表脚本（当前包含 37 张表）
 
+> **⚠️ poetry_old.sql 禁止手工编辑！**
+>
+> 它是 poetry.sql 的自动生成变体，两者唯一允许的差异：
+>
+> 1. `ENGINE=Aria` / `ENGINE=RocksDB` → `ENGINE=InnoDB`
+> 2. RAG 表注释改为 MySQL 场景说明
+>
+> 任何 poetry.sql 改动后，运行同步脚本重新生成：
+>
+> ```powershell
+> # Windows
+> pwsh poetize-server/scripts/sync-poetry-old.ps1
+> # Mac/Linux
+> bash poetize-server/scripts/sync-poetry-old.sh
+> ```
+>
+> pre-push 钩子（`.githooks/pre-push`）会校验两份 schema 一致性，
+> 不同步时阻断推送，避免再次漂移。
+
 ### 2. 数据库迁移脚本
 
 按时间顺序排列的增量迁移脚本，用于数据库结构的版本管理和升级。
