@@ -29,28 +29,11 @@ upstream poetize-java {
 # 注意：针对共用公网IP的场景（如企业、学校、运营商NAT），已适当放宽限制
 # TODO: 使用session/token级别的限制来替代纯IP限制
 
-# 添加map指令用于解析请求URI，提取文章ID、分类ID等
-map $request_uri $article_id {
-    ~^/article/([A-Za-z0-9-]+)$ $1;
-    default "";
-}
-
-# 解析sort页面的参数 - 从URL路径中提取分类ID
-map $uri $sort_id {
-    ~^/sort/([0-9]+) $1;
-    default "";
-}
-
 # 解析label参数仍然从查询参数中获取
+# 注：原 $article_id/$sort_id/$is_im_page 三个正则 map 为SEO链路迁移后端后的死配置，已删除（减少 CVE-2026-42533 审计面）
 map $args $label_id {
     ~labelId=([0-9]+) $1;
     default "";
-}
-
-# 增加IM相关的map指令
-map $request_uri $is_im_page {
-    ~^/im.*$ 1;
-    default 0;
 }
 
 # 添加map解析 lang 参数 - 支持完整的14种语言
@@ -683,7 +666,10 @@ server {
     # Sort页面静态预渲染
     location ~ ^/sort/([0-9]+)$ {
         root /usr/share/nginx/html/poetize;
-        try_files /prerender/sort/$1/$label_id/index$lang_suffix.html /prerender/sort/$1/$label_id/index.html /prerender/sort/$1/index$lang_suffix.html /prerender/sort/$1/index.html @spa_sort;
+        # 使用 set 保存捕获组，防止 map 正则评估时 $1 被覆盖；
+        # 同时规避 CVE-2026-42533（同一表达式中捕获变量先于 map 输出变量引用时触发堆溢出）
+        set $sort_path_id $1;
+        try_files /prerender/sort/$sort_path_id/$label_id/index$lang_suffix.html /prerender/sort/$sort_path_id/$label_id/index.html /prerender/sort/$sort_path_id/index$lang_suffix.html /prerender/sort/$sort_path_id/index.html @spa_sort;
         add_header Cache-Control "public, max-age=0, s-maxage=10, stale-while-revalidate=300, must-revalidate" always;
         add_header Vary "Accept-Language" always;
     }
