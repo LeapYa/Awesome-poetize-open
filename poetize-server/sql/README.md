@@ -167,7 +167,7 @@ CREATE TABLE `table_name` (
 #### 添加字段
 
 ```sql
--- MariaDB 10.3+ / MySQL 8.0+ 支持 IF NOT EXISTS（推荐）
+-- MariaDB 10.3+ 支持 IF NOT EXISTS（推荐）
 ALTER TABLE `table_name`
 ADD COLUMN IF NOT EXISTS `new_field` VARCHAR(100) NULL COMMENT '字段说明' AFTER `existing_field`;
 
@@ -176,8 +176,9 @@ CREATE INDEX IF NOT EXISTS idx_field ON table_name(field_name);
 ```
 
 **注意**: 
-- `ADD COLUMN IF NOT EXISTS`、`ADD INDEX IF NOT EXISTS` 在 **MariaDB 10.3+** 和 **MySQL 8.0+** 中完全支持
-- 本项目使用 MariaDB，推荐使用 IF NOT EXISTS 实现脚本幂等性
+- `ADD COLUMN IF NOT EXISTS`、`ADD INDEX IF NOT EXISTS` 仅 **MariaDB 10.3+** 支持，**MySQL（含 5.7/8.0/8.4）均不支持**该语法，直接执行会报语法错误
+- 本项目官方部署使用 MariaDB，推荐使用 IF NOT EXISTS 实现脚本幂等性
+- 如需在 MySQL 上执行迁移脚本，请先查询 `information_schema.COLUMNS` 确认列不存在后，手动去掉 `IF NOT EXISTS` 再执行
 
 #### 修改字段
 
