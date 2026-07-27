@@ -48,6 +48,7 @@ public interface WebInfoMapper extends BaseMapper<WebInfo> {
                          @Param("mouseClickEffectConfig") String mouseClickEffectConfig,
                          @Param("mobileDrawerConfig") String mobileDrawerConfig,
                          @Param("homeTitle") String homeTitle,
+                         @Param("homeTitleProvided") boolean homeTitleProvided,
                          @Param("loginStyle") String loginStyle,
                          @Param("loginAccentColor") String loginAccentColor,
                          @Param("loginThirdPosition") String loginThirdPosition);

@@ -61,7 +61,11 @@
             <if test="logoImage != null">
                 logo_image = #{logoImage},
             </if>
-            home_title = #{homeTitle},
+            <!-- 首页标题：需支持"显式清空写 NULL"（前台回退 webTitle），
+                 用 provided 标志位区分"未提供"与"清空"，避免局部保存误清空 -->
+            <if test="homeTitleProvided">
+                home_title = #{homeTitle},
+            </if>
             <if test="siteAddress != null">
                 site_address = #{siteAddress},
             </if>

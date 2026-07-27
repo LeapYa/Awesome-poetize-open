@@ -128,6 +128,9 @@ public class WebInfoController {
             String webTitle = (String) params.get("webTitle");
             String logoImage = (String) params.get("logoImage");
             String homeTitle = (String) params.get("homeTitle");
+            // 区分"未提供"与"显式清空"：仅当请求携带 homeTitle 键时才更新该列，
+            // 避免其他配置页的局部保存误将首页标题清空
+            boolean homeTitleProvided = params.containsKey("homeTitle");
             // 空白字符串归一化为 null，保证清空时数据库写入 NULL（与"为空回退 webTitle"语义一致）
             if (homeTitle != null && homeTitle.trim().isEmpty()) {
                 homeTitle = null;
@@ -170,7 +173,7 @@ public class WebInfoController {
                     apiIpWhitelist,
                     navConfig, footerBackgroundImage, footerBackgroundConfig, email, minimalFooter,
                     enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode, enableDynamicTitle,
-                    mouseClickEffectConfig, mobileDrawerConfig, homeTitle, loginStyle, loginAccentColor,
+                    mouseClickEffectConfig, mobileDrawerConfig, homeTitle, homeTitleProvided, loginStyle, loginAccentColor,
                     loginThirdPosition);
 
             log.info("网站基本信息数据库更新结果: {} 行受影响, ID: {}", updateResult, id);
