@@ -114,7 +114,9 @@
         mapLoading: false,
         mapLoadFailed: false,
         chinaMapRegistered: false,
-        chinaProvinceNames: null
+        chinaProvinceNames: null,
+        // 当前 visualMap 是否为小屏紧凑态，跨断点时重绘地图
+        mapCompact: null
       }
     },
   
@@ -166,6 +168,8 @@
       
       // 响应窗口大小变化
       window.addEventListener('resize', this.resizeChart);
+      // 侧边栏折叠/移动端布局变化不会触发 window resize，用 ResizeObserver 跟随容器实际宽度
+      this.setupResizeObserver();
     },
   
     beforeDestroy() {
@@ -178,6 +182,14 @@
         this.mapChart = null;
       }
       window.removeEventListener('resize', this.resizeChart);
+      if (this.resizeObserver) {
+        this.resizeObserver.disconnect();
+        this.resizeObserver = null;
+      }
+      if (this.resizeRaf) {
+        cancelAnimationFrame(this.resizeRaf);
+        this.resizeRaf = null;
+      }
 
       // 清理全局事件监听
       if (this.themeChangeListener) {
@@ -197,7 +209,26 @@
         }
         if (this.mapChart) {
           this.mapChart.resize();
+          // 跨越移动端断点时重设 visualMap 尺寸
+          const isCompact = window.innerWidth <= 768;
+          if (this.mapCompact !== null && isCompact !== this.mapCompact) {
+            this.updateMap();
+          }
         }
+      },
+
+      // 监听图表容器自身尺寸：侧边栏 left 有 0.3s 过渡，初始化时量到的是过渡中的窄宽度，
+      // 容器宽度稳定后由 ResizeObserver 触发 resize 校正（rAF 合帧，避免过渡期间高频重绘）
+      setupResizeObserver() {
+        if (typeof ResizeObserver === 'undefined') return;
+        this.resizeObserver = new ResizeObserver(() => {
+          if (this.resizeRaf) cancelAnimationFrame(this.resizeRaf);
+          this.resizeRaf = requestAnimationFrame(() => this.resizeChart());
+        });
+        const chartDom = document.getElementById('visitChart');
+        const mapDom = document.getElementById('provinceMap');
+        if (chartDom) this.resizeObserver.observe(chartDom);
+        if (mapDom) this.resizeObserver.observe(mapDom);
       },
   
       updateChart() {
@@ -633,6 +664,10 @@
         const areaColor = isDark ? 'rgba(255, 255, 255, 0.04)' : '#f0f2f5';
         const borderColor = isDark ? 'rgba(255, 255, 255, 0.15)' : '#d8dce1';
 
+        // 小屏下收紧 visualMap 色条：默认尺寸（20×140）在 300px 高的移动端地图上遮挡过多
+        const isCompact = window.innerWidth <= 768;
+        this.mapCompact = isCompact;
+
         this.mapChart.setOption({
           backgroundColor: 'transparent',
           tooltip: {
@@ -658,11 +693,13 @@
           visualMap: {
             min: 0,
             max: maxValue,
-            left: 10,
-            bottom: 10,
+            left: isCompact ? 6 : 10,
+            bottom: isCompact ? 6 : 10,
             calculable: true,
+            itemWidth: isCompact ? 10 : 20,
+            itemHeight: isCompact ? 60 : 140,
             text: [this.mapMode === 'real' ? '真实访客' : '全部访问', ''],
-            textStyle: { color: textColor, fontSize: 11 },
+            textStyle: { color: textColor, fontSize: isCompact ? 9 : 11 },
             inRange: {
               color: isDark
                 ? ['rgba(0, 113, 227, 0.15)', 'rgba(0, 113, 227, 0.45)', '#0a84ff']

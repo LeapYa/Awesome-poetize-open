@@ -318,7 +318,7 @@ export default {
 
 <style scoped>
 .platform-block {
-  border: 1px solid #ebeef5;
+  border: 1px solid #c0c4cc;
   border-radius: 8px;
   margin-bottom: 16px;
   overflow: hidden;
@@ -328,7 +328,8 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: #fafafa;
+  background: #f0f2f5;
+  border-bottom: 1px solid #c0c4cc;
 }
 .platform-title {
   font-size: 14px;
@@ -345,6 +346,7 @@ body.dark-mode .platform-block {
 }
 body.dark-mode .platform-header {
   background: #2d2d2d;
+  border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 body.dark-mode .platform-title {
   color: #e0e0e0;

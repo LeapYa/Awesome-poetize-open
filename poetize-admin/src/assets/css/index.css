@@ -537,6 +537,17 @@ body {
     }
 }
 
+/* el-message-box 移动端垂直居中修复：
+   Element UI 的 .el-message-box 默认固定宽 420px，wrapper 依靠 inline-block ::after
+   撑杆（height:100%; vertical-align:middle）实现垂直居中。窄屏下 420px 超出视口宽度，
+   撑杆被挤到下一行，弹框顶到屏幕顶部。收窄宽度让弹框与撑杆同行即可恢复居中。 */
+@media screen and (max-width: 480px) {
+    .el-message-box {
+        width: calc(100% - 32px) !important;
+        max-width: 420px;
+    }
+}
+
 @media screen and (max-width: 600px) {
     .el-dialog {
         width: 80% !important;
