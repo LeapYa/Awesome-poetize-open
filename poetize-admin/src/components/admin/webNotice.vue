@@ -10,18 +10,23 @@
 
     <!-- 邮箱配置 -->
     <EmailSettings />
+
+    <!-- 邮件模板（验证码/订阅邮件正文） -->
+    <MailTemplateSettings />
   </div>
 </template>
 
 <script>
 import NoticeSettings from './webEdit/NoticeSettings.vue';
 import EmailSettings from './webEdit/EmailSettings.vue';
+import MailTemplateSettings from './webEdit/MailTemplateSettings.vue';
 
 export default {
   name: 'WebNotice',
   components: {
     NoticeSettings,
-    EmailSettings
+    EmailSettings,
+    MailTemplateSettings
   },
   data() {
     return {

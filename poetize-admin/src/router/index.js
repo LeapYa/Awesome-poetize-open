@@ -40,9 +40,29 @@ const routes = [
       name: 'webAppearance',
       component: () => import('../components/admin/webAppearance')
     }, {
+      path: 'webWaifu',
+      name: 'webWaifu',
+      component: () => import('../components/admin/webWaifu')
+    }, {
+      path: 'webLoginStyle',
+      name: 'webLoginStyle',
+      component: () => import('../components/admin/webLoginStyle')
+    }, {
       path: 'webNavApi',
       name: 'webNavApi',
       component: () => import('../components/admin/webNavApi')
+    }, {
+      path: 'webFooter',
+      name: 'webFooter',
+      component: () => import('../components/admin/webFooter')
+    }, {
+      path: 'webStorage',
+      name: 'webStorage',
+      component: () => import('../components/admin/webStorage')
+    }, {
+      path: 'webApi',
+      name: 'webApi',
+      component: () => import('../components/admin/webApi')
     }, {
       path: 'userList',
       name: 'userList',

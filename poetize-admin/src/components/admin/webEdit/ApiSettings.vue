@@ -18,7 +18,7 @@
 
           <div v-if="apiConfig.enabled" class="api-enabled-panel">
           <el-form-item label="API密钥">
-            <div style="display: flex; align-items: center;">
+            <div class="api-key-row">
               <el-input
                 v-model="apiConfig.apiKey"
                 placeholder="API密钥"
@@ -28,7 +28,6 @@
               <el-button
                 type="primary"
                 size="small"
-                style="margin-left: 10px;"
                 :loading="apiLoading"
                 :disabled="apiLoading"
                 @click="regenerateApiKey">
@@ -1369,6 +1368,12 @@ export default {
   margin-bottom: 10px;
 }
 
+.api-key-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .api-enabled-panel {
   max-height: 50vh;
   overflow-y: auto;
@@ -1390,9 +1395,27 @@ pre {
   word-break: break-word;
 }
 
-@media screen and (max-width: 500px) {
+/* 移动端：标签改为上下堆叠，释放左侧 120px 空间 */
+@media screen and (max-width: 768px) {
+  ::v-deep .el-form-item__label {
+    float: none;
+    display: block;
+    width: auto !important;
+    text-align: left;
+    line-height: 24px;
+    padding-bottom: 4px;
+  }
+
+  ::v-deep .el-form-item__content {
+    margin-left: 0 !important;
+  }
+
   .el-input {
     width: 100% !important;
+  }
+
+  .api-key-row {
+    flex-wrap: wrap;
   }
 }
 </style>

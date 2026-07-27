@@ -21,13 +21,13 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="name" label="名称" min-width="120">
+          <el-table-column prop="name" label="名称" min-width="120" header-align="center">
             <template slot-scope="scope">
               <el-input v-model="scope.row.name" placeholder="导航项名称"></el-input>
             </template>
           </el-table-column>
 
-          <el-table-column prop="icon" label="图标" min-width="100" :class-name="isMobileDevice ? 'hidden-xs-only' : ''">
+          <el-table-column prop="icon" label="图标" min-width="100" header-align="center" :class-name="isMobileDevice ? 'hidden-xs-only' : ''">
             <template slot-scope="scope">
               <el-input v-model="scope.row.icon" placeholder="🏡">
                 <template slot="prepend">
@@ -37,13 +37,13 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="link" label="链接" min-width="120" :class-name="isMobileDevice ? 'hidden-xs-only' : ''">
+          <el-table-column prop="link" label="链接" min-width="120" header-align="center" :class-name="isMobileDevice ? 'hidden-xs-only' : ''">
             <template slot-scope="scope">
               <el-input v-model="scope.row.link" placeholder="/"></el-input>
             </template>
           </el-table-column>
 
-          <el-table-column prop="type" label="类型" min-width="110" :class-name="isMobileDevice ? 'hidden-xs-only' : ''">
+          <el-table-column prop="type" label="类型" min-width="110" header-align="center" :class-name="isMobileDevice ? 'hidden-xs-only' : ''">
             <template slot-scope="scope">
               <el-select v-model="scope.row.type" placeholder="请选择" style="width: 100%">
                 <el-option label="普通链接" value="internal"></el-option>
@@ -59,9 +59,9 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="operation" label="操作" :min-width="isMobileDevice ? 110 : 180" fixed="right">
+          <el-table-column prop="operation" label="操作" :width="isMobileDevice ? 84 : 176" header-align="center" fixed="right">
             <template slot-scope="scope">
-              <div>
+              <div class="nav-op-cell">
                 <el-button type="text" size="small" :disabled="scope.$index === 0" @click="moveNavItem(scope.$index, 'up')" class="nav-op-btn">
                   <i class="el-icon-top"></i> <span class="nav-op-text">上移</span>
                 </el-button>
@@ -349,7 +349,10 @@ export default {
   padding: 8px 15px;
   border-radius: 4px;
   display: flex;
-  flex-wrap: wrap;
+  /* 预览模拟的是PC横向导航栏（移动端前台是抽屉侧边栏），禁止换行竖排，窄屏横向滚动 */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   min-height: 40px;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   margin-bottom: 5px;
@@ -362,6 +365,8 @@ export default {
   padding: 5px 0;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
   cursor: pointer;
   position: relative;
   transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
@@ -407,9 +412,21 @@ export default {
   margin-top: 5px;
 }
 
+.nav-op-cell {
+  white-space: nowrap;
+}
+
+.nav-op-btn {
+  padding-left: 3px !important;
+  padding-right: 3px !important;
+}
+
+.nav-op-btn + .nav-op-btn {
+  margin-left: 2px !important;
+}
+
 @media screen and (max-width: 768px) {
   .mobile-table .hidden-xs-only { display: none !important; }
-  .nav-op-btn { padding-left: 6px !important; padding-right: 6px !important; }
   .nav-op-btn .nav-op-text { display: none !important; }
 }
 

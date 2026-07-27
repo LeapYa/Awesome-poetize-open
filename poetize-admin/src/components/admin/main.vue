@@ -1191,14 +1191,21 @@ export default {
     }
 
     .history-title-bar {
-      padding-bottom: 30px;
+      min-height: unset;
     }
 
+    /* 回归文档流并允许换行：绝对定位下按钮溢出小屏宽度，换行后也会盖住下方内容 */
     .history-actions {
-      top: 58px;
-      left: 0;
-      right: 0;
+      position: static;
+      margin-top: 12px;
+      flex-wrap: wrap;
       justify-content: center;
+      row-gap: 8px;
+    }
+
+    /* 换行时 el-button 默认的左外边距会导致各行错位，统一交给 gap 控制间距 */
+    .history-actions .history-action-button {
+      margin-left: 0;
     }
   }
 

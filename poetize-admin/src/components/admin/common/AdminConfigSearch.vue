@@ -392,7 +392,9 @@ export default {
           return match
             ? {
                 ...item,
-                score: match.score,
+                // scoreOffset 用于降权兜底性质的动态条目（如高级配置），
+                // 确保专属页面的静态条目优先展示
+                score: match.score + (item.scoreOffset || 0),
                 matchRank: match.rank
               }
             : null;
@@ -720,11 +722,13 @@ export default {
               search: configKey || configName
             }
           },
-          pageTitle: '配置管理',
+          pageTitle: '高级配置',
           sectionTitle: configTypeLabel + (configKey ? ' · ' + configKey : ''),
           fieldLabel: configName,
           keywords: uniqueTexts([configName, configKey].concat(intentTerms, shortValue ? [shortValue] : [])),
-          aliases: uniqueTexts(configKeyTokens.concat(intentTerms))
+          aliases: uniqueTexts(configKeyTokens.concat(intentTerms)),
+          // 高级配置是兜底入口：降权避免意图词精确命中时压过专属页面的静态条目
+          scoreOffset: -60
         };
       });
     },

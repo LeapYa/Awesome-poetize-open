@@ -1,5 +1,9 @@
 <template>
   <div>
+    <div class="page-header">
+      <h3>高级配置</h3>
+      <p class="page-desc">直接编辑系统配置表（sys_config）。常用配置已有专属页面：基础设置（功能开关）、存储与图床、通知与邮件（邮件模板）、页脚设置（备案号）；此处仅用于插件及未收录的配置项。</p>
+    </div>
     <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 16px;">
       <el-button type="primary" @click="configDialog = true">新增配置</el-button>
       <el-input
@@ -235,6 +239,22 @@ export default {
 </script>
 
 <style scoped>
+
+.page-header {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+}
+.page-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+}
+.page-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.6;
+}
 
 .my-dialog > div {
   margin: 12px;

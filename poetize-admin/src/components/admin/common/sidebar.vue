@@ -9,12 +9,17 @@
       <span>正在验证登录状态...</span>
     </div>
     <el-menu v-else class="sidebar-el-menu"
+             ref="elMenu"
+             :key="collapsed ? 'menu-collapsed' : 'menu-expanded'"
              :background-color="isAdminDark ? '#2d2d2d' : '#ebf1f6'"
              :text-color="isAdminDark ? '#b0b0b0' : '#606266'"
              active-text-color="#20a0ff"
              unique-opened
+             :collapse="collapsed"
+             :collapse-transition="false"
              :default-active="$route.path"
-             router>
+             router
+             @select="handleMenuSelect">
       <template v-for="item in items">
         <template v-if="hasPermission(item)">
           <template v-if="item.subs">
@@ -39,9 +44,10 @@
             </el-submenu>
           </template>
           <template v-else>
-            <el-menu-item :index="item.index" :key="item.index" :id="'menu-' + item.index.replace('/', '')" @click="item.title === 'SEO优化' ? goToSeoConfig() : null">
+            <el-menu-item :index="item.index" :key="item.index" :id="'menu-' + item.index.replace('/', '')">
               <i :class="item.icon"></i>
-              {{ item.title }}
+              <!-- 折叠模式下 Element 仅隐藏 slot=title 内容，文字必须包进 span -->
+              <span slot="title">{{ item.title }}</span>
             </el-menu-item>
           </template>
         </template>
@@ -71,11 +77,16 @@ export default {
     
     data() {
       return {
-        isCollapse: true,
+        // 是否处于折叠态（驱动 el-menu 原生 collapse 模式）
+        collapsed: false,
         items: [{
           icon: "el-icon-s-home",
+          index: "/welcome",
+          title: "系统首页"  // 所有后台用户均可访问（登录后默认落地页）
+        }, {
+          icon: "el-icon-s-data",
           index: "/main",
-          title: "系统首页",
+          title: "数据统计",
           requiredUserType: 0  // 仅站长可访问
         }, {
           icon: "el-icon-s-tools",
@@ -89,6 +100,12 @@ export default {
             index: "/webAppearance",
             title: "外观个性化"
           }, {
+            index: "/webWaifu",
+            title: "看板娘与AI"
+          }, {
+            index: "/webLoginStyle",
+            title: "登录页样式"
+          }, {
             index: "/webNotice",
             title: "通知与邮件"
           }, {
@@ -96,7 +113,19 @@ export default {
             title: "安全与登录"
           }, {
             index: "/webNavApi",
-            title: "导航与接口"
+            title: "导航与侧边栏"
+          }, {
+            index: "/webFooter",
+            title: "页脚设置"
+          }, {
+            index: "/webStorage",
+            title: "存储与图床"
+          }, {
+            index: "/webApi",
+            title: "API 接口"
+          }, {
+            index: "/seoConfig",
+            title: "SEO优化"
           }]
         }, {
           icon: "el-icon-user-solid",
@@ -123,11 +152,6 @@ export default {
           index: "/sortList",
           title: "分类管理",
           requiredUserType: 1  // 管理员及以上可访问
-        }, {
-          icon: "el-icon-notebook-1",
-          index: "/configList",
-          title: "配置管理",
-          requiredUserType: 0  // 仅站长可访问
         }, {
           icon: "el-icon-s-operation",
           index: "/pluginManager",
@@ -159,17 +183,14 @@ export default {
           title: "表白墙",
           requiredUserType: 0  // 仅站长可访问
         }, {
-          icon: "el-icon-search",
-          index: "/seoConfig",
-          title: "SEO优化",
-          requiredUserType: 0,  // 仅站长可访问
-          click: function() {
-            this.goToSeoConfig();
-          }
-        }, {
           icon: "el-icon-document-checked",
           index: "/systemLog",
           title: "系统日志",
+          requiredUserType: 0  // 仅站长可访问
+        }, {
+          icon: "el-icon-notebook-1",
+          index: "/configList",
+          title: "高级配置",
           requiredUserType: 0  // 仅站长可访问
         }]
       }
@@ -209,7 +230,14 @@ export default {
     },
 
     mounted() {
+      // 移动端默认折叠：130px 侧边栏在小屏上过宽，进入即收窄为图标栏
+      if (window.innerWidth <= 768 && !this.collapsed) {
+        this.collapse();
+      }
+    },
 
+    beforeDestroy() {
+      clearTimeout(this.popupCloseTimer);
     },
 
     methods: {
@@ -229,33 +257,37 @@ export default {
       },
 
       collapse() {
-        const sidebarElements = document.querySelectorAll('.sidebar');
-        const contentBoxElements = document.querySelectorAll('.content-box');
-        
-        if (this.isCollapse) {
-          sidebarElements.forEach(element => {
-            element.style.width = '45px';
-          });
-          contentBoxElements.forEach(element => {
-            element.style.left = '45px';
-          });
-        } else {
-          sidebarElements.forEach(element => {
-            element.style.width = '130px';
-          });
-          contentBoxElements.forEach(element => {
-            element.style.left = '130px';
-          });
-        }
-        this.isCollapse = !this.isCollapse;
-      },
-      
-      goToSeoConfig() {
-        this.$router.push('/seoConfig').catch(err => {
-          this.$router.push({path: '/admin/seoConfig'}).catch(e => {
-            console.error('嵌套路由也失败:', e);
-          });
+        // 切换 el-menu 原生折叠模式：图标态窄栏，子菜单悬停弹出（弹层挂 body 不受容器裁剪）
+        this.collapsed = !this.collapsed;
+        const width = this.collapsed ? '45px' : '130px';
+        document.querySelectorAll('.sidebar').forEach(element => {
+          element.style.width = width;
         });
+        document.querySelectorAll('.content-box').forEach(element => {
+          element.style.left = width;
+        });
+      },
+
+      handleMenuSelect() {
+        // 折叠态弹层由 hover 驱动，触屏设备没有“移开”事件，点选后需手动收起；
+        // 且触屏合成的 mouseenter 会在 300ms 后再次打开弹层（el-submenu 的 showTimeout），
+        // 所以除立即收起外，延迟再补一次，掩掉迟到的重开定时器
+        if (!this.collapsed) {
+          return;
+        }
+        const closeAllPopups = () => {
+          if (!this.$refs.elMenu) {
+            return;
+          }
+          this.items.forEach(item => {
+            if (item.subs) {
+              this.$refs.elMenu.close(item.index);
+            }
+          });
+        };
+        closeAllPopups();
+        clearTimeout(this.popupCloseTimer);
+        this.popupCloseTimer = setTimeout(closeAllPopups, 400);
       }
     }
   }
@@ -320,6 +352,29 @@ export default {
   .sidebar-el-menu .el-submenu >>> .el-menu--inline {
     min-width: 0 !important;
   }
+
+  /* 原生折叠态：窄栏宽度与侧边栏一致，箭头/文字由 Element 自动隐藏 */
+  .sidebar-el-menu.el-menu--collapse {
+    width: 45px;
+  }
+
+  /* 图标严格居中：清除项内边距与图标外边距，菜单项与子菜单标题对齐 */
+  .sidebar-el-menu.el-menu--collapse >>> .el-menu-item,
+  .sidebar-el-menu.el-menu--collapse >>> .el-submenu__title {
+    padding: 0 !important;
+    text-align: center;
+  }
+
+  /* 折叠后菜单项被 tooltip 包裹，内层 div 带内联 padding: 0 20px，必须覆盖掉否则图标偏右 */
+  .sidebar-el-menu.el-menu--collapse >>> .el-menu-item > div {
+    padding: 0 !important;
+    text-align: center;
+  }
+
+  .sidebar-el-menu.el-menu--collapse >>> .el-menu-item i,
+  .sidebar-el-menu.el-menu--collapse >>> .el-submenu__title i {
+    margin: 0;
+  }
   
   /* 折叠按钮样式 */
   .collapse-btn {
@@ -359,5 +414,26 @@ export default {
 
   .sidebar-busy .sidebar-el-menu {
     opacity: 0.72;
+  }
+</style>
+
+<style>
+  /* 折叠态子菜单弹层挂在 body 下，scoped 样式无法触及；
+     矮屏上子菜单项多时会超出视口导致无法点击，
+     限高并允许弹层内部滚动 */
+  .el-menu--vertical .el-menu--popup {
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .el-menu--vertical .el-menu--popup::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .el-menu--vertical .el-menu--popup::-webkit-scrollbar-thumb {
+    background-color: rgba(144, 147, 153, 0.4);
+    border-radius: 2px;
   }
 </style>

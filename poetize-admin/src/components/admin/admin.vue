@@ -70,23 +70,23 @@
     }
   } catch (e) { /* 忽略迁移失败 */ }
   const GUIDE_STEPS = [
-    { element: '#field-update-check', route: '/welcome', title: '🆕 Step 1: 版本与更新', description: '欢迎页右下角显示当前项目的版本。点击 <b>检查更新</b> 可检查是否有新版本；发现更新后，按钮会变成 <b>去更新</b>，点击后跳转到 GitHub Releases 查看升级说明。', side: 'left', align: 'end' },
-    { element: '#menu-webEdit', route: '/webEdit', title: '🌐 Step 2: 基础设置', description: '配置 <b>站点基础信息</b>（包括网站名称、标题、地址、头像、背景图、页脚），让网站告别默认空白状态。配置完成后点击灵动胶囊的下一步继续配置。' },
-    { element: '#menu-webAppearance', route: '/webAppearance', title: '🎨 Step 3: 外观个性化', description: '配置 <b>外观与个性化</b>（看板娘、AI聊天助手、鼠标点击效果、自动夜间模式、灰色模式等），让你的网站更有个性。' },
-    { element: '#menu-pluginManager', route: '/pluginManager', title: '🔌 Step 4: 插件管理', description: '想要更深度的个性化？在 <b>插件管理</b> 中，你可以定制 <b>鼠标点击效果</b>、<b>全屏飘落特效</b>、<b>看板娘模型</b>、<b>文章编辑器</b>、<b>文章阅读主题</b>，还能开启 <b>文章付费</b> 功能实现内容变现。支持安装第三方插件包，打造独一无二的网站体验。' },
-    { element: '#menu-configList', route: '/configList', title: '🔧 Step 5: 配置管理', description: '查找并填写 <b>备案号</b>（beian、policeBeian）。中国大陆服务器必填（港澳台以及海外服务器可跳过）。' },
-    { element: '#menu-configList', route: '/configList', title: '🗂️ Step 6: 存储与图床', description: '这是可选但常用的配置。搜索 <code>store.type</code> 来选择默认存储平台：<b>local</b> 适合本地或 Docker 挂载，<b>qiniu</b> 适合七牛云对象存储/CDN，<b>lsky</b> 适合兰空图床，<b>easyimage</b> 适合简单图床。使用第三方平台时，需要开启对应的 <code>qiniu.enable</code>、<code>lsky.enable</code> 或 <code>easyimage.enable</code>，并填写域名、API地址、Token、Bucket 等必要参数。' },
-    { element: '#menu-configList', route: '/configList', title: '🖼️ Step 7: 图片优化与位置服务', description: '这是可选配置。搜索 <code>image.webp.enabled</code> 和 <code>image.compress.enabled</code>，决定是否启用图片上传时的 WebP 转换和压缩；还可以根据画质需求和服务器性能调整 <code>image.webp.min-size</code>、<code>image.webp.min-saving-ratio</code> 和 <code>image.compress.mode</code>。若评论区需要更精准的地理位置解析，搜索并填写 <code>tencent.lbs.key</code>（腾讯位置服务 Key），如果不填，则默认使用系统内置的 IP 库进行解析。' },
-    { element: '#menu-webNotice', route: '/webNotice', title: '📧 Step 8: 通知与邮件', description: '进入 <b>通知与邮件</b> 页面，配置 <b>SMTP邮件服务</b> 和 <b>站点公告</b>。请至少配一个邮箱并测试通过。' },
-    { element: '#menu-configList', route: '/configList', title: '✉️ Step 9: 邮件模板', description: '回到 <b>配置管理</b> 页面，搜索 <code>user.code.format</code> 和 <code>user.subscribe.format</code>，自定义 <b>邮箱验证码模板</b> 和 <b>邮箱订阅模板</b> 的正文内容，让通知邮件更具个性化。' },
-    { element: '#menu-webSecurity', route: '/webSecurity', title: '🧩 Step 10: 安全与登录', description: '进入 <b>安全与登录</b> 页面，配置 <b>验证码防护</b> 和 <b>第三方登录</b>（GitHub、Gitee等），完善站点安全和用户体验。' },
-    { element: '#field-api', route: '/webNavApi', title: '🛰️ Step 11: 对外 API 接口', description: '这里可以开启网站的 <b>对外 API 接口</b>。它主要给 <b>服务端集成</b> 使用，比如接到 <b>OpenClaw</b> 这类 <b>self-hosted AI agent gateway</b>，或者接入你自己的自动发布、内容运营工作流。启用后，可以通过 <code>X-API-KEY</code> 调用文章创建、更新、SEO、资源上传等能力。如果你平时只在后台手工发文，可以先不启用；如果要接服务端自动化，建议开启后立刻配置 <b>API IP 白名单</b>，只放行你的 OpenClaw 服务器或可信出口 IP。' },
-    { element: '#menu-userList', route: '/userList', title: '👤 Step 12: 站长个人资料修改', description: '点击修改个人信息按钮，<b>修改个人信息</b>（头像、昵称、个人简介等），这些会作为站长资料在前台中展示。' },
-    { element: '#menu-seoConfig', route: '/seoConfig', title: '🔍 Step 13: SEO全套配置', description: '这里是网站被搜索引擎收录的前提：开启SEO → 填写描述/关键词 → 一键生成图标 → 搜索引擎验证推送 → sitemap生成。' },
-    { element: '#menu-resourcePathList', route: '/resourcePathList', title: '📦 Step 14: 本站信息 (siteInfo)', description: '在这里找到或新建 <code>siteInfo</code> 类型，配置你的网站名称、地址、描述和封面。它是友链交换页展示的本站专属“社交名片”。' },
-    { element: '#menu-resourcePathList', route: '/resourcePathList', title: '🎯 Step 15: 侧边栏定制', description: '继续在 <b>资源聚合</b> 页面，点击新增资源聚合按钮，可以配置 <b>联系方式</b>（社交媒体小图标）、<b>快捷入口</b>（自定义跳转按钮）、<b>侧边栏背景</b>（渐变或图片），这些会展示在首页 PC端右侧侧边栏中。点击类型旁的问号图标可查看效果示例。' },
-    { element: '#menu-translationModel', route: '/translationModel', title: '🤖 Step 16: 文章AI助手', description: '在这里选择合适的 <b>LLM 提供商</b>，填入 API Key，就能一键开启文章的自动翻译和智能摘要功能啦。' },
-    { element: '#menu-postEdit', route: '/postEdit', title: '✍️ Step 17: 开启创作之旅', description: '最后一步！进入 <b>写文章</b> 页面。您可以在文章信息的左下角找到 <b>默认配置的设置按钮（齿轮图标）</b>，在此统一保存你常用的默认操作规则（如自动生成摘要等）。现在，开始您的创作之旅吧！配置至此全部完成！' }
+    { element: '#field-update-check', route: '/welcome', title: '🆕 Step 1: 版本与更新', description: '欢迎页右下角显示当前版本。点击 <b>检查更新</b>，发现新版本后按钮会变为 <b>去更新</b>，点击即可跳转 GitHub Releases 查看升级说明。', side: 'left', align: 'end' },
+    { element: '#menu-webEdit', route: '/webEdit', title: '🌐 Step 2: 基础设置', description: '配置 <b>站点基础信息</b>（网站名称、标题、地址、头像、背景图）。完成后点击灵动胶囊的下一步继续。' },
+    { element: '#menu-webAppearance', route: '/webAppearance', title: '🎨 Step 3: 外观个性化', description: '配置 <b>外观与个性化</b>：鼠标点击效果、自动夜间模式、灰色模式、动态标题、字体等。' },
+    { element: '#menu-pluginManager', route: '/pluginManager', title: '🔌 Step 4: 插件管理', description: '在 <b>插件管理</b> 中定制鼠标特效、飘落特效、看板娘模型、编辑器与阅读主题，还可开启 <b>文章付费</b>；支持安装第三方插件包。' },
+    { element: '#menu-webFooter', route: '/webFooter', title: '🔧 Step 5: 页脚与备案', description: '在 <b>页脚设置</b> 中配置页脚文案、背景与友链，并填写 <b>备案号</b>（中国大陆服务器必填，港澳台及海外可跳过）。' },
+    { element: '#menu-webStorage', route: '/webStorage', title: '🗂️ Step 6: 存储与图床', description: '可选但常用。选择存储平台（本地存储 / 七牛云 / 兰空图床 / 简单图床），填写对应的域名、Token 等参数并保存，系统会自动启用所选平台。' },
+    { element: '#menu-webStorage', route: '/webStorage', title: '🖼️ Step 7: 图片优化与位置服务', description: '可选配置。在 <b>图片优化</b> 区决定是否启用上传时的 WebP 转换与压缩；若需更精准的评论地理位置解析，可在 <b>基础设置 → 功能开关</b> 填写腾讯位置服务 Key。' },
+    { element: '#menu-webNotice', route: '/webNotice', title: '📧 Step 8: 通知与邮件', description: '配置 <b>SMTP邮件服务</b> 和 <b>站点公告</b>，请至少配一个邮箱并测试通过。' },
+    { element: '#menu-webNotice', route: '/webNotice', title: '✉️ Step 9: 邮件模板', description: '在 <b>邮件模板</b> 区自定义 <b>验证码模板</b> 和 <b>订阅模板</b> 的正文内容。' },
+    { element: '#menu-webSecurity', route: '/webSecurity', title: '🧩 Step 10: 安全与登录', description: '配置 <b>验证码防护</b> 和 <b>第三方登录</b>（GitHub、Gitee 等）。' },
+    { element: '#field-api', route: '/webApi', title: '🛰️ Step 11: 对外 API 接口', description: '可选配置，面向 <b>服务端集成</b>（如 OpenClaw、自动发布工作流）。启用后可通过 <code>X-API-KEY</code> 调用文章创建、SEO、资源上传等能力；建议同时配置 <b>API IP 白名单</b>，只放行可信 IP。仅在后台手工发文可不启用。' },
+    { element: '#menu-userList', route: '/userList', title: '👤 Step 12: 站长个人资料修改', description: '点击修改个人信息按钮，设置头像、昵称、个人简介等，将作为站长资料在前台展示。' },
+    { element: '#menu-seoConfig', route: '/seoConfig', title: '🔍 Step 13: SEO全套配置', description: '在 <b>网站设置 → SEO优化</b> 中完成搜索引擎收录的前提配置：开启SEO → 填写描述/关键词 → 一键生成图标 → 搜索引擎验证推送 → sitemap生成。' },
+    { element: '#menu-resourcePathList', route: '/resourcePathList', title: '📦 Step 14: 本站信息 (siteInfo)', description: '找到或新建 <code>siteInfo</code> 类型，配置网站名称、地址、描述和封面，它是友链交换页展示的本站“社交名片”。' },
+    { element: '#menu-resourcePathList', route: '/resourcePathList', title: '🎯 Step 15: 侧边栏定制', description: '点击新增资源聚合，可配置 <b>联系方式</b>、<b>快捷入口</b>、<b>侧边栏背景</b>，展示在首页 PC 端右侧；点击类型旁的问号可查看效果示例。' },
+    { element: '#menu-translationModel', route: '/translationModel', title: '🤖 Step 16: 文章AI助手', description: '选择 <b>LLM 提供商</b> 并填入 API Key，即可开启文章自动翻译与智能摘要。' },
+    { element: '#menu-postEdit', route: '/postEdit', title: '✍️ Step 17: 开启创作之旅', description: '最后一步！在 <b>写文章</b> 页面，文章信息左下角的 <b>齿轮图标</b> 可保存常用默认规则（如自动生成摘要）。现在，开始你的创作之旅吧！' }
   ];
 
   export default {
@@ -273,6 +273,8 @@
           () => import('./main'),
           () => import('./webEdit'),
           () => import('./webAppearance'),
+          () => import('./webWaifu'),
+          () => import('./webLoginStyle'),
           () => import('./postList'),
           () => import('./seoConfig')
         ];
@@ -392,14 +394,43 @@
       
       // 应用主题到 body（统一前台和后台的实现）
       applyThemeToBody() {
+        // 与 index.html 首屏防闪烁脚本写入的内联变量保持同一份清单：
+        // 暗色时写入、亮色时清除，否则暗->亮切换后内联 --fontColor 等会残留，
+        // 导致继承色的文字（如 page-header 的 h3）切不回黑色
+        const darkVars = {
+          '--background': '#272727',
+          '--fontColor': 'white',
+          '--borderColor': '#4F4F4F',
+          '--borderHoverColor': 'black',
+          '--articleFontColor': '#E4E4E4',
+          '--articleGreyFontColor': '#D4D4D4',
+          '--commentContent': '#383838',
+          '--favoriteBg': '#1e1e1e',
+          '--whiteMask': 'rgba(56, 56, 56, 0.3)',
+          '--maxWhiteMask': 'rgba(56, 56, 56, 0.5)',
+          '--maxMaxWhiteMask': 'rgba(56, 56, 56, 0.7)',
+          '--miniWhiteMask': 'rgba(56, 56, 56, 0.15)',
+          '--mask': 'rgba(0, 0, 0, 0.5)',
+          '--miniMask': 'rgba(0, 0, 0, 0.3)',
+          '--inputBackground': '#383838',
+          '--secondaryText': '#B0B0B0',
+          '--card-bg-rgb': '39, 39, 39'
+        };
+        const root = document.documentElement;
         if (this.isAdminDark) {
           // 暗色模式：添加 dark-mode 类到 body 和 html（与前台一致）
           document.body.classList.add('dark-mode');
-          document.documentElement.classList.add('dark-mode');
+          root.classList.add('dark-mode');
+          Object.keys(darkVars).forEach((key) => {
+            root.style.setProperty(key, darkVars[key]);
+          });
         } else {
-          // 亮色模式：移除 dark-mode 类（与前台一致）
+          // 亮色模式：移除 dark-mode 类与内联暗色变量（回退到 color.css 的 :root 默认值）
           document.body.classList.remove('dark-mode');
-          document.documentElement.classList.remove('dark-mode');
+          root.classList.remove('dark-mode');
+          Object.keys(darkVars).forEach((key) => {
+            root.style.removeProperty(key);
+          });
         }
       },
       
@@ -791,6 +822,13 @@
     padding: 30px;
     overflow-y: scroll;
     background-color: #f5f7fa; /* 恢复给滚动层设置不透明背景，以开启字体亚像素抗锯齿 (Subpixel AA) */
+  }
+
+  /* 移动端内容区宽度有限，收窄左右边距给图表/表格留出更多空间 */
+  @media (max-width: 768px) {
+    .content {
+      padding: 20px 12px;
+    }
   }
   
   /* ========== 后台深色模式样式 ========== */

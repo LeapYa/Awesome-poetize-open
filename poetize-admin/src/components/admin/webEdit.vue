@@ -21,7 +21,7 @@
 
         <el-form-item id="field-logo-image" label="站点Logo" prop="logoImage">
           <div style="display: flex">
-            <el-input v-model="webInfo.logoImage" placeholder="Logo图片URL"></el-input>
+            <el-input v-model="webInfo.logoImage" placeholder="Logo图片URL，可为空"></el-input>
             <el-image lazy class="table-td-thumb"
                       style="margin-left: 10px"
                       :preview-src-list="webInfo.logoImage ? [webInfo.logoImage] : []"
@@ -95,19 +95,6 @@
           </span>
         </el-form-item>
 
-        <el-form-item id="field-web-status" label="状态" prop="status">
-          <div style="display: flex; align-items: center;">
-            <el-switch @change="changeWebStatus" v-model="webInfo.status"></el-switch>
-            <span :style="{
-                marginLeft: '10px',
-                fontSize: '12px',
-                color: webInfo.status ? '#67c23a' : '#f56c6c'
-              }">
-              {{ webInfo.status ? '已开启' : '已关闭' }}
-            </span>
-          </div>
-        </el-form-item>
-
         <el-form-item id="field-background-image" label="背景" prop="backgroundImage">
           <div style="display: flex">
             <el-input v-model="webInfo.backgroundImage"></el-input>
@@ -138,178 +125,58 @@
                          :showTip="false"></uploadPicture>
           <span class="tip">显示于前台侧边栏名片、文章作者署名等处；浏览器标签页图标请到「SEO优化 → 网站图标」配置。</span>
         </el-form-item>
-        
-        <!-- 极简页脚开关 -->
-        <el-form-item label="极简页脚" prop="minimalFooter">
+
+        <el-form-item id="field-contact-email" label="邮箱" prop="email">
+          <el-input v-model="webInfo.email" placeholder="联系邮箱（用于隐私政策和侵权联系）"></el-input>
+        </el-form-item>
+
+        <!-- 功能开关（状态切换即时保存；其余随基本信息一并保存） -->
+        <el-divider content-position="left">功能开关</el-divider>
+
+        <el-form-item id="field-web-status" label="状态" prop="status">
           <div style="display: flex; align-items: center;">
-            <el-switch v-model="webInfo.minimalFooter"></el-switch>
+            <el-switch @change="changeWebStatus" v-model="webInfo.status"></el-switch>
             <span :style="{
                 marginLeft: '10px',
                 fontSize: '12px',
-                color: webInfo.minimalFooter ? '#67c23a' : '#f56c6c'
+                color: webInfo.status ? '#67c23a' : '#f56c6c'
               }">
-              {{ webInfo.minimalFooter ? '已开启' : '已关闭' }}
+              {{ webInfo.status ? '已开启' : '已关闭' }}
             </span>
           </div>
         </el-form-item>
 
-        <el-form-item id="field-footer" label="页脚文案" prop="footer">
-          <el-input 
-            v-model="webInfo.footer" 
-            placeholder="页脚文案（极简页脚开启时不显示）"
-            :disabled="webInfo.minimalFooter">
-          </el-input>
+        <el-form-item id="field-im-enable" label="聊天室">
+          <div style="display: flex; align-items: center;">
+            <el-switch v-model="imEnableConfig.configValue" active-value="true" inactive-value="false"></el-switch>
+            <span :style="{
+                marginLeft: '10px',
+                fontSize: '12px',
+                color: imEnableConfig.configValue === 'true' ? '#67c23a' : '#f56c6c'
+              }">
+              {{ imEnableConfig.configValue === 'true' ? '已开启' : '已关闭' }}
+            </span>
+          </div>
+          <span class="tip">控制前台聊天室（IM）功能是否可用。</span>
         </el-form-item>
 
-        <el-form-item id="field-footer-background" label="页脚背景" prop="footerBackgroundImage">
-          <div style="display: flex">
-            <el-input v-model="webInfo.footerBackgroundImage" placeholder="页脚背景图片URL（可选）"></el-input>
-            <el-image lazy class="table-td-thumb"
-                      style="margin-left: 10px"
-                      v-if="webInfo.footerBackgroundImage"
-                      :preview-src-list="[webInfo.footerBackgroundImage]"
-                      :src="webInfo.footerBackgroundImage"
-                      fit="cover"></el-image>
+        <el-form-item id="field-enable-comment" label="全局评论">
+          <div style="display: flex; align-items: center;">
+            <el-switch v-model="enableCommentConfig.configValue" active-value="true" inactive-value="false"></el-switch>
+            <span :style="{
+                marginLeft: '10px',
+                fontSize: '12px',
+                color: enableCommentConfig.configValue === 'true' ? '#67c23a' : '#f56c6c'
+              }">
+              {{ enableCommentConfig.configValue === 'true' ? '已开启' : '已关闭' }}
+            </span>
           </div>
-          <uploadPicture :isAdmin="true" :prefix="'footerBackground'" style="margin-top: 15px"
-                         @addPicture="addFooterBackgroundImage"
-                         :maxSize="10"
-                         :maxNumber="1"
-                         :showTip="false"></uploadPicture>
-          
-          <!-- 背景图片配置选项 -->
-          <div v-if="webInfo.footerBackgroundImage" style="margin-top: 15px;">
-            <el-divider content-position="left">背景图片设置</el-divider>
-            <el-row :gutter="20">
-              <el-col :span="8">
-                <el-form-item label="背景大小" label-width="80px">
-                  <el-select v-model="footerBgConfig.backgroundSize" placeholder="选择背景大小">
-                    <el-option label="覆盖 (cover)" value="cover"></el-option>
-                    <el-option label="包含 (contain)" value="contain"></el-option>
-                    <el-option label="自动 (auto)" value="auto"></el-option>
-                    <el-option label="拉伸 (100% 100%)" value="100% 100%"></el-option>
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="背景位置" label-width="80px">
-                  <el-select v-model="footerBgConfig.backgroundPosition" placeholder="选择背景位置">
-                    <el-option label="居中" value="center center"></el-option>
-                    <el-option label="顶部居中" value="center top"></el-option>
-                    <el-option label="底部居中" value="center bottom"></el-option>
-                    <el-option label="左上角" value="left top"></el-option>
-                    <el-option label="右上角" value="right top"></el-option>
-                    <el-option label="左下角" value="left bottom"></el-option>
-                    <el-option label="右下角" value="right bottom"></el-option>
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="重复方式" label-width="80px">
-                  <el-select v-model="footerBgConfig.backgroundRepeat" placeholder="选择重复方式">
-                    <el-option label="不重复" value="no-repeat"></el-option>
-                    <el-option label="重复" value="repeat"></el-option>
-                    <el-option label="水平重复" value="repeat-x"></el-option>
-                    <el-option label="垂直重复" value="repeat-y"></el-option>
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="透明度" label-width="80px">
-                  <el-slider v-model="footerBgConfig.opacity"
-                           :min="0"
-                           :max="100"
-                           :step="5"
-                           :format-tooltip="val => val + '%'"
-                           @input="handleOpacityChange">
-                  </el-slider>
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="文字阴影" label-width="80px">
-                  <el-switch v-model="footerBgConfig.textShadow"></el-switch>
-                  <span style="margin-left: 10px; color: #999; font-size: 12px;">增强文字可读性</span>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="遮罩颜色" label-width="80px">
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <el-color-picker v-model="footerBgConfig.maskColor"
-                                   :predefine="['#000000', '#1a1a1a', '#333333', '#444444', '#555555', '#666666', '#FFFFFF']"
-                                   show-alpha
-                                   color-format="rgba"
-                                   @change="handleMaskColorChange">
-                    </el-color-picker>
-                    <span style="color: #999; font-size: 12px;">调整遮罩颜色和透明度</span>
-                  </div>
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="效果预览" label-width="80px">
-                  <div style="width: 100px; height: 30px; border: 1px solid #ddd; border-radius: 4px; position: relative; overflow: hidden;">
-                    <div v-if="webInfo.footerBackgroundImage"
-                         :style="{
-                           position: 'absolute',
-                           top: 0,
-                           left: 0,
-                           right: 0,
-                           bottom: 0,
-                           backgroundImage: 'url(' + webInfo.footerBackgroundImage + ')',
-                           backgroundSize: footerBgConfig.backgroundSize || 'cover',
-                           backgroundPosition: footerBgConfig.backgroundPosition || 'center center',
-                           backgroundRepeat: footerBgConfig.backgroundRepeat || 'no-repeat'
-                         }"></div>
-                    <div v-else style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #f0f0f0;"></div>
-                    <div :style="{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      background: footerBgConfig.maskColor || 'rgba(0, 0, 0, 0.5)'
-                    }"></div>
-                    <span :style="{
-                      position: 'relative',
-                      zIndex: 10,
-                      color: 'white',
-                      fontSize: '11px',
-                      display: 'block',
-                      textAlign: 'center',
-                      lineHeight: '30px',
-                      textShadow: footerBgConfig.textShadow ? '0 2px 8px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.6)' : 'none'
-                    }">样例文字</span>
-                  </div>
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </div>
+          <span class="tip">关闭后全站文章的评论区均不再开放。</span>
         </el-form-item>
 
-        <!-- 页脚友链（服务提供商展示） -->
-        <el-form-item id="field-footer-friend-links" label="页脚友链">
-          <div style="width: 100%;">
-            <div v-for="(link, index) in footerFriendLinks" :key="index"
-                 style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <el-input v-model="link.name" placeholder="名称（如：又拍云）" style="width: 25%;" size="small"></el-input>
-              <el-input v-model="link.url" placeholder="链接（如：https://www.upyun.com）" style="width: 40%;" size="small"></el-input>
-              <el-input v-model="link.logo" placeholder="Logo URL（可选）" style="width: 25%;" size="small"></el-input>
-              <el-button type="danger" icon="el-icon-delete" size="small" circle
-                         @click="footerFriendLinks.splice(index, 1)"></el-button>
-            </div>
-            <el-button type="primary" size="small" icon="el-icon-plus" plain
-                       @click="footerFriendLinks.push({ name: '', url: '', logo: '' })">
-              添加友链
-            </el-button>
-            <span class="tip">在页脚展示 CDN / 云服务等提供商链接（如“本站由 XX 提供加速”），留空则不显示。</span>
-          </div>
-        </el-form-item>
-
-        <el-form-item id="field-contact-email" label="邮箱" prop="email">
-          <el-input v-model="webInfo.email" placeholder="联系邮箱（用于隐私政策和侵权联系）"></el-input>
+        <el-form-item id="field-tencent-lbs" label="位置服务Key">
+          <el-input v-model="tencentLbsConfig.configValue" show-password placeholder="腾讯位置服务 Key（可选）"></el-input>
+          <span class="tip">用于评论区更精准的地理位置解析；留空则使用系统内置 IP 库。</span>
         </el-form-item>
       </el-form>
       <div class="myCenter" style="margin-bottom: 22px">
@@ -332,6 +199,17 @@
 
 const uploadPicture = () => import( "../common/uploadPicture");
 
+// 表单校验字段 -> 页面标签（校验失败时提示具体缺失项）
+const FIELD_LABELS = {
+  webName: '站点名称',
+  webTitle: '网站标题',
+  siteAddress: '网站地址',
+  backgroundImage: '背景',
+  email: '邮箱',
+  status: '状态',
+  avatar: '站长头像'
+};
+
   export default {
     components: {
       uploadPicture
@@ -347,16 +225,12 @@ const uploadPicture = () => import( "../common/uploadPicture");
           logoImage: "",
           homeTitle: "",
           siteAddress: "",
-          footer: "",
           backgroundImage: "/assets/backgroundPicture.jpg",
           avatar: "",
           waifuJson: "",
           status: false,
           navConfig: "",
-          footerBackgroundImage: "",
-          footerBackgroundConfig: "",
           email: "",
-          minimalFooter: false,
         },
         // 网站地址编辑状态
         editingSiteAddress: false,
@@ -376,9 +250,6 @@ const uploadPicture = () => import( "../common/uploadPicture");
             {required: true, message: '请输入网站地址或点击自动检测', trigger: 'blur'},
             {pattern: /^https?:\/\/.+/, message: '请输入完整的网站地址（http://或https://开头）', trigger: 'blur'}
           ],
-          footer: [
-            // 移除长度限制，页脚内容完全自由
-          ],
           backgroundImage: [
             {required: true, message: '请输入背景', trigger: 'change'}
           ],
@@ -395,22 +266,27 @@ const uploadPicture = () => import( "../common/uploadPicture");
         isMobileDevice: false,
         loading: false,
 
-        footerBgConfig: {
-          backgroundSize: 'cover',
-          backgroundPosition: 'center center',
-          backgroundRepeat: 'no-repeat',
-          opacity: 100,
-          textShadow: false,
-          maskColor: 'rgba(0, 0, 0, 0.5)'
-        },
-        // 页脚友链配置
-        footerFriendLinks: [],
-        footerFriendLinksConfig: {
+        // 功能开关配置（与高级配置共用 sys_config）
+        imEnableConfig: {
           id: null,
-          configName: '页脚友链（服务提供商展示）',
-          configKey: 'footer.friendLinks',
-          configValue: '',
+          configName: 'IM-聊天室启用状态',
+          configKey: 'im.enable',
+          configValue: 'true',
+          configType: '1'
+        },
+        enableCommentConfig: {
+          id: null,
+          configName: '全局评论开关',
+          configKey: 'enableComment',
+          configValue: 'true',
           configType: '2'
+        },
+        tencentLbsConfig: {
+          id: null,
+          configName: '腾讯位置服务Key',
+          configKey: 'tencent.lbs.key',
+          configValue: '',
+          configType: '1'
         },
 
       }
@@ -458,7 +334,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
         try {
           await Promise.all([
             this.getWebInfo(),
-            this.loadFooterFriendLinks()
+            this.loadFeatureConfigs()
           ]);
         } catch (error) {
           console.error("初始化数据时出错:", error);
@@ -467,49 +343,24 @@ const uploadPicture = () => import( "../common/uploadPicture");
         }
       },
 
-      // 处理透明度变化
-      handleOpacityChange(val) {
-        // 获取当前遮罩颜色
-        let maskColor = this.footerBgConfig.maskColor;
-        if (!maskColor) {
-          maskColor = 'rgba(0, 0, 0, 0.5)';
-        }
-
-        // 如果是 rgba 格式，直接替换 alpha 值
-        const rgbaMatch = maskColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+),?\s*([\d.]+)?\)$/);
-        if (rgbaMatch) {
-          const r = parseInt(rgbaMatch[1]);
-          const g = parseInt(rgbaMatch[2]);
-          const b = parseInt(rgbaMatch[3]);
-          const alpha = (val / 100).toFixed(2);
-          this.footerBgConfig.maskColor = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        } else {
-          // 如果是其他格式（hex等），转为 rgba
-          const hex = maskColor.replace('#', '');
-          let r, g, b;
-          if (hex.length === 3) {
-            r = parseInt(hex[0] + hex[0], 16);
-            g = parseInt(hex[1] + hex[1], 16);
-            b = parseInt(hex[2] + hex[2], 16);
-          } else {
-            r = parseInt(hex.substring(0, 2), 16);
-            g = parseInt(hex.substring(2, 4), 16);
-            b = parseInt(hex.substring(4, 6), 16);
+      // 加载功能开关配置
+      async loadFeatureConfigs() {
+        try {
+          const res = await this.$http.get(this.$constant.baseURL + '/sysConfig/listConfig', {}, true);
+          if (res && res.data) {
+            const list = Array.isArray(res.data) ? res.data : (res.data.data || []);
+            [this.imEnableConfig, this.enableCommentConfig, this.tencentLbsConfig].forEach(config => {
+              const item = list.find(c => c.configKey === config.configKey);
+              if (item) {
+                config.id = item.id;
+                config.configName = item.configName || config.configName;
+                config.configType = item.configType || config.configType;
+                config.configValue = item.configValue != null ? item.configValue : config.configValue;
+              }
+            });
           }
-          const alpha = (val / 100).toFixed(2);
-          this.footerBgConfig.maskColor = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        }
-      },
-
-      // 处理遮罩颜色变化
-      handleMaskColorChange(val) {
-        // 从新的 maskColor 中提取 alpha 值，更新透明度滑块
-        if (val) {
-          const rgbaMatch = val.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+),?\s*([\d.]+)?\)$/);
-          if (rgbaMatch && rgbaMatch[4]) {
-            const alpha = parseFloat(rgbaMatch[4]);
-            this.footerBgConfig.opacity = Math.round(alpha * 100);
-          }
+        } catch (e) {
+          console.warn('加载功能开关配置失败:', e);
         }
       },
 
@@ -594,33 +445,12 @@ addLogoImage(res) {
               this.webInfo.logoImage = res.data.logoImage || "";
               this.webInfo.homeTitle = res.data.homeTitle;
               this.webInfo.siteAddress = res.data.siteAddress || "";
-              this.webInfo.footer = res.data.footer;
               this.webInfo.backgroundImage = res.data.backgroundImage;
               this.webInfo.avatar = res.data.avatar;
               this.webInfo.waifuJson = res.data.waifuJson;
               this.webInfo.status = res.data.status;
               this.webInfo.navConfig = res.data.navConfig || "[]";
-              this.webInfo.footerBackgroundImage = res.data.footerBackgroundImage || "";
-              this.webInfo.footerBackgroundConfig = res.data.footerBackgroundConfig || "";
               this.webInfo.email = res.data.email || "";
-              
-              // 加载页脚背景配置
-              if (this.webInfo.footerBackgroundConfig) {
-                try {
-                  this.footerBgConfig = JSON.parse(this.webInfo.footerBackgroundConfig);
-                } catch (e) {
-                  console.error("解析页脚背景配置失败:", e);
-                  // 使用默认配置
-                  this.footerBgConfig = {
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center center',
-                    backgroundRepeat: 'no-repeat',
-                    opacity: 100,
-                    textShadow: false,
-                    maskColor: 'rgba(0, 0, 0, 0.5)'
-                  };
-                }
-              }
               
               // 更新mainStore中的webInfo，确保Live2D组件能立即响应变化
               this.mainStore.setWebInfo({...this.mainStore.webInfo, ...this.webInfo});
@@ -634,9 +464,9 @@ addLogoImage(res) {
         }
       },
       submitForm(formName) {
-        this.$refs[formName].validate((valid) => {
+        this.$refs[formName].validate((valid, invalidFields) => {
           if (valid) {
-            // 只发送基本信息字段，不包括公告、随机名称等专门管理的字段
+            // 只发送基本信息字段，不包括公告、页脚、随机名称等专门管理的字段
             const basicInfoToUpdate = {
               id: this.webInfo.id,
               webName: this.webInfo.webName,
@@ -644,24 +474,28 @@ addLogoImage(res) {
               logoImage: this.webInfo.logoImage,
               homeTitle: this.webInfo.homeTitle,
               siteAddress: this.webInfo.siteAddress,
-              footer: this.webInfo.footer,
               backgroundImage: this.webInfo.backgroundImage,
               avatar: this.webInfo.avatar,
               waifuJson: this.webInfo.waifuJson,
               status: this.webInfo.status,
               apiEnabled: this.webInfo.apiEnabled,
               apiKey: this.webInfo.apiKey,
-              footerBackgroundImage: this.webInfo.footerBackgroundImage,
-              footerBackgroundConfig: JSON.stringify(this.footerBgConfig),
-              email: this.webInfo.email,
-              minimalFooter: this.webInfo.minimalFooter
+              email: this.webInfo.email
             };
 
             this.updateWebInfo(basicInfoToUpdate);
           } else {
+            // 明确提示缺了哪些项，并滚动到第一个校验失败的字段
+            const labels = Object.keys(invalidFields || {}).map(prop => FIELD_LABELS[prop] || prop);
             this.$message({
-              message: "请完善必填项！",
-              type: "error"
+              message: labels.length ? `请完善必填项：${labels.join('、')}` : '请完善必填项！',
+              type: 'error'
+            });
+            this.$nextTick(() => {
+              const errorItem = document.querySelector('.el-form-item.is-error');
+              if (errorItem && errorItem.scrollIntoView) {
+                errorItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
             });
           }
         });
@@ -681,24 +515,22 @@ addLogoImage(res) {
           // 这样可以避免并发更新导致的缓存竞态条件
           const updateData = { ...value };
 
-
-          // 使用单一请求更新所有信息，避免并发问题
           const promises = [
             this.$http.post(this.$constant.baseURL + "/webInfo/updateWebInfo", updateData, true)
           ];
 
-          // 保存页脚友链配置
-          const validLinks = this.footerFriendLinks.filter(l => l.name && l.url);
-          this.footerFriendLinksConfig.configValue = validLinks.length > 0 ? JSON.stringify(validLinks) : '';
-          promises.push(
-            this.$http.post(this.$constant.baseURL + '/sysConfig/saveOrUpdateConfig', this.footerFriendLinksConfig, true)
-          );
+          // 保存功能开关配置（sys_config）
+          [this.imEnableConfig, this.enableCommentConfig, this.tencentLbsConfig].forEach(config => {
+            promises.push(
+              this.$http.post(this.$constant.baseURL + '/sysConfig/saveOrUpdateConfig', config, true)
+            );
+          });
 
-          // 处理所有请求完成
           Promise.all(promises)
             .then(async () => {
               this.getWebInfo();
-              // 刷新 sysConfig store
+              this.loadFeatureConfigs();
+              // 刷新 sysConfig store，让功能开关立即生效
               try {
                 const sysConfRes = await this.$http.get(this.$constant.baseURL + '/sysConfig/listSysConfig');
                 if (sysConfRes && sysConfRes.data) {
@@ -731,31 +563,6 @@ addLogoImage(res) {
       },
       isMobile() {
         return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      },
-      addFooterBackgroundImage(res) {
-        this.webInfo.footerBackgroundImage = res;
-      },
-      // 加载页脚友链配置
-      async loadFooterFriendLinks() {
-        try {
-          const res = await this.$http.get(this.$constant.baseURL + '/sysConfig/listConfig', {}, true);
-          if (res && res.data) {
-            const list = Array.isArray(res.data) ? res.data : (res.data.data || []);
-            const item = list.find(c => c.configKey === 'footer.friendLinks');
-            if (item) {
-              this.footerFriendLinksConfig.id = item.id;
-              this.footerFriendLinksConfig.configValue = item.configValue || '';
-              try {
-                const parsed = JSON.parse(item.configValue);
-                this.footerFriendLinks = Array.isArray(parsed) ? parsed : [];
-              } catch (_) {
-                this.footerFriendLinks = [];
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('加载页脚友链配置失败:', e);
-        }
       },
 
     }

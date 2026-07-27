@@ -3,17 +3,17 @@ export const adminConfigSearchIndex = [
     id: 'page-main',
     type: 'page',
     route: '/main',
-    pageTitle: '系统首页',
+    pageTitle: '数据统计',
     sectionTitle: '统计信息与访问信息',
-    fieldLabel: '系统首页',
-    keywords: ['系统首页', '后台首页', '管理首页'],
-    aliases: ['main', '统计信息', '访问信息', '总览', '访问量历史趋势', '封禁IP']
+    fieldLabel: '数据统计',
+    keywords: ['数据统计', '统计信息', '访问信息'],
+    aliases: ['main', '总览', '后台统计', '访问量历史趋势', '封禁IP']
   },
   {
     id: 'field-main-stats',
     type: 'field',
     route: '/main',
-    pageTitle: '系统首页',
+    pageTitle: '数据统计',
     sectionTitle: '统计信息',
     fieldLabel: '统计信息',
     keywords: ['统计信息', '数据统计', '总览数据'],
@@ -23,7 +23,7 @@ export const adminConfigSearchIndex = [
     id: 'field-main-visit',
     type: 'field',
     route: '/main',
-    pageTitle: '系统首页',
+    pageTitle: '数据统计',
     sectionTitle: '访问信息',
     fieldLabel: '访问信息',
     keywords: ['访问信息', '访问数据', '访问记录'],
@@ -33,16 +33,16 @@ export const adminConfigSearchIndex = [
     id: 'page-welcome',
     type: 'page',
     route: '/welcome',
-    pageTitle: 'Welcome页面',
+    pageTitle: '系统首页',
     sectionTitle: '欢迎页与配置向导',
-    fieldLabel: 'Welcome页面',
-    keywords: ['welcome页面', '欢迎页', '欢迎页面'],
-    aliases: ['welcome', '系统欢迎页', '配置向导', '新手引导', '开启配置向导', '版本更新', '检查更新', '去更新', 'Releases']
+    fieldLabel: '系统首页',
+    keywords: ['系统首页', '后台首页', '欢迎页'],
+    aliases: ['welcome', 'welcome页面', '管理首页', '系统欢迎页', '配置向导', '新手引导', '开启配置向导', '版本更新', '检查更新', '去更新', 'Releases']
   }, {
     id: 'field-update-check',
     type: 'field',
     route: '/welcome',
-    pageTitle: 'Welcome页面',
+    pageTitle: '系统首页',
     sectionTitle: '欢迎页右下角版本更新',
     fieldLabel: '检查更新',
     keywords: ['版本更新', '检查更新', '去更新', '最新版本'],
@@ -51,7 +51,7 @@ export const adminConfigSearchIndex = [
     id: 'field-welcome-entry',
     type: 'field',
     route: '/welcome',
-    pageTitle: 'Welcome页面',
+    pageTitle: '系统首页',
     sectionTitle: '欢迎页与配置向导',
     fieldLabel: '欢迎页',
     keywords: ['欢迎页', '欢迎页面', 'welcome页面'],
@@ -75,7 +75,7 @@ export const adminConfigSearchIndex = [
     sectionTitle: '网站基础信息',
     fieldLabel: '基础设置',
     keywords: ['基础设置', '网站设置', '站点设置'],
-    aliases: ['网站名称', '网站标题', '网站地址', '背景图', '网站头像', '页脚', '页脚背景', '网站状态', '极简页脚', '联系邮箱']
+    aliases: ['网站名称', '网站标题', '网站地址', '背景图', '网站头像', '网站状态', '联系邮箱']
   },
   {
     id: 'page-web-appearance',
@@ -85,7 +85,27 @@ export const adminConfigSearchIndex = [
     sectionTitle: '外观与个性化',
     fieldLabel: '外观个性化',
     keywords: ['外观个性化', '外观设置', '主题设置'],
-    aliases: ['看板娘', 'Live2D', '夜间模式', '灰色模式', '动态标题', '移动端侧边栏', '鼠标点击效果', '首页横幅高度', '字体优化']
+    aliases: ['夜间模式', '灰色模式', '动态标题', '鼠标点击效果', '首页横幅高度', '字体优化']
+  },
+  {
+    id: 'page-web-waifu',
+    type: 'page',
+    route: '/webWaifu',
+    pageTitle: '看板娘与AI',
+    sectionTitle: '看板娘与AI聊天配置',
+    fieldLabel: '看板娘与AI',
+    keywords: ['看板娘与AI', '看板娘配置', 'AI助手配置'],
+    aliases: ['看板娘', 'Live2D', 'AI聊天', '显示模式', '简洁按钮']
+  },
+  {
+    id: 'page-web-login-style',
+    type: 'page',
+    route: '/webLoginStyle',
+    pageTitle: '登录页样式',
+    sectionTitle: '登录页配置',
+    fieldLabel: '登录页样式',
+    keywords: ['登录页样式', '登录页配置', '登录页'],
+    aliases: ['登录页主题色', '第三方位置', '双滑块', '简约卡片', '毛玻璃', '磨砂典雅']
   },
   {
     id: 'page-web-notice',
@@ -111,11 +131,41 @@ export const adminConfigSearchIndex = [
     id: 'page-web-nav-api',
     type: 'page',
     route: '/webNavApi',
-    pageTitle: '导航与接口',
-    sectionTitle: '导航栏与 API 配置',
-    fieldLabel: '导航与接口',
-    keywords: ['导航与接口', '导航配置', '接口配置'],
-    aliases: ['导航栏', '首页菜单', '菜单', 'API']
+    pageTitle: '导航与侧边栏',
+    sectionTitle: '导航栏与移动端侧边栏',
+    fieldLabel: '导航与侧边栏',
+    keywords: ['导航与侧边栏', '导航配置', '侧边栏配置'],
+    aliases: ['导航栏', '首页菜单', '菜单', '移动端侧边栏']
+  },
+  {
+    id: 'page-web-footer',
+    type: 'page',
+    route: '/webFooter',
+    pageTitle: '页脚设置',
+    sectionTitle: '页脚与备案配置',
+    fieldLabel: '页脚设置',
+    keywords: ['页脚设置', '页脚配置', '页脚'],
+    aliases: ['页脚文案', '页脚背景', '极简页脚', '页脚友链', '备案号', '公安备案', 'ICP备案']
+  },
+  {
+    id: 'page-web-storage',
+    type: 'page',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '存储平台与图片优化',
+    fieldLabel: '存储与图床',
+    keywords: ['存储与图床', '存储配置', '图床配置'],
+    aliases: ['存储平台', '本地存储', '七牛云', '兰空图床', '简单图床', '图片优化', 'WebP', '图片压缩']
+  },
+  {
+    id: 'page-web-api',
+    type: 'page',
+    route: '/webApi',
+    pageTitle: 'API 接口',
+    sectionTitle: '对外 API 配置',
+    fieldLabel: 'API 接口',
+    keywords: ['API接口', 'API配置', '开放接口'],
+    aliases: ['API', 'API Key', 'IP白名单', '对外接口']
   },
   {
     id: 'page-seo',
@@ -130,7 +180,7 @@ export const adminConfigSearchIndex = [
   {
     id: 'page-ai-chat',
     type: 'page',
-    route: '/webAppearance',
+    route: '/webWaifu',
     pageTitle: 'AI聊天配置',
     sectionTitle: 'AI 模型与聊天配置',
     fieldLabel: 'AI聊天配置',
@@ -141,11 +191,11 @@ export const adminConfigSearchIndex = [
     id: 'page-config-list',
     type: 'page',
     route: '/configList',
-    pageTitle: '配置管理',
+    pageTitle: '高级配置',
     sectionTitle: '系统配置表',
-    fieldLabel: '配置管理',
-    keywords: ['配置管理', '系统配置', '配置表'],
-    aliases: ['备案号', 'configKey', '键名', '键值', '动态配置', 'SQL配置']
+    fieldLabel: '高级配置',
+    keywords: ['高级配置', '配置管理', '系统配置', '配置表'],
+    aliases: ['configKey', '键名', '键值', '动态配置', 'SQL配置', '插件配置项']
   },
   {
     id: 'page-plugin-manager',
@@ -212,7 +262,7 @@ export const adminConfigSearchIndex = [
     type: 'field',
     route: '/webEdit',
     pageTitle: '基础设置',
-    sectionTitle: '基础信息',
+    sectionTitle: '功能开关',
     fieldLabel: '网站状态',
     keywords: ['网站状态', '站点状态', '启用状态'],
     aliases: ['status', '网站开关', '站点开关']
@@ -240,9 +290,9 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-footer',
     type: 'field',
-    route: '/webEdit',
-    pageTitle: '基础设置',
-    sectionTitle: '基础信息',
+    route: '/webFooter',
+    pageTitle: '页脚设置',
+    sectionTitle: '页脚设置',
     fieldLabel: '页脚文案',
     keywords: ['页脚文案', '页脚', 'footer'],
     aliases: ['minimalFooter', 'footer', '极简页脚']
@@ -250,12 +300,152 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-footer-background',
     type: 'field',
-    route: '/webEdit',
-    pageTitle: '基础设置',
+    route: '/webFooter',
+    pageTitle: '页脚设置',
     sectionTitle: '页脚背景',
     fieldLabel: '页脚背景',
     keywords: ['页脚背景', '页脚背景图片', 'Footer背景'],
     aliases: ['footerBackgroundImage', '背景大小', '背景位置', '重复方式', '遮罩颜色']
+  },
+  {
+    id: 'field-footer-friend-links',
+    type: 'field',
+    route: '/webFooter',
+    pageTitle: '页脚设置',
+    sectionTitle: '页脚设置',
+    fieldLabel: '页脚友链',
+    keywords: ['页脚友链', '服务提供商', '提供商链接'],
+    aliases: ['footer.friendLinks', 'CDN提供商', '又拍云', '本站由XX提供加速']
+  },
+  {
+    id: 'field-beian',
+    type: 'field',
+    route: '/webFooter',
+    pageTitle: '页脚设置',
+    sectionTitle: '页脚设置',
+    fieldLabel: 'ICP备案号',
+    keywords: ['ICP备案号', '备案号', '备案'],
+    aliases: ['beian', 'ICP', '工信部备案']
+  },
+  {
+    id: 'field-police-beian',
+    type: 'field',
+    route: '/webFooter',
+    pageTitle: '页脚设置',
+    sectionTitle: '页脚设置',
+    fieldLabel: '公安备案号',
+    keywords: ['公安备案号', '公安备案', '公安网备'],
+    aliases: ['policeBeian', '公安部备案']
+  },
+  {
+    id: 'field-store-type',
+    type: 'field',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '存储平台',
+    fieldLabel: '默认存储平台',
+    keywords: ['默认存储平台', '存储平台', '存储方式'],
+    aliases: ['store.type', '对象存储', '上传存储', 'local', 'qiniu', 'lsky', 'easyimage']
+  },
+  {
+    id: 'field-store-local',
+    type: 'field',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '存储平台',
+    fieldLabel: '本地存储',
+    keywords: ['本地存储', '本地上传', '本地文件'],
+    aliases: ['local.enable', 'local.uploadUrl', '上传根目录']
+  },
+  {
+    id: 'field-store-qiniu',
+    type: 'field',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '存储平台',
+    fieldLabel: '七牛云',
+    keywords: ['七牛云', '七牛', '对象存储'],
+    aliases: ['qiniu.enable', 'qiniu.accessKey', 'qiniu.secretKey', 'qiniu.bucket', 'qiniu.downloadUrl', 'qiniuUrl', 'CDN', '上传地址']
+  },
+  {
+    id: 'field-store-lsky',
+    type: 'field',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '存储平台',
+    fieldLabel: '兰空图床',
+    keywords: ['兰空图床', '图床', '图片上传'],
+    aliases: ['lsky.enable', 'lsky.url', 'lsky.token', 'lsky.strategy_id', 'lsky.download_hosts', '存储策略ID']
+  },
+  {
+    id: 'field-store-easyimage',
+    type: 'field',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '存储平台',
+    fieldLabel: '简单图床',
+    keywords: ['简单图床', '图床', '图片上传'],
+    aliases: ['easyimage.enable', 'easyimage.url', 'easyimage.token', 'easyimage.download_hosts']
+  },
+  {
+    id: 'field-migration-private',
+    type: 'field',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '存储平台',
+    fieldLabel: '资源迁移私网访问',
+    keywords: ['资源迁移私网访问', '资源迁移', '私网图床'],
+    aliases: ['resource.migration.remote.allow-private-hosts', '内网图床', 'SSRF']
+  },
+  {
+    id: 'field-image-optimize',
+    type: 'field',
+    route: '/webStorage',
+    pageTitle: '存储与图床',
+    sectionTitle: '图片优化',
+    fieldLabel: '图片优化',
+    keywords: ['图片优化', 'WebP转换', '图片压缩'],
+    aliases: ['image.webp.enabled', 'image.webp.min-size', 'image.webp.min-saving-ratio', 'image.compress.enabled', 'image.compress.mode', '有损压缩', '无损压缩']
+  },
+  {
+    id: 'field-mail-templates',
+    type: 'field',
+    route: '/webNotice',
+    pageTitle: '通知与邮件',
+    sectionTitle: '邮件模板',
+    fieldLabel: '邮件模板',
+    keywords: ['邮件模板', '验证码邮件模板', '订阅邮件模板'],
+    aliases: ['user.code.format', 'user.subscribe.format', '邮箱验证码模板', '邮箱订阅模板']
+  },
+  {
+    id: 'field-im-enable',
+    type: 'field',
+    route: '/webEdit',
+    pageTitle: '基础设置',
+    sectionTitle: '功能开关',
+    fieldLabel: '聊天室开关',
+    keywords: ['聊天室开关', '聊天室', 'IM'],
+    aliases: ['im.enable', '即时聊天', '聊天功能']
+  },
+  {
+    id: 'field-enable-comment',
+    type: 'field',
+    route: '/webEdit',
+    pageTitle: '基础设置',
+    sectionTitle: '功能开关',
+    fieldLabel: '全局评论开关',
+    keywords: ['全局评论开关', '评论开关', '关闭评论'],
+    aliases: ['enableComment', '开启评论', '评论区']
+  },
+  {
+    id: 'field-tencent-lbs',
+    type: 'field',
+    route: '/webEdit',
+    pageTitle: '基础设置',
+    sectionTitle: '功能开关',
+    fieldLabel: '腾讯位置服务Key',
+    keywords: ['腾讯位置服务Key', '腾讯地图', 'LBS'],
+    aliases: ['tencent.lbs.key', '地理位置解析', '位置服务']
   },
   {
     id: 'field-contact-email',
@@ -290,8 +480,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-waifu',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观个性化',
+    route: '/webWaifu',
+    pageTitle: '看板娘与AI',
     sectionTitle: '外观开关',
     fieldLabel: '看板娘/AI',
     keywords: ['看板娘', 'Live2D', 'AI助手'],
@@ -330,9 +520,9 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-login-style',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观个性化',
-    sectionTitle: '外观开关',
+    route: '/webLoginStyle',
+    pageTitle: '登录页样式',
+    sectionTitle: '登录页配置',
     fieldLabel: '登录页样式',
     keywords: ['登录页样式', '登录页', '双滑块', '简约卡片', '毛玻璃', '左右分栏', '极简', '终端风', '沉浸式', '磨砂典雅', '登录页面'],
     aliases: ['loginStyle', '登录风格', '注册页样式']
@@ -340,9 +530,9 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-login-accent',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观个性化',
-    sectionTitle: '外观开关',
+    route: '/webLoginStyle',
+    pageTitle: '登录页样式',
+    sectionTitle: '登录页配置',
     fieldLabel: '登录页主题色',
     keywords: ['登录页主题色', '登录页颜色', '主题色', '取色器', '登录按钮颜色'],
     aliases: ['loginAccentColor', '登录配色', '登录主色调']
@@ -350,9 +540,9 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-login-third-position',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观个性化',
-    sectionTitle: '外观开关',
+    route: '/webLoginStyle',
+    pageTitle: '登录页样式',
+    sectionTitle: '登录页配置',
     fieldLabel: '第三方位置',
     keywords: ['第三方位置', '第三方按钮位置', '第三方登录位置', '登录按钮排版', '表单上方', '表单下方'],
     aliases: ['loginThirdPosition', '第三方排版', '第三方登录排序']
@@ -360,8 +550,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-mobile-drawer',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观个性化',
+    route: '/webNavApi',
+    pageTitle: '导航与侧边栏',
     sectionTitle: '移动端侧边栏',
     fieldLabel: '移动端侧边栏',
     keywords: ['移动端侧边栏', '手机侧边栏', '抽屉菜单'],
@@ -421,7 +611,7 @@ export const adminConfigSearchIndex = [
     id: 'field-nav',
     type: 'field',
     route: '/webNavApi',
-    pageTitle: '导航与接口',
+    pageTitle: '导航与侧边栏',
     sectionTitle: '导航栏配置',
     fieldLabel: '导航栏配置',
     keywords: ['导航栏', '导航配置', '首页菜单'],
@@ -430,8 +620,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-api',
     type: 'field',
-    route: '/webNavApi',
-    pageTitle: '导航与接口',
+    route: '/webApi',
+    pageTitle: 'API 接口',
     sectionTitle: 'API 配置',
     fieldLabel: '启用API',
     keywords: ['API配置', '开放接口', '接口设置'],
@@ -571,11 +761,11 @@ export const adminConfigSearchIndex = [
     id: 'field-config-list',
     type: 'field',
     route: '/configList',
-    pageTitle: '配置管理',
+    pageTitle: '高级配置',
     sectionTitle: '系统配置表',
     fieldLabel: '系统配置搜索',
     keywords: ['系统配置表', '配置键名', '配置键值'],
-    aliases: ['configKey', 'configValue', 'configName', '备案号', '腾讯位置服务Key', 'tencent.lbs.key', '默认存储平台', 'store.type', '七牛云', 'qiniu', '兰空图床', 'lsky', '简单图床', 'easyimage', 'WebP图片转换', 'image.webp.enabled', '图片压缩', 'image.compress.enabled']
+    aliases: ['configKey', 'configValue', 'configName', '静态资源前缀', 'webStaticResourcePrefix', '下载前缀', 'local.downloadUrl']
   },
   {
     id: 'field-plugin-mouse-effect',
@@ -1170,8 +1360,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-ai-mem0-enable',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观与个性化',
+    route: '/webWaifu',
+    pageTitle: '看板娘与AI',
     sectionTitle: 'AI聊天配置 (扩展工具)',
     fieldLabel: '开启AI记忆',
     keywords: ['开启AI记忆', 'Mem0', '跨会话增强'],
@@ -1180,8 +1370,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-ai-mem0-key',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观与个性化',
+    route: '/webWaifu',
+    pageTitle: '看板娘与AI',
     sectionTitle: 'AI聊天配置 (扩展工具)',
     fieldLabel: 'Mem0 密钥',
     keywords: ['Mem0 密钥', 'Mem0 API Key'],
@@ -1190,8 +1380,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-ai-mem0-autosave',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观与个性化',
+    route: '/webWaifu',
+    pageTitle: '看板娘与AI',
     sectionTitle: 'AI聊天配置 (扩展工具)',
     fieldLabel: '自动保存记忆',
     keywords: ['自动保存记忆', '自动提炼', '长记忆保存'],
@@ -1200,8 +1390,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-ai-mem0-autorecall',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观与个性化',
+    route: '/webWaifu',
+    pageTitle: '看板娘与AI',
     sectionTitle: 'AI聊天配置 (扩展工具)',
     fieldLabel: '自动提取记忆',
     keywords: ['自动提取记忆', '长记忆读取', '语境提取'],
@@ -1210,8 +1400,8 @@ export const adminConfigSearchIndex = [
   {
     id: 'field-ai-mem0-limit',
     type: 'field',
-    route: '/webAppearance',
-    pageTitle: '外观与个性化',
+    route: '/webWaifu',
+    pageTitle: '看板娘与AI',
     sectionTitle: 'AI聊天配置 (扩展工具)',
     fieldLabel: '注入提取上限',
     keywords: ['注入提取上限', '记忆提取上限', '召回限制'],
