@@ -642,6 +642,13 @@ CREATE TABLE `poetize`.`third_party_oauth_config` (
   `client_key` varchar(256) DEFAULT NULL COMMENT '客户端Key（Twitter使用）',
   `redirect_uri` varchar(512) DEFAULT NULL COMMENT '重定向URI',
   `scope` varchar(256) DEFAULT NULL COMMENT '授权范围',
+  `authorize_url` varchar(512) DEFAULT NULL COMMENT '授权端点（自定义平台使用）',
+  `token_url` varchar(512) DEFAULT NULL COMMENT '令牌端点（自定义平台使用）',
+  `user_info_url` varchar(512) DEFAULT NULL COMMENT '用户信息端点（自定义平台使用）',
+  `uid_field` varchar(64) DEFAULT NULL COMMENT '用户唯一标识字段路径，默认sub（自定义平台使用）',
+  `username_field` varchar(64) DEFAULT NULL COMMENT '用户名字段路径，默认name（自定义平台使用）',
+  `avatar_field` varchar(64) DEFAULT NULL COMMENT '头像字段路径，默认picture（自定义平台使用）',
+  `email_field` varchar(64) DEFAULT NULL COMMENT '邮箱字段路径，默认email（自定义平台使用）',
   `enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否启用该平台[0:否，1:是]',
   `global_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '全局是否启用第三方登录[0:否，1:是]',
   `sort_order` int DEFAULT 0 COMMENT '排序顺序',
@@ -1548,7 +1555,8 @@ INSERT INTO `poetize`.`third_party_oauth_config` (`platform_type`, `platform_nam
 ('yuque', '语雀', '', 0, 0, 13, '语雀 OAuth登录配置，需要在语雀设置的三方应用中创建应用获取 Client ID 和 Client Secret', 0),
 ('huawei', '华为', 'openid profile', 0, 0, 14, '华为账号 OAuth登录配置，需要在华为开发者联盟创建应用并开通账号服务（Account Kit）', 0),
 ('xiaomi', '小米', 'openid', 0, 0, 15, '小米账号 OAuth登录配置，需要在小米开放平台完成实名认证并申请账号服务接入', 0),
-('apple', 'Apple', '', 0, 0, 16, 'Apple 登录配置，需 Apple Developer Program 会员；Client Secret 为用 .p8 私钥签发的 JWT，最长6个月有效期需定期更换', 0);
+('apple', 'Apple', '', 0, 0, 16, 'Apple 登录配置，需 Apple Developer Program 会员；Client Secret 为用 .p8 私钥签发的 JWT，最长6个月有效期需定期更换', 0),
+('custom', '自定义', 'openid profile email', 0, 0, 17, '自定义 OAuth2/OIDC 平台接入，可对接 Keycloak、Casdoor、Logto、Authelia 等任意标准授权服务', 0);
 
 INSERT INTO `poetize`.`resource_path` (`title`, `cover`, `introduction`, `type`, `status`) VALUES ('POETIZE', 'https://s1.ax1x.com/2022/11/10/z9VlHs.png', '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～', 'siteInfo', 1);
 

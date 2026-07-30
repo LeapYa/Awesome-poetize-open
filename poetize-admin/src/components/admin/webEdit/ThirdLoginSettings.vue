@@ -55,6 +55,34 @@
               <el-form-item label="Client Secret">
                 <el-input v-model="platform.clientSecret" placeholder="请输入Client Secret" show-password></el-input>
               </el-form-item>
+              <template v-if="platform.platformType === 'custom'">
+                <el-form-item label="平台显示名">
+                  <el-input v-model="platform.platformName" placeholder="登录按钮上展示的名称，如：站长SSO"></el-input>
+                </el-form-item>
+                <el-form-item label="授权端点">
+                  <el-input v-model="platform.authorizeUrl" placeholder="https://sso.example.com/oauth2/authorize"></el-input>
+                </el-form-item>
+                <el-form-item label="令牌端点">
+                  <el-input v-model="platform.tokenUrl" placeholder="https://sso.example.com/oauth2/token"></el-input>
+                </el-form-item>
+                <el-form-item label="用户信息端点">
+                  <el-input v-model="platform.userInfoUrl" placeholder="https://sso.example.com/oauth2/userinfo"></el-input>
+                </el-form-item>
+                <el-form-item label="授权范围 scope">
+                  <el-input v-model="platform.scope" placeholder="openid profile email"></el-input>
+                </el-form-item>
+                <el-form-item label="字段映射（留空按OIDC标准）">
+                  <div class="custom-field-mapping">
+                    <el-input v-model="platform.uidField" placeholder="用户标识：sub"></el-input>
+                    <el-input v-model="platform.usernameField" placeholder="用户名：name"></el-input>
+                    <el-input v-model="platform.avatarField" placeholder="头像：picture"></el-input>
+                    <el-input v-model="platform.emailField" placeholder="邮箱：email"></el-input>
+                  </div>
+                  <div class="redirect-uri-tip">
+                    <span>支持点号路径取嵌套值，如 data.id</span>
+                  </div>
+                </el-form-item>
+              </template>
               <el-form-item label="回调地址">
                 <el-input v-if="!platform.customRedirect" :value="effectiveRedirectUri(platform)" readonly>
                   <el-button slot="append" icon="el-icon-document-copy" @click="copyRedirectUri(platform)">复制</el-button>
@@ -77,7 +105,7 @@
           </div>
 
           <div class="platform-actions">
-            <el-button type="text" icon="el-icon-link" :disabled="!globalEnabled || !platform.enabled" @click="openDeveloperCenter(platform.platformType)">开发者中心</el-button>
+            <el-button v-if="getDeveloperUrl(platform.platformType)" type="text" icon="el-icon-link" :disabled="!globalEnabled || !platform.enabled" @click="openDeveloperCenter(platform.platformType)">开发者中心</el-button>
             <el-button type="text" icon="el-icon-check" :disabled="!globalEnabled || !platform.enabled" @click="testLogin(platform)">测试</el-button>
           </div>
         </el-card>
@@ -145,6 +173,10 @@ const PLATFORM_META = {
     icon: '/admin/static/svg/apple.svg',
     developerUrl: 'https://developer.apple.com/account/resources/identifiers/list/serviceId',
     note: '需 Apple Developer Program 会员（99美元/年）；Client Secret 非静态密钥，需用 .p8 私钥按官方文档签发 JWT 填入，最长6个月有效期需定期更换',
+  },
+  custom: {
+    icon: '/admin/static/svg/custom.svg',
+    note: '适用于任意标准 OAuth2/OIDC 服务（Keycloak、Casdoor、Logto、Authelia 等自建 SSO）；字段映射留空时按 OIDC 标准声明（sub/name/picture/email）解析',
   },
 };
 
@@ -226,6 +258,9 @@ export default {
     getNote(type) {
       return (PLATFORM_META[type] || {}).note || '';
     },
+    getDeveloperUrl(type) {
+      return (PLATFORM_META[type] || {}).developerUrl || '';
+    },
     openDeveloperCenter(type) {
       const url = (PLATFORM_META[type] || {}).developerUrl;
       if (url) window.open(url, '_blank');
@@ -255,6 +290,9 @@ export default {
         }
         if (!platform.clientSecret) {
           this.$message.error(`${platform.platformName} 的 Client Secret 不能为空`); return;
+        }
+        if (type === 'custom' && (!platform.authorizeUrl || !platform.tokenUrl || !platform.userInfoUrl)) {
+          this.$message.error(`${platform.platformName} 的授权/令牌/用户信息端点均不能为空`); return;
         }
       }
       this.loading = true;
@@ -319,6 +357,11 @@ export default {
   font-size: 12px;
   flex-shrink: 0;
   margin-left: 8px;
+}
+.custom-field-mapping {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 .platform-note {
   margin-bottom: 10px;

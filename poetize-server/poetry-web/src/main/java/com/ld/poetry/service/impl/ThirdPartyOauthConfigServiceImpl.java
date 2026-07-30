@@ -290,6 +290,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "huawei": return "华为";
             case "xiaomi": return "小米";
             case "apple": return "Apple";
+            case "custom": return "自定义";
             default: return platformType;
         }
     }
@@ -315,6 +316,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "huawei": return 14;
             case "xiaomi": return 15;
             case "apple": return 16;
+            case "custom": return 17;
             default: return 99;
         }
     }
@@ -601,6 +603,13 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
         if ("twitter".equals(config.getPlatformType())) {
             return StringUtils.hasText(config.getClientKey()) && 
                    StringUtils.hasText(config.getClientSecret());
+        } else if ("custom".equals(config.getPlatformType())) {
+            // 自定义平台还需配齐三个端点
+            return StringUtils.hasText(config.getClientId()) &&
+                   StringUtils.hasText(config.getClientSecret()) &&
+                   StringUtils.hasText(config.getAuthorizeUrl()) &&
+                   StringUtils.hasText(config.getTokenUrl()) &&
+                   StringUtils.hasText(config.getUserInfoUrl());
         } else {
             return StringUtils.hasText(config.getClientId()) && 
                    StringUtils.hasText(config.getClientSecret());

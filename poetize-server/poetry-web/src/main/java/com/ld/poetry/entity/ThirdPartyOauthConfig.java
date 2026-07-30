@@ -71,6 +71,48 @@ public class ThirdPartyOauthConfig implements Serializable {
     private String scope;
 
     /**
+     * 授权端点（自定义平台使用）
+     */
+    @TableField("authorize_url")
+    private String authorizeUrl;
+
+    /**
+     * 令牌端点（自定义平台使用）
+     */
+    @TableField("token_url")
+    private String tokenUrl;
+
+    /**
+     * 用户信息端点（自定义平台使用）
+     */
+    @TableField("user_info_url")
+    private String userInfoUrl;
+
+    /**
+     * 用户唯一标识字段路径，默认sub（自定义平台使用）
+     */
+    @TableField("uid_field")
+    private String uidField;
+
+    /**
+     * 用户名字段路径，默认name（自定义平台使用）
+     */
+    @TableField("username_field")
+    private String usernameField;
+
+    /**
+     * 头像字段路径，默认picture（自定义平台使用）
+     */
+    @TableField("avatar_field")
+    private String avatarField;
+
+    /**
+     * 邮箱字段路径，默认email（自定义平台使用）
+     */
+    @TableField("email_field")
+    private String emailField;
+
+    /**
      * 是否启用该平台
      */
     @TableField("enabled")
