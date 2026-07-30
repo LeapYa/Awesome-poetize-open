@@ -101,8 +101,10 @@ const PLATFORM_META = {
   yandex:  { icon: '/admin/static/svg/yandex.svg',  developerUrl: 'https://oauth.yandex.com/' },
   gitee:   { icon: '/admin/static/svg/gitee.svg',   developerUrl: 'https://gitee.com/oauth/applications' },
   qq:      { icon: '/admin/static/svg/qq.svg',      developerUrl: 'https://connect.qq.com/manage.html' },
-  baidu:   { icon: '/admin/static/svg/baidu.svg',   developerUrl: 'https://developer.baidu.com/console#app/project' },
-  afdian:  { icon: '/admin/static/svg/afdian.svg',  developerUrl: 'https://afdian.com/developer' },
+  // 百度老控制台 developer.baidu.com/console 年久失修易白屏，改指 OAuth 接入指南（含注册与建应用步骤）
+  baidu:   { icon: '/admin/static/svg/baidu.svg',   developerUrl: 'https://openauth.baidu.com/doc/regdevelopers.html' },
+  // 爱发电 OAuth 需联系官方人工开通（提供应用名称/可信域名换取 clientID），指向官方接入文档
+  afdian:  { icon: '/admin/static/svg/afdian.svg',  developerUrl: 'https://guide.afdian.com/creator/oauth2' },
 };
 
 export default {
