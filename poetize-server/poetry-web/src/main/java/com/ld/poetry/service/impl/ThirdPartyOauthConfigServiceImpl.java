@@ -282,6 +282,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "qq": return "QQ";
             case "baidu": return "Baidu";
             case "afdian": return "爱发电";
+            case "weibo": return "微博";
             default: return platformType;
         }
     }
@@ -299,6 +300,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "qq": return 6;
             case "baidu": return 7;
             case "afdian": return 8;
+            case "weibo": return 9;
             default: return 99;
         }
     }

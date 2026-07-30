@@ -106,6 +106,7 @@ const PLATFORM_META = {
   yandex:  { icon: '/admin/static/svg/yandex.svg',  developerUrl: 'https://oauth.yandex.com/' },
   gitee:   { icon: '/admin/static/svg/gitee.svg',   developerUrl: 'https://gitee.com/oauth/applications' },
   qq:      { icon: '/admin/static/svg/qq.svg',      developerUrl: 'https://connect.qq.com/manage.html' },
+  weibo:   { icon: '/admin/static/svg/weibo.svg',   developerUrl: 'https://open.weibo.com/apps' },
   // 百度老控制台 developer.baidu.com/console 年久失修易白屏，改指 OAuth 接入指南（含注册与建应用步骤）
   baidu:   {
     icon: '/admin/static/svg/baidu.svg',

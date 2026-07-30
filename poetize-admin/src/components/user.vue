@@ -1245,7 +1245,9 @@ const proButton = () => import( "./common/proButton");
               { key: 'yandex', name: 'Yandex', icon: '/static/svg/yandex.svg', title: 'Yandex登录' },
               { key: 'gitee', name: 'Gitee', icon: '/static/svg/gitee.svg', title: 'Gitee登录' },
               { key: 'qq', name: 'QQ', icon: '/static/svg/qq.svg', title: 'QQ登录' },
-              { key: 'baidu', name: 'Baidu', icon: '/static/svg/baidu.svg', title: 'Baidu登录' }
+              { key: 'baidu', name: 'Baidu', icon: '/static/svg/baidu.svg', title: 'Baidu登录' },
+              { key: 'afdian', name: '爱发电', icon: '/static/svg/afdian.svg', title: '爱发电登录' },
+              { key: 'weibo', name: '微博', icon: '/static/svg/weibo.svg', title: '微博登录' }
             ];
 
             // 检查每个平台是否启用

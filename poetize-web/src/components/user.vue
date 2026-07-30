@@ -1545,6 +1545,12 @@ export default {
               icon: '/static/svg/afdian.svg',
               title: '爱发电登录',
             },
+            {
+              key: 'weibo',
+              name: '微博',
+              icon: '/static/svg/weibo.svg',
+              title: '微博登录',
+            },
           ]
 
           // 检查每个平台是否启用

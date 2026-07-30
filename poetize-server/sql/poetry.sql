@@ -1540,7 +1540,8 @@ INSERT INTO `poetize`.`third_party_oauth_config` (`platform_type`, `platform_nam
 ('gitee', 'Gitee', 'user_info emails', 0, 0, 5, 'Gitee OAuth登录配置，需要在Gitee第三方应用中创建应用', 0),
 ('qq', 'QQ', 'get_user_info', 0, 0, 6, 'QQ OAuth登录配置，需要在QQ互联平台中创建应用', 0),
 ('baidu', 'Baidu', 'basic', 0, 0, 7, 'Baidu OAuth登录配置，需要在Baidu开发者平台中创建应用', 0),
-('afdian', '爱发电', 'basic', 0, 0, 8, '爱发电 OAuth 登录配置，需要在 afdian.com 开发者设置中获取 client_id 和 client_secret', 0);
+('afdian', '爱发电', 'basic', 0, 0, 8, '爱发电 OAuth 登录配置，需要在 afdian.com 开发者设置中获取 client_id 和 client_secret', 0),
+('weibo', '微博', '', 0, 0, 9, '微博 OAuth 登录配置，需要在微博开放平台（open.weibo.com）创建网站接入应用获取 App Key 和 App Secret', 0);
 
 INSERT INTO `poetize`.`resource_path` (`title`, `cover`, `introduction`, `type`, `status`) VALUES ('POETIZE', 'https://s1.ax1x.com/2022/11/10/z9VlHs.png', '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～', 'siteInfo', 1);
 
