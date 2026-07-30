@@ -263,6 +263,7 @@ public final class UserAgentClassifier {
         if (lower.contains("yisouspider")) return "YisouSpider";
         if (lower.contains("petalbot")) return "PetalBot";
         if (lower.contains("applebot")) return "Applebot";
+        if (lower.contains("seznambot")) return "SeznamBot";
         return null;
     }
 

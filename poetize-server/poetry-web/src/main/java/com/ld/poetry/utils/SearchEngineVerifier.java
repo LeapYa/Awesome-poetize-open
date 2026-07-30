@@ -485,6 +485,14 @@ public class SearchEngineVerifier {
                 "petalbot",
                 List.of("petalsearch.com", "aspiegel.com")
         );
+        // SeznamBot（捷克 Seznam.cz 搜索引擎）官方声明所有爬虫 IP 均有
+        // fulltextrobot-*.seznam.cz 形式的反向 DNS 记录，走标准 PTR + 正向回指验证。
+        // 来源：https://o-seznam.cz/napoveda/vyhledavani/seznambot/
+        private static final SearchEngineRule SEZNAM = new SearchEngineRule(
+                "SeznamBot",
+                "seznambot",
+                List.of("seznam.cz")
+        );
 
         private static SearchEngineRule match(String claimedName) {
             if (!hasText(claimedName)) {
@@ -503,6 +511,7 @@ public class SearchEngineVerifier {
                 case "applebot" -> APPLE;
                 case "yisouspider" -> YISOU;
                 case "petalbot" -> PETAL;
+                case "seznambot" -> SEZNAM;
                 default -> null;
             };
         }

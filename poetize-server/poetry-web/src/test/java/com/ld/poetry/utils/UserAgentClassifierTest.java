@@ -216,6 +216,11 @@ class UserAgentClassifierTest {
         assertEquals("DuckDuckBot", UserAgentClassifier.classify("DuckDuckBot/1.1").name());
         assertEquals("Applebot", UserAgentClassifier.classify("Applebot/0.1").name());
         assertEquals("PetalBot", UserAgentClassifier.classify("PetalBot").name());
+        UserAgentClassifier.UaInfo seznam = UserAgentClassifier.classify(
+                "Mozilla/5.0 (compatible; SeznamBot/4.0; "
+                        + "+https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/)");
+        assertEquals("search_engine", seznam.type());
+        assertEquals("SeznamBot", seznam.name());
         // Sosospider was moved to crawler
         UserAgentClassifier.UaInfo soso = UserAgentClassifier.classify("Sosospider+(+http://help.soso.com/webspider.htm)");
         assertEquals("crawler", soso.type());

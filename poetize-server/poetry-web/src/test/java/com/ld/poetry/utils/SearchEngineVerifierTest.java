@@ -39,6 +39,9 @@ class SearchEngineVerifierTest {
     private static final String YISOU_UA =
             "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 "
                     + "(KHTML, like Gecko) Chrome/69.0.3497.81 YisouSpider/5.0 Safari/537.36";
+    private static final String SEZNAM_UA =
+            "Mozilla/5.0 (compatible; SeznamBot/4.0; "
+                    + "+https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/)";
     private final List<SearchEngineVerifier> verifiers = new ArrayList<>();
 
     @AfterEach
@@ -89,7 +92,9 @@ class SearchEngineVerifierTest {
                 new BotCase("YandexBot", YANDEX_UA, "5.255.253.20",
                         "5-255-253-20.spider.yandex.com"),
                 new BotCase("Applebot", APPLE_UA, "17.58.101.179",
-                        "17-58-101-179.applebot.apple.com")
+                        "17-58-101-179.applebot.apple.com"),
+                new BotCase("SeznamBot", SEZNAM_UA, "77.75.77.101",
+                        "fulltextrobot-77-75-77-101.seznam.cz")
         );
 
         for (BotCase botCase : cases) {
