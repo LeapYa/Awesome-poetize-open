@@ -554,7 +554,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return PoetryResult.fail("密码不能为空！");
         }
 
-        Long count = lambdaQuery().eq(User::getUsername, filteredUsername).count();
+        // 查重需含逻辑删除记录：uk_username 唯一索引对已删除行同样生效
+        Long count = baseMapper.countUsernameIncludeDeleted(filteredUsername);
         if (count != 0) {
             return PoetryResult.fail("用户名重复！");
         }
@@ -653,8 +654,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return PoetryResult.fail("用户名不能包含@！");
             }
 
-            Long count = lambdaQuery().eq(User::getUsername, user.getUsername()).ne(User::getId, PoetryUtil.getUserId())
-                    .count();
+            // 查重需含逻辑删除记录：uk_username 唯一索引对已删除行同样生效
+            Long count = baseMapper.countUsernameIncludeDeletedExcludeId(user.getUsername(), PoetryUtil.getUserId());
             if (count != 0) {
                 return PoetryResult.fail("用户名重复！");
             }
@@ -1377,7 +1378,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             int count = 0;
             String uniqueUsername = finalUsername;
-            while (lambdaQuery().eq(User::getUsername, uniqueUsername).count() > 0) {
+            // 查重需含逻辑删除记录：已删除用户仍占用 uk_username 唯一索引，
+            // lambdaQuery 会被 @TableLogic 自动拼 deleted=0，看不到已删除行，导致插入撞键登录失败
+            while (baseMapper.countUsernameIncludeDeleted(uniqueUsername) > 0) {
                 uniqueUsername = finalUsername + "_" + (++count);
             }
 
