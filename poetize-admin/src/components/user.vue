@@ -1229,34 +1229,35 @@ const proButton = () => import( "./common/proButton");
         this.loadThirdPartyLoginConfig();
       },
 
-      // 加载第三方登录配置
+      // 加载第三方登录配置（完全由后端 thirdLoginStatus 驱动，新增平台前端零改动）
       loadThirdPartyLoginConfig() {
         this.getThirdPartyLoginConfig().then(config => {
           this.thirdPartyLoginConfig = config;
 
-          // 提取启用的第三方登录提供商列表
+          // 提取启用的第三方登录提供商列表：图标按 /static/svg/{平台标识}.svg 约定解析
           this.enabledThirdPartyProviders = [];
           if (config.enable) {
-            // 定义支持的第三方登录平台及其显示信息
-            const supportedProviders = [
-              { key: 'github', name: 'GitHub', icon: '/static/svg/github.svg', title: 'GitHub登录' },
-              { key: 'google', name: 'Google', icon: '/static/svg/google.svg', title: 'Google登录' },
-              { key: 'x', name: 'Twitter', icon: '/static/svg/x.svg', title: 'Twitter登录', configKey: 'twitter' },
-              { key: 'yandex', name: 'Yandex', icon: '/static/svg/yandex.svg', title: 'Yandex登录' },
-              { key: 'gitee', name: 'Gitee', icon: '/static/svg/gitee.svg', title: 'Gitee登录' },
-              { key: 'qq', name: 'QQ', icon: '/static/svg/qq.svg', title: 'QQ登录' },
-              { key: 'baidu', name: 'Baidu', icon: '/static/svg/baidu.svg', title: 'Baidu登录' },
-              { key: 'afdian', name: '爱发电', icon: '/static/svg/afdian.svg', title: '爱发电登录' },
-              { key: 'weibo', name: '微博', icon: '/static/svg/weibo.svg', title: '微博登录' }
-            ];
+            // 图标文件名与平台标识不一致的特例（twitter 的图标为 x.svg）
+            const iconAlias = { twitter: 'x' };
 
-            // 检查每个平台是否启用
-            supportedProviders.forEach(provider => {
-              const configKey = provider.configKey || provider.key;
-              if (config[configKey] && config[configKey].enabled === true) {
-                this.enabledThirdPartyProviders.push(provider);
-              }
-            });
+            this.enabledThirdPartyProviders = Object.keys(config)
+              .filter(key =>
+                key !== 'enable' &&
+                config[key] &&
+                typeof config[key] === 'object' &&
+                config[key].enabled === true
+              )
+              .map(key => {
+                const name = config[key].platformName || key;
+                return {
+                  key,
+                  name,
+                  icon: `/static/svg/${iconAlias[key] || key}.svg`,
+                  title: `${name}登录`,
+                  sortOrder: Number.isFinite(config[key].sortOrder) ? config[key].sortOrder : 99
+                };
+              })
+              .sort((a, b) => a.sortOrder - b.sortOrder);
           }
 
         });
