@@ -26,7 +26,7 @@
 - Apple（登录服务国内可直连）
 
 > [!NOTE]
-> GitLab（gitlab.com）未纳入代理体系：国内访问时好时坏，且授权页阶段本就无法由服务端代理解决。
+> GitLab（gitlab.com）与 Steam（steamcommunity.com）未纳入代理体系：国内访问时好时坏，且授权页阶段本就无法由服务端代理解决。
 
 ## 方案原理与网络封锁类型
 

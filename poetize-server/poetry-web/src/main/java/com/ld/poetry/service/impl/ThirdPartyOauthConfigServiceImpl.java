@@ -290,6 +290,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "huawei": return "华为";
             case "xiaomi": return "小米";
             case "apple": return "Apple";
+            case "steam": return "Steam";
             case "custom": return "自定义";
             default: return platformType;
         }
@@ -316,7 +317,8 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "huawei": return 14;
             case "xiaomi": return 15;
             case "apple": return 16;
-            case "custom": return 17;
+            case "steam": return 17;
+            case "custom": return 18;
             default: return 99;
         }
     }
@@ -603,6 +605,9 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
         if ("twitter".equals(config.getPlatformType())) {
             return StringUtils.hasText(config.getClientKey()) && 
                    StringUtils.hasText(config.getClientSecret());
+        } else if ("steam".equals(config.getPlatformType())) {
+            // Steam 免凭据（OpenID 2.0），回调地址可留空由站点地址自动生成，无需其他必填项
+            return true;
         } else if ("custom".equals(config.getPlatformType())) {
             // 自定义平台还需配齐三个端点
             return StringUtils.hasText(config.getClientId()) &&

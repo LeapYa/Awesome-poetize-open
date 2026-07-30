@@ -115,7 +115,7 @@ INSERT INTO `poetize`.`third_party_oauth_config`
   `remark`
 ) 
 VALUES 
-('custom', '自定义', '', '', '', 'openid profile email', 0, 0, 17, '自定义 OAuth2/OIDC 平台接入，可对接 Keycloak、Casdoor、Logto、Authelia 等任意标准授权服务')
+('custom', '自定义', '', '', '', 'openid profile email', 0, 0, 18, '自定义 OAuth2/OIDC 平台接入，可对接 Keycloak、Casdoor、Logto、Authelia 等任意标准授权服务')
 ON DUPLICATE KEY UPDATE 
-  `sort_order` = 17,
+  `sort_order` = 18,
   `remark` = '自定义 OAuth2/OIDC 平台接入，可对接 Keycloak、Casdoor、Logto、Authelia 等任意标准授权服务';

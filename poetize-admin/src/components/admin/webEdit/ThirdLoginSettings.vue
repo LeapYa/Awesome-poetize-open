@@ -47,14 +47,19 @@
                   <el-input v-model="platform.clientKey" placeholder="请输入Client Key"></el-input>
                 </el-form-item>
               </template>
+              <template v-else-if="platform.platformType === 'steam'">
+                <el-form-item label="Web API Key（可选）">
+                  <el-input v-model="platform.clientSecret" placeholder="留空仅能登录；填入后可显示 Steam 昵称与头像" show-password></el-input>
+                </el-form-item>
+              </template>
               <template v-else>
                 <el-form-item label="Client ID">
                   <el-input v-model="platform.clientId" placeholder="请输入Client ID"></el-input>
                 </el-form-item>
+                <el-form-item label="Client Secret">
+                  <el-input v-model="platform.clientSecret" placeholder="请输入Client Secret" show-password></el-input>
+                </el-form-item>
               </template>
-              <el-form-item label="Client Secret">
-                <el-input v-model="platform.clientSecret" placeholder="请输入Client Secret" show-password></el-input>
-              </el-form-item>
               <template v-if="platform.platformType === 'custom'">
                 <el-form-item label="平台显示名">
                   <el-input v-model="platform.platformName" placeholder="登录按钮上展示的名称，如：站长SSO"></el-input>
@@ -178,6 +183,11 @@ const PLATFORM_META = {
     icon: '/admin/static/svg/custom.svg',
     note: '适用于任意标准 OAuth2/OIDC 服务（Keycloak、Casdoor、Logto、Authelia 等自建 SSO）；字段映射留空时按 OIDC 标准声明（sub/name/picture/email）解析',
   },
+  steam: {
+    icon: '/admin/static/svg/steam.svg',
+    developerUrl: 'https://steamcommunity.com/dev/apikey',
+    note: 'Steam 使用 OpenID 2.0，无需 Client ID/Secret 即可登录；开发者中心用于免费申请 Web API Key（填入后才能显示昵称与头像）；steamcommunity.com 国内访问可能不稳定',
+  },
 };
 
 export default {
@@ -271,9 +281,10 @@ export default {
         this.$message.error('该平台登录功能未启用'); return;
       }
       const type = platform.platformType;
+      // Steam 免凭据，不做必填校验；custom 与其他平台仍需 Client ID/Key
       if (type === 'twitter' && !platform.clientKey) {
         this.$message.error('请先填写完整的 API Key 和 Secret'); return;
-      } else if (type !== 'twitter' && !platform.clientId) {
+      } else if (type !== 'twitter' && type !== 'steam' && !platform.clientId) {
         this.$message.error('请先填写完整的 Client ID 和 Secret'); return;
       }
       const loginType = type === 'twitter' ? 'x' : type;
@@ -283,6 +294,8 @@ export default {
       for (const platform of this.platforms) {
         if (!platform.enabled) continue;
         const type = platform.platformType;
+        // Steam 免凭据（OpenID 2.0），Web API Key 也为可选，无必填项
+        if (type === 'steam') continue;
         if (type === 'twitter' && !platform.clientKey) {
           this.$message.error(`${platform.platformName} 的 Client Key 不能为空`); return;
         } else if (type !== 'twitter' && !platform.clientId) {

@@ -6,6 +6,7 @@ import com.ld.poetry.oauth.base.BaseOAuthProvider;
 import com.ld.poetry.oauth.exception.ConfigurationException;
 import com.ld.poetry.oauth.exception.OAuthException;
 import com.ld.poetry.oauth.providers.TwitterOAuthProvider;
+import com.ld.poetry.oauth.providers.SteamOpenIdProvider;
 import com.ld.poetry.oauth.state.OAuthAuthCodeService;
 import com.ld.poetry.oauth.state.OAuthStateService;
 import com.ld.poetry.service.SysAuditLogService;
@@ -78,7 +79,7 @@ public class OAuthLoginController {
                 return;
             }
 
-            // OAuth 2.0 标准流程
+            // OAuth 2.0 标准流程（Steam 虽为 OpenID 2.0，但 getAuthUrl 已重写，登录入口可复用标准流程）
             // 生成state token（包含redirect路径）
             String sessionId = getSessionId(request);
             String state = stateService.generateState(provider, sessionId, redirect);
@@ -154,6 +155,12 @@ public class OAuthLoginController {
             // 处理Twitter OAuth 1.0回调
             if (oauthProvider instanceof TwitterOAuthProvider) {
                 handleTwitterCallback((TwitterOAuthProvider) oauthProvider, oauth_token, oauth_verifier, request, response);
+                return;
+            }
+
+            // 处理Steam OpenID 2.0回调（无授权码，需回传验签）
+            if (oauthProvider instanceof SteamOpenIdProvider) {
+                handleSteamCallback((SteamOpenIdProvider) oauthProvider, state, request, response);
                 return;
             }
 
@@ -242,6 +249,43 @@ public class OAuthLoginController {
         } catch (Exception e) {
             log.error("Twitter回调处理失败", e);
             redirectToError(response, "Twitter授权失败", "x");
+        }
+    }
+
+    /**
+     * 处理Steam OpenID 2.0回调
+     * Steam 无授权码，state 通过 return_to 原样带回；校验 state 后将 openid.* 参数回传 Steam 验签
+     */
+    private void handleSteamCallback(SteamOpenIdProvider provider, String state,
+                                      HttpServletRequest request, HttpServletResponse response) throws IOException {
+        try {
+            // 校验 state（与标准流程一致，防 CSRF）
+            if (!StringUtils.hasText(state)) {
+                log.warn("Steam回调缺少state参数");
+                redirectToError(response, "安全验证失败", "steam");
+                return;
+            }
+            Map<String, Object> stateData = stateService.verifyAndConsumeState(state, "steam");
+            if (stateData == null) {
+                log.warn("Steam state验证失败");
+                redirectToError(response, "安全验证失败，请重新授权", "steam");
+                return;
+            }
+
+            // 回传全部 openid.* 参数做验签，提取 SteamID64
+            String steamId = provider.verifyAssertion(request.getParameterMap());
+
+            // 构建标准化用户信息（配置了 Web API Key 时拉取昵称与头像）
+            Map<String, Object> userInfo = provider.buildUserInfo(steamId);
+
+            processLogin(userInfo, stateData, request, response);
+
+        } catch (OAuthException e) {
+            log.error("Steam回调处理失败: error={}", e.getMessage());
+            redirectToError(response, "Steam授权失败，请重试", "steam");
+        } catch (Exception e) {
+            log.error("Steam回调处理失败", e);
+            redirectToError(response, "Steam授权失败", "steam");
         }
     }
 
