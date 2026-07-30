@@ -545,16 +545,42 @@ async function handleOAuthAuthCode(to, from, next) {
       const result = await response.json()
       if (result && result.code === 200) {
         const data = result.data
-        const accessToken = data.accessToken
         const redirectPath = data.redirectPath || sessionStorage.getItem('oauthRedirectPath') || '/'
         const emailCollectionNeeded = data.emailCollectionNeeded
 
+        // Token由后端通过HttpOnly Cookie下发，统一验证会话获取完整用户信息
+        localStorage.removeItem('currentAdmin')
+        localStorage.removeItem('currentUser')
+
+        let userData = null
+        try {
+          const tokenResponse = await fetch(baseURL + '/user/token', {
+            method: 'POST',
+            credentials: 'include',
+          })
+
+          if (tokenResponse.ok) {
+            const tokenResult = await tokenResponse.json()
+            if (tokenResult && tokenResult.code === 200) {
+              userData = tokenResult.data
+              const mainStore = useMainStore()
+              mainStore.loadCurrentUser(userData)
+              mainStore.loadCurrentAdmin(userData)
+            }
+          }
+        } catch (error) {
+          console.error('OAuth登录后获取用户信息失败:', error)
+        }
+
         if (emailCollectionNeeded) {
+          // 携带完整用户信息供欢迎对话框展示用户名、头像和登录渠道
           const tempUserData = {
             needsEmailCollection: true,
+            username: userData ? userData.username : '',
+            avatar: userData ? userData.avatar : '',
+            provider: userData ? userData.platformType : '',
           }
 
-          // Token由后端通过HttpOnly Cookie下发
           localStorage.setItem('tempUserData', JSON.stringify(tempUserData))
 
           next({
@@ -563,25 +589,6 @@ async function handleOAuthAuthCode(to, from, next) {
             replace: true,
           })
           return
-        }
-
-        // 正常登录流程 - Token由后端通过HttpOnly Cookie下发
-        localStorage.removeItem('currentAdmin')
-        localStorage.removeItem('currentUser')
-
-        // 验证会话获取用户信息
-        const tokenResponse = await fetch(baseURL + '/user/token', {
-          method: 'POST',
-          credentials: 'include',
-        })
-
-        if (tokenResponse.ok) {
-          const tokenResult = await tokenResponse.json()
-          if (tokenResult && tokenResult.code === 200) {
-            const mainStore = useMainStore()
-            mainStore.loadCurrentUser(tokenResult.data)
-            mainStore.loadCurrentAdmin(tokenResult.data)
-          }
         }
 
         // 清理sessionStorage中的临时数据

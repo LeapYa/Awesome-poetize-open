@@ -50,14 +50,13 @@ export default {
         // 隐藏模态框
         this.showGlobalEmailCollection = false
 
-        // 如果用户提供了邮箱，更新用户信息
+        // 如果用户提供了邮箱，合并到store中的完整用户信息（登录时已由/user/token填充）
         if (result.email && !result.skipped) {
-          this.tempUserData.email = result.email
+          this.mainStore.loadCurrentUser({
+            ...this.mainStore.currentUser,
+            email: result.email,
+          })
         }
-
-        // 完成登录流程
-        this.mainStore.loadCurrentUser(this.tempUserData)
-        this.mainStore.loadCurrentAdmin(this.tempUserData)
 
         // 清除临时数据
         localStorage.removeItem('tempUserData')
@@ -90,9 +89,7 @@ export default {
         console.error('完成邮箱收集流程时出错:', error)
         this.$message.error('登录过程中出现问题，但您已成功登录')
 
-        // 即使出错也要完成基本的登录流程
-        this.mainStore.loadCurrentUser(this.tempUserData)
-        this.mainStore.loadCurrentAdmin(this.tempUserData)
+        // 即使出错也要清理临时数据，登录态已由store中的完整用户信息保障
         localStorage.removeItem('tempUserData')
       }
     },
