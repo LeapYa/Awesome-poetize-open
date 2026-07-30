@@ -9,6 +9,7 @@ import com.ld.poetry.service.ai.image.CoverPromptTemplate;
 import com.ld.poetry.service.ai.image.DashScopeImageClient;
 import com.ld.poetry.service.ai.image.GeminiImageClient;
 import com.ld.poetry.service.ai.image.GeneratedImage;
+import com.ld.poetry.service.ai.image.GenericImageClient;
 import com.ld.poetry.service.ai.image.ImageConfigDto;
 import com.ld.poetry.service.ai.image.OpenAiCompatibleImageClient;
 import com.ld.poetry.utils.ArticleSummaryTextUtil;
@@ -90,6 +91,9 @@ public class AiImageServiceImpl implements AiImageService {
 
     @Autowired
     private GeminiImageClient geminiImageClient;
+
+    @Autowired
+    private GenericImageClient genericImageClient;
 
     @Autowired
     private SysAuditLogService sysAuditLogService;
@@ -356,6 +360,7 @@ public class AiImageServiceImpl implements AiImageService {
                     openAiCompatibleImageClient.generate(prompt, config);
             case "dashscope" -> dashScopeImageClient.generate(prompt, config);
             case "gemini" -> geminiImageClient.generate(prompt, config);
+            case "generic" -> genericImageClient.generate(prompt, config);
             default -> throw new IllegalArgumentException("不支持的生图 provider: " + provider);
         };
     }

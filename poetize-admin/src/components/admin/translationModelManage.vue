@@ -1202,14 +1202,17 @@
                   <el-option label="豆包/火山 (Seedream 5.0)" value="doubao">
                     <span class="option-content">豆包/火山 (Seedream 5.0)</span>
                   </el-option>
-                  <el-option label="通义万相 (Wan 2.7)" value="dashscope">
-                    <span class="option-content">通义万相 (Wan 2.7)</span>
+                  <el-option label="通义万相" value="dashscope">
+                    <span class="option-content">通义万相</span>
                   </el-option>
                   <el-option label="Google Gemini (Nano Banana Pro)" value="gemini">
                     <span class="option-content">Google Gemini (Nano Banana Pro)</span>
                   </el-option>
-                  <el-option label="自定义兼容端点" value="custom">
-                    <span class="option-content">自定义兼容端点</span>
+                  <el-option label="自定义兼容端点 (OpenAI格式)" value="custom">
+                    <span class="option-content">自定义兼容端点 (OpenAI格式)</span>
+                  </el-option>
+                  <el-option label="万能模板端点 (任意JSON协议)" value="generic">
+                    <span class="option-content">万能模板端点 (任意JSON协议)</span>
                   </el-option>
                 </el-select>
               </el-form-item>
@@ -1220,6 +1223,18 @@
 
               <el-form-item label="API接口地址">
                 <el-input v-model="apiConfig.imageUrl" placeholder="请输入生图API接口地址" class="input-field"></el-input>
+                <div v-if="apiConfig.imageProvider === 'dashscope'" class="form-tip">
+                  <i class="el-icon-info"></i>
+                  新版百炼账号推荐使用专属端点 https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation（WorkspaceId 见控制台 API-KEY 页面）；注意不要填 compatible-mode 地址，那是对话接口的 OpenAI 兼容入口
+                </div>
+                <div v-else-if="apiConfig.imageProvider === 'custom'" class="form-tip">
+                  <i class="el-icon-info"></i>
+                  仅适用于 OpenAI 图像生成协议的接口（POST /v1/images/generations，Bearer 鉴权，返回 data[].url 或 b64_json），如 one-api/new-api 中转网关；不适用于 DashScope 原生端点、Gemini 等专有协议，请直接选择对应服务商
+                </div>
+                <div v-else-if="apiConfig.imageProvider === 'generic'" class="form-tip">
+                  <i class="el-icon-info"></i>
+                  任意“静态鉴权 + JSON 收发”的生图 API 均可纯配置接入：在下方填写请求体模板与图片提取路径即可；需要动态签名鉴权的服务（如可灵 JWT）暂不支持
+                </div>
               </el-form-item>
 
               <el-form-item label="API密钥">
@@ -1249,6 +1264,60 @@
                   </el-button>
                 </div>
               </el-form-item>
+
+              <!-- 万能模板端点专属配置 -->
+              <template v-if="apiConfig.imageProvider === 'generic'">
+                <el-form-item label="请求体模板">
+                  <el-input
+                    type="textarea"
+                    v-model="apiConfig.imageGenericBody"
+                    :rows="5"
+                    :placeholder="genericBodyPlaceholder"
+                    class="input-field"
+                    style="font-family: monospace; font-size: 12px;">
+                  </el-input>
+                  <div class="form-tip">
+                    <i class="el-icon-info"></i>
+                    可用占位符：{{ '{' + '{prompt}' + '}' }}（自动JSON转义）、{{ '{' + '{model}' + '}' }}、{{ '{' + '{width}' + '}' }}、{{ '{' + '{height}' + '}' }}、{{ '{' + '{size}' + '}' }}（如 1024x1024）、{{ '{' + '{ratio}' + '}' }}（如 16:9）
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="图片提取路径">
+                  <el-input v-model="apiConfig.imageGenericImagePath" placeholder='如：data[0].url 或 output.choices[0].message.content[0].image' class="input-field"></el-input>
+                  <div class="form-tip">
+                    <i class="el-icon-info"></i>
+                    从响应 JSON 中取图片的路径，支持点号与下标；取到的值自动识别 URL / base64 / data URI
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="请求头模板">
+                  <el-input
+                    type="textarea"
+                    v-model="apiConfig.imageGenericHeaders"
+                    :rows="2"
+                    :placeholder="genericHeadersPlaceholder"
+                    class="input-field"
+                    style="font-family: monospace; font-size: 12px;">
+                  </el-input>
+                </el-form-item>
+
+                <el-form-item label="异步任务ID路径">
+                  <el-input v-model="apiConfig.imageGenericTaskIdPath" placeholder="同步接口留空；异步接口填任务ID路径，如 data.task_id" class="input-field"></el-input>
+                  <div class="form-tip">
+                    <i class="el-icon-info"></i>
+                    填写后启用异步模式：提交任务后每3秒轮询下方地址，直到取到图片或超时（超时时长=上方超时时间）
+                  </div>
+                </el-form-item>
+
+                <template v-if="apiConfig.imageGenericTaskIdPath">
+                  <el-form-item label="轮询地址模板">
+                    <el-input v-model="apiConfig.imageGenericPollUrl" :placeholder="genericPollUrlPlaceholder" class="input-field"></el-input>
+                  </el-form-item>
+                  <el-form-item label="轮询图片路径">
+                    <el-input v-model="apiConfig.imageGenericPollImagePath" placeholder="留空则复用上方图片提取路径" class="input-field"></el-input>
+                  </el-form-item>
+                </template>
+              </template>
 
               <el-form-item label="图片尺寸">
                 <el-select v-model="apiConfig.imageSize" placeholder="请选择宽高比" class="full-width" @change="onImageSizeChange">
@@ -2051,6 +2120,17 @@ export default {
         imageSize: '16:9',
         imageResolution: '1536x864',
         imageQuality: 'auto',
+        // 万能模板端点（仅 imageProvider=generic 时使用）
+        imageGenericHeaders: '',
+        imageGenericBody: '',
+        imageGenericImagePath: '',
+        imageGenericTaskIdPath: '',
+        imageGenericPollUrl: '',
+        imageGenericPollImagePath: '',
+        // 万能模板端点输入框示例文案（含 {{}} 占位符，需用动态绑定避开 Vue 模板插值）
+        genericBodyPlaceholder: '如：{"model": "{{model}}", "prompt": "{{prompt}}", "width": {{width}}, "height": {{height}}}',
+        genericHeadersPlaceholder: '留空默认 Bearer 鉴权；自定义如：{"X-API-Key": "{{api_key}}"}',
+        genericPollUrlPlaceholder: '如：https://api.example.com/v1/tasks/{{task_id}}',
         // 真实感封面模板（材质/镜头/光影等由 AI 提炼，用户只需选模板类型）
         coverTemplate: 'object',  // object | portrait | felt | cyberpunk | custom
         // 自定义模板的 LLM 系统提示词（仅 coverTemplate=custom 时使用）
@@ -3157,6 +3237,13 @@ Vue.js features reactive data binding and a component-based architecture, enabli
             this.apiConfig.imageSize = imageConfig.size || '1:1';
             this.apiConfig.imageResolution = imageConfig.resolution || '1536x864';
             this.apiConfig.imageQuality = imageConfig.quality || 'auto';
+            // 万能模板端点配置回显
+            this.apiConfig.imageGenericHeaders = imageConfig.generic_headers || '';
+            this.apiConfig.imageGenericBody = imageConfig.generic_body || '';
+            this.apiConfig.imageGenericImagePath = imageConfig.generic_image_path || '';
+            this.apiConfig.imageGenericTaskIdPath = imageConfig.generic_task_id_path || '';
+            this.apiConfig.imageGenericPollUrl = imageConfig.generic_poll_url || '';
+            this.apiConfig.imageGenericPollImagePath = imageConfig.generic_poll_image_path || '';
             // 真实感封面模板回显（后端已将旧值 none 归一化为 object）
             this.apiConfig.coverTemplate = imageConfig.cover_template || 'object';
             // 自定义模板的 LLM 系统提示词回显
@@ -4107,7 +4194,8 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         'doubao': { url: 'https://ark.cn-beijing.volces.com/api/v3/images/generations', model: 'doubao-seedream-5.0-lite' },
         'dashscope': { url: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', model: 'wan2.7-image' },
         'gemini': { url: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-3-pro-image-preview' },
-        'custom': { url: '', model: '' }
+        'custom': { url: '', model: '' },
+        'generic': { url: '', model: '' }
       };
       const def = defaults[provider];
       if (def) {
@@ -4318,6 +4406,15 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         prompt_detail: this.apiConfig.imagePromptDetail || 'standard',
         timeout: this.apiConfig.imageTimeout || 120
       };
+      // 万能模板端点专属字段
+      if (this.apiConfig.imageProvider === 'generic') {
+        obj.generic_headers = this.apiConfig.imageGenericHeaders || '';
+        obj.generic_body = this.apiConfig.imageGenericBody || '';
+        obj.generic_image_path = this.apiConfig.imageGenericImagePath || '';
+        obj.generic_task_id_path = this.apiConfig.imageGenericTaskIdPath || '';
+        obj.generic_poll_url = this.apiConfig.imageGenericPollUrl || '';
+        obj.generic_poll_image_path = this.apiConfig.imageGenericPollImagePath || '';
+      }
       // 生图API密钥
       if (this.apiConfig.clearExistingImageKey) {
         obj.api_key = '';

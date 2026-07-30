@@ -10,7 +10,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <pre>
  * {
  *   "imageMode": "disabled | plain | global | dedicated",
- *   "provider": "openai | siliconflow | doubao | dashscope | gemini | custom",
+ *   "provider": "openai | siliconflow | doubao | dashscope | gemini | custom | generic",
  *   "model": "gpt-image-2",
  *   "api_url": "https://...",
  *   "api_key": "<明文>",
@@ -24,6 +24,12 @@ import tools.jackson.databind.json.JsonMapper;
  *   "timeout": 60,
  *   "cover_template": "object | portrait | felt | cyberpunk | watercolor | ink | pixel | 3d | minimal | collage | custom",  // 封面模板
  *   "custom_refine_prompt": "用户自定义的 LLM 系统提示词",  // 仅 cover_template=custom 时使用
+ *   "generic_headers": "{\"Authorization\": \"Bearer {{api_key}}\"}",  // 仅 generic：请求头 JSON 模板（可选）
+ *   "generic_body": "{\"prompt\": \"{{prompt}}\"}",  // 仅 generic：请求体模板（必填）
+ *   "generic_image_path": "data[0].url",  // 仅 generic：图片提取路径（必填）
+ *   "generic_task_id_path": "task_id",  // 仅 generic：任务ID提取路径（可选，配置后进入异步轮询模式）
+ *   "generic_poll_url": "https://.../tasks/{{task_id}}",  // 仅 generic：异步轮询地址模板
+ *   "generic_poll_image_path": "output.image_url",  // 仅 generic：轮询响应的图片提取路径（缺省复用 generic_image_path）
  *   "dedicated_llm": { model, api_url, api_key, interface_type, timeout }  // 仅 imageMode=dedicated 时存在
  * }
  *
@@ -75,6 +81,19 @@ public class ImageConfigDto {
     private int timeout = 120;
     private JsonNode dedicatedLlm;
 
+    /** 仅 generic：请求头 JSON 模板（可选，支持 {{api_key}} 占位符） */
+    private String genericHeaders = "";
+    /** 仅 generic：请求体模板（必填，支持 {{prompt}}/{{model}}/{{width}}/{{height}}/{{size}}/{{ratio}}/{{api_key}}） */
+    private String genericBody = "";
+    /** 仅 generic：图片提取路径（必填，如 data[0].url） */
+    private String genericImagePath = "";
+    /** 仅 generic：任务ID提取路径（可选，配置后进入异步轮询模式） */
+    private String genericTaskIdPath = "";
+    /** 仅 generic：异步轮询地址模板（支持 {{task_id}} 占位符） */
+    private String genericPollUrl = "";
+    /** 仅 generic：轮询响应的图片提取路径（缺省复用 genericImagePath） */
+    private String genericPollImagePath = "";
+
     public static ImageConfigDto fromJson(String json, JsonMapper objectMapper) {
         ImageConfigDto dto = new ImageConfigDto();
         if (json == null || json.isBlank()) {
@@ -103,6 +122,13 @@ public class ImageConfigDto {
             dto.customRefinePrompt = textOrDefault(node, "custom_refine_prompt", "");
             dto.timeout = node.has("timeout") ? node.get("timeout").asInt(120) : 120;
             dto.dedicatedLlm = node.get("dedicated_llm");
+
+            dto.genericHeaders = textOrDefault(node, "generic_headers", "");
+            dto.genericBody = textOrDefault(node, "generic_body", "");
+            dto.genericImagePath = textOrDefault(node, "generic_image_path", "");
+            dto.genericTaskIdPath = textOrDefault(node, "generic_task_id_path", "");
+            dto.genericPollUrl = textOrDefault(node, "generic_poll_url", "");
+            dto.genericPollImagePath = textOrDefault(node, "generic_poll_image_path", "");
         } catch (Exception ignored) {
             // 解析失败返回默认值
         }
@@ -160,6 +186,13 @@ public class ImageConfigDto {
     public String getCustomRefinePrompt() { return customRefinePrompt; }
     public int getTimeout() { return timeout; }
     public JsonNode getDedicatedLlm() { return dedicatedLlm; }
+
+    public String getGenericHeaders() { return genericHeaders; }
+    public String getGenericBody() { return genericBody; }
+    public String getGenericImagePath() { return genericImagePath; }
+    public String getGenericTaskIdPath() { return genericTaskIdPath; }
+    public String getGenericPollUrl() { return genericPollUrl; }
+    public String getGenericPollImagePath() { return genericPollImagePath; }
 
     /** 是否使用人物类真实感模板 */
     public boolean usePortraitTemplate() {
