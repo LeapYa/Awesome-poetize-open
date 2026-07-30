@@ -56,6 +56,34 @@ public class ThirdPartyOauthConfigController {
     }
 
     /**
+     * 新增自定义 OAuth2/OIDC 平台实例
+     */
+    @LoginCheck(0)
+    @PostMapping("/custom")
+    public PoetryResult<ThirdPartyOauthConfig> createCustomPlatform() {
+        try {
+            return thirdPartyOauthConfigService.createCustomPlatform();
+        } catch (Exception e) {
+            log.error("新增自定义平台失败", e);
+            return PoetryResult.fail("新增自定义平台失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除自定义平台实例（仅允许 custom/custom_* 平台）
+     */
+    @LoginCheck(0)
+    @DeleteMapping("/custom/{platformType}")
+    public PoetryResult<Boolean> deleteCustomPlatform(@PathVariable String platformType) {
+        try {
+            return thirdPartyOauthConfigService.deleteCustomPlatform(platformType);
+        } catch (Exception e) {
+            log.error("删除自定义平台失败: {}", platformType, e);
+            return PoetryResult.fail("删除自定义平台失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 获取启用的第三方登录配置
      */
     @LoginCheck(0)

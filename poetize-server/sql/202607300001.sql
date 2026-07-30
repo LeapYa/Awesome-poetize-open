@@ -114,8 +114,7 @@ VALUES
 ('huawei', '华为', '', '', '', 'openid profile', 0, 0, 14, '华为账号 OAuth登录配置，需要在华为开发者联盟创建应用并开通账号服务（Account Kit）'),
 ('xiaomi', '小米', '', '', '', 'openid', 0, 0, 15, '小米账号 OAuth登录配置，需要在小米开放平台完成实名认证并申请账号服务接入'),
 ('apple', 'Apple', '', '', '', '', 0, 0, 16, 'Apple 登录配置，需 Apple Developer Program 会员；Client Secret 为用 .p8 私钥签发的 JWT，最长6个月有效期需定期更换'),
-('steam', 'Steam', '', '', '', '', 0, 0, 17, 'Steam 登录配置（OpenID 2.0，无需 Client ID/Secret）；如需显示 Steam 昵称与头像，可在 steamcommunity.com/dev/apikey 免费申请 Web API Key 填入 Client Secret 字段'),
-('custom', '自定义', '', '', '', 'openid profile email', 0, 0, 18, '自定义 OAuth2/OIDC 平台接入，可对接 Keycloak、Casdoor、Logto、Authelia 等任意标准授权服务')
+('steam', 'Steam', '', '', '', '', 0, 0, 17, 'Steam 登录配置（OpenID 2.0，无需 Client ID/Secret）；如需显示 Steam 昵称与头像，可在 steamcommunity.com/dev/apikey 免费申请 Web API Key 填入 Client Secret 字段')
 ON DUPLICATE KEY UPDATE
   `platform_name` = VALUES(`platform_name`),
   `scope` = VALUES(`scope`),

@@ -1494,8 +1494,12 @@ export default {
       // 提取启用的第三方登录提供商列表：图标按 /static/svg/{平台标识}.svg 约定解析
       this.enabledThirdPartyProviders = []
       if (config.enable) {
-        // 图标文件名与平台标识不一致的特例（twitter 的图标为 x.svg）
-        const iconAlias = { twitter: 'x' }
+        // 图标文件名与平台标识不一致的特例（twitter 的图标为 x.svg；custom_* 共用 custom.svg）
+        const resolveIcon = (key) => {
+          if (key === 'twitter') return 'x'
+          if (key.indexOf('custom') === 0) return 'custom'
+          return key
+        }
 
         this.enabledThirdPartyProviders = Object.keys(config)
           .filter(
@@ -1510,7 +1514,7 @@ export default {
             return {
               key,
               name,
-              icon: `/static/svg/${iconAlias[key] || key}.svg`,
+              icon: `/static/svg/${resolveIcon(key)}.svg`,
               title: `${name}登录`,
               sortOrder: Number.isFinite(config[key].sortOrder)
                 ? config[key].sortOrder

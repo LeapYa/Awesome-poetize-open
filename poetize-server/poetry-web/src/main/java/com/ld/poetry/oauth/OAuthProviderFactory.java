@@ -101,9 +101,14 @@ public class OAuthProviderFactory {
 
     /**
      * 获取Provider实例
+     * custom 与 custom_* 多实例自定义平台统一路由到通用提供商
      */
     private BaseOAuthProvider getProviderInstance(String platformType) {
-        BaseOAuthProvider provider = providerMap.get(platformType.toLowerCase());
+        String key = platformType.toLowerCase();
+        BaseOAuthProvider provider = providerMap.get(key);
+        if (provider == null && key.startsWith("custom")) {
+            provider = providerMap.get("custom");
+        }
         if (provider == null) {
             throw new ConfigurationException("不支持的OAuth平台: " + platformType, platformType);
         }
@@ -118,11 +123,12 @@ public class OAuthProviderFactory {
     }
 
     /**
-     * 获取已启用的提供商列表
+     * 获取已启用的提供商列表（以数据库配置为准，包含动态新增的自定义平台）
      */
     public List<String> getEnabledProviders() {
-        return supportedProviders.stream()
-                .filter(this::isProviderEnabled)
+        return configService.getActiveConfigs().stream()
+                .map(ThirdPartyOauthConfig::getPlatformType)
+                .filter(this::isProviderSupported)
                 .collect(Collectors.toList());
     }
 
@@ -142,6 +148,8 @@ public class OAuthProviderFactory {
      * 检查提供商是否支持
      */
     public boolean isProviderSupported(String platformType) {
-        return providerMap.containsKey(platformType.toLowerCase());
+        String key = platformType.toLowerCase();
+        return providerMap.containsKey(key)
+                || (key.startsWith("custom") && providerMap.containsKey("custom"));
     }
 }

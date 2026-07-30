@@ -16,12 +16,11 @@
                 {{ globalEnabled ? '已启用' : '已禁用' }}
               </span>
               <el-button
-                v-if="customPlatform"
                 size="small"
-                icon="el-icon-setting"
-                style="margin-left: 20px;"
-                @click="customDialogVisible = true">
-                自定义平台{{ customPlatform.enabled ? '（已启用）' : '' }}
+                icon="el-icon-plus"
+                style="float: right;"
+                @click="addCustomPlatform">
+                添加自定义平台
               </el-button>
             </el-form-item>
           </el-form>
@@ -30,7 +29,7 @@
 
       <div v-loading="loadingList" class="platform-cards">
         <el-card
-          v-for="platform in cardPlatforms"
+          v-for="platform in platforms"
           :key="platform.platformType"
           shadow="never"
           :class="['platform-card', `${platform.platformType}-card`]"
@@ -53,7 +52,14 @@
           </div>
 
           <div class="platform-form">
-            <el-form label-position="top" :disabled="!globalEnabled || !platform.enabled">
+            <!-- 自定义平台卡片仅展示摘要，完整配置在编辑对话框中 -->
+            <div v-if="isCustomType(platform)" class="custom-card-summary">
+              <div class="custom-summary-line"><span>授权端点</span>{{ platform.authorizeUrl || '未配置' }}</div>
+              <div class="custom-summary-line"><span>令牌端点</span>{{ platform.tokenUrl || '未配置' }}</div>
+              <div class="custom-summary-line"><span>用户信息端点</span>{{ platform.userInfoUrl || '未配置' }}</div>
+            </div>
+            <!-- 配置随时可填（先填凭据再开启是正常流程），开关仅控制平台是否生效 -->
+            <el-form v-else label-position="top">
               <template v-if="platform.platformType === 'twitter'">
                 <el-form-item label="Client Key">
                   <el-input v-model="platform.clientKey" placeholder="请输入Client Key"></el-input>
@@ -76,10 +82,10 @@
                 </el-form-item>
               </template>
               <el-form-item label="回调地址">
-                <el-input v-if="!platform.customRedirect" :value="effectiveRedirectUri(platform)" readonly>
+                <el-input v-if="!platform.customRedirect" key="redirect-auto" :value="effectiveRedirectUri(platform)" readonly>
                   <el-button slot="append" icon="el-icon-document-copy" @click="copyRedirectUri(platform)">复制</el-button>
                 </el-input>
-                <el-input v-else v-model="platform.redirectUri" placeholder="请输入自定义回调地址"></el-input>
+                <el-input v-else key="redirect-custom" v-model="platform.redirectUri" placeholder="请输入自定义回调地址"></el-input>
                 <div class="redirect-uri-tip">
                   <span v-if="!platform.customRedirect">已按站点地址自动生成，申请应用时复制填入即可</span>
                   <span v-else>留空则自动生成</span>
@@ -92,8 +98,15 @@
           </div>
 
           <div class="platform-actions">
-            <el-button v-if="getDeveloperUrl(platform.platformType)" type="text" icon="el-icon-link" :disabled="!globalEnabled || !platform.enabled" @click="openDeveloperCenter(platform.platformType)">开发者中心</el-button>
-            <el-button type="text" icon="el-icon-check" :disabled="!globalEnabled || !platform.enabled" @click="testLogin(platform)">测试</el-button>
+            <template v-if="isCustomType(platform)">
+              <el-button type="text" icon="el-icon-edit" @click="editCustomPlatform(platform)">编辑</el-button>
+              <el-button type="text" icon="el-icon-delete" style="color: #F56C6C;" @click="removeCustomPlatform(platform)">删除</el-button>
+              <el-button type="text" icon="el-icon-check" :disabled="!globalEnabled || !platform.enabled" @click="testLogin(platform)">测试</el-button>
+            </template>
+            <template v-else>
+              <el-button v-if="getDeveloperUrl(platform.platformType)" type="text" icon="el-icon-link" :disabled="!globalEnabled || !platform.enabled" @click="openDeveloperCenter(platform.platformType)">开发者中心</el-button>
+              <el-button type="text" icon="el-icon-check" :disabled="!globalEnabled || !platform.enabled" @click="testLogin(platform)">测试</el-button>
+            </template>
           </div>
         </el-card>
       </div>
@@ -109,15 +122,19 @@
 
     <!-- 自定义 OAuth2/OIDC 平台配置对话框 -->
     <el-dialog
-      title="自定义平台（OAuth2/OIDC）"
+      :title="editingCustom ? `${editingCustom.platformName}（OAuth2/OIDC）` : '自定义平台'"
       :visible.sync="customDialogVisible"
       width="560px"
+      custom-class="centered-dialog"
       append-to-body>
-      <template v-if="customPlatform">
+      <template v-if="editingCustom">
+        <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px;">
+          {{ getNote('custom') }}
+        </el-alert>
         <el-form label-position="top">
           <el-form-item label="启用自定义平台">
             <el-switch
-              v-model="customPlatform.enabled"
+              v-model="editingCustom.enabled"
               active-color="#13ce66"
               inactive-color="#ff4949"
               :disabled="!globalEnabled">
@@ -125,57 +142,62 @@
             <span v-if="!globalEnabled" style="margin-left: 10px; color: #909399; font-size: 12px;">需先启用第三方登录总开关</span>
           </el-form-item>
         </el-form>
-        <el-form label-position="top" :disabled="!globalEnabled || !customPlatform.enabled">
+        <!-- 配置随时可填，开关仅控制平台是否生效 -->
+        <el-form label-position="top">
           <el-form-item label="平台显示名">
-            <el-input v-model="customPlatform.platformName" placeholder="登录按钮上展示的名称，如：站长SSO"></el-input>
+            <el-input v-model="editingCustom.platformName" placeholder="登录按钮上展示的名称，如：站长SSO"></el-input>
           </el-form-item>
           <el-form-item label="Client ID">
-            <el-input v-model="customPlatform.clientId" placeholder="请输入Client ID"></el-input>
+            <el-input v-model="editingCustom.clientId" placeholder="请输入Client ID"></el-input>
           </el-form-item>
           <el-form-item label="Client Secret">
-            <el-input v-model="customPlatform.clientSecret" placeholder="请输入Client Secret" show-password></el-input>
+            <el-input v-model="editingCustom.clientSecret" placeholder="请输入Client Secret" show-password></el-input>
           </el-form-item>
           <el-form-item label="授权端点">
-            <el-input v-model="customPlatform.authorizeUrl" placeholder="https://sso.example.com/oauth2/authorize"></el-input>
+            <el-input v-model="editingCustom.authorizeUrl" placeholder="https://sso.example.com/oauth2/authorize"></el-input>
           </el-form-item>
           <el-form-item label="令牌端点">
-            <el-input v-model="customPlatform.tokenUrl" placeholder="https://sso.example.com/oauth2/token"></el-input>
+            <el-input v-model="editingCustom.tokenUrl" placeholder="https://sso.example.com/oauth2/token"></el-input>
           </el-form-item>
           <el-form-item label="用户信息端点">
-            <el-input v-model="customPlatform.userInfoUrl" placeholder="https://sso.example.com/oauth2/userinfo"></el-input>
+            <el-input v-model="editingCustom.userInfoUrl" placeholder="https://sso.example.com/oauth2/userinfo"></el-input>
           </el-form-item>
           <el-form-item label="授权范围 scope">
-            <el-input v-model="customPlatform.scope" placeholder="openid profile email"></el-input>
+            <el-input v-model="editingCustom.scope" placeholder="openid profile email"></el-input>
           </el-form-item>
           <el-form-item label="字段映射（留空按OIDC标准）">
             <div class="custom-field-mapping">
-              <el-input v-model="customPlatform.uidField" placeholder="用户标识：sub"></el-input>
-              <el-input v-model="customPlatform.usernameField" placeholder="用户名：name"></el-input>
-              <el-input v-model="customPlatform.avatarField" placeholder="头像：picture"></el-input>
-              <el-input v-model="customPlatform.emailField" placeholder="邮箱：email"></el-input>
+              <el-input v-model="editingCustom.uidField" placeholder="用户标识：sub"></el-input>
+              <el-input v-model="editingCustom.usernameField" placeholder="用户名：name"></el-input>
+              <el-input v-model="editingCustom.avatarField" placeholder="头像：picture"></el-input>
+              <el-input v-model="editingCustom.emailField" placeholder="邮箱：email"></el-input>
             </div>
             <div class="redirect-uri-tip">
               <span>支持点号路径取嵌套值，如 data.id</span>
             </div>
           </el-form-item>
           <el-form-item label="回调地址">
-            <el-input v-if="!customPlatform.customRedirect" :value="effectiveRedirectUri(customPlatform)" readonly>
-              <el-button slot="append" icon="el-icon-document-copy" @click="copyRedirectUri(customPlatform)">复制</el-button>
-            </el-input>
-            <el-input v-else v-model="customPlatform.redirectUri" placeholder="请输入自定义回调地址"></el-input>
-            <div class="redirect-uri-tip">
-              <span v-if="!customPlatform.customRedirect">已按站点地址自动生成，在授权服务中登记此地址即可</span>
-              <span v-else>留空则自动生成</span>
-              <el-link type="primary" :underline="false" class="redirect-uri-toggle" @click="toggleCustomRedirect(customPlatform)">
-                {{ customPlatform.customRedirect ? '恢复自动生成' : '自定义' }}
-              </el-link>
-            </div>
+            <template v-if="editingCustom.isNew">
+              <el-input value="保存后自动生成" readonly disabled></el-input>
+              <div class="redirect-uri-tip">
+                <span>保存后按站点地址自动生成，可再次打开本对话框复制并登记到授权服务</span>
+              </div>
+            </template>
+            <template v-else>
+              <el-input v-if="!editingCustom.customRedirect" key="custom-redirect-auto" :value="effectiveRedirectUri(editingCustom)" readonly>
+                <el-button slot="append" icon="el-icon-document-copy" @click="copyRedirectUri(editingCustom)">复制</el-button>
+              </el-input>
+              <el-input v-else key="custom-redirect-custom" v-model="editingCustom.redirectUri" placeholder="请输入自定义回调地址"></el-input>
+              <div class="redirect-uri-tip">
+                <span v-if="!editingCustom.customRedirect">已按站点地址自动生成，在授权服务中登记此地址即可</span>
+                <span v-else>留空则自动生成</span>
+                <el-link type="primary" :underline="false" class="redirect-uri-toggle" @click="toggleCustomRedirect(editingCustom)">
+                  {{ editingCustom.customRedirect ? '恢复自动生成' : '自定义' }}
+                </el-link>
+              </div>
+            </template>
           </el-form-item>
         </el-form>
-        <div class="platform-note">
-          <i class="el-icon-warning-outline"></i>
-          {{ getNote('custom') }}
-        </div>
       </template>
       <span slot="footer">
         <el-button @click="customDialogVisible = false">取 消</el-button>
@@ -258,21 +280,18 @@ export default {
       loadingList: false,
       loading: false,
       customDialogVisible: false,
+      // 当前对话框正在编辑的自定义平台（指向 platforms 中的某一项）
+      editingCustom: null,
     };
-  },
-  computed: {
-    // 卡片网格排除自定义平台（其配置在独立对话框中，避免拉长卡片）
-    cardPlatforms() {
-      return this.platforms.filter(p => p.platformType !== 'custom');
-    },
-    customPlatform() {
-      return this.platforms.find(p => p.platformType === 'custom') || null;
-    },
   },
   created() {
     this.loadConfigs();
   },
   methods: {
+    // 判断是否为自定义平台（custom 或 custom_*）
+    isCustomType(platform) {
+      return platform.platformType && platform.platformType.indexOf('custom') === 0;
+    },
     async loadConfigs() {
       this.loadingList = true;
       try {
@@ -330,14 +349,68 @@ export default {
         this.$message.error('复制失败，请手动复制');
       }
     },
+    // 平台元数据键归一：custom_* 统一复用 custom 的图标与提示
+    metaKey(type) {
+      return type && type.indexOf('custom') === 0 ? 'custom' : type;
+    },
     getIcon(type) {
-      return (PLATFORM_META[type] || {}).icon || '';
+      return (PLATFORM_META[this.metaKey(type)] || {}).icon || '';
     },
     getNote(type) {
-      return (PLATFORM_META[type] || {}).note || '';
+      return (PLATFORM_META[this.metaKey(type)] || {}).note || '';
     },
     getDeveloperUrl(type) {
-      return (PLATFORM_META[type] || {}).developerUrl || '';
+      return (PLATFORM_META[this.metaKey(type)] || {}).developerUrl || '';
+    },
+    // 打开编辑对话框：指向卡片对应的 platforms 项，直接双向绑定
+    editCustomPlatform(platform) {
+      this.editingCustom = platform;
+      this.customDialogVisible = true;
+    },
+    // 点击“添加”仅打开空白草稿对话框，真正创建延迟到“保存”，避免产生空壳记录
+    addCustomPlatform() {
+      this.editingCustom = {
+        isNew: true,
+        platformType: null,
+        platformName: '自定义平台',
+        clientId: '',
+        clientSecret: '',
+        authorizeUrl: '',
+        tokenUrl: '',
+        userInfoUrl: '',
+        scope: 'openid profile email',
+        uidField: '',
+        usernameField: '',
+        avatarField: '',
+        emailField: '',
+        redirectUri: '',
+        customRedirect: false,
+        enabled: false,
+        suggestedRedirectUri: '',
+      };
+      this.customDialogVisible = true;
+    },
+    // 删除自定义平台
+    removeCustomPlatform(platform) {
+      this.$confirm(`确定删除「${platform.platformName}」吗？删除后使用该平台登录的用户将无法再次登录。`, '提示', {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(async () => {
+        try {
+          const res = await this.$http.delete(
+            this.$constant.baseURL + '/admin/third-party-config/custom/' + platform.platformType, {}, true);
+          if (res.code === 200) {
+            this.$message.success('删除成功');
+            await this.loadConfigs();
+            this.$bus.$emit('thirdPartyLoginConfigChanged');
+          } else {
+            this.$message.error(res.message || '删除失败');
+          }
+        } catch (error) {
+          this.$message.error(error.message || '删除失败');
+        }
+      }).catch(() => {});
     },
     openDeveloperCenter(type) {
       const url = (PLATFORM_META[type] || {}).developerUrl;
@@ -372,14 +445,14 @@ export default {
         if (!platform.clientSecret) {
           this.$message.error(`${platform.platformName} 的 Client Secret 不能为空`); return false;
         }
-        if (type === 'custom' && (!platform.authorizeUrl || !platform.tokenUrl || !platform.userInfoUrl)) {
+        if (type.indexOf('custom') === 0 && (!platform.authorizeUrl || !platform.tokenUrl || !platform.userInfoUrl)) {
           this.$message.error(`${platform.platformName} 的授权/令牌/用户信息端点均不能为空`); return false;
         }
       }
       this.loading = true;
       // 将当前 globalEnabled 状态同步到每一条记录；非自定义回调地址存空值，由后端按站点地址自动生成
       const payload = this.platforms.map(p => {
-        const { customRedirect, suggestedRedirectUri, ...rest } = p;
+        const { customRedirect, suggestedRedirectUri, isNew, ...rest } = p;
         return {
           ...rest,
           redirectUri: customRedirect ? (p.redirectUri || '') : '',
@@ -398,8 +471,40 @@ export default {
         })
         .finally(() => { this.loading = false; });
     },
-    // 对话框内保存：复用整体保存逻辑，成功后关闭对话框
+    // 对话框内保存：新建平台先创建行拿到 platform_type，再复用整体保存持久化字段
     async saveCustomConfig() {
+      const c = this.editingCustom;
+      if (!c) return;
+      // 端点为自定义平台运行必需项，保存时统一校验（无论是否启用）
+      if (!c.clientId) { this.$message.error(`${c.platformName} 的 Client ID 不能为空`); return; }
+      if (!c.clientSecret) { this.$message.error(`${c.platformName} 的 Client Secret 不能为空`); return; }
+      if (!c.authorizeUrl || !c.tokenUrl || !c.userInfoUrl) {
+        this.$message.error(`${c.platformName} 的授权/令牌/用户信息端点均不能为空`); return;
+      }
+
+      // 新建平台：此刻才在后端创建行，取回唯一 platform_type 后并入列表
+      if (c.isNew) {
+        this.loading = true;
+        let created;
+        try {
+          const res = await this.$http.post(this.$constant.baseURL + '/admin/third-party-config/custom', {}, true);
+          if (res.code !== 200 || !res.data) {
+            this.$message.error(res.message || '创建失败');
+            return;
+          }
+          created = res.data;
+        } catch (error) {
+          this.$message.error(error.message || '创建失败');
+          return;
+        } finally {
+          this.loading = false;
+        }
+        c.platformType = created.platformType;
+        c.suggestedRedirectUri = created.suggestedRedirectUri;
+        c.isNew = false;
+        this.platforms.push(c);
+      }
+
       const result = await this.saveConfigs();
       if (result) {
         this.customDialogVisible = false;
@@ -467,6 +572,23 @@ export default {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+.custom-card-summary {
+  margin-bottom: 15px;
+  font-size: 13px;
+  color: #606266;
+}
+.custom-summary-line {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 8px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.custom-summary-line span {
+  flex-shrink: 0;
+  width: 96px;
+  color: #909399;
 }
 .platform-note {
   margin-bottom: 10px;

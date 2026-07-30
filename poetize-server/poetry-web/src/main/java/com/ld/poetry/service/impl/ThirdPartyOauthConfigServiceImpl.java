@@ -608,8 +608,8 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
         } else if ("steam".equals(config.getPlatformType())) {
             // Steam 免凭据（OpenID 2.0），回调地址可留空由站点地址自动生成，无需其他必填项
             return true;
-        } else if ("custom".equals(config.getPlatformType())) {
-            // 自定义平台还需配齐三个端点
+        } else if (config.getPlatformType() != null && config.getPlatformType().startsWith("custom")) {
+            // 自定义平台（custom/custom_*）还需配齐三个端点
             return StringUtils.hasText(config.getClientId()) &&
                    StringUtils.hasText(config.getClientSecret()) &&
                    StringUtils.hasText(config.getAuthorizeUrl()) &&
@@ -618,6 +618,70 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
         } else {
             return StringUtils.hasText(config.getClientId()) && 
                    StringUtils.hasText(config.getClientSecret());
+        }
+    }
+
+    @Override
+    @Transactional
+    public PoetryResult<ThirdPartyOauthConfig> createCustomPlatform() {
+        try {
+            List<ThirdPartyOauthConfig> allConfigs = getAllConfigs();
+
+            // platform_type 用时间戳36进制保证唯一；显示名按现有自定义实例数递增
+            String platformType = "custom_" + Long.toString(System.currentTimeMillis(), 36);
+            long customCount = allConfigs.stream()
+                    .filter(c -> c.getPlatformType() != null && c.getPlatformType().startsWith("custom"))
+                    .count();
+            int maxSortOrder = allConfigs.stream()
+                    .map(ThirdPartyOauthConfig::getSortOrder)
+                    .filter(Objects::nonNull)
+                    .max(Integer::compare)
+                    .orElse(0);
+
+            ThirdPartyOauthConfig config = new ThirdPartyOauthConfig();
+            config.setPlatformType(platformType);
+            config.setPlatformName("自定义平台" + (customCount + 1));
+            config.setScope("openid profile email");
+            config.setEnabled(false);
+            // 与现有记录的全局开关保持一致（全局开关冗余存储在每一行上）
+            config.setGlobalEnabled(!allConfigs.isEmpty()
+                    && Boolean.TRUE.equals(allConfigs.get(0).getGlobalEnabled()));
+            config.setSortOrder(maxSortOrder + 1);
+            config.setRemark("自定义 OAuth2/OIDC 平台接入，可对接 Keycloak、Casdoor、Logto、Authelia 等任意标准授权服务");
+            config.setCreateTime(LocalDateTime.now());
+            config.setUpdateTime(LocalDateTime.now());
+            config.setDeleted(false);
+            save(config);
+
+            cacheService.evictThirdLoginStatus();
+            log.info("新增自定义平台成功: {}", platformType);
+            return PoetryResult.success(config);
+        } catch (Exception e) {
+            log.error("新增自定义平台失败", e);
+            return PoetryResult.fail("新增自定义平台失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public PoetryResult<Boolean> deleteCustomPlatform(String platformType) {
+        try {
+            if (!StringUtils.hasText(platformType) || !platformType.startsWith("custom")) {
+                return PoetryResult.fail("仅允许删除自定义平台");
+            }
+
+            ThirdPartyOauthConfig config = getByPlatformType(platformType);
+            if (config == null) {
+                return PoetryResult.fail("平台配置不存在: " + platformType);
+            }
+
+            removeById(config.getId());
+            cacheService.evictThirdLoginStatus();
+            log.info("删除自定义平台成功: {}", platformType);
+            return PoetryResult.success(true);
+        } catch (Exception e) {
+            log.error("删除自定义平台失败: {}", platformType, e);
+            return PoetryResult.fail("删除自定义平台失败: " + e.getMessage());
         }
     }
 

@@ -143,6 +143,19 @@ public interface ThirdPartyOauthConfigService extends IService<ThirdPartyOauthCo
     String resolveRedirectUri(ThirdPartyOauthConfig config);
 
     /**
+     * 新增一个自定义 OAuth2/OIDC 平台实例（platform_type 自动生成 custom_* 标识）
+     * @return 新建的平台配置
+     */
+    PoetryResult<ThirdPartyOauthConfig> createCustomPlatform();
+
+    /**
+     * 删除自定义平台实例（仅允许 custom/custom_* 平台）
+     * @param platformType 平台类型
+     * @return 删除结果
+     */
+    PoetryResult<Boolean> deleteCustomPlatform(String platformType);
+
+    /**
      * 并行检查所有OAuth平台的可用状态（用于登录页显示）
      * @return 平台状态Map，key为平台类型，value为是否可用
      */
