@@ -119,6 +119,33 @@ const PLATFORM_META = {
     developerUrl: 'https://guide.afdian.com/creator/oauth2',
     note: '爱发电不支持自助开通，需联系官方提供应用名称与可信域名，由人工分配 Client ID/Secret',
   },
+  linuxdo: { icon: '/admin/static/svg/linuxdo.svg', developerUrl: 'https://connect.linux.do' },
+  microsoft: {
+    icon: '/admin/static/svg/microsoft.svg',
+    developerUrl: 'https://entra.microsoft.com',
+    note: '登录服务国内可直连；个人 Microsoft 账户需先创建免费 Entra 租户才能注册应用',
+  },
+  gitlab: {
+    icon: '/admin/static/svg/gitlab.svg',
+    developerUrl: 'https://gitlab.com/-/user_settings/applications',
+    note: 'gitlab.com 在国内访问不稳定，授权页可能加载缓慢或失败',
+  },
+  yuque:   { icon: '/admin/static/svg/yuque.svg',   developerUrl: 'https://www.yuque.com/settings/apps' },
+  huawei: {
+    icon: '/admin/static/svg/huawei.svg',
+    developerUrl: 'https://developer.huawei.com/consumer/cn/console',
+    note: '需在华为开发者联盟创建应用并开通账号服务（Account Kit），审核面向移动生态，网页接入流程较繁琐',
+  },
+  xiaomi: {
+    icon: '/admin/static/svg/xiaomi.svg',
+    developerUrl: 'https://dev.mi.com/console',
+    note: '需在小米开放平台完成开发者实名认证并申请账号服务（OAuth）接入',
+  },
+  apple: {
+    icon: '/admin/static/svg/apple.svg',
+    developerUrl: 'https://developer.apple.com/account/resources/identifiers/list/serviceId',
+    note: '需 Apple Developer Program 会员（99美元/年）；Client Secret 非静态密钥，需用 .p8 私钥按官方文档签发 JWT 填入，最长6个月有效期需定期更换',
+  },
 };
 
 export default {

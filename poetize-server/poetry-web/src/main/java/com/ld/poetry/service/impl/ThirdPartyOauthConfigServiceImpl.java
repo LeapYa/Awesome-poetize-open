@@ -283,6 +283,13 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "baidu": return "Baidu";
             case "afdian": return "爱发电";
             case "weibo": return "微博";
+            case "linuxdo": return "LinuxDo";
+            case "microsoft": return "Microsoft";
+            case "gitlab": return "GitLab";
+            case "yuque": return "语雀";
+            case "huawei": return "华为";
+            case "xiaomi": return "小米";
+            case "apple": return "Apple";
             default: return platformType;
         }
     }
@@ -301,6 +308,13 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "baidu": return 7;
             case "afdian": return 8;
             case "weibo": return 9;
+            case "linuxdo": return 10;
+            case "microsoft": return 11;
+            case "gitlab": return 12;
+            case "yuque": return 13;
+            case "huawei": return 14;
+            case "xiaomi": return 15;
+            case "apple": return 16;
             default: return 99;
         }
     }
