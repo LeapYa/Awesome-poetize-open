@@ -129,6 +129,20 @@ public interface ThirdPartyOauthConfigService extends IService<ThirdPartyOauthCo
     PoetryResult<Map<String, Object>> getConfigStats();
     
     /**
+     * 构建平台默认回调地址（根据站点地址自动生成）
+     * @param platformType 平台类型
+     * @return 默认回调地址，如 https://example.com/callback/github
+     */
+    String buildDefaultRedirectUri(String platformType);
+
+    /**
+     * 解析平台生效的回调地址：配置了自定义值则用自定义值，否则自动生成
+     * @param config 平台配置
+     * @return 生效的回调地址
+     */
+    String resolveRedirectUri(ThirdPartyOauthConfig config);
+
+    /**
      * 并行检查所有OAuth平台的可用状态（用于登录页显示）
      * @return 平台状态Map，key为平台类型，value为是否可用
      */

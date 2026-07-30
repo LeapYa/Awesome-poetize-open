@@ -5,19 +5,23 @@ import com.ld.poetry.oauth.base.BaseOAuthProvider;
 import com.ld.poetry.oauth.base.OAuth1Provider;
 import com.ld.poetry.oauth.base.OAuth2Provider;
 import com.ld.poetry.oauth.exception.ConfigurationException;
-import com.ld.poetry.oauth.providers.*;
 import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
-import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
  * OAuth提供商工厂
- * 根据平台类型创建对应的OAuth提供商实例
+ * 自动收集Spring容器中所有Provider Bean构建映射，
+ * 新增平台只需编写Provider组件类并在数据库插入配置行，无需修改工厂代码
  *
  * @author LeapYa
  * @since 2026-01-10
@@ -29,35 +33,31 @@ public class OAuthProviderFactory {
     @Autowired
     private ThirdPartyOauthConfigService configService;
 
-    @Autowired
-    private GitHubOAuthProvider gitHubOAuthProvider;
-
-    @Autowired
-    private GoogleOAuthProvider googleOAuthProvider;
-
-    @Autowired
-    private TwitterOAuthProvider twitterOAuthProvider;
-
-    @Autowired
-    private YandexOAuthProvider yandexOAuthProvider;
-
-    @Autowired
-    private GiteeOAuthProvider giteeOAuthProvider;
-
-    @Autowired
-    private QQOAuthProvider qqOAuthProvider;
-
-    @Autowired
-    private BaiduOAuthProvider baiduOAuthProvider;
-
-    @Autowired
-    private AfdianOAuthProvider afdianOAuthProvider;
+    /**
+     * 平台标识 -> Provider实例映射（含x/twitter别名）
+     */
+    private final Map<String, BaseOAuthProvider> providerMap;
 
     /**
      * 支持的OAuth提供商列表
      */
-    private static final List<String> SUPPORTED_PROVIDERS = Arrays.asList(
-            "github", "google", "x", "twitter", "yandex", "gitee", "qq", "baidu", "afdian");
+    private final List<String> supportedProviders;
+
+    public OAuthProviderFactory(List<BaseOAuthProvider> providers) {
+        Map<String, BaseOAuthProvider> map = new HashMap<>();
+        for (BaseOAuthProvider provider : providers) {
+            map.put(provider.getProviderName().toLowerCase(), provider);
+        }
+        // x与twitter互为别名：TwitterOAuthProvider的providerName为x，数据库platform_type为twitter
+        if (map.containsKey("x") && !map.containsKey("twitter")) {
+            map.put("twitter", map.get("x"));
+        } else if (map.containsKey("twitter") && !map.containsKey("x")) {
+            map.put("x", map.get("twitter"));
+        }
+        this.providerMap = Collections.unmodifiableMap(map);
+        this.supportedProviders = List.copyOf(new TreeSet<>(map.keySet()));
+        log.info("OAuth提供商注册完成: {}", this.supportedProviders);
+    }
 
     /**
      * 获取OAuth提供商
@@ -74,6 +74,11 @@ public class OAuthProviderFactory {
 
         if (!oauthConfig.getEnabled() || !oauthConfig.getGlobalEnabled()) {
             throw new ConfigurationException("平台未启用: " + platformType, platformType);
+        }
+
+        // 回调地址未配置时按站点地址自动生成
+        if (!StringUtils.hasText(oauthConfig.getRedirectUri())) {
+            oauthConfig.setRedirectUri(configService.buildDefaultRedirectUri(oauthConfig.getPlatformType()));
         }
 
         // 获取对应的Provider并设置配置
@@ -98,41 +103,25 @@ public class OAuthProviderFactory {
      * 获取Provider实例
      */
     private BaseOAuthProvider getProviderInstance(String platformType) {
-        switch (platformType.toLowerCase()) {
-            case "github":
-                return gitHubOAuthProvider;
-            case "google":
-                return googleOAuthProvider;
-            case "x":
-            case "twitter":
-                return twitterOAuthProvider;
-            case "yandex":
-                return yandexOAuthProvider;
-            case "gitee":
-                return giteeOAuthProvider;
-            case "qq":
-                return qqOAuthProvider;
-            case "baidu":
-                return baiduOAuthProvider;
-            case "afdian":
-                return afdianOAuthProvider;
-            default:
-                throw new ConfigurationException("不支持的OAuth平台: " + platformType, platformType);
+        BaseOAuthProvider provider = providerMap.get(platformType.toLowerCase());
+        if (provider == null) {
+            throw new ConfigurationException("不支持的OAuth平台: " + platformType, platformType);
         }
+        return provider;
     }
 
     /**
      * 获取支持的提供商列表
      */
     public List<String> getSupportedProviders() {
-        return SUPPORTED_PROVIDERS;
+        return supportedProviders;
     }
 
     /**
      * 获取已启用的提供商列表
      */
     public List<String> getEnabledProviders() {
-        return SUPPORTED_PROVIDERS.stream()
+        return supportedProviders.stream()
                 .filter(this::isProviderEnabled)
                 .collect(Collectors.toList());
     }
@@ -153,6 +142,6 @@ public class OAuthProviderFactory {
      * 检查提供商是否支持
      */
     public boolean isProviderSupported(String platformType) {
-        return SUPPORTED_PROVIDERS.contains(platformType.toLowerCase());
+        return providerMap.containsKey(platformType.toLowerCase());
     }
 }

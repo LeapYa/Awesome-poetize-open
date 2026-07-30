@@ -62,7 +62,7 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 builder.queryParam("client_id", config.getClientId());
             }
 
-            builder.queryParam("redirect_uri", config.getRedirectUri())
+            builder.queryParam("redirect_uri", configService.resolveRedirectUri(config))
                     .queryParam("state", state)
                     .queryParam("response_type", "code");
 
@@ -100,7 +100,7 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
                 params.add("grant_type", "authorization_code");
                 params.add("code", code);
-                params.add("redirect_uri", config.getRedirectUri());
+                params.add("redirect_uri", configService.resolveRedirectUri(config));
 
                 if ("twitter".equals(platformType)) {
                     params.add("client_id", config.getClientKey());
@@ -302,15 +302,13 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 return false;
             }
 
-            // 检查必要的配置项
+            // 检查必要的配置项（回调地址可留空，运行时按站点地址自动生成）
             if ("twitter".equals(platformType)) {
                 return StringUtils.hasText(config.getClientKey()) &&
-                        StringUtils.hasText(config.getClientSecret()) &&
-                        StringUtils.hasText(config.getRedirectUri());
+                        StringUtils.hasText(config.getClientSecret());
             } else {
                 return StringUtils.hasText(config.getClientId()) &&
-                        StringUtils.hasText(config.getClientSecret()) &&
-                        StringUtils.hasText(config.getRedirectUri());
+                        StringUtils.hasText(config.getClientSecret());
             }
         } catch (Exception e) {
             return false;

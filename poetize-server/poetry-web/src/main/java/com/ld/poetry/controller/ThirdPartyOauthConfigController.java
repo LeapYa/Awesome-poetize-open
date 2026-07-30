@@ -43,6 +43,11 @@ public class ThirdPartyOauthConfigController {
     public PoetryResult<List<ThirdPartyOauthConfig>> getAllConfigs() {
         try {
             List<ThirdPartyOauthConfig> configs = thirdPartyOauthConfigService.getAllConfigs();
+            // 下发自动生成的建议回调地址，供后台只读展示与一键复制
+            for (ThirdPartyOauthConfig config : configs) {
+                config.setSuggestedRedirectUri(
+                        thirdPartyOauthConfigService.buildDefaultRedirectUri(config.getPlatformType()));
+            }
             return PoetryResult.success(configs);
         } catch (Exception e) {
             log.error("获取第三方登录配置列表失败", e);

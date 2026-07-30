@@ -112,4 +112,10 @@ public class ThirdPartyOauthConfig implements Serializable {
     @TableField("deleted")
     @TableLogic
     private Boolean deleted;
+
+    /**
+     * 建议回调地址（根据站点地址自动生成，非数据库字段，仅供后台展示与复制）
+     */
+    @TableField(exist = false)
+    private String suggestedRedirectUri;
 }

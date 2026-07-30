@@ -56,7 +56,17 @@
                 <el-input v-model="platform.clientSecret" placeholder="请输入Client Secret" show-password></el-input>
               </el-form-item>
               <el-form-item label="回调地址">
-                <el-input v-model="platform.redirectUri" placeholder="请输入回调地址"></el-input>
+                <el-input v-if="!platform.customRedirect" :value="effectiveRedirectUri(platform)" readonly>
+                  <el-button slot="append" icon="el-icon-document-copy" @click="copyRedirectUri(platform)">复制</el-button>
+                </el-input>
+                <el-input v-else v-model="platform.redirectUri" placeholder="请输入自定义回调地址"></el-input>
+                <div class="redirect-uri-tip">
+                  <span v-if="!platform.customRedirect">已按站点地址自动生成，申请应用时复制填入即可</span>
+                  <span v-else>留空则自动生成</span>
+                  <el-link type="primary" :underline="false" class="redirect-uri-toggle" @click="toggleCustomRedirect(platform)">
+                    {{ platform.customRedirect ? '恢复自动生成' : '自定义' }}
+                  </el-link>
+                </div>
               </el-form-item>
             </el-form>
           </div>
@@ -69,7 +79,7 @@
       </div>
 
       <div class="form-tip" style="margin-top: 15px; font-size: 13px; color: #909399;">
-        * 回调地址为 http://你的域名/callback/{平台标识}
+        * 回调地址已根据站点地址自动生成，需与在第三方平台申请应用时填写的回调地址完全一致
       </div>
 
       <div style="margin-top: 20px; margin-bottom: 22px; text-align: center;">
@@ -115,7 +125,11 @@ export default {
       try {
         const res = await this.$http.get(this.$constant.baseURL + '/admin/third-party-config/list');
         const list = res.data || [];
-        this.platforms = list;
+        // customRedirect：已保存的回调地址与自动生成值不一致时视为自定义
+        this.platforms = list.map(p => ({
+          ...p,
+          customRedirect: !!(p.redirectUri && p.redirectUri !== p.suggestedRedirectUri),
+        }));
         // globalEnabled 由后端统一控制，所有平台同步，取任意一条即可
         this.globalEnabled = list.length > 0 && list[0].globalEnabled;
       } catch (error) {
@@ -123,6 +137,44 @@ export default {
         this.$message.error('获取第三方登录配置失败: ' + error.message);
       } finally {
         this.loadingList = false;
+      }
+    },
+    // 生效的回调地址：自定义值优先，否则用后端自动生成的建议值
+    effectiveRedirectUri(platform) {
+      if (platform.customRedirect && platform.redirectUri) {
+        return platform.redirectUri;
+      }
+      return platform.suggestedRedirectUri || platform.redirectUri || '';
+    },
+    toggleCustomRedirect(platform) {
+      if (platform.customRedirect) {
+        // 恢复自动生成：清空自定义值，保存后由后端按站点地址自动生成
+        platform.customRedirect = false;
+        platform.redirectUri = '';
+      } else {
+        // 切换自定义：预填当前生效值便于修改
+        platform.redirectUri = this.effectiveRedirectUri(platform);
+        platform.customRedirect = true;
+      }
+    },
+    async copyRedirectUri(platform) {
+      const text = this.effectiveRedirectUri(platform);
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        }
+        this.$message.success('回调地址已复制');
+      } catch (error) {
+        this.$message.error('复制失败，请手动复制');
       }
     },
     getIcon(type) {
@@ -158,13 +210,17 @@ export default {
         if (!platform.clientSecret) {
           this.$message.error(`${platform.platformName} 的 Client Secret 不能为空`); return;
         }
-        if (!platform.redirectUri) {
-          this.$message.error(`${platform.platformName} 的回调地址不能为空`); return;
-        }
       }
       this.loading = true;
-      // 将当前 globalEnabled 状态同步到每一条记录
-      const payload = this.platforms.map(p => ({ ...p, globalEnabled: this.globalEnabled }));
+      // 将当前 globalEnabled 状态同步到每一条记录；非自定义回调地址存空值，由后端按站点地址自动生成
+      const payload = this.platforms.map(p => {
+        const { customRedirect, suggestedRedirectUri, ...rest } = p;
+        return {
+          ...rest,
+          redirectUri: customRedirect ? (p.redirectUri || '') : '',
+          globalEnabled: this.globalEnabled,
+        };
+      });
       this.$http.put(this.$constant.baseURL + '/admin/third-party-config/batch', payload)
         .then(() => {
           this.$message({ message: '第三方登录配置保存成功', type: 'success' });
@@ -204,6 +260,20 @@ export default {
 .platform-logo { display: flex; align-items: center; }
 .platform-name { font-size: 18px; font-weight: 500; margin-left: 10px; }
 .platform-form { margin-bottom: 15px; }
+.redirect-uri-tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+.redirect-uri-toggle {
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
 .platform-actions {
   display: flex;
   justify-content: flex-end;

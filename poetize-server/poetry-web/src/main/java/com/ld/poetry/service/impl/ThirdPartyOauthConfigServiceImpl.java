@@ -41,6 +41,9 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
     @Autowired
     private CacheService cacheService;
 
+    @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
+
     @Override
     public ThirdPartyOauthConfig getByPlatformType(String platformType) {
         if (!StringUtils.hasText(platformType)) {
@@ -278,6 +281,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "gitee": return "Gitee";
             case "qq": return "QQ";
             case "baidu": return "Baidu";
+            case "afdian": return "爱发电";
             default: return platformType;
         }
     }
@@ -294,6 +298,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "gitee": return 5;
             case "qq": return 6;
             case "baidu": return 7;
+            case "afdian": return 8;
             default: return 99;
         }
     }
@@ -327,9 +332,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
                     errors.add(platform + ": 缺少 client_secret");
                 }
 
-                if (!StringUtils.hasText(config.getRedirectUri())) {
-                    errors.add(platform + ": 缺少 redirect_uri");
-                }
+                // redirect_uri 可留空，留空时按站点地址自动生成，不再作为必填项校验
 
                 // 检查启用状态
                 if (config.getEnabled() && !config.getGlobalEnabled()) {
@@ -578,15 +581,30 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             return false;
         }
         
-        // 检查必要的配置项
+        // 检查必要的配置项（回调地址可留空，运行时按站点地址自动生成）
         if ("twitter".equals(config.getPlatformType())) {
             return StringUtils.hasText(config.getClientKey()) && 
-                   StringUtils.hasText(config.getClientSecret()) &&
-                   StringUtils.hasText(config.getRedirectUri());
+                   StringUtils.hasText(config.getClientSecret());
         } else {
             return StringUtils.hasText(config.getClientId()) && 
-                   StringUtils.hasText(config.getClientSecret()) &&
-                   StringUtils.hasText(config.getRedirectUri());
+                   StringUtils.hasText(config.getClientSecret());
         }
+    }
+
+    @Override
+    public String buildDefaultRedirectUri(String platformType) {
+        // 与 Nginx 路由一致：/callback/{platform} 会被重写到 /oauth/callback/{platform}
+        return mailUtil.getSiteUrl() + "/callback/" + platformType;
+    }
+
+    @Override
+    public String resolveRedirectUri(ThirdPartyOauthConfig config) {
+        if (config == null) {
+            return null;
+        }
+        if (StringUtils.hasText(config.getRedirectUri())) {
+            return config.getRedirectUri().trim();
+        }
+        return buildDefaultRedirectUri(config.getPlatformType());
     }
 }
