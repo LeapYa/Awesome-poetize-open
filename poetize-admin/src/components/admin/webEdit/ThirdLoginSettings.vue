@@ -71,6 +71,11 @@
             </el-form>
           </div>
 
+          <div v-if="getNote(platform.platformType)" class="platform-note">
+            <i class="el-icon-warning-outline"></i>
+            {{ getNote(platform.platformType) }}
+          </div>
+
           <div class="platform-actions">
             <el-button type="text" icon="el-icon-link" :disabled="!globalEnabled || !platform.enabled" @click="openDeveloperCenter(platform.platformType)">开发者中心</el-button>
             <el-button type="text" icon="el-icon-check" :disabled="!globalEnabled || !platform.enabled" @click="testLogin(platform)">测试</el-button>
@@ -92,7 +97,7 @@
 <script>
 import SectionTag from './SectionTag.vue';
 
-// 纯前端渲染元数据：图标和开发者中心链接，不涉及业务逻辑
+// 纯前端渲染元数据：图标、开发者中心链接与平台接入提示，不涉及业务逻辑
 // 新增平台只需在数据库插入一行，前端无需修改代码
 const PLATFORM_META = {
   github:  { icon: '/admin/static/svg/github.svg',  developerUrl: 'https://github.com/settings/developers' },
@@ -102,9 +107,17 @@ const PLATFORM_META = {
   gitee:   { icon: '/admin/static/svg/gitee.svg',   developerUrl: 'https://gitee.com/oauth/applications' },
   qq:      { icon: '/admin/static/svg/qq.svg',      developerUrl: 'https://connect.qq.com/manage.html' },
   // 百度老控制台 developer.baidu.com/console 年久失修易白屏，改指 OAuth 接入指南（含注册与建应用步骤）
-  baidu:   { icon: '/admin/static/svg/baidu.svg',   developerUrl: 'https://openauth.baidu.com/doc/regdevelopers.html' },
+  baidu:   {
+    icon: '/admin/static/svg/baidu.svg',
+    developerUrl: 'https://openauth.baidu.com/doc/regdevelopers.html',
+    note: '百度新应用注册通道目前近乎瘫痪（官方注册页404、控制台白屏），已持有 API Key 的老应用仍可正常使用',
+  },
   // 爱发电 OAuth 需联系官方人工开通（提供应用名称/可信域名换取 clientID），指向官方接入文档
-  afdian:  { icon: '/admin/static/svg/afdian.svg',  developerUrl: 'https://guide.afdian.com/creator/oauth2' },
+  afdian:  {
+    icon: '/admin/static/svg/afdian.svg',
+    developerUrl: 'https://guide.afdian.com/creator/oauth2',
+    note: '爱发电不支持自助开通，需联系官方提供应用名称与可信域名，由人工分配 Client ID/Secret',
+  },
 };
 
 export default {
@@ -181,6 +194,9 @@ export default {
     },
     getIcon(type) {
       return (PLATFORM_META[type] || {}).icon || '';
+    },
+    getNote(type) {
+      return (PLATFORM_META[type] || {}).note || '';
     },
     openDeveloperCenter(type) {
       const url = (PLATFORM_META[type] || {}).developerUrl;
@@ -275,6 +291,15 @@ export default {
   font-size: 12px;
   flex-shrink: 0;
   margin-left: 8px;
+}
+.platform-note {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #E6A23C;
+  background: rgba(230, 162, 60, 0.08);
+  border-radius: 4px;
 }
 .platform-actions {
   display: flex;
