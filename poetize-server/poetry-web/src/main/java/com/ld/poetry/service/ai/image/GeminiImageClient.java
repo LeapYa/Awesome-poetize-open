@@ -3,6 +3,7 @@ package com.ld.poetry.service.ai.image;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -80,12 +81,19 @@ public class GeminiImageClient {
 
         log.info("调用Gemini生图API model={} endpoint={} aspectRatio={}", model, endpoint, aspectRatio);
 
-        String responseBody = restClient.post()
-                .uri(url)
-                .header("Content-Type", "application/json")
-                .body(requestBody)
-                .retrieve()
-                .body(String.class);
+        String responseBody;
+        try {
+            // 用 URI 对象传入：.uri(String) 会当作 URI 模板再编码一次，
+            // 而 key 查询参数已经 URLEncoder 编码，二次编码会破坏密钥
+            responseBody = restClient.post()
+                    .uri(java.net.URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+        } catch (RestClientResponseException e) {
+            throw ImageApiErrorTranslator.translate(e, "gemini");
+        }
 
         return isImagen ? parseImagenResponse(responseBody, model) : parseGenerateContentResponse(responseBody, model);
     }

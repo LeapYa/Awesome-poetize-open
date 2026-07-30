@@ -3,6 +3,7 @@ package com.ld.poetry.service.ai.image;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -104,13 +105,18 @@ public class DashScopeImageClient {
 
         log.info("调用DashScope生图API model={} size={}", model, pixelSize);
 
-        String responseBody = restClient.post()
-                .uri(apiUrl)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .body(requestBody.toString())
-                .retrieve()
-                .body(String.class);
+        String responseBody;
+        try {
+            responseBody = restClient.post()
+                    .uri(apiUrl)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .body(requestBody.toString())
+                    .retrieve()
+                    .body(String.class);
+        } catch (RestClientResponseException e) {
+            throw ImageApiErrorTranslator.translate(e, "dashscope");
+        }
 
         return parseResponse(responseBody, model);
     }

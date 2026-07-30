@@ -3,6 +3,7 @@ package com.ld.poetry.service.ai.image;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -41,6 +42,12 @@ public class OpenAiCompatibleImageClient {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalArgumentException("生图API密钥为空，provider=" + provider);
         }
+        // 提前拦截常见误配：DashScope 原生端点（multimodal-generation）要求 input.messages 格式，
+        // 与本客户端的 OpenAI 兼容格式不互通，直接调用只会得到 400 InvalidParameter
+        if (apiUrl.contains("dashscope.aliyuncs.com") && apiUrl.contains("/services/aigc/")) {
+            throw new IllegalArgumentException("该API地址是 DashScope 原生端点，不兼容 OpenAI 请求格式，"
+                    + "请将生图服务商切换为“通义万相”后再使用此地址（provider=" + provider + "）");
+        }
 
         String finalPrompt = prompt;
 
@@ -72,13 +79,18 @@ public class OpenAiCompatibleImageClient {
 
         log.info("调用生图API [{}] model={} size={}", provider, model, size);
 
-        String responseBody = restClient.post()
-                .uri(apiUrl)
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .body(requestBody.toString())
-                .retrieve()
-                .body(String.class);
+        String responseBody;
+        try {
+            responseBody = restClient.post()
+                    .uri(apiUrl)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .body(requestBody.toString())
+                    .retrieve()
+                    .body(String.class);
+        } catch (RestClientResponseException e) {
+            throw ImageApiErrorTranslator.translate(e, provider);
+        }
 
         return parseResponse(responseBody, provider, model);
     }

@@ -86,7 +86,9 @@ function buildFriendlyHttpErrorMessage(error) {
     return (error.response && error.response.data && error.response.data.message) || '操作过于频繁，请稍后再试';
   }
   if (status >= 500) {
-    return '服务器处理失败，请稍后重试或联系管理员';
+    // 优先透传后端返回的业务错误信息（如 PoetryExceptionHandler 在 500 响应体中携带的 message），
+    // 避免一律显示通用文案导致无法排错
+    return (error.response && error.response.data && error.response.data.message) || '服务器处理失败，请稍后重试或联系管理员';
   }
   if (status >= 400) {
     return (error.response && error.response.data && error.response.data.message) || '请求处理失败，请检查后重试';

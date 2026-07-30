@@ -577,8 +577,10 @@ public class AiImageServiceImpl implements AiImageService {
         factory.setReadTimeout(Math.max(readTimeout, 10000));
 
         RestClient restClient = RestClient.builder().requestFactory(factory).build();
+        // 必须用 URI 对象传入：.uri(String) 会把 URL 当作 URI 模板再编码一次，
+        // 而 OSS 签名 URL 中的 %2B/%3D 已是编码形态，二次编码会导致 SignatureDoesNotMatch
         byte[] bytes = restClient.get()
-                .uri(url)
+                .uri(java.net.URI.create(url))
                 .retrieve()
                 .body(byte[].class);
         if (bytes == null || bytes.length == 0) {
