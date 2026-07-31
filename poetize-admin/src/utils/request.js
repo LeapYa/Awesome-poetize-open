@@ -88,7 +88,7 @@ function buildFriendlyHttpErrorMessage(error) {
   if (status >= 500) {
     // 优先透传后端返回的业务错误信息（如 PoetryExceptionHandler 在 500 响应体中携带的 message），
     // 避免一律显示通用文案导致无法排错
-    return (error.response && error.response.data && error.response.data.message) || '服务器处理失败，请稍后重试或联系管理员';
+    return (error.response && error.response.data && error.response.data.message) || '服务器返回错误但未携带详情（可能响应过大导致连接中断），请重试或查看后端日志';
   }
   if (status >= 400) {
     return (error.response && error.response.data && error.response.data.message) || '请求处理失败，请检查后重试';
@@ -98,6 +98,11 @@ function buildFriendlyHttpErrorMessage(error) {
   }
   if (error && error.message === 'Network Error') {
     return '网络异常，无法连接服务，请检查网络或服务状态';
+  }
+  // 无 response 且非上述已知类型：多为连接在响应写回前被中断（如响应过大、页面刷新/离开），
+  // 浏览器抛出的原始 message 五花八门且为英文，统一兜底为可读中文，避免把原文直接抛给用户
+  if (error && !error.response) {
+    return '与服务器的连接中断（可能是响应内容过大或页面刷新导致），请重试';
   }
   return '';
 }

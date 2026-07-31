@@ -1,8 +1,12 @@
 package com.ld.poetry.service.ai;
 
+import com.ld.poetry.controller.dto.ResourceBatchDeleteRequest;
+import com.ld.poetry.entity.Resource;
 import com.ld.poetry.entity.SysAiConfig;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.service.ManagedResourceUploadService;
+import com.ld.poetry.service.ResourceBatchDeleteService;
+import com.ld.poetry.service.ResourceService;
 import com.ld.poetry.service.SysAiConfigService;
 import com.ld.poetry.service.SysAuditLogService;
 import com.ld.poetry.service.ai.image.CoverPromptTemplate;
@@ -30,6 +34,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -68,6 +73,14 @@ public class AiImageServiceImpl implements AiImageService {
     /** 测试生图连接使用的固定 prompt */
     private static final String TEST_PROMPT = "A minimalist abstract cover image with soft gradient colors";
 
+    /** 正式文章封面的资源类型与存储目录前缀 */
+    private static final String COVER_TYPE = "aiCover";
+    private static final String COVER_PATH_PREFIX = "ai_covers/";
+
+    /** 测试生图的资源类型与存储目录前缀（与正式封面隔离，便于生成时清理旧图） */
+    private static final String TEST_COVER_TYPE = "aiCoverTest";
+    private static final String TEST_COVER_PATH_PREFIX = "ai_covers_test/";
+
     /** prompt 构造结果，携带是否发生 plain 降级的标记 */
     private record PromptResult(String prompt, boolean fallbackToPlain) {}
 
@@ -97,6 +110,12 @@ public class AiImageServiceImpl implements AiImageService {
 
     @Autowired
     private SysAuditLogService sysAuditLogService;
+
+    @Autowired
+    private ResourceService resourceService;
+
+    @Autowired
+    private ResourceBatchDeleteService resourceBatchDeleteService;
 
     @Override
     public String generateCoverFromArticle(String articleTitle, String articleContentHtml) throws Exception {
@@ -149,7 +168,7 @@ public class AiImageServiceImpl implements AiImageService {
             imageByteCount = imageBytes.length;
 
             // 5. 落库
-            String storedUrl = storeImage(imageBytes, mimeType);
+            String storedUrl = storeImage(imageBytes, mimeType, false);
             log.info("AI生图完成，最终 URL: {}", storedUrl);
 
             recordImageAudit("AI_IMAGE_GENERATE", true, "article", null,
@@ -221,7 +240,9 @@ public class AiImageServiceImpl implements AiImageService {
 
             GeneratedImage image = dispatchGenerate(prompt, imageConfig);
 
-            // 测试场景不落盘：统一转 base64 data URI 直接返回前端预览，避免遗留文件需要清理
+            // 测试场景统一转字节后落盘为受管资源，返回 /media/{publicId} 短 URL。
+            // 早期返回 2.3MB base64 data URI 会撑大响应体，用户中途刷新易触发 Broken pipe，
+            // 导致成功/失败结果都写不回前端；落盘后响应仅几十字节，规避该问题。
             byte[] imageBytes;
             String mimeType;
             if (image.hasBytes()) {
@@ -238,14 +259,14 @@ public class AiImageServiceImpl implements AiImageService {
             }
             imageByteCount = imageBytes.length;
 
-            String dataUri = "data:" + (mimeType != null ? mimeType : "image/png")
-                    + ";base64," + java.util.Base64.getEncoder().encodeToString(imageBytes);
+            // 相同内容按 SHA-256 去重复用，避免反复测试堆积文件
+            String storedUrl = storeImage(imageBytes, mimeType, true);
 
             result.put("success", true);
             result.put("message", "生图测试成功");
             result.put("provider", imageConfig.getProvider());
             result.put("model", imageConfig.getModel());
-            result.put("url", dataUri);
+            result.put("url", storedUrl);
             result.put("prompt", prompt);
             result.put("durationMs", System.currentTimeMillis() - startedAt);
             result.put("form", imageForm);
@@ -597,8 +618,11 @@ public class AiImageServiceImpl implements AiImageService {
 
     /**
      * 将图片字节保存为受管资源，返回稳定 URL。
+     *
+     * @param forTest true 为测试生图：用独立 type/目录与正式封面隔离，并先清理当前用户的旧测试图（每人最多留最新一张，避免堆积）；
+     *                false 为正式封面：始终新建，保证每篇文章封面独立
      */
-    private String storeImage(byte[] bytes, String mimeType) throws IOException {
+    private String storeImage(byte[] bytes, String mimeType, boolean forTest) throws IOException {
         String ext = guessExtension(mimeType);
         String fileName = "ai_cover_" + UUID.randomUUID().toString().replace("-", "") + ext;
         MultipartFile multipart = new InMemoryMultipartFile(
@@ -606,13 +630,48 @@ public class AiImageServiceImpl implements AiImageService {
 
         FileVO fileVO = new FileVO();
         fileVO.setFile(multipart);
-        fileVO.setType("aiCover");
-        fileVO.setRelativePath("ai_covers/" + fileName);
+        fileVO.setType(forTest ? TEST_COVER_TYPE : COVER_TYPE);
+        fileVO.setRelativePath((forTest ? TEST_COVER_PATH_PREFIX : COVER_PATH_PREFIX) + fileName);
         fileVO.setOriginalName(fileName);
 
+        Integer ownerId = resolveResourceOwnerId();
+
+        // 测试图为一次性预览：落新图前先清掉该用户上一张测试图，无需定时任务即可避免堆积
+        if (forTest) {
+            cleanPreviousTestImages(ownerId);
+        }
+
         ManagedResourceUploadService.ManagedUploadResult saved =
-                managedResourceUploadService.upload(fileVO, resolveResourceOwnerId());
+                forTest
+                        ? managedResourceUploadService.uploadOrReuse(fileVO, ownerId)
+                        : managedResourceUploadService.upload(fileVO, ownerId);
         return saved.stablePath();
+    }
+
+    /**
+     * 清理指定用户已有的测试生图（type=aiCoverTest）。
+     * 仅针对测试专用 type，与正式封面隔离；走 ResourceBatchDeleteService，
+     * 其内置“被引用则跳过”保护，即便异常也不会影响本次生图。
+     */
+    private void cleanPreviousTestImages(Integer ownerId) {
+        try {
+            List<Resource> stale = resourceService.lambdaQuery()
+                    .eq(Resource::getType, TEST_COVER_TYPE)
+                    .eq(Resource::getUserId, ownerId)
+                    .eq(Resource::getStatus, true)
+                    .list();
+            if (stale.isEmpty()) {
+                return;
+            }
+            List<ResourceBatchDeleteRequest.Target> targets = stale.stream()
+                    .map(r -> new ResourceBatchDeleteRequest.Target(r.getId(), r.getPath()))
+                    .toList();
+            resourceBatchDeleteService.delete(
+                    new ResourceBatchDeleteRequest(targets, false, false, false));
+        } catch (Exception e) {
+            // 清理失败不影响本次测试生图，仅记日志
+            log.warn("清理旧测试生图失败（不影响本次生图）: {}", e.getMessage());
+        }
     }
 
     private Integer resolveResourceOwnerId() {

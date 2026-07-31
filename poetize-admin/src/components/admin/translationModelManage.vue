@@ -4359,7 +4359,12 @@ Vue.js features reactive data binding and a component-based architecture, enabli
         if (res && res.code === 200 && res.data) {
           const result = res.data;
           if (result.success) {
-            this.testImageForm.imageUrl = result.url || '';
+            // 后端现返回 /media/{publicId} 相对路径（早期为 base64 data URI），
+            // 需拼 baseURL 才能在 img/下载中正常访问；data URI 则保持原样
+            const rawUrl = result.url || '';
+            this.testImageForm.imageUrl = rawUrl.startsWith('/')
+              ? this.$constant.baseURL + rawUrl
+              : rawUrl;
             this.testImageForm.prompt = result.prompt || '';
             this.testImageForm.durationMs = result.durationMs != null ? result.durationMs : null;
             this.testImageForm.form = result.form || '';
@@ -4381,10 +4386,30 @@ Vue.js features reactive data binding and a component-based architecture, enabli
     },
 
     // 下载测试生成的图片（兼容 data URI 和 http URL）
-    downloadTestImage() {
+    async downloadTestImage() {
       if (!this.testImageForm.imageUrl) return;
+      const url = this.testImageForm.imageUrl;
+      // data URI 可直接触发下载；http URL 跨域时 download 属性会失效退化为跳转，
+      // 改用 fetch 拉取 blob 后本地下载，保证始终是下载而非打开
+      try {
+        if (url.startsWith('data:')) {
+          this.triggerDownload(url);
+          return;
+        }
+        const resp = await fetch(url, { credentials: 'include' });
+        const blob = await resp.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        this.triggerDownload(objectUrl);
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        // 拉取失败时降级为直接打开链接
+        this.triggerDownload(url);
+      }
+    },
+
+    triggerDownload(href) {
       const link = document.createElement('a');
-      link.href = this.testImageForm.imageUrl;
+      link.href = href;
       link.download = 'ai_cover_test_' + Date.now() + '.png';
       document.body.appendChild(link);
       link.click();

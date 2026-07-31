@@ -115,6 +115,13 @@ public class DashScopeImageClient {
                     .retrieve()
                     .body(String.class);
         } catch (RestClientResponseException e) {
+            // 404 多为模型名写错（如误填带日期的快照名 qwen-image-2.0-pro-2026-06-22），
+            // 在通用翻译基础上补充实际使用的模型名，便于管理员一眼定位
+            if (e.getStatusCode().value() == 404) {
+                throw new RuntimeException("生图API返回错误 [dashscope] HTTP 404：模型或地址不存在。"
+                        + "当前模型名=\"" + model + "\"，请检查是否拼写有误或误填了带日期的快照名"
+                        + "（正确示例：qwen-image-2.0-pro、wan2.5-t2i-preview）", e);
+            }
             throw ImageApiErrorTranslator.translate(e, "dashscope");
         }
 
