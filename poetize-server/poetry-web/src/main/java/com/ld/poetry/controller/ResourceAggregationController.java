@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapp
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
 import com.ld.poetry.entity.ResourcePath;
@@ -169,6 +170,9 @@ public class ResourceAggregationController {
             cacheService.evictFriendList();
         }
 
+        // 趣味/旅拍/收藏夹变更后，失效对应前台聚合缓存
+        evictResourcePathAggregateCaches(resourcePathVO.getType());
+
         return PoetryResult.success();
     }
 
@@ -207,6 +211,9 @@ public class ResourceAggregationController {
             if (CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePath.getType())) {
                 cacheService.evictFriendList();
             }
+
+            // 趣味/旅拍/收藏夹删除后，失效对应前台聚合缓存
+            evictResourcePathAggregateCaches(resourcePath.getType());
         }
 
         return PoetryResult.success();
@@ -319,7 +326,24 @@ public class ResourceAggregationController {
             cacheService.evictFriendList();
         }
 
+        // 趣味/旅拍/收藏夹更新后，失效对应前台聚合缓存
+        evictResourcePathAggregateCaches(resourcePathVO.getType());
+
         return PoetryResult.success();
+    }
+
+    /**
+     * 按资源类型失效前台聚合缓存（趣味分类聚合/旅拍分类聚合/收藏夹分组）。
+     * <p>save/update/delete 三个变更点统一调用，类型不匹配时不做任何事。
+     */
+    private void evictResourcePathAggregateCaches(String type) {
+        if (CommonConst.RESOURCE_PATH_TYPE_FUNNY.equals(type)) {
+            cacheService.deleteKey(CacheConstants.FUNNY_CLASSIFY_COUNT_KEY);
+        } else if (CommonConst.RESOURCE_PATH_TYPE_LOVE_PHOTO.equals(type)) {
+            cacheService.deleteKey(CacheConstants.LOVE_PHOTO_CLASSIFY_COUNT_KEY);
+        } else if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(type)) {
+            cacheService.deleteKey(CacheConstants.FAVORITES_GROUPED_KEY);
+        }
     }
 
     /**

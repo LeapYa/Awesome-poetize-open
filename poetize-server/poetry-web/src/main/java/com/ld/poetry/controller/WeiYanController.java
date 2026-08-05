@@ -11,6 +11,7 @@ import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.WeiYan;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.WeiYanService;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.utils.PoetryUtil;
@@ -71,6 +72,8 @@ public class WeiYanController {
         weiYan.setIsPublic(weiYanVO.getIsPublic());
         weiYan.setType(CommonConst.WEIYAN_TYPE_FRIEND);
         weiYanService.save(weiYan);
+        // 新增微言后清理分页列表缓存，保证微言页/朋友圈即时可见
+        cacheService.deleteKeysByPattern(CacheConstants.WEIYAN_LIST_PREFIX + "*");
         return PoetryResult.success();
     }
 
@@ -182,6 +185,8 @@ public class WeiYanController {
                 && CommonConst.WEIYAN_TYPE_NEWS.equals(existing.getType())) {
             cacheService.evictWeiYanNewsList(existing.getSource());
         }
+        // 删除微言后清理分页列表缓存
+        cacheService.deleteKeysByPattern(CacheConstants.WEIYAN_LIST_PREFIX + "*");
         return PoetryResult.success();
     }
 
@@ -191,6 +196,17 @@ public class WeiYanController {
      */
     @PostMapping("/listWeiYan")
     public PoetryResult<BaseRequestVO> listWeiYan(@RequestBody BaseRequestVO baseRequestVO) {
+        // 微言分页列表走 Redis 缓存（微言页/朋友圈低频但稳定的读请求，长 TTL 保证命中率），
+        // key 包含目标用户与访问者身份，微言增删时按前缀主动 evict，不依赖 TTL 收敛
+        String listCacheKey = CacheConstants.WEIYAN_LIST_PREFIX
+                + (baseRequestVO.getUserId() == null ? "all" : baseRequestVO.getUserId()) + ":"
+                + (PoetryUtil.getUserId() == null ? "anon" : PoetryUtil.getUserId()) + ":"
+                + baseRequestVO.getCurrent() + ":" + baseRequestVO.getSize();
+        Object cached = cacheService.get(listCacheKey);
+        if (cached instanceof BaseRequestVO) {
+            return PoetryResult.success((BaseRequestVO) cached);
+        }
+
         LambdaQueryChainWrapper<WeiYan> lambdaQuery = weiYanService.lambdaQuery();
         lambdaQuery.eq(WeiYan::getType, CommonConst.WEIYAN_TYPE_FRIEND);
         if (baseRequestVO.getUserId() == null) {
@@ -211,6 +227,7 @@ public class WeiYanController {
         lambdaQuery.orderByDesc(WeiYan::getCreateTime).page(page);
         baseRequestVO.setRecords(page.getRecords());
         baseRequestVO.setTotal(page.getTotal());
+        cacheService.set(listCacheKey, baseRequestVO, CacheConstants.LONG_EXPIRE_TIME);
         return PoetryResult.success(baseRequestVO);
     }
 }

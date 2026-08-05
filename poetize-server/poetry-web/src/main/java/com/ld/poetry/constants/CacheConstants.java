@@ -186,6 +186,55 @@ public class CacheConstants {
      */
     public static final String LABEL_LIST_PREFIX = CACHE_PREFIX + "label:list:";
 
+    // ================================ 前台聚合读缓存 ================================
+
+    /**
+     * 评论分页列表缓存键前缀（listComment 接口）
+     * 格式: poetize:comment:list:page:{source}:{type}:{floorCommentId}:{current}:{size}
+     * 短 TTL 缓存 + 评论增删时按 source/type 前缀 evict
+     */
+    public static final String COMMENT_LIST_PAGE_PREFIX = COMMENT_LIST_PREFIX + "page:";
+
+    /**
+     * 树洞（留言板弹幕）全量列表缓存键
+     * 前台随机窗口在内存中选取，避免每请求 count + 窗口两条 SQL
+     */
+    public static final String TREE_HOLE_LIST_KEY = CACHE_PREFIX + "treehole:list";
+
+    /**
+     * 微言分页列表缓存键前缀（listWeiYan 接口）
+     * 格式: poetize:weiyan:list:{targetUserId}:{viewerUserId}:{current}:{size}
+     * 短 TTL 缓存 + 微言增删时按前缀 evict
+     */
+    public static final String WEIYAN_LIST_PREFIX = CACHE_PREFIX + "weiyan:list:";
+
+    /**
+     * 趣味页分类聚合缓存键（listFunny 接口，classify + count GROUP BY 结果）
+     */
+    public static final String FUNNY_CLASSIFY_COUNT_KEY = CACHE_PREFIX + "resourcepath:funny:classify_count";
+
+    /**
+     * 旅拍/恋爱笔记分类聚合缓存键（listAdminLovePhoto 接口）
+     */
+    public static final String LOVE_PHOTO_CLASSIFY_COUNT_KEY = CACHE_PREFIX + "resourcepath:love_photo:classify_count";
+
+    /**
+     * 百宝箱收藏分组缓存键（listCollect 接口，按 classify 分组结果）
+     */
+    public static final String FAVORITES_GROUPED_KEY = CACHE_PREFIX + "resourcepath:favorites:grouped";
+
+    /**
+     * 分类全量列表缓存键（listSort 接口）
+     * evict 复用 evictSortArticleList() 全部触发点（文章/分类/标签增删改）
+     */
+    public static final String SORT_LIST_KEY = CACHE_PREFIX + "sort:list";
+
+    /**
+     * 标签全量列表缓存键（listLabel/listSortAndLabel 接口）
+     * evict 复用 evictSortArticleList() 全部触发点（文章/分类/标签增删改）
+     */
+    public static final String LABEL_LIST_ALL_KEY = LABEL_LIST_PREFIX + "all";
+
     // ================================ 系统配置缓存 ================================
     
     /**

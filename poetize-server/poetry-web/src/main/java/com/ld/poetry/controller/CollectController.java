@@ -2,9 +2,11 @@ package com.ld.poetry.controller;
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.ld.poetry.config.PoetryResult;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
 import com.ld.poetry.entity.ResourcePath;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.vo.ResourcePathVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,11 +33,22 @@ public class CollectController {
     @Autowired
     private ResourcePathMapper resourcePathMapper;
 
+    @Autowired
+    private CacheService cacheService;
+
     /**
      * 查询收藏
      */
     @GetMapping("/listCollect")
     public PoetryResult<Map<String, List<ResourcePathVO>>> listCollect() {
+        // 分组结果走 Redis 缓存（百宝箱页高频读，资源变更时由 ResourceAggregationController 主动 evict）
+        Object cached = cacheService.get(CacheConstants.FAVORITES_GROUPED_KEY);
+        if (cached instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, List<ResourcePathVO>> cachedMap = (Map<String, List<ResourcePathVO>>) cached;
+            return PoetryResult.success(cachedMap);
+        }
+
         LambdaQueryChainWrapper<ResourcePath> wrapper = new LambdaQueryChainWrapper<>(resourcePathMapper);
         List<ResourcePath> resourcePaths = wrapper.eq(ResourcePath::getType, CommonConst.RESOURCE_PATH_TYPE_FAVORITES)
                 .eq(ResourcePath::getStatus, Boolean.TRUE)
@@ -49,6 +62,7 @@ public class CollectController {
                 return resourcePathVO;
             }).collect(Collectors.groupingBy(ResourcePathVO::getClassify));
         }
+        cacheService.set(CacheConstants.FAVORITES_GROUPED_KEY, collect, CacheConstants.LONG_EXPIRE_TIME);
         return PoetryResult.success(collect);
     }
 }

@@ -5,10 +5,12 @@ import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.config.PoetryResult;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.TreeHoleMapper;
 import com.ld.poetry.entity.TreeHole;
 import com.ld.poetry.enums.CodeMsg;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.CaptchaService;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.XssFilterUtil;
@@ -17,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
@@ -39,6 +42,9 @@ public class TreeHoleController {
 
     @Autowired
     private CaptchaService captchaService;
+
+    @Autowired
+    private CacheService cacheService;
 
     /**
      * 保存
@@ -79,6 +85,8 @@ public class TreeHoleController {
         treeHole.setMessage(cleanMessage);
         
         treeHoleMapper.insert(treeHole);
+        // 新增留言后清理树洞列表缓存，保证弹幕墙即时可见
+        cacheService.deleteKey(CacheConstants.TREE_HOLE_LIST_KEY);
         if (!StringUtils.hasText(treeHole.getAvatar())) {
             treeHole.setAvatar(PoetryUtil.getRandomAvatar(null));
         }
@@ -94,6 +102,7 @@ public class TreeHoleController {
     @AuditLog(action = "TREE_HOLE_DELETE", targetType = "TREE_HOLE", targetIdParam = "id", summary = "删除留言")
     public PoetryResult deleteTreeHole(@RequestParam("id") Integer id) {
         treeHoleMapper.deleteById(id);
+        cacheService.deleteKey(CacheConstants.TREE_HOLE_LIST_KEY);
         return PoetryResult.success();
     }
 
@@ -103,13 +112,25 @@ public class TreeHoleController {
      */
     @GetMapping("/listTreeHole")
     public PoetryResult<List<TreeHole>> listTreeHole() {
-        List<TreeHole> treeHoles;
-        Long count = new LambdaQueryChainWrapper<>(treeHoleMapper).count();
-        if (count > CommonConst.TREE_HOLE_COUNT) {
-            int i = new Random().nextInt(count.intValue() + 1 - CommonConst.TREE_HOLE_COUNT);
-            treeHoles = treeHoleMapper.queryAllByLimit(i, CommonConst.TREE_HOLE_COUNT);
+        // 全量列表走 Redis 缓存，随机窗口在内存中选取，避免每请求 count + 窗口两条 SQL
+        // 留言增删时主动 evict，缓存读出的对象每次反序列化都是新副本，填充头像不会污染缓存
+        List<TreeHole> allTreeHoles;
+        Object cached = cacheService.get(CacheConstants.TREE_HOLE_LIST_KEY);
+        if (cached instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<TreeHole> cachedList = (List<TreeHole>) cached;
+            allTreeHoles = cachedList;
         } else {
-            treeHoles = new LambdaQueryChainWrapper<>(treeHoleMapper).list();
+            allTreeHoles = new LambdaQueryChainWrapper<>(treeHoleMapper).list();
+            cacheService.set(CacheConstants.TREE_HOLE_LIST_KEY, allTreeHoles, CacheConstants.LONG_EXPIRE_TIME);
+        }
+
+        List<TreeHole> treeHoles;
+        if (allTreeHoles.size() > CommonConst.TREE_HOLE_COUNT) {
+            int i = new Random().nextInt(allTreeHoles.size() + 1 - CommonConst.TREE_HOLE_COUNT);
+            treeHoles = new ArrayList<>(allTreeHoles.subList(i, i + CommonConst.TREE_HOLE_COUNT));
+        } else {
+            treeHoles = allTreeHoles;
         }
 
         treeHoles.forEach(treeHole -> {

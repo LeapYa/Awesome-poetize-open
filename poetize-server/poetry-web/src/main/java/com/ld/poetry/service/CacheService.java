@@ -279,6 +279,9 @@ public class CacheService {
     public void evictSortArticleList() {
         redisUtil.del(CacheConstants.SORT_ARTICLE_LIST_KEY);
         redisUtil.del(CacheConstants.SORT_INFO_KEY);
+        // 分类/标签全量列表缓存（listSort/listLabel/listSortAndLabel 接口）
+        redisUtil.del(CacheConstants.SORT_LIST_KEY);
+        redisUtil.del(CacheConstants.LABEL_LIST_ALL_KEY);
     }
 
     /**
@@ -426,6 +429,8 @@ public class CacheService {
             evictSortArticleList();
             // 删除文章分页列表缓存(listArticle 接口), 文章增删改时必须清理
             evictAllArticleListPage();
+            // 删除热门文章榜单缓存（点赞榜基于文章数据计算）
+            redisUtil.del(CacheConstants.HOT_ARTICLES_KEY);
         }
     }
 
@@ -2278,6 +2283,8 @@ public class CacheService {
             evictCommentList(source, type);
             String countKey = CacheConstants.buildCommentListKey(source, type) + ":count";
             redisUtil.del(countKey);
+            // 删除该来源的评论分页列表缓存（listComment 接口，含主评论/楼层回复全部分页变体）
+            deleteKeysByPattern(CacheConstants.COMMENT_LIST_PAGE_PREFIX + source + ":" + type + ":*");
         }
     }
 

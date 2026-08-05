@@ -2965,6 +2965,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Override
     public PoetryResult<List<ArticleVO>> getArticlesByLikesTop() {
         try {
+            // 优先读 Redis 缓存：该接口需全量加载可见文章（含正文）计算热度，是整个项目最重的查询，
+            // 榜单允许分钟级延迟，浏览量/评论数变化由 TTL 自然收敛，文章增删改由 evictArticleRelatedCache 主动清理
+            Object cachedHot = cacheService.get(CacheConstants.HOT_ARTICLES_KEY);
+            if (cachedHot instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<ArticleVO> cachedList = (List<ArticleVO>) cachedHot;
+                return PoetryResult.success(cachedList);
+            }
+
             // 查询可见的文章，获取所有需要计算热度的字段
             LambdaQueryChainWrapper<Article> lambdaQuery = lambdaQuery()
                     .select(Article::getId, Article::getUserId, Article::getSortId, Article::getLabelId,
@@ -3018,6 +3027,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     .collect(Collectors.toList());
 
             log.info("获取热门文章成功，返回{}篇文章", articleVOList.size());
+            // 回填热门文章榜单缓存（1小时 TTL + 文章增删改主动 evict）
+            cacheService.set(CacheConstants.HOT_ARTICLES_KEY, articleVOList, CacheConstants.LONG_EXPIRE_TIME);
             return PoetryResult.success(articleVOList);
 
         } catch (Exception e) {

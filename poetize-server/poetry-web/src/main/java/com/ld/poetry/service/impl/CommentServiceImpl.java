@@ -11,6 +11,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 import com.ld.poetry.config.PoetryResult;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.dao.CommentMapper;
@@ -359,6 +360,17 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             }
         }
 
+        // 评论分页列表走 Redis 缓存：评论区是前台低频但稳定的读请求，长 TTL 保证缓存命中率，
+        // 评论增删/点赞由 evictCommentRelatedCache 按 source+type 前缀主动清理，不依赖 TTL 收敛
+        String listPageCacheKey = CacheConstants.COMMENT_LIST_PAGE_PREFIX
+                + baseRequestVO.getSource() + ":" + baseRequestVO.getCommentType() + ":"
+                + (baseRequestVO.getFloorCommentId() == null ? "main" : baseRequestVO.getFloorCommentId()) + ":"
+                + baseRequestVO.getCurrent() + ":" + baseRequestVO.getSize();
+        Object cachedPage = cacheService.get(listPageCacheKey);
+        if (cachedPage instanceof BaseRequestVO) {
+            return PoetryResult.success((BaseRequestVO) cachedPage);
+        }
+
         if (baseRequestVO.getFloorCommentId() == null) {
             // 🔧 新设计：主评论支持分页查询，提升性能和用户体验
             long queryStartTime = System.currentTimeMillis();
@@ -422,6 +434,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             baseRequestVO.setTotal(resultPage.getTotal());
         }
 
+        // 回填评论分页列表缓存（1小时 TTL + 评论增删/点赞主动 evict）
+        cacheService.set(listPageCacheKey, baseRequestVO, CacheConstants.LONG_EXPIRE_TIME);
         return PoetryResult.success(baseRequestVO);
     }
 
@@ -963,6 +977,10 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                     .update();
         }
         Comment updated = getById(id);
+        // 点赞数变更后主动失效该来源的评论分页缓存（低频操作，evict 成本可忽略，换取长 TTL 下的数据即时性）
+        if (updated != null) {
+            cacheService.evictCommentRelatedCache(updated.getSource(), updated.getType());
+        }
         return PoetryResult.success(updated != null ? updated.getLikeCount() : 0);
     }
 }

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapp
 import com.ld.poetry.aop.AuditLog;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.dao.LabelMapper;
 import com.ld.poetry.dao.SortMapper;
 import com.ld.poetry.entity.Label;
@@ -212,7 +213,7 @@ public class SortLabelController {
      */
     @GetMapping("/listSort")
     public PoetryResult<List<Sort>> listSort() {
-        return PoetryResult.success(new LambdaQueryChainWrapper<>(sortMapper).list());
+        return PoetryResult.success(loadSortListCached());
     }
 
 
@@ -363,7 +364,7 @@ public class SortLabelController {
      */
     @GetMapping("/listLabel")
     public PoetryResult<List<Label>> listLabel() {
-        return PoetryResult.success(new LambdaQueryChainWrapper<>(labelMapper).list());
+        return PoetryResult.success(loadLabelListCached());
     }
 
 
@@ -373,8 +374,38 @@ public class SortLabelController {
     @GetMapping("/listSortAndLabel")
     public PoetryResult<Map> listSortAndLabel() {
         Map<String, List> map = new HashMap<>();
-        map.put("sorts", new LambdaQueryChainWrapper<>(sortMapper).list());
-        map.put("labels", new LambdaQueryChainWrapper<>(labelMapper).list());
+        map.put("sorts", loadSortListCached());
+        map.put("labels", loadLabelListCached());
         return PoetryResult.success(map);
+    }
+
+    /**
+     * 分类全量列表：优先读 Redis 缓存，未命中查库并回填。
+     * 分类/标签/文章增删改时由 evictSortArticleList() 统一 evict。
+     */
+    @SuppressWarnings("unchecked")
+    private List<Sort> loadSortListCached() {
+        Object cached = cacheService.get(CacheConstants.SORT_LIST_KEY);
+        if (cached instanceof List) {
+            return (List<Sort>) cached;
+        }
+        List<Sort> sorts = new LambdaQueryChainWrapper<>(sortMapper).list();
+        cacheService.set(CacheConstants.SORT_LIST_KEY, sorts, CacheConstants.LONG_EXPIRE_TIME);
+        return sorts;
+    }
+
+    /**
+     * 标签全量列表：优先读 Redis 缓存，未命中查库并回填。
+     * 分类/标签/文章增删改时由 evictSortArticleList() 统一 evict。
+     */
+    @SuppressWarnings("unchecked")
+    private List<Label> loadLabelListCached() {
+        Object cached = cacheService.get(CacheConstants.LABEL_LIST_ALL_KEY);
+        if (cached instanceof List) {
+            return (List<Label>) cached;
+        }
+        List<Label> labels = new LambdaQueryChainWrapper<>(labelMapper).list();
+        cacheService.set(CacheConstants.LABEL_LIST_ALL_KEY, labels, CacheConstants.LONG_EXPIRE_TIME);
+        return labels;
     }
 }
