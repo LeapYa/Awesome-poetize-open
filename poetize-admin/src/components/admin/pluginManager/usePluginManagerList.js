@@ -40,55 +40,68 @@ export function loadPluginListData(vm) {
 }
 
 export function setActivePlugin(vm, row) {
-  vm.$http.post(vm.$constant.baseURL + '/sysPlugin/setActivePlugin', {
-    pluginType: vm.currentPluginType,
-    pluginKey: row.pluginKey
-  }, true).then((res) => {
-    if (res.code === 200) {
-      vm.$message.success(`已切换为: ${row.pluginName}`);
-      vm.activePluginKey = row.pluginKey;
-      if (vm.currentPluginType === 'article_theme') {
-        clearEditorThemeCache();
-        initEditorTheme();
-      }
-      if (vm.currentPluginType === 'editor') {
-        try {
-          window.localStorage.setItem('activeEditorPluginKey', row.pluginKey);
-        } catch (error) {}
-        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-          window.dispatchEvent(new CustomEvent('editor-plugin-changed', {
-            detail: {
-              editorKey: row.pluginKey
-            }
-          }));
+  vm.$confirm(
+    `切换到「${row.pluginName}」会重新生成全站预渲染页面，搜索引擎可能据此重新抓取文章页。确定继续吗？`,
+    '操作确认',
+    { type: 'warning' }
+  ).then(() => {
+    vm.$http.post(vm.$constant.baseURL + '/sysPlugin/setActivePlugin', {
+      pluginType: vm.currentPluginType,
+      pluginKey: row.pluginKey
+    }, true).then((res) => {
+      if (res.code === 200) {
+        vm.$message.success(`已切换为: ${row.pluginName}`);
+        vm.activePluginKey = row.pluginKey;
+        if (vm.currentPluginType === 'article_theme') {
+          clearEditorThemeCache();
+          initEditorTheme();
         }
+        if (vm.currentPluginType === 'editor') {
+          try {
+            window.localStorage.setItem('activeEditorPluginKey', row.pluginKey);
+          } catch (error) {}
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('editor-plugin-changed', {
+              detail: {
+                editorKey: row.pluginKey
+              }
+            }));
+          }
+        }
+      } else {
+        vm.$message.error(res.message || '设置失败');
       }
-    } else {
-      vm.$message.error(res.message || '设置失败');
-    }
-  }).catch(() => {
-    vm.$message.error('网络错误');
-  });
+    }).catch(() => {
+      vm.$message.error('网络错误');
+    });
+  }).catch(() => {});
 }
 
 export function togglePluginStatus(vm, row, enabled) {
-  vm.$http.post(vm.$constant.baseURL + '/sysPlugin/togglePluginStatus', {
-    id: row.id,
-    enabled
-  }, true)
-    .then(() => {
-      vm.$message.success(enabled ? '已启用' : '已禁用');
-      row.enabled = enabled;
-      if (enabled && vm.currentPluginType === 'particle_effect') {
-        vm.activePluginKey = row.pluginKey;
-      }
-      if (!enabled && vm.activePluginKey === row.pluginKey) {
-        vm.activePluginKey = 'none';
-      }
-    })
-    .catch((error) => {
-      vm.$message.error(error.message);
-    });
+  const action = enabled ? '启用' : '禁用';
+  vm.$confirm(
+    `${action}「${row.pluginName}」会重新生成全站预渲染页面，搜索引擎可能据此重新抓取文章页。确定继续吗？`,
+    '操作确认',
+    { type: 'warning' }
+  ).then(() => {
+    vm.$http.post(vm.$constant.baseURL + '/sysPlugin/togglePluginStatus', {
+      id: row.id,
+      enabled
+    }, true)
+      .then(() => {
+        vm.$message.success(enabled ? '已启用' : '已禁用');
+        row.enabled = enabled;
+        if (enabled && vm.currentPluginType === 'particle_effect') {
+          vm.activePluginKey = row.pluginKey;
+        }
+        if (!enabled && vm.activePluginKey === row.pluginKey) {
+          vm.activePluginKey = 'none';
+        }
+      })
+      .catch((error) => {
+        vm.$message.error(error.message);
+      });
+  }).catch(() => {});
 }
 
 export function deletePlugin(vm, row) {

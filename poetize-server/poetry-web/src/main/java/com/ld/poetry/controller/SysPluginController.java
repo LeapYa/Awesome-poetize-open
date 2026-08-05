@@ -10,11 +10,13 @@ import com.ld.poetry.entity.SysPluginActive;
 import com.ld.poetry.service.PluginBootstrapDataProvider;
 import com.ld.poetry.service.SysPluginService;
 import com.ld.poetry.service.prerender.PluginBootstrapMaterializer;
+import com.ld.poetry.service.prerender.PrerenderFacade;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -44,6 +46,19 @@ public class SysPluginController {
 
     @Autowired
     private PluginBootstrapMaterializer pluginBootstrapMaterializer;
+
+    @Autowired
+    private PrerenderFacade prerenderFacade;
+
+    /**
+     * 物化插件配置后重新预渲染全站。
+     * 预渲染 HTML 会固化 pb.<hash>.js 引用，仅更新 index.html 不够，必须重建预渲染页面才能让前台即时生效。
+     * 异步延迟 2s，等数据库事务提交后再读最新插件配置重建，避免读到脏数据。
+     */
+    private void materializeAndRebuild() {
+        pluginBootstrapMaterializer.materializeAsync();
+        prerenderFacade.rebuildSiteAsync(Duration.ofSeconds(2));
+    }
 
     // ============ 公开接口（前端网站调用） ============
 
@@ -281,7 +296,7 @@ public class SysPluginController {
         
         boolean success = sysPluginService.setActivePlugin(pluginType, pluginKey);
         if (success) {
-            pluginBootstrapMaterializer.materializeAsync();
+            materializeAndRebuild();
             return PoetryResult.success();
         } else {
             return PoetryResult.fail("设置失败");
@@ -338,7 +353,7 @@ public class SysPluginController {
         boolean success = sysPluginService.save(plugin);
         if (success) {
             log.info("新增插件成功: type={}, key={}, name={}", plugin.getPluginType(), plugin.getPluginKey(), plugin.getPluginName());
-            pluginBootstrapMaterializer.materializeAsync();
+            materializeAndRebuild();
             return PoetryResult.success(plugin);
         } else {
             return PoetryResult.fail("新增失败");
@@ -377,7 +392,7 @@ public class SysPluginController {
         boolean success = sysPluginService.updateById(plugin);
         if (success) {
             log.info("更新插件成功: id={}, name={}", plugin.getId(), plugin.getPluginName());
-            pluginBootstrapMaterializer.materializeAsync();
+            materializeAndRebuild();
             return PoetryResult.success(plugin);
         } else {
             return PoetryResult.fail("更新失败");
@@ -416,7 +431,7 @@ public class SysPluginController {
         boolean success = sysPluginService.removeById(id);
         if (success) {
             log.info("删除插件成功: id={}, name={}", id, existing.getPluginName());
-            pluginBootstrapMaterializer.materializeAsync();
+            materializeAndRebuild();
             return PoetryResult.success();
         } else {
             return PoetryResult.fail("删除失败");
@@ -473,7 +488,7 @@ public class SysPluginController {
         
         if (success) {
             log.info("切换插件状态成功: id={}, enabled={}", id, enabled);
-            pluginBootstrapMaterializer.materializeAsync();
+            materializeAndRebuild();
             return PoetryResult.success();
         } else {
             return PoetryResult.fail("操作失败");
