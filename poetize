@@ -7574,9 +7574,9 @@ apply_memory_optimizations() {
       
       DRUID_INITIAL_SIZE="5"
       DRUID_MIN_IDLE="5"
-      DRUID_MAX_ACTIVE="75"        # 80 - 5 = 75 (留5个余量)
+      DRUID_MAX_ACTIVE="32"        # 按 ~2核 CPU 并行度收紧，打满开销落在 MySQL 容器余量内
 
-      NGINX_KEEPALIVE="64"
+      NGINX_KEEPALIVE="24"
       REDIS_LETTUCE_MAX_ACTIVE="25"
       REDIS_LETTUCE_MAX_IDLE="12"
       REDIS_LETTUCE_MIN_IDLE="5"
@@ -7619,9 +7619,9 @@ apply_memory_optimizations() {
       
       DRUID_INITIAL_SIZE="10"
       DRUID_MIN_IDLE="10"
-      DRUID_MAX_ACTIVE="140"       # 150 - 10 = 140 (留10个余量)
+      DRUID_MAX_ACTIVE="48"        # 按 ~4核 CPU 并行度收紧，打满开销落在 MySQL 容器余量内
 
-      NGINX_KEEPALIVE="96"
+      NGINX_KEEPALIVE="40"
       REDIS_LETTUCE_MAX_ACTIVE="32"
       REDIS_LETTUCE_MAX_IDLE="16"
       REDIS_LETTUCE_MIN_IDLE="5"
@@ -7664,9 +7664,9 @@ apply_memory_optimizations() {
       
       DRUID_INITIAL_SIZE="15"
       DRUID_MIN_IDLE="15"
-      DRUID_MAX_ACTIVE="190"       # 200 - 10 = 190 (留10个余量)
+      DRUID_MAX_ACTIVE="64"        # 按 ~8核 CPU 并行度收紧，打满开销落在 MySQL 容器余量内
 
-      NGINX_KEEPALIVE="128"
+      NGINX_KEEPALIVE="48"
       REDIS_LETTUCE_MAX_ACTIVE="40"
       REDIS_LETTUCE_MAX_IDLE="20"
       REDIS_LETTUCE_MIN_IDLE="5"
@@ -7709,9 +7709,9 @@ apply_memory_optimizations() {
       
       DRUID_INITIAL_SIZE="20"
       DRUID_MIN_IDLE="20"
-      DRUID_MAX_ACTIVE="380"       # 400 - 20 = 380 (留20个余量)
+      DRUID_MAX_ACTIVE="96"        # 按 CPU 并行度收紧，打满开销落在 MySQL 容器余量内
 
-      NGINX_KEEPALIVE="192"
+      NGINX_KEEPALIVE="64"
       REDIS_LETTUCE_MAX_ACTIVE="50"
       REDIS_LETTUCE_MAX_IDLE="25"
       REDIS_LETTUCE_MIN_IDLE="5"
