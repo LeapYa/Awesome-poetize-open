@@ -507,7 +507,7 @@
           recommendStatus: null,
           sortId: null,
           labelId: null,
-          order: 'createTime',
+          order: 'updateTime',
           desc: true
         },
         tableSortOrders: ['descending', 'ascending'],
@@ -749,7 +749,7 @@
           recommendStatus: null,
           sortId: null,
           labelId: null,
-          order: 'createTime',
+          order: 'updateTime',
           desc: true
         }
         if (this.globalSearchKeyword) {
@@ -795,8 +795,9 @@
         this.getArticles();
       },
       handleSortChange({ prop, order }) {
-        const sortProp = prop || 'createTime';
-        this.pagination.order = order ? sortProp : 'createTime';
+        // 取消列排序时回退默认排序：最终修改时间（updateTime）倒序
+        const sortProp = prop || 'updateTime';
+        this.pagination.order = order ? sortProp : 'updateTime';
         this.pagination.desc = order ? order === 'descending' : true;
         this.pagination.current = 1;
         this.getArticles();

@@ -82,6 +82,7 @@ public class AdminArticleController {
         LambdaUpdateChainWrapper<Article> updateChainWrapper = articleService.lambdaUpdate()
                 .eq(Article::getId, articleId)
                 .eq(Article::getUserId, PoetryUtil.getUserId());
+        boolean anyStatusChanged = viewStatus != null || commentStatus != null || recommendStatus != null;
         if (viewStatus != null) {
             updateChainWrapper.set(Article::getViewStatus, viewStatus);
             // 首次公开时补记发布时间（RSS pubDate 口径），再次隐藏/公开不刷新
@@ -98,6 +99,11 @@ public class AdminArticleController {
         }
         if (recommendStatus != null) {
             updateChainWrapper.set(Article::getRecommendStatus, recommendStatus);
+        }
+        // 状态开关变更也是对文章的修改，同步刷新修改时间（update_time 无数据库自动刷新，需显式写入）
+        if (anyStatusChanged) {
+            updateChainWrapper.set(Article::getUpdateTime, LocalDateTime.now());
+            updateChainWrapper.set(Article::getUpdateBy, PoetryUtil.getUsername());
         }
         updateChainWrapper.update();
         

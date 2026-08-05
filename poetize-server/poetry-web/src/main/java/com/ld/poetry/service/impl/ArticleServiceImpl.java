@@ -1870,19 +1870,21 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     /**
      * 管理端文章列表排序字段白名单解析：仅支持 id / articleTitle / viewCount /
-     * createTime / updateTime（兼容下划线写法），
+     * createTime / updateTime / publishTime（兼容下划线写法），
+     * 未指定时默认 updateTime（最终修改时间）倒序，最近编辑的文章排最前，
      * 其余取值回退默认 createTime，避免任意字段注入排序。
      * commentCount 为 comment 表关联统计，在 listAdminArticle 内单独分支处理
      */
     private SFunction<Article, ?> resolveAdminArticleOrderField(String order) {
         if (!StringUtils.hasText(order)) {
-            return Article::getCreateTime;
+            return Article::getUpdateTime;
         }
         return switch (order.trim()) {
             case "id" -> Article::getId;
             case "articleTitle", "article_title" -> Article::getArticleTitle;
             case "viewCount", "view_count" -> Article::getViewCount;
             case "updateTime", "update_time" -> Article::getUpdateTime;
+            case "publishTime", "publish_time" -> Article::getPublishTime;
             default -> Article::getCreateTime;
         };
     }
@@ -2414,8 +2416,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             lambdaQuery.eq(Article::getSortId, baseRequestVO.getSortId());
         }
 
-        // 排序字段白名单：未指定或不在白名单内时保持默认 createTime 倒序，
-        // 排序字段相同时按 id 同向排序，保证分页顺序稳定
+        // 排序字段白名单：未指定或不在白名单内时保持默认 updateTime（最终修改时间）倒序，
+        // 排序字段相同时按 id 同向排序，保证分页顺序稳定；
+        // 注意 orderBy(condition, isAsc, column) 第二个参数是"升序"标志，
+        // 降序必须取反，否则 desc=true 会退化为升序
         boolean adminOrderDesc = baseRequestVO.isDesc();
         String adminOrderKey = baseRequestVO.getOrder() == null ? "" : baseRequestVO.getOrder().trim();
         Page<Article> page = new Page<>(baseRequestVO.getCurrent(), baseRequestVO.getSize());
@@ -2428,8 +2432,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     + CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode() + "') " + direction + ", id " + direction);
         } else {
             SFunction<Article, ?> adminOrderField = resolveAdminArticleOrderField(adminOrderKey);
-            lambdaQuery.orderBy(true, adminOrderDesc, adminOrderField)
-                    .orderBy(true, adminOrderDesc, Article::getId);
+            lambdaQuery.orderBy(true, !adminOrderDesc, adminOrderField)
+                    .orderBy(true, !adminOrderDesc, Article::getId);
         }
         lambdaQuery.page(page);
         baseRequestVO.setTotal(page.getTotal());
