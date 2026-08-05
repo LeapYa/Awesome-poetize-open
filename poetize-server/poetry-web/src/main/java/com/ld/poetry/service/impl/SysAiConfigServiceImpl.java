@@ -284,6 +284,11 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
                 log.info("插入AI配置成功: type={}, name={}", config.getConfigType(), config.getConfigName());
             }
 
+            if (success) {
+                // 失效 ChatModel 实例缓存，避免复用旧 provider/apiKey/baseUrl/model 构建的客户端
+                dynamicChatClientFactory.invalidateAll();
+            }
+
             return success;
 
         } catch (Exception e) {
@@ -591,8 +596,11 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             int rows = sysAiConfigMapper.updateEnabled(id, newEnabled);
 
             log.info("切换配置启用状态成功: id={}, enabled={}", id, newEnabled);
-            if (rows > 0 && "ai_chat".equals(config.getConfigType())) {
-                cacheService.evictStreamingConfig(config.getConfigName());
+            if (rows > 0) {
+                dynamicChatClientFactory.invalidateAll();
+                if ("ai_chat".equals(config.getConfigType())) {
+                    cacheService.evictStreamingConfig(config.getConfigName());
+                }
             }
             return rows > 0;
 
@@ -668,6 +676,8 @@ public class SysAiConfigServiceImpl extends ServiceImpl<SysAiConfigMapper, SysAi
             boolean success = removeById(id);
             if (success) {
                 log.info("删除AI配置成功: id={}", id);
+                // 失效 ChatModel 实例缓存（被删配置可能仍在缓存中）
+                dynamicChatClientFactory.invalidateAll();
                 // 防御性 evict: 若删除的是 article_ai 配置，清掉 defaultLang 缓存
                 if (existing != null && "article_ai".equals(existing.getConfigType())) {
                     cacheService.evictArticleAiDefaultLang();
