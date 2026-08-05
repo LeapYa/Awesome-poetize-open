@@ -128,6 +128,16 @@ export default {
       this.weiYanDialogVisible = false
     },
     submitWeiYan(content) {
+      // 树洞只允许一行内容，含换行或 <br> 等标签时拦截并提示
+      const violation = this.$common.checkTreeHoleSingleLine(content)
+      if (violation) {
+        this.$message({
+          message: violation,
+          type: 'warning',
+        })
+        return
+      }
+
       let weiYan = {
         content: content,
         isPublic: this.isPublic,
@@ -197,15 +207,7 @@ export default {
         .then((res) => {
           this.showFooter = false
           if (!this.$common.isEmpty(res.data)) {
-            res.data.records.forEach((c) => {
-              c.content = c.content.replace(
-                /\n{2,}/g,
-                '<div style="height: 12px"></div>'
-              )
-              c.content = c.content.replace(/\n/g, '<br/>')
-              c.content = this.$common.faceReg(c.content)
-              c.content = this.$common.pictureReg(c.content)
-            })
+            // 内容交由 CommentMarkdownRenderer 安全渲染（换行/表情/图片统一处理）
             this.treeHoleList = res.data.records
             this.pagination.total = res.data.total
           }

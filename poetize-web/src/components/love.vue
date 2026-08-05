@@ -937,15 +937,7 @@ export default {
         )
         .then((res) => {
           if (!this.$common.isEmpty(res.data)) {
-            res.data.records.forEach((c) => {
-              c.content = c.content.replace(
-                /\n{2,}/g,
-                '<div style="height: 12px"></div>'
-              )
-              c.content = c.content.replace(/\n/g, '<br/>')
-              c.content = this.$common.faceReg(c.content)
-              c.content = this.$common.pictureReg(c.content)
-            })
+            // 内容交由 CommentMarkdownRenderer 安全渲染（换行/表情/图片统一处理）
             this.treeHoleList = this.treeHoleList.concat(res.data.records)
             this.weiYanPagination.total = res.data.total
           }

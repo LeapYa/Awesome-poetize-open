@@ -307,10 +307,8 @@ export default function () {
       console.warn('parseMessage: content is undefined or not a string', content);
       return '';
     }
-    content = content.replace(/\n{2,}/g, '<div style="height: 12px"></div>');
-    content = content.replace(/\n/g, '<br/>');
-    content = $common.faceReg(content);
-    content = $common.pictureReg(content);
+    // 消息内容统一保持原始文本（含 \n、[表情]、[名称,图片] token），
+    // 由 CommentMarkdownRenderer 安全渲染，禁止在此生成 HTML（防 XSS）
     return content;
   }
   function markSystemMessagesAsRead() {

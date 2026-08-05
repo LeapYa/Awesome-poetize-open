@@ -53,7 +53,11 @@
                   ' transparent transparent',
               }"
             ></div>
-            <div class="my-content" v-html="treeHole.content"></div>
+            <CommentMarkdownRenderer
+              class="my-content"
+              :content="treeHole.content"
+              @rendered="bindContentImages"
+            />
             <div style="display: flex; justify-content: space-between">
               <div>😃 {{ treeHole.createTime }}</div>
               <div
@@ -96,8 +100,12 @@
 <script>
 import { $on, $off, $once, $emit } from '../../../utils/gogocodeTransfer'
 import { useMainStore } from '@/stores/main'
+import CommentMarkdownRenderer from '../../comment/CommentMarkdownRenderer.vue'
 
 export default {
+  components: {
+    CommentMarkdownRenderer,
+  },
   props: {
     treeHoleList: {
       type: Array,
@@ -127,6 +135,10 @@ export default {
     },
     deleteTreeHole(id) {
       $emit(this, 'deleteTreeHole', id)
+    },
+    // 内容渲染完成后绑定图片预览（渲染器异步出图，比父级 nextTick 更可靠）
+    bindContentImages() {
+      this.$common.imgShow('.tree-hole-box .pictureReg')
     },
   },
   emits: ['deleteTreeHole', 'launch'],

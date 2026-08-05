@@ -31,7 +31,11 @@
             </svg>
           </span>
         </div>
-        <div class="timeline-item-content" v-html="treeHole.content"></div>
+        <CommentMarkdownRenderer
+          class="timeline-item-content"
+          :content="treeHole.content"
+          @rendered="bindContentImages"
+        />
       </div>
     </div>
   </div>
@@ -40,8 +44,12 @@
 <script>
 import { $on, $off, $once, $emit } from '../../utils/gogocodeTransfer'
 import { useMainStore } from '@/stores/main'
+import CommentMarkdownRenderer from '../comment/CommentMarkdownRenderer.vue'
 
 export default {
+  components: {
+    CommentMarkdownRenderer,
+  },
   props: {
     treeHoleList: {
       type: Array,
@@ -63,6 +71,10 @@ export default {
   methods: {
     deleteTreeHole(id) {
       $emit(this, 'deleteTreeHole', id)
+    },
+    // 内容渲染完成后绑定图片预览（渲染器异步出图，比 mounted 时机更可靠）
+    bindContentImages() {
+      this.$common.imgShow('.process-line .pictureReg')
     },
   },
   emits: ['deleteTreeHole'],

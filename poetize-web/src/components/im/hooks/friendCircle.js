@@ -65,12 +65,7 @@ export default function () {
     $http.post($constant.baseURL + "/weiYan/listWeiYan", friendCircleData.pagination)
       .then((res) => {
         if (!$common.isEmpty(res.data)) {
-          res.data.records.forEach(c => {
-            c.content = c.content.replace(/\n{2,}/g, '<div style="height: 12px"></div>');
-            c.content = c.content.replace(/\n/g, '<br/>');
-            c.content = $common.faceReg(c.content);
-            c.content = $common.pictureReg(c.content);
-          });
+          // 内容交由 CommentMarkdownRenderer 安全渲染（换行/表情/图片统一处理）
           friendCircleData.treeHoleList = friendCircleData.treeHoleList.concat(res.data.records);
           friendCircleData.pagination.total = res.data.total;
           friendCircleData.showFriendCircle = true;
@@ -84,6 +79,15 @@ export default function () {
       });
   }
   function submitWeiYan(content) {
+    // 树洞只允许一行内容，含换行或 <br> 等标签时拦截并提示
+    const violation = $common.checkTreeHoleSingleLine(content);
+    if (violation) {
+      ElMessage({
+        message: violation,
+        type: 'warning'
+      });
+      return;
+    }
     let weiYan = {
       content: content,
       isPublic: friendCircleData.isPublic

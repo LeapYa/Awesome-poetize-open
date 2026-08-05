@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.regex.Pattern;
 
 /**
  * <p>
@@ -48,6 +49,13 @@ public class WeiYanController {
     private CacheService cacheService;
 
     /**
+     * 树洞（微言/文章动态）只允许单行内容：
+     * 禁止换行符及 br/p/div 等换行类 HTML 标签
+     */
+    private static final Pattern TREE_HOLE_LINE_BREAK_PATTERN =
+            Pattern.compile("[\\r\\n]|<\\s*(?:br|p|div)\\b", Pattern.CASE_INSENSITIVE);
+
+    /**
      * 保存
      */
     @PostMapping("/saveWeiYan")
@@ -57,6 +65,11 @@ public class WeiYanController {
     public PoetryResult saveWeiYan(@RequestBody WeiYan weiYanVO) {
         if (!StringUtils.hasText(weiYanVO.getContent())) {
             return PoetryResult.fail("微言不能为空！");
+        }
+
+        // 树洞只支持单行内容，需在 XSS 清洗前校验，避免 <br> 等标签被静默剥离
+        if (TREE_HOLE_LINE_BREAK_PATTERN.matcher(weiYanVO.getContent()).find()) {
+            return PoetryResult.fail("树洞只支持一行内容，请勿输入换行！");
         }
 
         // XSS过滤处理
@@ -87,6 +100,11 @@ public class WeiYanController {
     public PoetryResult saveNews(@RequestBody WeiYan weiYanVO) {
         if (!StringUtils.hasText(weiYanVO.getContent()) || weiYanVO.getSource() == null) {
             return PoetryResult.fail("信息不全！");
+        }
+
+        // 文章动态同属树洞内容，只支持单行，需在 XSS 清洗前校验
+        if (TREE_HOLE_LINE_BREAK_PATTERN.matcher(weiYanVO.getContent()).find()) {
+            return PoetryResult.fail("树洞只支持一行内容，请勿输入换行！");
         }
 
         // XSS过滤处理

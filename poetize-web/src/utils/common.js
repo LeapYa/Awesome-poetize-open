@@ -77,6 +77,22 @@ export default {
   },
 
   /**
+   * 树洞（微言/朋友圈/文章动态）内容单行校验
+   * 树洞只允许一行内容，禁止换行符及 br/p/div 等换行类 HTML 标签
+   * @param {string} content - 待校验内容
+   * @returns {string|null} 违规时返回提示文案，合法时返回 null
+   */
+  checkTreeHoleSingleLine(content) {
+    if (!content) {
+      return null
+    }
+    if (/[\r\n]/.test(content) || /<\s*(?:br|p|div)\b/i.test(content)) {
+      return '树洞只支持一行内容，请勿输入换行或 <br> 等换行标签！'
+    }
+    return null
+  },
+
+  /**
    * 表情包转换
    */
   faceReg(content) {

@@ -43,7 +43,7 @@
                           :fallback-src="$common.getDefaultAvatar()"/>
               </div>
               <!-- 文本消息 -->
-              <div class="message" v-html="item.content"></div>
+              <CommentMarkdownRenderer class="message" :content="item.content" />
               <!-- 时间 -->
               <div class="msg-date" v-if="!$common.isEmpty(item.createTime)">
                 {{$common.getDateDiff(item.createTime)}}
@@ -70,9 +70,8 @@
                           :fallback-src="$common.getDefaultAvatar()"/>
               </div>
               <!-- 文本消息 -->
-              <div class="message" v-html="item.content"
-                  :style="{'background': (item.fromId !== $store.state.currentUser.id ? $constant.tree_hole_color[item.fromId % $constant.tree_hole_color.length] : '')}">
-              </div>
+              <CommentMarkdownRenderer class="message" :content="item.content"
+                  :style="{'background': (item.fromId !== $store.state.currentUser.id ? $constant.tree_hole_color[item.fromId % $constant.tree_hole_color.length] : '')}" />
               <div class="msg-user">{{item.username}}</div>
               <!-- 时间 -->
               <div class="msg-date" style="margin-left: 5px;margin-right: 5px"
@@ -372,6 +371,7 @@
   import { message as ElMessage } from '@/utils/element-command-services';
   import emoji from "./emoji";
   import uploadPicture from "./uploadPicture";
+  import CommentMarkdownRenderer from "../../comment/CommentMarkdownRenderer.vue";
   import {ArrowLeft} from "@element-plus/icons-vue";
   import {reactive, getCurrentInstance, onMounted, onBeforeUnmount, watchEffect, toRefs} from 'vue';
   import { useMainStore } from '../../../stores/main';
@@ -386,7 +386,8 @@
     components: {
       uploadPicture,
       emoji,
-      ArrowLeft
+      ArrowLeft,
+      CommentMarkdownRenderer
     },
     props: {
       currentChatFriendId: {
