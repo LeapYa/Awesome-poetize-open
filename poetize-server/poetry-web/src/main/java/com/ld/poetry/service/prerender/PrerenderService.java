@@ -599,7 +599,7 @@ public class PrerenderService {
         // meta.title 已含 " - 站点名" 后缀（generateArticleMeta 拼接），优先使用；
         // 兜底仍自行拼接，防止 meta 异常时标题缺后缀
         String pageTitle = firstNonBlank(stringValue(meta.get("title")), articleTitle + " - " + siteName, siteName);
-        String contentHtml = engine.renderMarkdown(content);
+        String contentHtml = engine.renderMarkdown(content, baseUrl);
         // h1 使用纯文章标题（不含站点名后缀）
         String fullContent = "<header><h1 class=\"article-main-title\">" + text(firstNonBlank(articleTitle, siteName))
                 + "</h1></header>\n<section>" + contentHtml + "</section>\n<footer>"

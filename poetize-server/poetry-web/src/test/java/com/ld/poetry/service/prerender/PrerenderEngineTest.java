@@ -34,6 +34,22 @@ class PrerenderEngineTest {
     }
 
     @Test
+    void renderMarkdownDecoratesLinksWithTargetAndNofollow() {
+        PrerenderEngine engine = createEngine();
+
+        String markdown = "[外链](https://other.com/a) [站内相对](/article/1) [站内绝对](https://mysite.com/article/2) [锚点](#section)";
+        String html = engine.renderMarkdown(markdown, "https://mysite.com");
+
+        // 外链：新标签页 + nofollow 防权重稀释
+        assertTrue(html.contains("<a href=\"https://other.com/a\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">外链</a>"));
+        // 内链：新标签页但不加 nofollow，保留权重传递
+        assertTrue(html.contains("<a href=\"/article/1\" target=\"_blank\" rel=\"noopener noreferrer\">站内相对</a>"));
+        assertTrue(html.contains("<a href=\"https://mysite.com/article/2\" target=\"_blank\" rel=\"noopener noreferrer\">站内绝对</a>"));
+        // 页内锚点保持原样
+        assertTrue(html.contains("<a href=\"#section\">锚点</a>"));
+    }
+
+    @Test
     void replaceTitlePreservesQuotes() {
         PrerenderEngine engine = createEngine();
         String htmlTemplate = "<html><head><title>Old</title></head><body></body></html>";

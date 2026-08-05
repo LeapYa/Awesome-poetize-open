@@ -748,7 +748,27 @@ export default {
 
         return self.renderToken(tokens, idx, options)
       }
-      
+
+      // 正文链接统一新标签页打开；外链追加 nofollow，避免稀释本站 SEO 权重
+      const defaultLinkOpen =
+        md.renderer.rules.link_open ||
+        ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
+      md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+        const token = tokens[idx]
+        const hrefIndex = token.attrIndex('href')
+        const href = hrefIndex >= 0 ? token.attrs[hrefIndex][1] : ''
+        if (href && !href.startsWith('#')) {
+          token.attrSet('target', '_blank')
+          token.attrSet(
+            'rel',
+            this.isExternalLink(href)
+              ? 'nofollow noopener noreferrer'
+              : 'noopener noreferrer'
+          )
+        }
+        return defaultLinkOpen(tokens, idx, options, env, self)
+      }
+
       // 只有检测到数学公式时才加载 katex
       if (hasMathFormula(content)) {
         const katexPlugin = await loadMarkdownItKatex()
@@ -820,6 +840,7 @@ export default {
 
       await this.$nextTick()
 
+      this.normalizeContentLinks()
       this.processImages()
       this.initializeVideoCards()
       this.bindAttachmentCardActions()
@@ -837,6 +858,49 @@ export default {
       if (setupCommentObserver) {
         this.setupCommentIntersectionObserver()
       }
+    },
+
+    /**
+     * 判断是否为站外链接（绝对地址且域名与当前站点不同）
+     * @param {string} href - 链接地址
+     * @returns {boolean}
+     */
+    isExternalLink(href) {
+      if (!href) return false
+      if (/^https?:\/\//i.test(href) || href.startsWith('//')) {
+        try {
+          const url = new URL(href, window.location.origin)
+          return url.host !== window.location.host
+        } catch (e) {
+          return true
+        }
+      }
+      return false
+    },
+
+    /**
+     * 规范化正文内的所有链接（含 Markdown 渲染链接与手写 HTML <a>）：
+     * 统一新标签页打开；外链追加 nofollow 防止稀释本站 SEO 权重，
+     * 内链保留权重传递，仅加 noopener 防新标签页劫持
+     */
+    normalizeContentLinks() {
+      const root =
+        (this.$el ? this.$el.querySelector('.entry-content') : null) ||
+        document.querySelector('.entry-content')
+      if (!root) return
+
+      root.querySelectorAll('a').forEach((link) => {
+        const href = link.getAttribute('href') || ''
+        // 页内锚点（如目录跳转）保持原行为
+        if (!href || href.startsWith('#')) return
+        link.setAttribute('target', '_blank')
+        link.setAttribute(
+          'rel',
+          this.isExternalLink(href)
+            ? 'nofollow noopener noreferrer'
+            : 'noopener noreferrer'
+        )
+      })
     },
 
     initializeVideoCards(container) {

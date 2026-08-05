@@ -34,14 +34,22 @@ const defaultLinkOpen =
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   const token = tokens[idx]
   const hrefIndex = token.attrIndex('href')
+  let href = ''
   if (hrefIndex >= 0) {
-    const href = token.attrs[hrefIndex][1]
+    href = token.attrs[hrefIndex][1]
     if (!isSafeUrl(href)) {
       token.attrs[hrefIndex][1] = '#'
+      href = '#'
     }
   }
   token.attrSet('target', '_blank')
-  token.attrSet('rel', 'noopener noreferrer')
+  // 站外链接追加 nofollow，避免用户评论稀释本站 SEO 权重
+  token.attrSet(
+    'rel',
+    /^https?:\/\//i.test(href)
+      ? 'nofollow noopener noreferrer'
+      : 'noopener noreferrer'
+  )
   return defaultLinkOpen(tokens, idx, options, env, self)
 }
 

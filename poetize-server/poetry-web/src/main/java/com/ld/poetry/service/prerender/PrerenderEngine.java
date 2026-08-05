@@ -124,9 +124,75 @@ public class PrerenderEngine {
     }
 
     public String renderMarkdown(String markdown) {
+        return renderMarkdown(markdown, null);
+    }
+
+    /**
+     * 渲染 Markdown 为 HTML，并规范化正文链接：
+     * 统一新标签页打开；站外链接追加 nofollow，避免稀释本站 SEO 权重
+     *
+     * @param markdown 原始 Markdown
+     * @param baseUrl  站点根地址（用于判定内链/外链），可为 null
+     */
+    public String renderMarkdown(String markdown, String baseUrl) {
         String safeMarkdown = StringEscapeUtils.unescapeHtml4(markdown == null ? "" : markdown);
         Node document = markdownParser.parse(safeMarkdown);
-        return htmlRenderer.render(document);
+        return decorateLinks(htmlRenderer.render(document), baseUrl);
+    }
+
+    private static final Pattern MARKDOWN_LINK_PATTERN =
+            Pattern.compile("<a\\s+([^>]*href=\"([^\"]*)\"[^>]*)>", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 给渲染产物中的链接补充 target/rel 属性
+     */
+    private String decorateLinks(String html, String baseUrl) {
+        if (!StringUtils.hasText(html)) {
+            return html;
+        }
+        String baseHost = extractHost(baseUrl);
+        Matcher matcher = MARKDOWN_LINK_PATTERN.matcher(html);
+        StringBuilder sb = new StringBuilder();
+        while (matcher.find()) {
+            String attrs = matcher.group(1);
+            String href = matcher.group(2);
+            String replacement = matcher.group();
+            // 页内锚点保持原样；已有 target 的不重复处理
+            if (StringUtils.hasText(href) && !href.startsWith("#")
+                    && !attrs.toLowerCase().contains("target=")) {
+                String rel = isExternalLink(href, baseHost)
+                        ? "nofollow noopener noreferrer"
+                        : "noopener noreferrer";
+                replacement = "<a " + attrs + " target=\"_blank\" rel=\"" + rel + "\">";
+            }
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
+    private boolean isExternalLink(String href, String baseHost) {
+        String lower = href.toLowerCase();
+        if (!lower.startsWith("http://") && !lower.startsWith("https://") && !lower.startsWith("//")) {
+            return false;
+        }
+        String host = extractHost(href);
+        if (host == null) {
+            return true;
+        }
+        return baseHost == null || !host.equalsIgnoreCase(baseHost);
+    }
+
+    private String extractHost(String url) {
+        if (!StringUtils.hasText(url)) {
+            return null;
+        }
+        try {
+            String normalized = url.startsWith("//") ? "https:" + url : url;
+            return java.net.URI.create(normalized).getHost();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public boolean isTemplateAvailable() {
