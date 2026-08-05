@@ -128,6 +128,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    disableAiMention: {
+      type: Boolean,
+      default: false,
+    },
   },
   data() {
     return {
@@ -158,6 +162,9 @@ export default {
       )
     },
     aiCommentMentionEnabled() {
+      if (this.disableAiMention) {
+        return false
+      }
       return (
         this.mainStore.webInfo?.enableWaifu === true &&
         this.aiChatStore.config?.enabled === true

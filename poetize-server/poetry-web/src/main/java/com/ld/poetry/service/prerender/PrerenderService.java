@@ -9,12 +9,14 @@ import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.ResourcePath;
 import com.ld.poetry.entity.Sort;
 import com.ld.poetry.entity.WebInfo;
+import com.ld.poetry.entity.WeiYan;
 import com.ld.poetry.service.ArticleService;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.SeoConfigService;
 import com.ld.poetry.service.SeoMetaService;
 import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.service.WebInfoService;
+import com.ld.poetry.service.WeiYanService;
 import com.ld.poetry.utils.ArticleUrlUtil;
 import com.ld.poetry.utils.CommonQuery;
 import com.ld.poetry.utils.mail.MailUtil;
@@ -76,6 +78,9 @@ public class PrerenderService {
 
     @Autowired
     private ResourcePathMapper resourcePathMapper;
+
+    @Autowired
+    private WeiYanService weiYanService;
 
     @Autowired
     private JsonMapper jsonMapper;
@@ -600,9 +605,13 @@ public class PrerenderService {
         // 兜底仍自行拼接，防止 meta 异常时标题缺后缀
         String pageTitle = firstNonBlank(stringValue(meta.get("title")), articleTitle + " - " + siteName, siteName);
         String contentHtml = engine.renderMarkdown(content, baseUrl);
-        // h1 使用纯文章标题（不含站点名后缀）
+        String newsHtml = buildArticleNewsHtml(article.getId(), baseUrl);
+        // h1 使用纯文章标题（不含站点名后缀）；微言（最新进展）放在正文前，与前端展示位置一致
         String fullContent = "<header><h1 class=\"article-main-title\">" + text(firstNonBlank(articleTitle, siteName))
-                + "</h1></header>\n<section>" + contentHtml + "</section>\n<footer>"
+                + "</h1></header>\n"
+                + (StringUtils.hasText(newsHtml) ? newsHtml + "\n" : "")
+                + "<section>" + contentHtml + "</section>\n"
+                + "<footer>"
                 + (article.getCreateTime() != null ? "<time datetime=\"" + article.getCreateTime() + "\">" + text(formatDate(article.getCreateTime())) + "</time>" : "")
                 + "</footer>";
 
@@ -620,6 +629,31 @@ public class PrerenderService {
             engine.deletePage("article/" + article.getId());
         }
         engine.writePage(articlePath.replaceFirst("^/", ""), outputLang, html);
+    }
+
+    private String buildArticleNewsHtml(Integer articleId, String baseUrl) {
+        List<WeiYan> newsList = weiYanService.lambdaQuery()
+                .eq(WeiYan::getType, CommonConst.WEIYAN_TYPE_NEWS)
+                .eq(WeiYan::getSource, articleId)
+                .eq(WeiYan::getIsPublic, Boolean.TRUE)
+                .orderByDesc(WeiYan::getCreateTime)
+                .list();
+        if (newsList.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("<section class=\"article-news\"><h2>最新进展</h2><ul class=\"article-news-list\">");
+        for (WeiYan news : newsList) {
+            sb.append("<li>");
+            if (news.getCreateTime() != null) {
+                sb.append("<time datetime=\"").append(news.getCreateTime()).append("\">")
+                        .append(text(formatDate(news.getCreateTime()))).append("</time>");
+            }
+            sb.append("<div class=\"news-content\">")
+                    .append(engine.renderMarkdown(news.getContent(), baseUrl))
+                    .append("</div></li>");
+        }
+        sb.append("</ul></section>");
+        return sb.toString();
     }
 
     private void renderCategoryPage(Sort sortData, Integer labelId) {

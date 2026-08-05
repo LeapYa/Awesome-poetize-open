@@ -49,6 +49,7 @@
   bottom: 10px;
   right: 20%;
   cursor: pointer;
+  z-index: 1001;
   animation: scale 1s ease-in-out infinite;
 }
 

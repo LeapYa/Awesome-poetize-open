@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     title="微言"
-    :modal="false"
+    :modal="true"
     :model-value="modelValue"
     width="40%"
     :append-to-body="true"
@@ -21,7 +21,7 @@
         >
         </el-date-picker>
       </div>
-      <commentBox :disableGraffiti="true" @submitComment="emit('submit-comment', $event)">
+      <commentBox :disableGraffiti="true" :disable-ai-mention="true" @submitComment="emit('submit-comment', $event)">
       </commentBox>
     </div>
   </el-dialog>

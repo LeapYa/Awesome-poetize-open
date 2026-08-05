@@ -9,6 +9,7 @@ import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.WeiYan;
+import com.ld.poetry.event.ArticleSavedEvent;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.WeiYanService;
 import com.ld.poetry.constants.CacheConstants;
@@ -19,6 +20,7 @@ import com.ld.poetry.utils.StringUtil;
 import com.ld.poetry.utils.XssFilterUtil;
 import com.ld.poetry.vo.BaseRequestVO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
@@ -47,6 +49,9 @@ public class WeiYanController {
 
     @Autowired
     private CacheService cacheService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * 树洞（微言/文章动态）只允许单行内容：
@@ -135,8 +140,15 @@ public class WeiYanController {
         weiYan.setCreateTime(weiYanVO.getCreateTime());
         weiYan.setType(CommonConst.WEIYAN_TYPE_NEWS);
         weiYanService.save(weiYan);
+        // 文章动态属于"最新进展"，更新文章 updateTime 以反映内容演进
+        Article articleUpdate = new Article();
+        articleUpdate.setId(weiYanVO.getSource());
+        articleUpdate.setUpdateTime(LocalDateTime.now());
+        articleMapper.updateById(articleUpdate);
         // 保存文章动态后清理对应文章的列表缓存
         cacheService.evictWeiYanNewsList(weiYanVO.getSource());
+        // 触发文章预渲染更新，使微言内容同步到静态 HTML 供搜索引擎抓取
+        eventPublisher.publishEvent(new ArticleSavedEvent(weiYanVO.getSource(), null, null, null, null, null, true, "UPDATE", false, null));
         return PoetryResult.success();
     }
 
@@ -201,7 +213,13 @@ public class WeiYanController {
         // 仅当是 NEWS 类型(有 source)时才需要 evict listNews 缓存
         if (existing != null && existing.getSource() != null
                 && CommonConst.WEIYAN_TYPE_NEWS.equals(existing.getType())) {
+            // 删除"最新进展"同样视为内容演进，更新文章 updateTime
+            Article articleUpdate = new Article();
+            articleUpdate.setId(existing.getSource());
+            articleUpdate.setUpdateTime(LocalDateTime.now());
+            articleMapper.updateById(articleUpdate);
             cacheService.evictWeiYanNewsList(existing.getSource());
+            eventPublisher.publishEvent(new ArticleSavedEvent(existing.getSource(), null, null, null, null, null, true, "UPDATE", false, null));
         }
         // 删除微言后清理分页列表缓存
         cacheService.deleteKeysByPattern(CacheConstants.WEIYAN_LIST_PREFIX + "*");
