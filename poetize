@@ -7498,6 +7498,7 @@ apply_memory_optimizations() {
   local JAVA_CODE_CACHE
   local JAVA_DIRECT_MEM
   local JAVA_CI_COMPILER_COUNT
+  local JAVA_GC_FLAGS
   
   local JAVA_LIMIT
   local JAVA_RESERVATION
@@ -7527,23 +7528,25 @@ apply_memory_optimizations() {
       
       DRUID_INITIAL_SIZE="3"
       DRUID_MIN_IDLE="3"
-      DRUID_MAX_ACTIVE="55"        # 60 - 5 = 55 (留5个余量)
+      DRUID_MAX_ACTIVE="24"        # 1G 内存收紧，配合 G1 小堆降低常驻内存
 
       # Nginx 到后端的 keepalive 复用连接上限，必须 ≤ DRUID_MAX_ACTIVE
-      NGINX_KEEPALIVE="48"
+      NGINX_KEEPALIVE="20"
       # Redis Lettuce 连接池（异步多路复用，无需过大）
-      REDIS_LETTUCE_MAX_ACTIVE="20"
-      REDIS_LETTUCE_MAX_IDLE="10"
+      REDIS_LETTUCE_MAX_ACTIVE="16"
+      REDIS_LETTUCE_MAX_IDLE="8"
       REDIS_LETTUCE_MIN_IDLE="3"
 
-      JAVA_XMX="768m"
+      JAVA_XMX="512m"
       JAVA_XMS="512m"
-      JAVA_METASPACE="256m"
-      JAVA_CLASS_SPACE="128m"
-      JAVA_XSS="512k"
-      JAVA_CODE_CACHE="80m"
+      JAVA_METASPACE="192m"
+      JAVA_CLASS_SPACE="64m"
+      JAVA_XSS="256k"
+      JAVA_CODE_CACHE="64m"
       JAVA_DIRECT_MEM="96m"
       JAVA_CI_COMPILER_COUNT="2"
+      # 1G 内存小堆用 G1（ZGC 在小堆下开销大，ExitOnOutOfMemoryError 触发无限重启）
+      JAVA_GC_FLAGS="-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication"
       
       JAVA_LIMIT="1024M"
       JAVA_RESERVATION="768M"
@@ -7586,6 +7589,8 @@ apply_memory_optimizations() {
       JAVA_CODE_CACHE="96m"
       JAVA_DIRECT_MEM="128m"
       JAVA_CI_COMPILER_COUNT="2"
+      # 内存充裕，保留 ZGC 低停顿特性
+      JAVA_GC_FLAGS="-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:ZUncommitDelay=120"
       
       JAVA_LIMIT="1536M"
       JAVA_RESERVATION="1280M"
@@ -7629,6 +7634,8 @@ apply_memory_optimizations() {
       JAVA_CODE_CACHE="128m"
       JAVA_DIRECT_MEM="192m"
       JAVA_CI_COMPILER_COUNT="2"
+      # 内存充裕，保留 ZGC 低停顿特性
+      JAVA_GC_FLAGS="-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:ZUncommitDelay=120"
       
       JAVA_LIMIT="2048M"
       JAVA_RESERVATION="1536M"
@@ -7672,6 +7679,8 @@ apply_memory_optimizations() {
       JAVA_CODE_CACHE="160m"
       JAVA_DIRECT_MEM="256m"
       JAVA_CI_COMPILER_COUNT="3"
+      # 内存充裕，保留 ZGC 低停顿特性
+      JAVA_GC_FLAGS="-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:ZUncommitDelay=120"
       
       JAVA_LIMIT="2560M"
       JAVA_RESERVATION="2048M"
@@ -7715,6 +7724,8 @@ apply_memory_optimizations() {
       JAVA_CODE_CACHE="192m"
       JAVA_DIRECT_MEM="384m"
       JAVA_CI_COMPILER_COUNT="4"
+      # 内存充裕，保留 ZGC 低停顿特性
+      JAVA_GC_FLAGS="-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:ZUncommitDelay=120"
       
       JAVA_LIMIT="4096M"
       JAVA_RESERVATION="3072M"
@@ -7949,9 +7960,9 @@ EOF
   
   # 3. 添加/更新Java环境变量以优化JVM内存使用
   info "更新Java服务JVM内存参数..."
-  # 使用ZGC垃圾收集器，更适合容器化环境，减少GC停顿时间
-  # 添加容器化优化参数，提高在Docker环境中的性能和稳定性
-  local JAVA_OPTS="-Xmx$JAVA_XMX -Xms$JAVA_XMS -XX:MaxMetaspaceSize=$JAVA_METASPACE -XX:CompressedClassSpaceSize=$JAVA_CLASS_SPACE -Xss$JAVA_XSS -XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+ExitOnOutOfMemoryError -XX:MaxRAMPercentage=80.0 -XX:+DisableExplicitGC -XX:ReservedCodeCacheSize=$JAVA_CODE_CACHE -XX:MaxDirectMemorySize=$JAVA_DIRECT_MEM -XX:ZUncommitDelay=120 -XX:CICompilerCount=$JAVA_CI_COMPILER_COUNT"
+  # GC 策略由各内存档位的 JAVA_GC_FLAGS 决定（very-low 用 G1，其余用 ZGC）
+  # 全局移除 ExitOnOutOfMemoryError（小堆 OOM 会触发无限重启），改用 HeapDump 留 dump 诊断
+  local JAVA_OPTS="-Xmx$JAVA_XMX -Xms$JAVA_XMS -XX:MaxMetaspaceSize=$JAVA_METASPACE -XX:CompressedClassSpaceSize=$JAVA_CLASS_SPACE -Xss$JAVA_XSS $JAVA_GC_FLAGS -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs -XX:ReservedCodeCacheSize=$JAVA_CODE_CACHE -XX:MaxDirectMemorySize=$JAVA_DIRECT_MEM -XX:CICompilerCount=$JAVA_CI_COMPILER_COUNT"
   
   if [ -f "lib/config.sh" ]; then
     # 新版本：更新 .env 文件中的 JVM 参数和容器内存限制
