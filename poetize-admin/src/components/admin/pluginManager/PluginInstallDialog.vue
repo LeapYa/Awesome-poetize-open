@@ -22,17 +22,6 @@
       </div>
     </div>
 
-    <div v-if="manifestPreview" class="manifest-preview">
-      <el-divider content-position="left">插件信息预览</el-divider>
-      <el-descriptions :column="1" size="small" border>
-        <el-descriptions-item label="名称">{{ manifestPreview.name }}</el-descriptions-item>
-        <el-descriptions-item label="版本">{{ manifestPreview.version }}</el-descriptions-item>
-        <el-descriptions-item label="描述">{{ manifestPreview.description || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="作者">{{ manifestPreview.author || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="类型">{{ manifestPreview.pluginType || '-' }}</el-descriptions-item>
-      </el-descriptions>
-    </div>
-
     <span slot="footer" class="dialog-footer">
       <el-button @click="handleClose">取消</el-button>
       <el-button type="primary" :loading="installing" :disabled="!installFile" @click="installPlugin">安装</el-button>
@@ -53,8 +42,7 @@ export default {
     return {
       installFile: null,
       installing: false,
-      isDragOver: false,
-      manifestPreview: null
+      isDragOver: false
     };
   },
   computed: {
@@ -70,7 +58,6 @@ export default {
   methods: {
     resetSelection() {
       this.installFile = null;
-      this.manifestPreview = null;
     },
     handleClose() {
       this.resetSelection();
@@ -96,20 +83,6 @@ export default {
         return;
       }
       this.installFile = file;
-      this.parseManifest(file);
-    },
-    async parseManifest(file) {
-      this.manifestPreview = null;
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await this.$http.upload(this.$constant.baseURL + '/plugin/previewManifest', formData);
-        if (res.code === 200 && res.data) {
-          this.manifestPreview = res.data;
-        }
-      } catch (e) {
-        console.log('Manifest 预览不可用:', e);
-      }
     },
     installPlugin() {
       if (!this.installFile) return;
@@ -119,7 +92,11 @@ export default {
       this.$http.upload(this.$constant.baseURL + '/plugin/install', formData)
         .then((res) => {
           if (res.code === 200) {
-            this.$message.success('插件安装成功！');
+            const data = res.data || {};
+            this.$message.success(data.message || '插件安装成功！');
+            if (data.warning) {
+              this.$message({ type: 'warning', message: data.warning, duration: 8000, showClose: true });
+            }
             this.$emit('installed');
             this.handleClose();
           } else {
@@ -152,8 +129,5 @@ export default {
 }
 .plugin-drop-zone:hover {
   border-color: #c0c4cc;
-}
-.manifest-preview {
-  margin-top: 15px;
 }
 </style>

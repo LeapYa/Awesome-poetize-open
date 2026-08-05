@@ -78,9 +78,6 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private UserService userService;
 
     @Autowired
-    private com.ld.poetry.plugin.PluginHookManager pluginHookManager;
-
-    @Autowired
     private ApplicationEventPublisher eventPublisher;
 
     @Autowired
@@ -156,13 +153,6 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         comment.setLocation(location);
 
         save(comment);
-
-        // 触发插件钩子：评论发布
-        pluginHookManager.onCommentPublish(
-                Long.valueOf(comment.getId()),
-                comment.getSource() != null ? Long.valueOf(comment.getSource()) : null,
-                Long.valueOf(comment.getUserId()),
-                comment.getCommentContent());
 
         try {
             mailSendUtil.sendCommentMail(commentVO, one, this);

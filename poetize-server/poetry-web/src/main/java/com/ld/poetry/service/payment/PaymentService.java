@@ -5,7 +5,6 @@ import tools.jackson.core.JacksonException;
 import com.ld.poetry.dao.ArticlePaymentMapper;
 import com.ld.poetry.entity.ArticlePayment;
 import com.ld.poetry.entity.SysPlugin;
-import com.ld.poetry.plugin.GroovyPluginEngine;
 import com.ld.poetry.service.SysPluginService;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -50,18 +49,12 @@ public class PaymentService {
     @Autowired
     private List<PaymentProvider> providers;
 
-    @Autowired
-    private GroovyPluginEngine groovyPluginEngine;
-
-    @Autowired
-    private GroovyPaymentAdapter groovyPaymentAdapter;
-
     private static final JsonMapper objectMapper = JsonMapper.builder().build();
 
     /**
      * 获取当前激活的 Provider
      * <p>
-     * 查找顺序：Java 实现（编译期注册）→ Groovy 实现（运行期安装）
+     * 从已注册的 Java Provider 中按 platformKey 查找
      * </p>
      */
     public PaymentProvider getActiveProvider() {
@@ -245,18 +238,11 @@ public class PaymentService {
      * @return 应返回给平台的响应内容，null 表示处理失败
      */
     public String handleCallback(String platformKey, HttpServletRequest request) {
-        // 1. 先从 Java Provider 中找
+        // 从已注册的 Java Provider 中查找
         PaymentProvider provider = providers.stream()
-                .filter(p -> !(p instanceof GroovyPaymentAdapter))
                 .filter(p -> p.getPlatformKey().equals(platformKey))
                 .findFirst()
                 .orElse(null);
-
-        // 2. 如果 Java 中没有，尝试 Groovy 插件
-        if (provider == null && groovyPluginEngine.isLoaded(platformKey)) {
-            groovyPaymentAdapter.setCurrentPluginKey(platformKey);
-            provider = groovyPaymentAdapter;
-        }
 
         if (provider == null) {
             log.warn("未找到平台 Provider: {}", platformKey);
@@ -450,17 +436,11 @@ public class PaymentService {
         }
 
         PaymentProvider javaProvider = providers.stream()
-                .filter(p -> !(p instanceof GroovyPaymentAdapter))
                 .filter(p -> p.getPlatformKey().equals(pluginKey))
                 .findFirst()
                 .orElse(null);
         if (javaProvider != null) {
             return javaProvider;
-        }
-
-        if (groovyPluginEngine.isLoaded(pluginKey)) {
-            groovyPaymentAdapter.setCurrentPluginKey(pluginKey);
-            return groovyPaymentAdapter;
         }
 
         log.warn("未找到匹配的支付 Provider: pluginKey={}，请确认已安装对应支付插件", pluginKey);

@@ -2,7 +2,6 @@ package com.ld.poetry.controller;
 
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
-import com.ld.poetry.plugin.GroovyPluginEngine;
 import com.ld.poetry.plugin.PluginInstallService;
 import com.ld.poetry.service.prerender.PluginBootstrapMaterializer;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -28,9 +28,6 @@ public class PluginInstallController {
     private PluginInstallService pluginInstallService;
 
     @Autowired
-    private GroovyPluginEngine groovyPluginEngine;
-
-    @Autowired
     private PluginBootstrapMaterializer pluginBootstrapMaterializer;
 
     /**
@@ -42,10 +39,7 @@ public class PluginInstallController {
         try {
             PluginInstallService.InstallResult result = pluginInstallService.installPlugin(file);
             pluginBootstrapMaterializer.materializeAsync();
-            return PoetryResult.success(Map.of(
-                    "pluginKey", result.pluginKey(),
-                    "version", result.version(),
-                    "message", result.message()));
+            return PoetryResult.success(toResponse(result));
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("插件安装参数异常: {}", e.getMessage());
             return PoetryResult.fail(e.getMessage());
@@ -87,10 +81,7 @@ public class PluginInstallController {
         try {
             PluginInstallService.InstallResult result = pluginInstallService.upgradePlugin(file);
             pluginBootstrapMaterializer.materializeAsync();
-            return PoetryResult.success(Map.of(
-                    "pluginKey", result.pluginKey(),
-                    "version", result.version(),
-                    "message", result.message()));
+            return PoetryResult.success(toResponse(result));
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("插件升级参数异常: {}", e.getMessage());
             return PoetryResult.fail(e.getMessage());
@@ -101,11 +92,16 @@ public class PluginInstallController {
     }
 
     /**
-     * 查看已加载的 Groovy 插件列表（调试用）
+     * 组装安装/升级响应体，warning 仅在存在时下发（Map.of 不接受 null 值）
      */
-    @LoginCheck(0)
-    @GetMapping("/loaded-backends")
-    public PoetryResult<Object> loadedBackends() {
-        return PoetryResult.success(groovyPluginEngine.getLoadedPlugins());
+    private Map<String, Object> toResponse(PluginInstallService.InstallResult result) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("pluginKey", result.pluginKey());
+        data.put("version", result.version());
+        data.put("message", result.message());
+        if (result.warning() != null) {
+            data.put("warning", result.warning());
+        }
+        return data;
     }
 }

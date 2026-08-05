@@ -21,7 +21,8 @@ import java.util.*;
 /**
  * 插件安装/卸载服务
  * <p>
- * 处理 .zip 格式的插件包：解压、校验 manifest、执行 SQL、加载 Groovy 脚本、注册前端代码。
+ * 处理 .zip 格式的插件包：解压、校验 manifest、执行 SQL、注册前端代码。
+ * 后端 Groovy 脚本源码仍存入数据库（保留兼容性），但不再编译执行（Native Image 不支持动态类加载）。
  * </p>
  *
  * @author LeapYa
@@ -39,9 +40,6 @@ public class PluginInstallService {
 
     @Autowired
     private SqlSafetyValidator sqlSafetyValidator;
-
-    @Autowired
-    private GroovyPluginEngine groovyPluginEngine;
 
     @Autowired
     private JsonMapper objectMapper;
@@ -125,14 +123,12 @@ public class PluginInstallService {
 
         sysPluginMapper.insert(plugin);
 
-        // 如果有后端 Groovy 脚本，加载到引擎
-        if (pkg.backendGroovy != null && !pkg.backendGroovy.isBlank()) {
-            groovyPluginEngine.loadPlugin(pluginKey, pkg.backendGroovy);
-            log.info("插件 [{}] Groovy 后端脚本加载成功", pluginKey);
+        String warning = backendNotice(pkg);
+        if (warning != null) {
+            log.warn("插件 [{}] 包含后端脚本，当前版本不支持执行，仅存档源码", pluginKey);
         }
-
         log.info("插件 [{}] v{} 安装成功", pluginKey, version);
-        return new InstallResult(true, "插件安装成功", pluginKey, version);
+        return new InstallResult(true, "插件安装成功", pluginKey, version, warning);
     }
 
     /**
@@ -149,9 +145,6 @@ public class PluginInstallService {
         if (Boolean.TRUE.equals(plugin.getIsSystem())) {
             throw new IllegalStateException("系统内置插件不允许卸载");
         }
-
-        // 卸载 Groovy 引擎
-        groovyPluginEngine.unloadPlugin(pluginKey);
 
         // 执行 uninstall.sql
         if (plugin.getUninstallSql() != null && !plugin.getUninstallSql().isBlank()) {
@@ -222,15 +215,12 @@ public class PluginInstallService {
         existing.setUpdateTime(LocalDateTime.now());
         sysPluginMapper.updateById(existing);
 
-        // 重新加载 Groovy 脚本
-        if (pkg.backendGroovy != null && !pkg.backendGroovy.isBlank()) {
-            groovyPluginEngine.loadPlugin(pluginKey, pkg.backendGroovy);
-        } else {
-            groovyPluginEngine.unloadPlugin(pluginKey);
+        String warning = backendNotice(pkg);
+        if (warning != null) {
+            log.warn("插件 [{}] 包含后端脚本，当前版本不支持执行，仅存档源码", pluginKey);
         }
-
         log.info("插件 [{}] 从 {} 升级到 {} 成功", pluginKey, oldVersion, newVersion);
-        return new InstallResult(true, "插件升级成功", pluginKey, newVersion);
+        return new InstallResult(true, "插件升级成功", pluginKey, newVersion, warning);
     }
 
     // ============ 内部方法 ============
@@ -321,6 +311,16 @@ public class PluginInstallService {
         return sysPluginMapper.selectOne(wrapper);
     }
 
+    /**
+     * 插件包含后端脚本时生成警告文案（Groovy 引擎已移除，脚本仅存档不执行），无后端脚本返回 null
+     */
+    private String backendNotice(PluginPackage pkg) {
+        if (pkg.backendGroovy != null && !pkg.backendGroovy.isBlank()) {
+            return "该插件包含后端脚本（backend/main.groovy），当前版本不支持执行后端脚本，依赖后端逻辑的功能不会生效";
+        }
+        return null;
+    }
+
     private int compareVersions(String v1, String v2) {
         String[] parts1 = v1.split("\\.");
         String[] parts2 = v2.split("\\.");
@@ -347,6 +347,11 @@ public class PluginInstallService {
         String upgradeSql;
     }
 
-    public record InstallResult(boolean success, String message, String pluginKey, String version) {
+    /**
+     * 安装/升级结果
+     *
+     * @param warning 非致命警告（如插件包含不再支持执行的后端脚本），无警告为 null
+     */
+    public record InstallResult(boolean success, String message, String pluginKey, String version, String warning) {
     }
 }

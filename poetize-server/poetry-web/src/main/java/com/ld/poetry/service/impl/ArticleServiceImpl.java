@@ -29,7 +29,6 @@ import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.springframework.stereotype.Service;
@@ -120,10 +119,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Autowired
     private com.ld.poetry.service.payment.PaymentService paymentService;
-
-    @Autowired
-    @Lazy
-    private com.ld.poetry.plugin.PluginHookManager pluginHookManager;
 
     @Autowired
     private com.ld.poetry.service.ai.AiImageService aiImageService;
@@ -276,12 +271,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             }
 
             log.info("文章保存流程全部完成，文章ID: {}", savedArticleId);
-
-            // 触发插件钩子：文章保存完成
-            pluginHookManager.onArticleSave(
-                    Long.valueOf(savedArticleId),
-                    articleVO.getArticleTitle(),
-                    Long.valueOf(PoetryUtil.getUserId()));
 
             // 核心任务完成后立即返回
             return PoetryResult.success(savedArticleId);

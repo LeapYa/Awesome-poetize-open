@@ -65,9 +65,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private WeiYanService weiYanService;
 
     @Autowired
-    private com.ld.poetry.plugin.PluginHookManager pluginHookManager;
-
-    @Autowired
     private ImChatGroupUserMapper imChatGroupUserMapper;
 
     @Autowired
@@ -635,9 +632,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         } else {
             log.warn("无法获取站长用户信息，新用户 {} 未能自动添加站长为好友", one.getId());
         }
-
-        // 触发插件钩子：新用户注册完成
-        pluginHookManager.onUserRegister(Long.valueOf(one.getId()), one.getUsername());
 
         return PoetryResult.success(userVO);
     }
@@ -1438,7 +1432,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             existUser = newUser;
             log.info("第三方账号注册成功 - 平台: {}, 用户ID: {}", provider, newUser.getId());
-            pluginHookManager.onUserRegister(Long.valueOf(newUser.getId()), newUser.getUsername());
         } else {
             // 🔧 已存在用户的邮箱更新逻辑
             boolean userHasEmailInDB = StringUtils.hasText(existUser.getEmail());
