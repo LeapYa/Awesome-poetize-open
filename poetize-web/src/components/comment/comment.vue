@@ -571,7 +571,6 @@ export default {
         floorComment.currentPage = Math.max(1, Math.ceil(loadedCount / 10))
         floorComment.hasMoreReplies = loadedCount < childCommentsData.total
 
-        this.emoji(floorComment.childComments.records, false)
         this.getTotal()
         this.$forceUpdate()
 
@@ -837,26 +836,6 @@ export default {
         currentDisplayCount < totalReplies ||
         currentDisplayCount < loadedRepliesCount
       )
-    },
-
-    emoji(comments, flag) {
-      comments.forEach((c) => {
-        c.commentContent = c.commentContent.replace(/\n/g, '<br/>')
-        c.commentContent = this.$common.faceReg(c.commentContent)
-        c.commentContent = this.$common.pictureReg(c.commentContent)
-        if (flag) {
-          if (
-            !this.$common.isEmpty(c.childComments) &&
-            !this.$common.isEmpty(c.childComments.records)
-          ) {
-            c.childComments.records.forEach((cc) => {
-              c.commentContent = c.commentContent.replace(/\n/g, '<br/>')
-              cc.commentContent = this.$common.faceReg(cc.commentContent)
-              cc.commentContent = this.$common.pictureReg(cc.commentContent)
-            })
-          }
-        }
-      })
     },
 
     /**
@@ -1209,7 +1188,6 @@ export default {
               this.processMainComments(
                 isLazyLoad ? res.data.records : this.comments
               )
-              this.emoji(isLazyLoad ? res.data.records : this.comments, true)
             } else {
               if (isToPage === false) {
                 const newReplies = res.data.records
@@ -1249,7 +1227,6 @@ export default {
                   ),
                 }
               }
-              this.emoji(floorComment.flatReplies, false)
             }
             this.$nextTick(() => {
               this.$common.imgShow('#comment-content .pictureReg')
@@ -1467,11 +1444,6 @@ export default {
             parentUserId: parentComment.userId,
             parentUsername: parentComment.username || parentComment.displayUsername,
           }
-
-          // 处理表情和图片渲染
-          newReply.commentContent = newReply.commentContent.replace(/\n/g, '<br/>')
-          newReply.commentContent = this.$common.faceReg(newReply.commentContent)
-          newReply.commentContent = this.$common.pictureReg(newReply.commentContent)
 
           floorComment.newLocalReplies.push(newReply)
 
