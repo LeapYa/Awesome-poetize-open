@@ -333,9 +333,12 @@ export const useAIChatStore = defineStore('aiChat', {
       // ai_chat.enabled 是后端开关，但只有发起请求才能获取，存在循环依赖；
       // 以前端可见的 enableWaifu 作为前置门禁，避免后台未开启看板娘时仍向
       // /webInfo/ai/config/chat/getStreamingConfig 发起无意义请求
+      // 注意：仅在 webInfo 已加载完成时才能判定为"未启用"；
+      // 弱网下 webInfo 可能尚未返回，此时若误判会用默认空配置覆盖本地缓存的
+      // 已配置项（如用户自定义的 AI 头像），导致回退显示默认头像
       try {
         const mainStore = useMainStore()
-        if (mainStore.webInfo?.enableWaifu !== true) {
+        if (mainStore.webInfo && mainStore.webInfo.enableWaifu !== true) {
           this.config = { ...DEFAULT_AI_CHAT_CONFIG }
           this.configLoaded = true
           return
