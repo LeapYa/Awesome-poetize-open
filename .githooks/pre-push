@@ -56,7 +56,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 
     echo "[pre-push] 检测到 Java 改动，执行编译校验..."
-    if ! mvn compile -q -f "$POM"; then
+    # Git Bash (MINGW) 下 mvn shell 脚本不做 Unix->Windows 路径转换，
+    # java.exe 会报 ClassNotFoundException，故 Windows 下使用 mvn.cmd
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) MVN_CMD="mvn.cmd" ;;
+        *) MVN_CMD="mvn" ;;
+    esac
+    if ! "$MVN_CMD" compile -q -f "$POM"; then
         echo "[pre-push] 编译失败，推送已阻断。请修复编译错误后重试。"
         exit 1
     fi
