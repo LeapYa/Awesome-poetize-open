@@ -13,6 +13,7 @@ import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.entity.WeiYan;
 import com.ld.poetry.enums.PoetryEnum;
+import com.ld.poetry.handle.PoetryLoginException;
 import com.ld.poetry.handle.PoetryRuntimeException;
 import com.ld.poetry.im.http.dao.ImChatGroupUserMapper;
 import com.ld.poetry.im.http.dao.ImChatUserFriendMapper;
@@ -1225,13 +1226,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
 
         if (!StringUtils.hasText(userToken)) {
-            throw new PoetryRuntimeException("登录已过期，请重新登陆！");
+            throw new PoetryLoginException("登录已过期，请重新登陆！");
         }
 
         // 首先验证token的安全性和有效性
         if (!TokenValidationUtil.isValidToken(userToken)) {
             log.warn("Token验证失败");
-            throw new PoetryRuntimeException("Token无效，请重新登陆！");
+            throw new PoetryLoginException("Token无效，请重新登陆！");
         }
 
         // 使用多级缓存策略获取用户信息
@@ -1253,10 +1254,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             // 检查token是否在有效期内且格式正确
             Integer userIdFromToken = TokenValidationUtil.extractUserId(userToken);
             if (userIdFromToken != null) {
-                throw new PoetryRuntimeException("登录已过期，请重新登陆！");
+                throw new PoetryLoginException("登录已过期，请重新登陆！");
             } else {
                 // token格式无效
-                throw new PoetryRuntimeException("Token无效，请重新登陆！");
+                throw new PoetryLoginException("Token无效，请重新登陆！");
             }
         }
 

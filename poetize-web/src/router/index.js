@@ -227,6 +227,20 @@ router.beforeEach(async (to, from, next) => {
     })
 
     if (!sessionValid) {
+      // 会话校验失败（token 过期或后端 5xx）时必须继续完成导航，
+      // 否则 navigation 永久挂起，页面白屏，只能手动刷新。
+      // 彻底清理本地残留登录态，避免下次访问重复进入失败校验。
+      clearAuthState()
+
+      // 受保护页面重定向到登录页；公共页面降级为游客访问。
+      const needsAdminAuth = to.matched.some((record) => record.meta.isAdmin)
+      const needsAuth =
+        needsAdminAuth || to.matched.some((record) => record.meta.requireAuth)
+      if (!isPublicPath && needsAuth) {
+        handleTokenExpire(needsAdminAuth, to.fullPath, { showMessage: true })
+        return
+      }
+      next()
       return
     }
   }
