@@ -598,9 +598,9 @@ export default {
         {
           id: 'calculator',
           name: '数学计算器',
-          description: '允许 AI 直接进行数学表达式计算，适合四则运算、括号表达式、幂运算，以及常见数学函数求值。',
+          description: '允许 AI 直接进行数学表达式计算，覆盖四则运算、三角/对数/双曲函数、统计分析、排列组合与进制字面量，并支持数值积分与数值求导。',
           svgIcon: '<rect x="5" y="2" width="14" height="20" rx="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="8" y1="10" x2="8" y2="10"></line><line x1="12" y1="10" x2="12" y2="10"></line><line x1="16" y1="10" x2="16" y2="10"></line><line x1="8" y1="14" x2="8" y2="14"></line><line x1="12" y1="14" x2="12" y2="14"></line><line x1="16" y1="14" x2="16" y2="14"></line><line x1="8" y1="18" x2="16" y2="18"></line>',
-          features: ['四则运算', '括号/负数', '幂与取模', 'sqrt/pow/max']
+          features: ['四则运算/进制字面量', '三角/对数/双曲', '统计与排列组合', '数值积分/求导']
         },
         {
           id: 'ai_memory',
