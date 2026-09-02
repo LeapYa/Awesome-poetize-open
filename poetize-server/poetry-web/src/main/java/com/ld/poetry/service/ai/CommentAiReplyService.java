@@ -103,9 +103,12 @@ public class CommentAiReplyService {
             Map<String, Object> pageContext = buildPageContext(event, webInfo, contextBudget, commenterName, commentTime);
 
             // 构造调用上下文：评论事件触发 AI 回复，@Async 线程无法获取 HTTP 上下文，
-            // 从事件解析评论者身份（IP/地区无法回溯，留空合理：评论触发是异步的，原请求已结束）
+            // 评论者身份与 IP/归属地（发布线程已捕获，随事件传入）一并带入，
+            // 供审计日志与评论回复的环境注入使用
             AiChatService.AiCallContext commentCallCtx = AiChatService.AiCallContext.of(
-                    event.userId(), commenterName);
+                    event.userId(), commenterName,
+                    StringUtils.hasText(event.commenterIp()) ? event.commenterIp() : null,
+                    StringUtils.hasText(event.commenterLocation()) ? event.commenterLocation() : null);
 
             String answer = aiChatService.generateCommentReply(
                     userQuestion,

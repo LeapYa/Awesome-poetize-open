@@ -9,7 +9,7 @@
 
     <!-- 打字指示器 -->
     <div v-if="typing" class="typing-indicator">
-      <span class="typing-text">{{ typingMessage }}</span>
+      <span class="typing-text">{{ effectiveTypingMessage }}</span>
       <div class="typing-dots">
         <div class="typing-dot"></div>
         <div class="typing-dot"></div>
@@ -20,7 +20,8 @@
 </template>
 
 <script>
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { useAIChatStore } from '@/stores/aiChat'
 import AIChatMessage from './AIChatMessage.vue'
 
 export default {
@@ -61,6 +62,17 @@ export default {
     const typingMessage = ref(
       typingMessages[Math.floor(Math.random() * typingMessages.length)]
     )
+
+    // 模型撰写工具参数（如创建技能的正文）时，实时展示撰写进度
+    const aiChatStore = useAIChatStore()
+    const effectiveTypingMessage = computed(() => {
+      if (aiChatStore.toolDraftChars > 0) {
+        const noun =
+          aiChatStore.toolDraftName === 'create_skill' ? '新技能' : '工具参数'
+        return `正在撰写${noun}（${aiChatStore.toolDraftChars} 字）...`
+      }
+      return typingMessage.value
+    })
 
     /**
      * 滚动到底部（带节流）
@@ -149,6 +161,7 @@ export default {
     return {
       messagesContainer,
       typingMessage,
+      effectiveTypingMessage,
       scrollToBottom,
     }
   },

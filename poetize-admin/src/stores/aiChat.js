@@ -494,8 +494,17 @@ export const useAIChatStore = defineStore('aiChat', {
       }
 
       this.ensureMessageStructure(message)
+      // 首次出现思考文本时记录起始时间，供完成后显示"已思考（用时 xx 秒）"
+      if (!message.thinkingStartedAt) {
+        message.thinkingStartedAt = Date.now()
+      }
+      // sealed 段是工具调用发生前已封存的思考片段（interleaved thinking），
+      // 新思考文本必须新开一段，渲染层才能按时间顺序把工具穿插在思考之间
       let reasoningSegment = message.segments.find(
-        (segment) => segment.type === 'reasoning' && segment.status === 'thinking'
+        (segment) =>
+          segment.type === 'reasoning' &&
+          segment.status === 'thinking' &&
+          !segment.sealed
       )
 
       if (!reasoningSegment) {
@@ -514,6 +523,9 @@ export const useAIChatStore = defineStore('aiChat', {
       }
 
       this.ensureMessageStructure(message)
+      if (message.thinkingStartedAt && !message.thinkingEndedAt) {
+        message.thinkingEndedAt = Date.now()
+      }
       message.segments
         .filter((segment) => segment.type === 'reasoning')
         .forEach((segment) => {
@@ -531,6 +543,17 @@ export const useAIChatStore = defineStore('aiChat', {
       this.ensureMessageStructure(message)
 
       if (toolEvent.type === 'call') {
+        // interleaved thinking：封存当前思考段，让后续思考文本新开一段，
+        // 渲染层按 segments 顺序即可还原"思考 → 工具 → 继续思考"的真实时序
+        const activeReasoning = message.segments.find(
+          (segment) =>
+            segment.type === 'reasoning' &&
+            segment.status === 'thinking' &&
+            !segment.sealed
+        )
+        if (activeReasoning) {
+          activeReasoning.sealed = true
+        }
         message.segments.push({
           id: Date.now() + Math.random(),
           type: 'tool',
@@ -583,28 +606,6 @@ export const useAIChatStore = defineStore('aiChat', {
         await new Promise((resolve) => {
           window.requestAnimationFrame(() => resolve())
         })
-      }
-    },
-
-    async ensureToolIndicatorVisible(messageId, toolName, minimumDuration = 480) {
-      const message = this.messages.find((m) => m.id === messageId)
-      const toolSegment = message?.segments
-        ?.slice()
-        .reverse()
-        .find(
-          (segment) =>
-            segment.type === 'tool' &&
-            segment.tool === toolName &&
-            segment.status === 'executing'
-        )
-
-      if (!toolSegment?.startedAt) {
-        return
-      }
-
-      const remaining = minimumDuration - (Date.now() - toolSegment.startedAt)
-      if (remaining > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remaining))
       }
     },
 
@@ -1457,6 +1458,17 @@ export const useAIChatStore = defineStore('aiChat', {
                   currentEventName === 'start' ||
                   currentEventName === 'complete'
                 ) {
+                  // start 事件携带服务端环境快照（发送时刻的时间/IP/归属地），
+                  // 存入本次发送的用户消息：历史搜索时能回溯"当时"的时空信息
+                  if (currentEventName === 'start' && eventData && eventData.environment) {
+                    const lastUserMsg = [...this.messages]
+                      .reverse()
+                      .find((m) => m.role === 'user')
+                    if (lastUserMsg && !lastUserMsg.environment) {
+                      lastUserMsg.environment = eventData.environment
+                      this.saveHistory()
+                    }
+                  }
                   if (currentEventName === 'complete' && aiMessage) {
                     this.finishMessageReasoning(aiMessage.id)
                     // 同步增量协议状态：记录服务端返回的 hash 与本次同步后的历史长度，
@@ -1485,6 +1497,13 @@ export const useAIChatStore = defineStore('aiChat', {
 
                   this.appendMessageText(aiMessage.id, '\n\n❌ 错误: ' + errMsg)
                   break
+                }
+
+                // 工具参数撰写增量：模型逐字生成工具调用参数期间到达。
+                // 参数是不完整的 JSON 碎片，完整参数以随后的 tool_call 事件为准，
+                // 此处仅安全落空（payload 无 content 字段），保持 SSE 流消费。
+                if (currentEventName === 'tool_args_delta') {
+                  continue
                 }
 
                 if (currentEventName === 'tool_call') {
@@ -1542,10 +1561,6 @@ export const useAIChatStore = defineStore('aiChat', {
                     this.stopJinaQueuePolling()
                   }
 
-                  await this.ensureToolIndicatorVisible(
-                    aiMessage.id,
-                    toolData.tool || '未知工具'
-                  )
                   this.addOrUpdateToolEvent(aiMessage.id, {
                     type: 'result',
                     tool: toolData.tool || '未知工具',
@@ -1823,7 +1838,14 @@ export const useAIChatStore = defineStore('aiChat', {
               })
             : ''
 
-          textResult += `${i + 1}. [${role}]${timeStr ? `(${timeStr})` : ''}${imageMarker} ${truncated}\n\n`
+          // 环境快照（服务端 start 事件回传）：展示消息发送时的归属地
+          const envLocation = item.msg.environment?.location
+          const envSuffix =
+            envLocation && envLocation !== '未知' && envLocation !== '本地网络'
+              ? ` · ${envLocation}`
+              : ''
+
+          textResult += `${i + 1}. [${role}](${timeStr}${envSuffix})${imageMarker} ${truncated}\n\n`
         })
 
         // 从 IndexedDB 加载相关消息的图片（最多 2 张，避免结果过大）

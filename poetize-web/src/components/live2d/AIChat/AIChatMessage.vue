@@ -74,14 +74,54 @@
       <template v-if="isAssistant">
         <template v-for="segment in assistantSegments" :key="segment.id">
           <details
-            v-if="segment.type === 'reasoning'"
+            v-if="segment.type === 'thinking-group'"
+            :key="segment.id"
             class="reasoning-panel"
+            :class="{ 'is-thinking': segment.status === 'thinking' }"
             :open="segment.status === 'thinking'"
           >
             <summary class="reasoning-summary">
-              {{ segment.status === 'thinking' ? '正在思考' : '思考过程' }}
+              <span class="reasoning-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path>
+                </svg>
+              </span>
+              <span class="reasoning-label">
+                {{ segment.status === 'thinking' ? '正在思考' : thinkingDoneLabel }}
+              </span>
+              <span v-if="segment.status === 'thinking'" class="reasoning-dots" aria-hidden="true">
+                <i></i><i></i><i></i>
+              </span>
+              <svg class="reasoning-chevron" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M9 6l6 6-6 6"></path>
+              </svg>
             </summary>
-            <div class="reasoning-content">{{ segment.content }}</div>
+            <div class="reasoning-body">
+              <template v-for="item in segment.items" :key="item.id">
+                <MarkdownRenderer
+                  v-if="item.type === 'reasoning'"
+                  class="reasoning-content"
+                  :content="item.content"
+                  :streaming="false"
+                  :enable-typewriter="false"
+                />
+                <div
+                  v-else-if="item.type === 'tool'"
+                  class="reasoning-tool"
+                  :class="`is-${item.status || 'completed'}`"
+                >
+                  <span class="reasoning-tool-status" aria-hidden="true"></span>
+                  <span class="reasoning-tool-label">{{ formatToolEventLabel(item) }}</span>
+                </div>
+              </template>
+              <div
+                v-if="message.streaming && toolDraftLabel"
+                class="reasoning-tool is-executing"
+              >
+                <span class="reasoning-tool-status" aria-hidden="true"></span>
+                <span class="reasoning-tool-label">{{ toolDraftLabel }}</span>
+              </div>
+            </div>
           </details>
           <div v-else-if="segment.type === 'tool'" class="tool-pill-row">
             <div
@@ -224,7 +264,7 @@
 
 <script>
 import { computed, onMounted, nextTick, ref } from 'vue'
-import { useAIChatStore } from '@/stores/aiChat'
+import { useAIChatStore, toolActionPhrase } from '@/stores/aiChat'
 import { useLive2DStore } from '@/stores/live2d'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 
@@ -293,8 +333,38 @@ export default {
           return Boolean(segment.content && segment.content.trim())
         })
 
+      // 思考期间（interleaved thinking）调用的工具归组进思考面板：
+      // 首个正文段之前、从首个思考段开始的连续区域（思考片段 + 工具，store 在工具
+      // 调用时已封存当时的思考段）合成一个 thinking-group，面板内按 segments
+      // 原始顺序渲染，还原"思考 → 工具 → 继续思考"的真实时序。
+      // 非思考模式的工具（无思考段）不受影响，仍在正文流中显示。
+      const groupThinkingTools = (segments) => {
+        const firstTextIdx = segments.findIndex((s) => s.type === 'text')
+        const boundary = firstTextIdx === -1 ? segments.length : firstTextIdx
+        const firstReasoningIdx = segments.findIndex(
+          (s, i) => i < boundary && s.type === 'reasoning'
+        )
+        if (firstReasoningIdx === -1) {
+          return segments
+        }
+        const items = segments.slice(firstReasoningIdx, boundary)
+        const lastReasoning = [...items]
+          .reverse()
+          .find((s) => s.type === 'reasoning')
+        return [
+          ...segments.slice(0, firstReasoningIdx),
+          {
+            id: `${items[0].id}-group`,
+            type: 'thinking-group',
+            status: lastReasoning?.status || 'completed',
+            items,
+          },
+          ...segments.slice(boundary),
+        ]
+      }
+
       if (Array.isArray(props.message.segments) && props.message.segments.length) {
-        return normalizeSegments(props.message.segments)
+        return groupThinkingTools(normalizeSegments(props.message.segments))
       }
       if (props.message.content) {
         return normalizeSegments([
@@ -314,19 +384,44 @@ export default {
     const enableTypewriter = computed(() => aiChatStore.typingAnimationEnabled)
     const showTimestamp = computed(() => aiChatStore.showTimestampEnabled)
 
+    // 模型撰写工具参数的实时进度：思考面板展开期间 typing 指示器已不可见，
+    // 在思考面板内展示撰写进度（字数持续增长）
+    const toolDraftLabel = computed(() => {
+      if (!aiChatStore.toolDraftChars) {
+        return ''
+      }
+      const noun =
+        aiChatStore.toolDraftName === 'create_skill' ? '新技能' : '工具参数'
+      return `正在撰写${noun}（${aiChatStore.toolDraftChars} 字）`
+    })
+
+    // 思考完成后的标题：有用时数据时显示"已思考（用时 N 秒）"，旧数据回退"思考过程"
+    const thinkingDoneLabel = computed(() => {
+      const { thinkingStartedAt, thinkingEndedAt } = props.message
+      if (thinkingStartedAt && thinkingEndedAt) {
+        const seconds = Math.max(
+          1,
+          Math.round((thinkingEndedAt - thinkingStartedAt) / 1000)
+        )
+        return `已思考（用时 ${seconds} 秒）`
+      }
+      return '思考过程'
+    })
+
     const formatToolEventLabel = (segment) => {
       const toolName = segment.tool || '未知工具'
+      const action = toolActionPhrase(segment.tool)
       if (segment.status === 'executing') {
-        let label = `正在调用 ${toolName}`
+        let label = action ? `正在${action}` : `正在调用 ${toolName}`
         if (segment.queueInfo && segment.queueInfo.queueSize > 0) {
           label += `（排队 ${segment.queueInfo.queueSize} 人，预计 ${segment.queueInfo.maxEstimatedWaitSec}s）`
         }
         return label
       }
       if (segment.status === 'failed') {
-        return `${toolName} 调用失败`
+        return action ? `${action}失败` : `${toolName} 调用失败`
       }
-      return `${toolName} 已完成`
+      return action ? `${action}完成` : `${toolName} 已完成`
     }
 
     const handleCopy = async () => {
@@ -418,6 +513,8 @@ export default {
       themeColor,
       enableTypewriter,
       showTimestamp,
+      toolDraftLabel,
+      thinkingDoneLabel,
       formatToolEventLabel,
       handleCopy,
       handleEdit,
@@ -705,24 +802,189 @@ export default {
 }
 .reasoning-panel {
   width: 100%;
-  margin: 0 0 8px;
-  padding: 8px 10px;
-  border: 1px solid rgba(99, 102, 241, 0.18);
-  border-radius: 8px;
-  background: rgba(99, 102, 241, 0.08);
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.6;
+  margin: 0 0 10px;
 }
+/* 整体灰色低调化（DeepSeek 风格）：标题、边线均用灰色系 */
 .reasoning-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 8px;
   cursor: pointer;
-  color: #4f46e5;
+  color: #9ca3af;
+  font-size: 12px;
   font-weight: 600;
   user-select: none;
+  list-style: none;
+  transition: background 0.2s ease;
 }
+.reasoning-summary::-webkit-details-marker {
+  display: none;
+}
+.reasoning-summary:hover {
+  background: rgba(148, 163, 184, 0.14);
+}
+/* 四角星图标用主题色（与用户气泡一致），其余保持灰色低调 */
+.reasoning-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  display: inline-flex;
+  color: var(--link-color, #4facfe);
+}
+.reasoning-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+.is-thinking .reasoning-icon {
+  animation: reasoningPulse 1.6s ease-in-out infinite;
+}
+.reasoning-label {
+  flex: 0 0 auto;
+}
+.reasoning-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.reasoning-dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: reasoningDot 1.2s ease-in-out infinite;
+}
+.reasoning-dots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.reasoning-dots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+.reasoning-chevron {
+  margin-left: auto;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.5;
+  transition: transform 0.25s ease;
+}
+.reasoning-panel[open] .reasoning-chevron {
+  transform: rotate(90deg);
+}
+.reasoning-body {
+  margin: 2px 0 4px 15px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid rgba(148, 163, 184, 0.4);
+  animation: reasoningReveal 0.25s ease;
+}
+/* 思考中不限高（随内容增长，聊天区自动滚动），完成后限高内部滚动 */
+.reasoning-panel:not(.is-thinking) .reasoning-body {
+  max-height: 240px;
+  overflow-y: auto;
+}
+/* 思考内容由 MarkdownRenderer 渲染：颜色/字号级联，间距收紧保持面板紧凑 */
 .reasoning-content {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.reasoning-content :deep(.markdown-renderer p) {
+  margin: 0 0 6px 0;
+}
+.reasoning-content :deep(.markdown-renderer p:last-child) {
+  margin-bottom: 0;
+}
+/* 工具穿插导致的多段思考：段间留白区分时序 */
+.reasoning-content + .reasoning-content {
   margin-top: 6px;
-  white-space: pre-wrap;
+}
+/* 工具行样式对齐正文 tool-pill：带边框的胶囊，状态点保留 */
+.reasoning-tool {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.96);
+  font-size: 12px;
+  color: #475569;
+}
+.reasoning-tool-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 6px;
+}
+.reasoning-tool.is-executing {
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.24);
+  color: #0369a1;
+}
+.reasoning-tool.is-executing .reasoning-tool-status {
+  background: #0ea5e9;
+  animation: reasoningPulse 1.2s ease-in-out infinite;
+}
+.reasoning-tool.is-completed {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.24);
+  color: #15803d;
+}
+.reasoning-tool.is-completed .reasoning-tool-status {
+  background: #34d399;
+}
+.reasoning-tool.is-failed {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.24);
+  color: #b91c1c;
+}
+.reasoning-tool.is-failed .reasoning-tool-status {
+  background: #f87171;
+}
+@keyframes reasoningPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+}
+@keyframes reasoningDot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@keyframes reasoningReveal {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes toolSpin {
   from {
@@ -771,13 +1033,37 @@ export default {
   border-color: rgba(248, 113, 113, 0.24);
   color: #fca5a5;
 }
-.dark-mode .reasoning-panel {
-  background: rgba(79, 70, 229, 0.18);
-  border-color: rgba(129, 140, 248, 0.28);
+.dark-mode .reasoning-summary {
+  color: #8b9bb4;
+}
+.dark-mode .reasoning-summary:hover {
+  background: rgba(139, 155, 180, 0.12);
+}
+.dark-mode .reasoning-body {
+  border-left-color: rgba(139, 155, 180, 0.4);
+}
+.dark-mode .reasoning-content {
+  color: #8b9bb4;
+}
+.dark-mode .reasoning-tool {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(148, 163, 184, 0.16);
   color: #cbd5e1;
 }
-.dark-mode .reasoning-summary {
-  color: #a5b4fc;
+.dark-mode .reasoning-tool.is-executing {
+  background: rgba(3, 105, 161, 0.22);
+  border-color: rgba(56, 189, 248, 0.24);
+  color: #7dd3fc;
+}
+.dark-mode .reasoning-tool.is-completed {
+  background: rgba(21, 128, 61, 0.24);
+  border-color: rgba(74, 222, 128, 0.24);
+  color: #86efac;
+}
+.dark-mode .reasoning-tool.is-failed {
+  background: rgba(127, 29, 29, 0.24);
+  border-color: rgba(248, 113, 113, 0.24);
+  color: #fca5a5;
 }
 .dark-mode .message-time {
   color: #8e8ea0;

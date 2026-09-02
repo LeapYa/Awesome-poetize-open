@@ -173,7 +173,9 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                 comment.getParentUserId(),
                 comment.getFloorCommentId(),
                 comment.getCommentContent(),
-                comment.getCommentInfo()));
+                comment.getCommentInfo(),
+                clientIp,
+                location));
 
         return PoetryResult.success(comment);
     }

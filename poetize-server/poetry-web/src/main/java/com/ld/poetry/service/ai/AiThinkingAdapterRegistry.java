@@ -52,6 +52,9 @@ public class AiThinkingAdapterRegistry {
                     visibleReasoningLikely = true;
                 }
                 case PROFILE_SILICONFLOW -> {
+                    // SiliconFlow 混合推理模型（DeepSeek-V3.2、Qwen3 等）用 enable_thinking
+                    // 控制思考开关，仅发 thinking_budget 不一定生效，需显式开启
+                    extraBody.put("enable_thinking", true);
                     extraBody.put("thinking_budget", mapThinkingBudget(effort));
                     visibleReasoningLikely = true;
                 }

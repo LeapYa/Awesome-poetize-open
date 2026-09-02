@@ -25,7 +25,9 @@
         <lombok.version>1.18.46</lombok.version>
         <!-- 离线IP地址定位库 ip2region v3.x (支持 IPv4 和 IPv6) -->
         <ip2region.version>3.3.4</ip2region.version>
-        <spring-ai.version>2.0.0</spring-ai.version>
+        <!-- 2.0.1 修复流式 ChunkMerger 丢弃 delta reasoning_content 的 bug（spring-ai#6484/#6373），
+             以及 mergeDeltas IndexOutOfBounds（spring-ai#6441） -->
+        <spring-ai.version>2.0.1</spring-ai.version>
         <!-- 禁用Maven 3.8+的HTTP仓库检查 -->
         <maven.resolver.transport.wagon.http.checksumExtension>false</maven.resolver.transport.wagon.http.checksumExtension>
     </properties>

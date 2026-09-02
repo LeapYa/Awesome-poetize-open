@@ -116,11 +116,12 @@ public class ToolCallbackEventBridge {
                             "tool", toolName,
                             "status", "completed",
                             "result", normalizeJson(result)));
+                    long durationMs = System.currentTimeMillis() - startedAt;
                     log.info("AI工具调用完成: userId={}, conversationId={}, tool={}, durationMs={}, resultLength={}",
-                            userId, conversationId, toolName, System.currentTimeMillis() - startedAt,
+                            userId, conversationId, toolName, durationMs,
                             result != null ? result.length() : 0);
                     recordToolCall(contextMap, toolName, "completed", startedAt);
-                    return result;
+                    return appendExecutionTime(result, durationMs);
                 } catch (RuntimeException ex) {
                     if (isStreamCancelled(streamCancelled, ex)) {
                         log.info("AI工具调用已取消: userId={}, conversationId={}, tool={}, durationMs={}",
@@ -215,6 +216,17 @@ public class ToolCallbackEventBridge {
         return value;
     }
 
+    /**
+     * 在返回给模型的工具结果末尾附带执行耗时。
+     * <p>
+     * SSE {@code tool_result} 事件仍发原始结果（前端展示不受影响），
+     * 仅模型侧的工具响应消息带耗时，供其感知工具开销。
+     */
+    private String appendExecutionTime(String result, long durationMs) {
+        String body = result != null ? result : "";
+        return body + "\n（工具执行耗时 " + durationMs + " 毫秒）";
+    }
+
     private String buildFailedToolResult(String toolName, String errorMessage) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("success", false);
@@ -274,7 +286,10 @@ public class ToolCallbackEventBridge {
 
         try {
             Map<String, Object> data = new LinkedHashMap<>(payload);
-            emitter.send(SseEmitter.event().name(eventName).data(data));
+            // 与 AiChatService 的 SSE 心跳互斥：SseEmitter 非线程安全，并发 send 会损坏 SSE 帧
+            synchronized (emitter) {
+                emitter.send(SseEmitter.event().name(eventName).data(data));
+            }
         } catch (Exception ex) {
             if (streamCancelled != null) {
                 streamCancelled.set(true);

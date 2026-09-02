@@ -78,9 +78,12 @@ public class Mem0Service {
 
     /**
      * 添加记忆
+     *
+     * @param metadata 环境元数据（time/ip/location），随记忆保存供检索时回溯"当时"的时空信息；可为 null
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> addMemory(String content, String userId, String apiKey) {
+    public Map<String, Object> addMemory(String content, String userId, String apiKey,
+            Map<String, String> metadata) {
         Map<String, Object> result = new LinkedHashMap<>();
         try {
             HttpHeaders headers = createHeaders(apiKey);
@@ -88,6 +91,9 @@ public class Mem0Service {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("messages", List.of(Map.of("role", "user", "content", content)));
             body.put("user_id", userId);
+            if (metadata != null && !metadata.isEmpty()) {
+                body.put("metadata", metadata);
+            }
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = restTemplate.exchange(
@@ -173,7 +179,9 @@ public class Mem0Service {
     }
 
     /**
-     * 格式化记忆为上下文文本
+     * 格式化记忆为上下文文本。
+     * 若记忆携带环境元数据（保存时注入的 time/location），以中缀形式展示，
+     * 让模型知道每条记忆发生的时间与地点。
      */
     public String formatMemoriesForContext(List<Map<String, Object>> memories) {
         if (memories == null || memories.isEmpty())
@@ -184,11 +192,41 @@ public class Mem0Service {
         for (Map<String, Object> mem : memories) {
             String memory = (String) mem.getOrDefault("memory", "");
             if (!memory.isBlank()) {
-                sb.append("- ").append(memory).append("\n");
+                String envInfix = formatMemoryEnvInfix(mem.get("metadata"));
+                sb.append("- ").append(envInfix).append(memory).append("\n");
             }
         }
         sb.append("\n请在回答中适当参考以上记忆信息。\n");
         return sb.toString();
+    }
+
+    /**
+     * 从记忆元数据中提取时空中缀，如 {@code [2026年9月2日 21:39 · 广东广州] }。
+     * 元数据缺失或格式不符时返回空串（旧记忆无元数据，正常降级）。
+     */
+    private String formatMemoryEnvInfix(Object metadata) {
+        if (!(metadata instanceof Map<?, ?> meta)) {
+            return "";
+        }
+        Object time = meta.get("time");
+        Object location = meta.get("location");
+        boolean hasTime = time != null && !String.valueOf(time).isBlank();
+        boolean hasLocation = location != null && !String.valueOf(location).isBlank()
+                && !"未知".equals(location);
+        if (!hasTime && !hasLocation) {
+            return "";
+        }
+        StringBuilder infix = new StringBuilder("[");
+        if (hasTime) {
+            infix.append(time);
+        }
+        if (hasTime && hasLocation) {
+            infix.append(" · ");
+        }
+        if (hasLocation) {
+            infix.append(location);
+        }
+        return infix.append("] ").toString();
     }
 
     private HttpHeaders createHeaders(String apiKey) {
