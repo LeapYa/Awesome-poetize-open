@@ -15117,6 +15117,117 @@ backup_data() {
     fi
 }
 
+# 升级门禁：逐条核对数据库本地资源记录与卷内物理文件。
+# 新站点的默认资源（assets/poetize.jpg 等）登记在 DB、文件在 web_dist（构建产物），
+# 属正常形态放行；要拦的是"记录存在、uploads/web_dist 两个卷都找不到文件"的
+# 数据缺失状态。供 run_update 在备份后、down -v 前调用。
+# 查询与比对存在瞬时失败可能，整体最多执行 3 次（间隔 5 秒），全部失败才拦截。
+verify_local_resource_files() {
+    local mariadb_container=""
+    local db_root_password=""
+    mariadb_container=$(resolve_compose_container_name "mysql" 2>/dev/null || true)
+    if [ -n "$mariadb_container" ]; then
+        db_root_password=$(resolve_db_root_password "$mariadb_container" 2>/dev/null || true)
+    fi
+    if [ -z "$mariadb_container" ] || [ -z "$db_root_password" ]; then
+        warning "数据库容器或凭据不可用，跳过资源完整性核对"
+        return 0
+    fi
+
+    local uploads_volume=""
+    uploads_volume=$(resolve_service_volume_name "nginx" "/usr/share/nginx/html/uploads" "poetize_uploads" 2>/dev/null || true)
+    if [ -z "$uploads_volume" ]; then
+        uploads_volume=$(resolve_service_volume_name "java-backend" "/app/static" "poetize_uploads" 2>/dev/null || true)
+    fi
+    local web_dist_volume=""
+    web_dist_volume=$(resolve_service_volume_name "java-backend" "/app/web-dist" "poetize_web_dist" 2>/dev/null || true)
+    if [ -z "$uploads_volume" ] || [ -z "$web_dist_volume" ]; then
+        error "无法解析 uploads/web_dist 卷名，无法核对资源完整性，已终止"
+        return 1
+    fi
+
+    local max_attempts=3
+    local attempt=0
+
+    while [ "$attempt" -lt "$max_attempts" ]; do
+        attempt=$((attempt + 1))
+
+        local verify_dir=""
+        verify_dir=$(mktemp -d /tmp/poetize_verify.XXXXXX) || { error "创建临时目录失败"; return 1; }
+        local paths_file="$verify_dir/paths.txt"
+
+        sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc \
+            'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -B -e "SELECT access_path FROM resource_location WHERE store_type='\''local'\'' AND status='\''ACTIVE'\'';"' \
+            > "$paths_file" 2>/dev/null || true
+
+        if [ ! -s "$paths_file" ]; then
+            rm -rf "$verify_dir" 2>/dev/null || true
+            # 空结果需区分"无记录"与"查询失败"：COUNT 查询输出 0 才是无记录
+            local res_total=""
+            res_total=$(sudo docker exec -e POETIZE_DB_ROOT_PASSWORD="$db_root_password" "$mariadb_container" sh -lc \
+                'mariadb -u root -p"$POETIZE_DB_ROOT_PASSWORD" poetize -N -B -e "SELECT COUNT(*) FROM resource_location WHERE store_type='\''local'\'' AND status='\''ACTIVE'\'';"' 2>/dev/null | tr -d '[:space:]')
+            if [ "$res_total" = "0" ]; then
+                info "数据库无本地资源记录，跳过资源完整性核对"
+                return 0
+            fi
+            if [ "$attempt" -lt "$max_attempts" ]; then
+                warning "资源记录查询失败（第 ${attempt}/${max_attempts} 次），5 秒后重试"
+                sleep 5
+                continue
+            fi
+            error "资源记录查询连续 ${max_attempts} 次失败，无法确认数据完整性，已终止"
+            return 1
+        fi
+
+        local total_paths="0"
+        total_paths=$(grep -c . "$paths_file" 2>/dev/null || echo 0)
+
+        local missing_count=""
+        missing_count=$(sudo docker run --rm \
+            -v "$uploads_volume":/uploads \
+            -v "$web_dist_volume":/webdist \
+            -v "$verify_dir":/verify alpine sh -c '
+                miss=0
+                while IFS= read -r p; do
+                    [ -z "$p" ] && continue
+                    rel=${p#/static/}
+                    if [ ! -f "/uploads/$rel" ] && { [ ! -d /webdist ] || [ ! -f "/webdist/static/$rel" ]; }; then
+                        miss=$((miss+1))
+                    fi
+                done < /verify/paths.txt
+                echo "$miss"' 2>/dev/null | tr -d '[:space:]')
+        rm -rf "$verify_dir" 2>/dev/null || true
+
+        case "$missing_count" in
+            ''|*[!0-9]*)
+                if [ "$attempt" -lt "$max_attempts" ]; then
+                    warning "资源核对执行失败（第 ${attempt}/${max_attempts} 次），5 秒后重试"
+                    sleep 5
+                    continue
+                fi
+                error "资源核对连续 ${max_attempts} 次执行失败，无法确认数据完整性，已终止"
+                return 1
+                ;;
+        esac
+
+        if [ "$missing_count" -gt 0 ]; then
+            if [ "$attempt" -lt "$max_attempts" ]; then
+                warning "检测到 ${missing_count}/${total_paths} 条记录缺少物理文件（第 ${attempt}/${max_attempts} 次），5 秒后复核"
+                sleep 5
+                continue
+            fi
+            error "数据库本地资源记录中有 ${missing_count}/${total_paths} 条在 uploads/web_dist 卷中找不到物理文件（已复核 ${max_attempts} 次）"
+            error "继续更新会在 down -v 删卷后造成不可逆丢失；请先恢复文件或清理失效记录后重试"
+            return 1
+        fi
+
+        success "资源完整性核对通过：${total_paths} 条本地资源记录均有物理文件"
+        return 0
+    done
+
+    return 1
+}
+
 # 执行实际备份操作的通用函数
 perform_backup_operations() {
     local backup_dir="$1"
@@ -15176,17 +15287,29 @@ perform_backup_operations() {
         if sudo docker run --rm -v "$actual_uploads_volume":/data alpine sh -c "[ -d /data/. ] && [ \"\$(ls -A /data/. 2>/dev/null)\" ]"; then
             info "导出用户上传文件..."
             if sudo docker run --rm -v "$actual_uploads_volume":/data -v "$backup_dir":/backup alpine tar -czf "/backup/uploads_backup.tar.gz" -C /data .; then
-                success "用户上传文件备份完成"
+                local packed_count="0"
+                packed_count=$(tar -tzf "$backup_dir/uploads_backup.tar.gz" 2>/dev/null | grep -vc '/$')
+                packed_count="${packed_count:-0}"
+                if [ "$packed_count" -eq 0 ] 2>/dev/null; then
+                    error "用户上传文件备份包内文件数为 0，已终止备份"
+                    error "继续更新会执行 down -v 删除卷，造成不可逆丢失"
+                    return 1
+                fi
+                success "用户上传文件备份完成（$packed_count 个文件）"
             else
-                warning "用户上传文件备份失败"
+                error "用户上传文件备份失败，已终止备份"
+                error "继续更新会执行 down -v 删除卷，造成不可逆丢失"
+                return 1
             fi
         else
-            info "用户上传文件volume为空，跳过备份"
+            info "用户上传文件volume为空，跳过打包（下方将核对数据库资源记录）"
         fi
     else
-        info "未找到用户上传文件volume，跳过备份"
+        error "未找到用户上传文件volume，无法备份，已终止"
+        error "卷名解析依赖运行中的容器，请先确认服务处于运行状态"
+        return 1
     fi
-    
+
     # 6. 备份Redis数据
     info "备份Redis数据..."
     local actual_redis_volume=$(resolve_service_volume_name "redis" "/data" "redis_data" 2>/dev/null || true)
@@ -16209,6 +16332,13 @@ run_update() {
     info "步骤 1/4: 创建完整数据备份"
     create_full_backup || {
         error "数据备份失败，终止更新"
+        exit 1
+    }
+
+    # 1.5 资源完整性门禁：核对 DB 记录与卷内文件，缺失则终止
+    #     （此刻尚未执行任何卸载，系统保持原样运行，处理完数据问题可直接重跑）
+    verify_local_resource_files || {
+        error "资源完整性校验未通过，终止更新（系统未做任何变更）"
         exit 1
     }
 
