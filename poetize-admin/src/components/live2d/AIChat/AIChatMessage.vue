@@ -113,9 +113,10 @@
               </svg>
             </summary>
             <div class="reasoning-body">
-              <template v-for="item in segment.items" :key="item.id">
+              <template v-for="item in segment.items">
                 <MarkdownRenderer
                   v-if="item.type === 'reasoning'"
+                  :key="item.id"
                   class="reasoning-content"
                   :content="item.content"
                   :streaming="false"
@@ -123,6 +124,7 @@
                 />
                 <div
                   v-else-if="item.type === 'tool'"
+                  :key="item.id"
                   class="reasoning-tool"
                   :class="`is-${item.status || 'completed'}`"
                 >
