@@ -306,7 +306,7 @@ public class ResourceMediaController {
         }
         response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
         response.setHeader(HttpHeaders.RETRY_AFTER, "5");
-        log.debug("稳定媒体当前不可用: {}", error.getMessage());
+        log.warn("稳定媒体当前不可用: {}", error.getMessage());
     }
 
     private record ByteRange(long start, long end) {

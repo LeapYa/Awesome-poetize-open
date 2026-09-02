@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.nio.file.NoSuchFileException;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Objects;
@@ -105,6 +106,10 @@ public class ResourceMediaService {
         } catch (ResourceMediaAccessException e) {
             closeQuietly(handle);
             throw e;
+        } catch (NoSuchFileException e) {
+            // 物理副本缺失是永久状态：404 让 CDN/监控正确处理，避免 503 触发反复回源
+            closeQuietly(handle);
+            throw notFound("物理副本不存在");
         } catch (IOException | RuntimeException e) {
             closeQuietly(handle);
             throw unavailable("物理副本读取失败", e);

@@ -10,6 +10,7 @@ import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -27,7 +28,8 @@ public class LocalResourceFileService {
     public Path resolveReadablePath(String resourcePath) throws IOException {
         return existingPaths(resourcePath).stream()
                 .findFirst()
-                .orElseThrow(() -> new IOException("未找到可读取的本地源文件"));
+                // 文件缺失是永久状态，用 NoSuchFileException 让上层映射 404 而非 503
+                .orElseThrow(() -> new NoSuchFileException(resourcePath, null, "未找到可读取的本地源文件"));
     }
 
     public StorageRangeReadHandle openRange(String resourcePath,
