@@ -1,13 +1,16 @@
 package com.ld.poetry.service.prerender;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.StructuredTaskScope;
 
 @Component
@@ -18,6 +21,21 @@ class PrerenderExecutor {
     private final PrerenderService prerenderService;
     private final PrerenderNodeRendererRegistry rendererRegistry;
     private final PluginBootstrapMaterializer pluginBootstrapMaterializer;
+
+    /**
+     * 渲染并发上限（配置项 prerender.max-concurrent-renders，默认 6）。
+     * 2核/24连接的机器上数十路并发渲染会造成连接与线程资源的瞬时争抢，
+     * 限流后整体变慢但稳定可完成（预渲染要求：必须完成，可以慢）。
+     */
+    @Value("${prerender.max-concurrent-renders:6}")
+    private int maxConcurrentRenders;
+
+    private Semaphore renderPermits;
+
+    @PostConstruct
+    void initRenderPermits() {
+        this.renderPermits = new Semaphore(maxConcurrentRenders);
+    }
 
     void execute(PrerenderRequest request, PrerenderPlan plan, PrerenderSnapshot snapshot) {
         // 预渲染前确保 index.html 中的 <!--PB_BOOTSTRAP--> 占位符已被物化为 pb.*.js script 引用
@@ -57,11 +75,24 @@ class PrerenderExecutor {
     }
 
     private void renderBatch(String description, int priority, List<PrerenderNode> nodes, PrerenderSnapshot snapshot) {
-        try (var scope = StructuredTaskScope.open()) {
+        // awaitAll：单个页面渲染失败不取消其余页面，先把能渲染的全部渲染完；批次末尾遇首个失败即抛出
+        try (var scope = StructuredTaskScope.open(StructuredTaskScope.Joiner.awaitAll())) {
             log.info("开始执行预渲染批次: {}, priority={}, pages={}", description, priority, nodes.size());
             List<StructuredTaskScope.Subtask<Void>> subtasks = new ArrayList<>();
             for (PrerenderNode node : nodes) {
-                subtasks.add(scope.fork(() -> rendererRegistry.render(node, snapshot)));
+                subtasks.add(scope.fork(() -> {
+                    try {
+                        renderPermits.acquire();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("等待渲染许可被中断: " + node.key(), e);
+                    }
+                    try {
+                        rendererRegistry.render(node, snapshot);
+                    } finally {
+                        renderPermits.release();
+                    }
+                }));
             }
             scope.join();
             ensureSuccessfulTasks(subtasks, description, priority);

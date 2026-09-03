@@ -27,8 +27,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -213,15 +213,9 @@ public class WebInfoController {
                     }
 
                     // 2. 异步触发清理操作和预渲染
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            log.info("开始触发预渲染");
-                            prerenderFacade.rebuildSite();
-                            log.info("网站信息更新后成功触发页面预渲染");
-                        } catch (Exception e) {
-                            log.warn("异步任务执行失败", e);
-                        }
-                    });
+                    // 走 PrerenderFacade 的专属虚拟线程；禁止裸 runAsync（会占用
+                    // ForkJoinPool.commonPool，2核机器上曾与请求路径互相饿死导致挂起）
+                    prerenderFacade.rebuildSiteAsync(Duration.ofSeconds(2));
 
                 } catch (Exception e) {
                     // 预渲染失败不影响主流程，只记录日志

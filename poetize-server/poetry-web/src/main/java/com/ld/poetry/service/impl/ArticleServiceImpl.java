@@ -48,7 +48,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 import com.ld.poetry.service.SummaryService;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.StructuredTaskScope;
 import java.util.concurrent.StructuredTaskScope.Subtask;
@@ -2480,7 +2479,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         Map<Integer, List<Article>> cachedResult = cacheService.getCachedSortArticleList();
         if (cachedResult != null) {
             // 异步刷新缓存中的浏览量，主请求直接使用缓存数据返回
-            CompletableFuture.runAsync(() -> {
+            // （专属虚拟线程，不走 ForkJoinPool.commonPool，避免与预渲染等后台任务互相饿死）
+            Thread.ofVirtual().name("viewcount-refresh-virtual").start(() -> {
                 try {
                     Map<Integer, Integer> latestViewCountMap = loadLatestViewCountMap(cachedResult);
                     // 将数据库中的最新浏览量写回缓存，供后续请求使用
@@ -2860,7 +2860,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     /**
      * 批量预加载一页文章的关联数据(User / CommentCount / SortInfo), 供 buildArticleVOBatch 使用。
-     * 使用 CompletableFuture 并行加载用户、评论数和分类信息。
+     * 串行加载用户、评论数和分类信息（不依赖 ForkJoinPool.commonPool）。
      * @param records 一页文章实体
      * @return 三元组: [userMap, commentCountMap, sortInfoList]
      */
@@ -2878,38 +2878,28 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             if (a.getId() != null) articleIds.add(a.getId());
         }
 
-        // 并行预加载三类关联数据
-        CompletableFuture<Map<Integer, User>> userFuture = CompletableFuture.supplyAsync(() -> {
-            Map<Integer, User> map = new HashMap<>();
-            for (Integer uid : userIds) {
-                User u = commonQuery.getUser(uid);
-                if (u != null) {
-                    map.put(uid, u);
-                }
+        // 串行加载三类关联数据（均为 Redis 缓存读，单次毫秒级）。
+        // 原先的裸 supplyAsync 会把任务排入 ForkJoinPool.commonPool 并无限期 join 等待，
+        // 2核机器上 commonPool 并行度仅 1，与预渲染等后台任务互相争抢时曾导致
+        // listSortArticle 永久挂起；串行慢但无池依赖，行为可预期。
+        Map<Integer, User> userMap = new HashMap<>();
+        for (Integer uid : userIds) {
+            User u = commonQuery.getUser(uid);
+            if (u != null) {
+                userMap.put(uid, u);
             }
-            return map;
-        });
+        }
 
-        CompletableFuture<Map<Integer, Integer>> commentCountFuture = CompletableFuture.supplyAsync(() -> {
-            Map<Integer, Integer> map = new HashMap<>();
-            for (Integer aid : articleIds) {
-                Integer count = commonQuery.getCommentCount(aid,
-                        CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode());
-                map.put(aid, count == null ? 0 : count);
-            }
-            return map;
-        });
+        Map<Integer, Integer> commentCountMap = new HashMap<>();
+        for (Integer aid : articleIds) {
+            Integer count = commonQuery.getCommentCount(aid,
+                    CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode());
+            commentCountMap.put(aid, count == null ? 0 : count);
+        }
 
-        CompletableFuture<List<Sort>> sortInfoFuture = CompletableFuture.supplyAsync(commonQuery::getSortInfo);
+        List<Sort> sortInfoList = commonQuery.getSortInfo();
 
-        // 等待全部完成
-        CompletableFuture.allOf(userFuture, commentCountFuture, sortInfoFuture).join();
-
-        return Arrays.asList(
-                userFuture.join(),
-                commentCountFuture.join(),
-                sortInfoFuture.join()
-        );
+        return Arrays.asList(userMap, commentCountMap, sortInfoList);
     }
 
     /**
@@ -2994,8 +2984,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 return PoetryResult.success(new ArrayList<>());
             }
 
-            // 使用并行流转换为ArticleVO（利用虚拟线程的优势）
-            List<ArticleVO> articleVOList = articles.parallelStream().map(article -> {
+            // 串行转换为ArticleVO：单篇内的关联查询已由 buildArticleVO 的 StructuredTaskScope
+            // （虚拟线程）并行，外层无需再叠并行；parallelStream 跑的是 ForkJoinPool.commonPool
+            // 平台线程（与虚拟线程无关），与预渲染等后台任务争抢时行为不可预期
+            List<ArticleVO> articleVOList = articles.stream().map(article -> {
                 // 如果内容太长，截取用于显示
                 if (StringUtils.hasText(article.getArticleContent())
                         && article.getArticleContent().length() > CommonConst.SUMMARY) {

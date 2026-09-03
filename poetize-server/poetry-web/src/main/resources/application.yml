@@ -129,6 +129,8 @@ spring:
       initial-size: ${SPRING_DATASOURCE_DRUID_INITIAL_SIZE:10}
       min-idle: ${SPRING_DATASOURCE_DRUID_MIN_IDLE:10}
       max-active: ${SPRING_DATASOURCE_DRUID_MAX_ACTIVE:24}
+      # 获取连接最长等待毫秒数。缺省 -1 = 无限等待，全站重建争抢连接时会把请求永久挂起
+      max-wait: ${SPRING_DATASOURCE_DRUID_MAX_WAIT:10000}
       
       # 防止连接泄露、
       remove-abandoned: true
@@ -152,7 +154,8 @@ spring:
           max-active: ${SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE:16}
           max-idle: ${SPRING_REDIS_LETTUCE_POOL_MAX_IDLE:8}
           min-idle: ${SPRING_REDIS_LETTUCE_POOL_MIN_IDLE:3}
-          max-wait: -1ms
+          # 缺省 -1ms = 无限等待，池耗尽时请求会永久挂起
+          max-wait: ${SPRING_REDIS_LETTUCE_POOL_MAX_WAIT:2000ms}
         shutdown-timeout: 100ms
       connect-timeout: 5000ms
 

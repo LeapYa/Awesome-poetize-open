@@ -28,11 +28,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * <p>
@@ -134,15 +134,9 @@ public class AdminSeoController {
                     }
 
                     // 2. 异步触发预渲染，避免阻塞主流程，并确保缓存数据已完全生效
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            // 等待2秒确保缓存完全生效并可被预渲染服务读取
-                            Thread.sleep(2000);
-                            prerenderFacade.rebuildSite();
-                        } catch (Exception e) {
-                            log.warn("异步预渲染失败", e);
-                        }
-                    });
+                    // 走 PrerenderFacade 的专属虚拟线程；禁止裸 runAsync（会占用
+                    // ForkJoinPool.commonPool，2核机器上曾与请求路径互相饿死导致挂起）
+                    prerenderFacade.rebuildSiteAsync(Duration.ofSeconds(2));
 
                 } catch (Exception e) {
                     // 预渲染失败不影响主流程，只记录日志

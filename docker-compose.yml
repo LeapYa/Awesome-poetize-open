@@ -179,7 +179,9 @@ services:
       # 项目版本号（供 RSS generator 等软件标识使用，与前端 VITE_APP_VERSION 同源）
       - APP_VERSION=${APP_VERSION:-dev}
       # Java配置
-      - JAVA_OPTS=${JAVA_OPTS:--Xmx512m -Xms512m -XX:MaxMetaspaceSize=192m -XX:CompressedClassSpaceSize=64m -Xss256k -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=128m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs -XX:CICompilerCount=2}
+      - JAVA_OPTS=${JAVA_OPTS:--Xmx512m -Xms512m -XX:MaxMetaspaceSize=192m -XX:CompressedClassSpaceSize=64m -Xss256k -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=128m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs -XX:CICompilerCount=2 -Djava.util.concurrent.ForkJoinPool.common.parallelism=4 -Djdk.virtualThreadScheduler.parallelism=4}
+      # 预渲染并发上限（Spring relaxed binding 映射 prerender.max-concurrent-renders）
+      - PRERENDER_MAX_CONCURRENT_RENDERS=${PRERENDER_MAX_CONCURRENT_RENDERS:-6}
       # 数据库配置
       - SPRING_DATASOURCE_URL=jdbc:${DB_TYPE:-mariadb}://${DB_HOST:-mysql}:${DB_PORT:-3306}/${DB_NAME:-poetize}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=${DB_USER:-poetize}
