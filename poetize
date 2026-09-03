@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-07-17
+## 修改时间: 2026-09-03
 ## 描述: POETIZE 博客系统全局管理命令
-## 版本: 1.13.5
+## 版本: 1.13.6
 
 # 定义颜色
 RED='\033[0;31m'
@@ -13,7 +13,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 全局变量
-POETIZE_VERSION="1.13.5"
+POETIZE_VERSION="1.13.6"
 UPDATE_VERSION=""  # 升级到指定版本（空则使用最新稳定版本）
 USE_LATEST_TAG=true  # 是否使用最新稳定标签（false则使用main分支）
 EMBEDDED_CORE_DIR=""
@@ -11593,9 +11593,9 @@ __POETIZE_EMBEDDED_DEPLOY_CORE_SH_2047F65599A6__
             cat <<'__POETIZE_EMBEDDED_MIGRATE_CORE_SH_37F6586504B7__'
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2026-02-12
+## 修改时间: 2026-09-03
 ## 描述: POETIZE 博客系统自动迁移脚本
-## 版本: 1.5.2
+## 版本: 1.5.3
 
 # 定义颜色
 RED='\033[0;31m'
@@ -11806,6 +11806,7 @@ load_user_data() {
 }
 
 # 重试机制函数
+# 设置 RETRY_EXP_BACKOFF=true 时启用指数退避（等待时间随尝试次数翻倍），适用于限流类失败（如Gitee 429）
 retry_command() {
     local max_attempts="$1"
     local delay="$2"
@@ -11823,8 +11824,12 @@ retry_command() {
         fi
         
         if [ $attempt -lt $max_attempts ]; then
-            warning "$description 失败，等待 ${delay} 秒后重试..."
-            sleep "$delay"
+            local wait_delay=$delay
+            if [ "${RETRY_EXP_BACKOFF:-false}" = "true" ]; then
+                wait_delay=$((delay << (attempt - 1)))
+            fi
+            warning "$description 失败，等待 ${wait_delay} 秒后重试..."
+            sleep "$wait_delay"
         else
             error "$description 在 $max_attempts 次尝试后仍然失败"
         fi
@@ -12067,10 +12072,36 @@ get_user_input() {
     
     if [ -z "$auth_choice" ] || [ "$auth_choice" = "1" ]; then
         # SSH密钥认证
+        # 探测默认SSH私钥：优先ed25519/ecdsa，最后回退rsa，避免新服务器只有非rsa密钥时默认值失效
+        local default_ssh_key=""
+        local key_candidate
+        for key_candidate in ~/.ssh/id_ed25519 ~/.ssh/id_ecdsa ~/.ssh/id_rsa; do
+            local expanded_candidate
+            expanded_candidate=$(eval echo "$key_candidate")
+            if [ -f "$expanded_candidate" ]; then
+                default_ssh_key="$expanded_candidate"
+                break
+            fi
+        done
+        if [ -z "$default_ssh_key" ]; then
+            default_ssh_key=$(eval echo "~/.ssh/id_rsa")
+        fi
+        info "自动探测到SSH私钥: $default_ssh_key"
+        
         while [ -z "$TARGET_SSH_KEY" ]; do
-            read -p "SSH私钥文件路径 (默认: ~/.ssh/id_rsa): " TARGET_SSH_KEY
+            if ! read -p "SSH私钥文件路径 (直接回车使用: $default_ssh_key): " TARGET_SSH_KEY; then
+                error "输入流已结束，无法继续交互式迁移"
+                exit 1
+            fi
             if [ -z "$TARGET_SSH_KEY" ]; then
-                TARGET_SSH_KEY="~/.ssh/id_rsa"
+                TARGET_SSH_KEY="$default_ssh_key"
+            fi
+            
+            # 防呆：避免将确认类输入(y/n)误当作密钥路径
+            if [[ "$TARGET_SSH_KEY" =~ ^(y|Y|n|N|yes|no)$ ]]; then
+                warning "此处需要输入密钥文件路径，直接回车可使用自动探测的默认密钥"
+                TARGET_SSH_KEY=""
+                continue
             fi
             
             # 展开波浪号
@@ -12081,11 +12112,20 @@ get_user_input() {
                 warning "SSH密钥文件不存在: $TARGET_SSH_KEY"
                 TARGET_SSH_KEY=""
             else
-                # 检查密钥文件权限
-                if [ "$(stat -c %a "$TARGET_SSH_KEY" 2>/dev/null || stat -f %A "$TARGET_SSH_KEY" 2>/dev/null)" != "600" ]; then
-                    warning "SSH密钥文件权限不安全，建议设置为600"
-                    read -p "是否继续使用此密钥? (y/N): " continue_choice
-                    if [ "$continue_choice" != "y" ] && [ "$continue_choice" != "Y" ]; then
+                # 检查密钥文件权限，不安全时自动修复为600（ssh本身也要求600，避免确认循环）
+                local key_perm
+                key_perm=$(stat -c %a "$TARGET_SSH_KEY" 2>/dev/null || stat -f %A "$TARGET_SSH_KEY" 2>/dev/null)
+                if [ "$key_perm" != "600" ]; then
+                    warning "SSH密钥文件权限不安全: $TARGET_SSH_KEY (当前: $key_perm)"
+                    local fix_perm_choice="y"
+                    read -p "是否自动修复权限为600并继续? (Y/n): " fix_perm_choice || fix_perm_choice="y"
+                    if [ "$fix_perm_choice" != "n" ] && [ "$fix_perm_choice" != "N" ]; then
+                        if chmod 600 "$TARGET_SSH_KEY" 2>/dev/null; then
+                            success "已修复密钥权限: $TARGET_SSH_KEY"
+                        else
+                            warning "权限修复失败，请手动执行: chmod 600 $TARGET_SSH_KEY"
+                        fi
+                    else
                         TARGET_SSH_KEY=""
                     fi
                 fi
@@ -12417,14 +12457,143 @@ detect_target_environment() {
     
     if eval "$network_test_cmd" 2>/dev/null; then
         IS_CHINA_ENV=false
-        save_state "$STEP_DETECT_ENV" "completed:foreign"
         save_environment_info
         success "检测到国外网络环境，将使用GitHub仓库"
     else
         IS_CHINA_ENV=true
-        save_state "$STEP_DETECT_ENV" "completed:china"
         save_environment_info
         success "检测到国内网络环境，将使用Gitee仓库"
+    fi
+    
+    # 检查并安装目标服务器必要工具（sudo、curl、git、docker、docker compose插件）
+    # 裸机最小安装通常缺少sudo和docker compose插件，提前在环境检测阶段补齐，避免后续步骤中途失败
+    info "检查目标服务器必要工具（sudo、curl、git、docker、docker compose）..."
+    
+    local docker_repo_host
+    if [ "$IS_CHINA_ENV" = true ]; then
+        docker_repo_host="mirrors.aliyun.com/docker-ce"
+    else
+        docker_repo_host="download.docker.com"
+    fi
+    
+    local deps_cmd="
+        # 确定提权方式（裸机最小安装可能未装sudo，root用户无需sudo）
+        SUDO=\"\"
+        if [ \"\$(id -u)\" != \"0\" ]; then
+            if ! command -v sudo >/dev/null 2>&1; then
+                echo \"ERROR: 目标服务器当前用户非root且未安装sudo，无法自动安装依赖\"
+                echo \"ERROR: 请以root用户重新运行，或先手动安装: sudo curl git docker.io docker-compose-plugin\"
+                exit 1
+            fi
+            SUDO=\"sudo\"
+        fi
+
+        # 基础工具检查与安装（sudo、curl、git）
+        missing_basic=\"\"
+        for tool in sudo curl git; do
+            command -v \"\$tool\" >/dev/null 2>&1 || missing_basic=\"\$missing_basic \$tool\"
+        done
+        if [ -n \"\$missing_basic\" ]; then
+            echo \"INFO: 安装缺失的基础工具:\$missing_basic\"
+            if command -v apt-get >/dev/null 2>&1; then
+                \$SUDO apt-get update -qq && \$SUDO apt-get install -y\$missing_basic
+            elif command -v yum >/dev/null 2>&1; then
+                \$SUDO yum install -y\$missing_basic
+            elif command -v dnf >/dev/null 2>&1; then
+                \$SUDO dnf install -y\$missing_basic
+            elif command -v pacman >/dev/null 2>&1; then
+                \$SUDO pacman -S --needed --noconfirm \$missing_basic
+            elif command -v apk >/dev/null 2>&1; then
+                \$SUDO apk add --update-cache \$missing_basic
+            else
+                echo \"ERROR: 无法识别的包管理器，请手动安装基础工具:\$missing_basic\"
+                exit 1
+            fi
+        fi
+
+        # Docker与compose插件检查
+        need_docker=false
+        need_compose=false
+        if ! command -v docker >/dev/null 2>&1; then
+            need_docker=true
+            echo \"INFO: 目标服务器未安装docker\"
+        elif ! docker compose version >/dev/null 2>&1; then
+            need_compose=true
+            echo \"INFO: 目标服务器缺少docker compose插件\"
+        fi
+
+        if [ \"\$need_docker\" = \"true\" ] || [ \"\$need_compose\" = \"true\" ]; then
+            echo \"INFO: 开始安装docker与compose插件...\"
+            if command -v apt-get >/dev/null 2>&1; then
+                # Debian/Ubuntu：优先发行版仓库（docker.io），compose插件缺失时添加Docker源补装
+                if [ \"\$need_docker\" = \"true\" ]; then
+                    \$SUDO apt-get install -y -qq docker.io
+                fi
+                if ! docker compose version >/dev/null 2>&1; then
+                    \$SUDO apt-get install -y -qq docker-compose-plugin || true
+                fi
+                if ! docker compose version >/dev/null 2>&1; then
+                    echo \"INFO: 发行版仓库无compose插件，添加Docker软件源安装...\"
+                    \$SUDO apt-get install -y -qq ca-certificates curl gnupg
+                    \$SUDO install -m 0755 -d /etc/apt/keyrings
+                    curl -fsSL https://$docker_repo_host/linux/\$(. /etc/os-release && echo \$ID)/gpg | \$SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+                    \$SUDO chmod a+r /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+                    echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://$docker_repo_host/linux/\$(. /etc/os-release && echo \$ID) \$(. /etc/os-release && echo \$VERSION_CODENAME) stable\" | \$SUDO tee /etc/apt/sources.list.d/docker.list >/dev/null
+                    \$SUDO apt-get update -qq
+                    # docker已就绪时只补装compose插件，避免docker-ce与docker.io冲突
+                    if ! \$SUDO apt-get install -y -qq docker-compose-plugin; then
+                        \$SUDO apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                    fi
+                fi
+            elif command -v yum >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1; then
+                if command -v dnf >/dev/null 2>&1; then
+                    PKGMGR=\"dnf\"
+                else
+                    PKGMGR=\"yum\"
+                fi
+                \$SUDO \$PKGMGR install -y \${PKGMGR}-utils
+                \$SUDO \$PKGMGR config-manager --add-repo https://$docker_repo_host/linux/centos/docker-ce.repo
+                \$SUDO \$PKGMGR install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+            elif command -v pacman >/dev/null 2>&1; then
+                \$SUDO pacman -S --noconfirm docker docker-compose
+            elif command -v apk >/dev/null 2>&1; then
+                \$SUDO apk add --update-cache docker docker-cli-compose
+            else
+                echo \"ERROR: 无法识别的包管理器，请手动安装docker与compose插件\"
+                exit 1
+            fi
+
+            # 启动并启用docker服务
+            \$SUDO systemctl enable --now docker 2>/dev/null || \$SUDO service docker start 2>/dev/null || true
+        fi
+
+        # 最终验证
+        for tool in sudo curl git docker; do
+            if ! command -v \"\$tool\" >/dev/null 2>&1; then
+                echo \"ERROR: 工具\$tool安装后仍不可用\"
+                exit 1
+            fi
+        done
+        if ! docker compose version >/dev/null 2>&1; then
+            echo \"ERROR: docker compose插件安装后仍不可用\"
+            exit 1
+        fi
+        echo \"SUCCESS: 目标服务器依赖检查通过\"
+    "
+    
+    if ssh_retry "目标服务器依赖检查与安装" "$deps_cmd" "true"; then
+        success "目标服务器必要工具检查完成（sudo、curl、git、docker、docker compose）"
+    else
+        save_state "$STEP_DETECT_ENV" "failed"
+        error "目标服务器依赖检查与安装失败"
+        info "最小安装参考: sudo apt-get install -y sudo curl git docker.io docker-compose-plugin"
+        exit 1
+    fi
+    
+    if [ "$IS_CHINA_ENV" = true ]; then
+        save_state "$STEP_DETECT_ENV" "completed:china"
+    else
+        save_state "$STEP_DETECT_ENV" "completed:foreign"
     fi
 }
 
@@ -12439,11 +12608,13 @@ pull_code_on_target() {
     save_state "$STEP_PULL_CODE" "in_progress"
     info "在目标服务器上拉取项目代码..."
     
-    local git_url
+    local git_url git_ssh_url
     if [ "$IS_CHINA_ENV" = true ]; then
         git_url="https://gitee.com/leapya/poetize.git"
+        git_ssh_url="git@gitee.com:leapya/poetize.git"
     else
         git_url="https://github.com/LeapYa/awesome-poetize-open.git"
+        git_ssh_url="git@github.com:LeapYa/awesome-poetize-open.git"
     fi
     
     info "使用仓库地址: $git_url"
@@ -12473,26 +12644,40 @@ pull_code_on_target() {
         branch_opt="--branch $target_version"
     fi
     
-    # 在目标服务器上执行命令
-    local ssh_cmd="
-        # 安装必要工具
-        if command -v apt-get &>/dev/null; then
-            sudo apt-get update && sudo apt-get install -y git curl
-        elif command -v yum &>/dev/null; then
-            sudo yum install -y git curl
-        elif command -v dnf &>/dev/null; then
-            sudo dnf install -y git curl
-        elif command -v zypper &>/dev/null; then
-            sudo zypper install -y git curl
-        elif command -v pacman &>/dev/null; then
-            sudo pacman -S --needed git curl
-        elif command -v apk &>/dev/null; then
-            sudo apk add --update-cache git curl
+    # 在目标服务器上安装必要工具
+    # root用户不依赖sudo（裸机最小安装可能没有sudo），非root用户通过sudo提权
+    local ensure_tools_cmd="
+        if [ \"\$(id -u)\" = \"0\" ]; then
+            SUDO=\"\"
         else
-            echo 'ERROR: 不支持的包管理器，请手动安装git和curl'
+            SUDO=\"sudo\"
+        fi
+        if command -v apt-get &>/dev/null; then
+            \$SUDO apt-get update && \$SUDO apt-get install -y git curl
+        elif command -v yum &>/dev/null; then
+            \$SUDO yum install -y git curl
+        elif command -v dnf &>/dev/null; then
+            \$SUDO dnf install -y git curl
+        elif command -v zypper &>/dev/null; then
+            \$SUDO zypper install -y git curl
+        elif command -v pacman &>/dev/null; then
+            \$SUDO pacman -S --needed git curl
+        elif command -v apk &>/dev/null; then
+            \$SUDO apk add --update-cache git curl
+        else
+            echo \"ERROR: 不支持的包管理器，请手动安装git和curl\"
             exit 1
         fi
-
+    "
+    
+    if ! ssh_retry "安装目标服务器基础工具" "$ensure_tools_cmd" "true"; then
+        save_state "$STEP_PULL_CODE" "failed"
+        error "目标服务器基础工具安装失败"
+        exit 1
+    fi
+    
+    # HTTPS方式克隆项目（使用指数退避重试，缓解Gitee 429限流）
+    local clone_https_cmd="
         # 进入项目目录
         if [ -d $CURRENT_DIR ]; then
             cd $CURRENT_DIR
@@ -12501,27 +12686,86 @@ pull_code_on_target() {
             cd $CURRENT_DIR
         fi
         
+        # 清理上次克隆失败留下的残留目录（不含完整项目的目录），避免重试时目标目录已存在
+        if [ -d $extract_dir ] && [ ! -f $extract_dir/poetize ]; then
+            rm -rf $extract_dir
+        elif [ -d $extract_dir ]; then
+            echo \"ERROR: 目标目录已存在且包含项目文件: $CURRENT_DIR/$extract_dir\"
+            exit 1
+        fi
+        
         # 克隆项目
         git clone --depth 1 $branch_opt $git_url $extract_dir
         
         # 检查是否成功
-        if [ -d '$extract_dir' ] && [ -f '$extract_dir/poetize' ]; then
-            echo 'SUCCESS: 项目代码拉取成功${target_version:+: $target_version}'
+        if [ -d \"$extract_dir\" ] && [ -f \"$extract_dir/poetize\" ]; then
+            echo \"SUCCESS: 项目代码拉取成功${target_version:+: $target_version}\"
         else
-            echo 'ERROR: 项目代码拉取失败'
+            echo \"ERROR: 项目代码拉取失败\"
             exit 1
         fi
     "
     
-    # 使用重试机制执行代码拉取
-    if ssh_retry "项目代码拉取" "$ssh_cmd" "true"; then
+    if RETRY_EXP_BACKOFF=true ssh_retry "项目代码拉取" "$clone_https_cmd" "true"; then
         save_state "$STEP_PULL_CODE" "completed"
         success "项目代码拉取成功${target_version:+: $target_version}"
-    else
-        save_state "$STEP_PULL_CODE" "failed"
-        error "项目代码拉取失败"
-        exit 1
+        return 0
     fi
+    
+    # HTTPS克隆失败（常见于Gitee 429限流），自动降级为SSH克隆（项目自带Gitee deploy key）
+    if [ "$IS_CHINA_ENV" = true ] && [ -f "gitee_deploy_key" ]; then
+        warning "HTTPS克隆失败，尝试降级为SSH克隆（使用项目自带的Gitee deploy key）..."
+        local remote_key_path="/tmp/poetize_gitee_deploy_key_$$"
+        
+        if scp_retry "分发Gitee deploy key" "gitee_deploy_key" "$remote_key_path"; then
+            local clone_ssh_cmd="
+                chmod 600 $remote_key_path
+                
+                # 进入项目目录
+                if [ -d $CURRENT_DIR ]; then
+                    cd $CURRENT_DIR
+                else
+                    mkdir -p $CURRENT_DIR
+                    cd $CURRENT_DIR
+                fi
+                
+                # 清理上次克隆失败留下的残留目录
+                if [ -d $extract_dir ] && [ ! -f $extract_dir/poetize ]; then
+                    rm -rf $extract_dir
+                elif [ -d $extract_dir ]; then
+                    echo \"ERROR: 目标目录已存在且包含项目文件: $CURRENT_DIR/$extract_dir\"
+                    exit 1
+                fi
+                
+                # 使用deploy key通过SSH克隆
+                GIT_SSH_COMMAND=\"ssh -i $remote_key_path -o StrictHostKeyChecking=no -o IdentitiesOnly=yes\" git clone --depth 1 $branch_opt $git_ssh_url $extract_dir
+                clone_rc=\$?
+                
+                # 无论成败都清理远端临时密钥
+                rm -f $remote_key_path
+                
+                if [ \$clone_rc -eq 0 ] && [ -d \"$extract_dir\" ] && [ -f \"$extract_dir/poetize\" ]; then
+                    echo \"SUCCESS: SSH降级克隆成功\"
+                else
+                    echo \"ERROR: SSH降级克隆失败\"
+                    exit 1
+                fi
+            "
+            
+            if ssh_retry "SSH降级克隆" "$clone_ssh_cmd" "true"; then
+                save_state "$STEP_PULL_CODE" "completed"
+                success "项目代码拉取成功（HTTPS限流，已自动降级为SSH）${target_version:+: $target_version}"
+                return 0
+            fi
+            
+            # 确保清理可能残留的远端密钥
+            ssh_retry "清理deploy key" "rm -f $remote_key_path" "false" >/dev/null 2>&1 || true
+        fi
+    fi
+    
+    save_state "$STEP_PULL_CODE" "failed"
+    error "项目代码拉取失败"
+    exit 1
 }
 
 # 传输文件到目标服务器
@@ -12538,6 +12782,20 @@ transfer_files() {
     local target_path
     target_path="$CURRENT_DIR/$extract_dir"
     
+    # 统一创建目标目录结构
+    # .config/ 用于配置文件，poetize-server/sql/ 用于数据库备份
+    # py/ 仅在源服务器存在py/data时才创建（旧版Python后端兼容；新版已移除Python后端，不产生多余目录）
+    local mkdir_cmd="mkdir -p $target_path/.config $target_path/poetize-server/sql"
+    if [ -d "py/data" ]; then
+        mkdir_cmd="$mkdir_cmd $target_path/py"
+    fi
+    info "创建目标目录结构..."
+    if ! ssh_retry "创建目标目录结构" "$mkdir_cmd" "true"; then
+        save_state "$STEP_TRANSFER_FILES" "failed"
+        error "创建目标目录结构失败"
+        exit 1
+    fi
+    
     # 如果不是外部数据库模式，传输数据库备份文件
     if [ "$USE_EXTERNAL_DB" = false ]; then
         info "传输数据库备份文件..."
@@ -12552,25 +12810,32 @@ transfer_files() {
     
     # 传输整个.config目录（包含db_credentials.txt和redis_config.txt等所有配置）
     info "传输配置目录..."
-    if ! ssh_retry "创建配置目录" "mkdir -p $target_path/.config" "true"; then
-        save_state "$STEP_TRANSFER_FILES" "failed"
-        error "创建配置目录失败"
-        exit 1
-    fi
-    
-    # 传输整个.config目录中的所有文件
     if ! scp_retry "配置文件" ".config/" "$target_path/" "-r"; then
         save_state "$STEP_TRANSFER_FILES" "failed"
         error "配置文件传输失败"
         exit 1
     fi
     
-    # 传输py/data配置目录
-    info "传输Python配置文件..."
-    if ! scp_retry "Python配置文件" "py/data" "$target_path/py/" "-r"; then
-        save_state "$STEP_TRANSFER_FILES" "failed"
-        error "Python配置文件传输失败"
-        exit 1
+    # 传输py/data配置目录（仅当本地存在时传输，兼容早期含Python后端的项目；新版已移除Python后端）
+    if [ -d "py/data" ]; then
+        # 空目录时scp -r在部分环境返回非零，改为直接在目标服务器创建空目录
+        if [ -z "$(ls -A py/data 2>/dev/null)" ]; then
+            info "py/data目录为空，直接在目标服务器创建空目录..."
+            if ! ssh_retry "创建py/data目录" "mkdir -p $target_path/py/data" "true"; then
+                save_state "$STEP_TRANSFER_FILES" "failed"
+                error "创建py/data目录失败"
+                exit 1
+            fi
+        else
+            info "传输Python配置文件..."
+            if ! scp_retry "Python配置文件" "py/data" "$target_path/py/" "-r"; then
+                save_state "$STEP_TRANSFER_FILES" "failed"
+                error "Python配置文件传输失败"
+                exit 1
+            fi
+        fi
+    else
+        info "本地不存在py/data目录（新版已移除Python后端），跳过Python配置文件传输"
     fi
     
     # 如果不是root用户，需要确保文件权限正确
@@ -12992,24 +13257,41 @@ migrate_uploads() {
 }
 
 # 清理临时文件
+# 注意：迁移未完成（状态文件仍存在）时保留数据库备份与volume备份文件，保证断点续传有效
 cleanup() {
     info "清理临时文件..."
     
+    # 状态文件仍存在说明迁移中途失败或被中断；成功路径会先执行clean_state再执行本函数
+    local migration_incomplete=false
+    if [ -f "$STATE_FILE" ]; then
+        migration_incomplete=true
+    fi
+    
     # 删除临时备份目录
     if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
-        rm -rf "$BACKUP_DIR"
-        success "临时备份目录已清理"
+        # 迁移未完成且备份有效（backup_db已完成且SQL文件非空）时保留，避免重跑时被迫重新导出数据库
+        if [ "$migration_incomplete" = true ] && [ "$(get_step_status "$STEP_BACKUP_DB")" = "completed" ] && [ -s "$BACKUP_DIR/poetry.sql" ]; then
+            warning "迁移未完成，保留数据库备份目录以支持断点续传: $BACKUP_DIR"
+            info "重新运行迁移脚本将自动跳过数据库备份步骤并复用该备份"
+        else
+            rm -rf "$BACKUP_DIR"
+            success "临时备份目录已清理"
+        fi
     fi
     
     # 清理所有volume备份文件
-    for pattern in "uploads_backup_*.tar.gz" "prerender_backup_*.tar.gz"; do
-        for file in $pattern; do
-            if [ -f "$file" ]; then
-                rm -f "$file"
-                success "已清理备份文件: $file"
-            fi
+    if [ "$migration_incomplete" = true ]; then
+        info "迁移未完成，保留volume备份文件以支持断点续传"
+    else
+        for pattern in "uploads_backup_*.tar.gz" "prerender_backup_*.tar.gz"; do
+            for file in $pattern; do
+                if [ -f "$file" ]; then
+                    rm -f "$file"
+                    success "已清理备份文件: $file"
+                fi
+            done
         done
-    done
+    fi
     
     success "临时文件清理完成"
 }
@@ -13033,7 +13315,9 @@ show_summary() {
     printf "${BLUE}%s${NC}\n" "$(printf '%*s' 8 '' | tr ' ' '-')"
     printf "  ✓ 数据库数据\n"
     printf "  ✓ 数据库凭据\n"
-    printf "  ✓ Python配置文件\n"
+    if [ -d "py/data" ]; then
+        printf "  ✓ Python配置文件\n"
+    fi
     printf "  ✓ 项目代码\n"
     if [ "$MIGRATE_UPLOADS" = "yes" ]; then
         printf "  ✓ 用户上传文件\n"
@@ -13181,9 +13465,10 @@ main() {
     # 显示总结
     show_migration_summary
     
-    # 清理临时文件和状态
-    cleanup
+    # 清理状态与临时文件
+    # 必须先执行clean_state（删除状态文件），cleanup依据状态文件是否存在区分成功完成与中途失败
     clean_state
+    cleanup
 }
 
 # 显示迁移总结
